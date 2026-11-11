@@ -17178,7 +17178,7 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, ancestor-scope references, renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -17207,7 +17207,7 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, ancestor-scope references, renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -19843,7 +19843,7 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, ancestor-scope references, renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -19872,7 +19872,7 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, ancestor-scope references, renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -19968,7 +19968,7 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, ancestor-scope references, renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -19997,7 +19997,7 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, ancestor-scope references, renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -20026,7 +20026,7 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, ancestor-scope references, renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -20055,7 +20055,7 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, ancestor-scope references, renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -20084,7 +20084,7 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, ancestor-scope references, renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -20166,7 +20166,7 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, ancestor-scope references, renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -20195,7 +20195,7 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, ancestor-scope references, renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -20224,7 +20224,7 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, ancestor-scope references, renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -20253,7 +20253,7 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, ancestor-scope references, renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -20379,7 +20379,7 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, ancestor-scope references, renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -20408,7 +20408,7 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, ancestor-scope references, renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -20437,7 +20437,7 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, ancestor-scope references, renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -20466,7 +20466,7 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, ancestor-scope references, renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -20495,7 +20495,7 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, ancestor-scope references, renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -20576,7 +20576,7 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, ancestor-scope references, renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -20605,7 +20605,7 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, ancestor-scope references, renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -20634,7 +20634,7 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, ancestor-scope references, renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -20664,7 +20664,7 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, ancestor-scope references, renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -20693,7 +20693,7 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, ancestor-scope references, renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -20722,7 +20722,7 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, ancestor-scope references, renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -20751,7 +20751,7 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, ancestor-scope references, renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -20780,7 +20780,7 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, ancestor-scope references, renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -20809,7 +20809,7 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, ancestor-scope references, renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
