@@ -320,7 +320,7 @@ pub enum Mutation {
     SetFlowCondition {
         document_id: DocumentId,
         flow_id: XmlId,
-        condition: Option<String>,
+        condition: Option<crate::bpmn_model::Expression>,
     },
     SetNodeOwnerContact {
         document_id: DocumentId,
@@ -1727,14 +1727,31 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                     "Original target namespace must be recovered before editing definitions metadata",
                 ));
             }
-            if d.definitions
+            let namespace_changed = d
+                .definitions
                 .as_ref()
                 .map(|old| old.target_namespace.as_str())
                 .unwrap_or(GENERATED_TARGET_NAMESPACE)
-                != metadata.target_namespace.as_str()
-                && d.processes
+                != metadata.target_namespace.as_str();
+            if namespace_changed
+                && (d
+                    .processes
                     .iter()
                     .any(|p| has_qualified_references(&p.nodes))
+                    || d.expressions().iter().any(|expression| {
+                        matches!(
+                            expression,
+                            crate::bpmn_model::Expression::Structured(
+                                crate::bpmn_model::ExpressionData {
+                                    kind: crate::bpmn_model::ExpressionKind::Formal {
+                                        evaluates_to_type_ref: Some(_),
+                                        ..
+                                    },
+                                    ..
+                                }
+                            )
+                        )
+                    }))
             {
                 return Err(invalid(
                     "Cannot change an unknown or referenced target namespace",

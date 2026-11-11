@@ -160,7 +160,7 @@ fn fixture(docs: usize, nodes: usize, active: usize, resource: usize) -> Project
                         target: process.nodes[i + 1].id.clone(),
                         name: format!("Branch {i}"),
                         documentation: "Qualification flow".into(),
-                        condition: Some(format!("amount > {i}")),
+                        condition: Some(format!("amount > {i}").into()),
                     });
                 }
             }

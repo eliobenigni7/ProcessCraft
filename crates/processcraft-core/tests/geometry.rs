@@ -461,3 +461,326 @@ fn moving_nested_child_repairs_nested_flow_without_moving_container() {
         .unwrap();
     assert_eq!((parent.bounds.x, parent.bounds.y), (-10.0, -10.0));
 }
+
+fn assert_geometry_history(
+    mut session: processcraft_core::commands::Session,
+    shape_id: &str,
+    new_bounds: Bounds,
+    edge_id: &str,
+    expected_first: bool,
+) {
+    use processcraft_core::commands::{Request, ShapeBounds};
+    let before = session.snapshot();
+    before.project.validate().unwrap();
+    let document = &before.project.documents[0];
+    let diagram_id = document.diagrams.last().unwrap().id.clone();
+    let edge = document
+        .diagrams
+        .last()
+        .unwrap()
+        .edges
+        .iter()
+        .find(|e| e.id.to_string() == edge_id)
+        .unwrap();
+    let old_points = coords(&edge.waypoints);
+    let old_label = serde_json::to_value(&edge.label).unwrap();
+    let shape = document
+        .diagrams
+        .last()
+        .unwrap()
+        .shapes
+        .iter()
+        .find(|s| s.id.to_string() == shape_id)
+        .unwrap();
+    let dx = new_bounds.x - shape.bounds.x;
+    let dy = new_bounds.y - shape.bounds.y;
+    let prepared = prepare_move(
+        document,
+        &diagram_id,
+        vec![ShapeBounds {
+            diagram_id: diagram_id.clone(),
+            shape_id: shape.id.clone(),
+            bounds: new_bounds,
+        }],
+    )
+    .unwrap();
+    apply_session(&mut session, prepared.request);
+    let after = session.snapshot();
+    after.project.validate().unwrap();
+    let edge = after.project.documents[0]
+        .diagrams
+        .last()
+        .unwrap()
+        .edges
+        .iter()
+        .find(|e| e.id.to_string() == edge_id)
+        .unwrap();
+    let points = coords(&edge.waypoints);
+    let i = if expected_first { 0 } else { points.len() - 1 };
+    let old_i = if expected_first {
+        0
+    } else {
+        old_points.len() - 1
+    };
+    assert_eq!(
+        points[i],
+        (old_points[old_i].0 + dx, old_points[old_i].1 + dy)
+    );
+    assert_eq!(serde_json::to_value(&edge.label).unwrap(), old_label);
+    assert_eq!(after.undo_count, before.undo_count + 1);
+    apply_session(&mut session, Request::Undo);
+    assert_eq!(session.snapshot().content_id, before.content_id);
+    apply_session(&mut session, Request::Redo);
+    assert_eq!(session.snapshot().content_id, after.content_id);
+}
+
+fn data_geometry_session() -> processcraft_core::commands::Session {
+    use processcraft_core::{
+        bpmn_data::{
+            DataAssociation, DataAssociationKind, DataObject, DataPort, IoSet, IoSpecification,
+        },
+        bpmn_model::NodeDetails,
+        commands::Session,
+        model::{Edge, Label, Node, NodeKind, Shape},
+    };
+    let (source, _) = session_fixture();
+    let mut project = (*source.snapshot().project).clone();
+    let doc = std::sync::Arc::make_mut(&mut project.documents[0]);
+    let process = &mut doc.processes[0];
+    process.data_objects.push(DataObject {
+        id: "data_object".parse().unwrap(),
+        name: "Order".into(),
+        is_collection: None,
+    });
+    process.nodes.push(Node {
+        id: "data_ref".parse().unwrap(),
+        name: "Order".into(),
+        documentation: String::new(),
+        kind: NodeKind::DataObjectReference,
+        details: Some(NodeDetails::DataObjectReference {
+            data_object_ref: Some("data_object".parse().unwrap()),
+        }),
+        loop_characteristics: None,
+        io_specification: None,
+        activity: None,
+        owner: String::new(),
+        contact: String::new(),
+    });
+    process
+        .nodes
+        .iter_mut()
+        .find(|n| n.id.to_string() == "review")
+        .unwrap()
+        .io_specification = Some(IoSpecification {
+        id: None,
+        inputs: vec![DataPort {
+            id: "input_port".parse().unwrap(),
+            name: String::new(),
+        }],
+        outputs: vec![DataPort {
+            id: "output_port".parse().unwrap(),
+            name: String::new(),
+        }],
+        input_sets: vec![IoSet {
+            data_refs: vec!["input_port".parse().unwrap()],
+            ..Default::default()
+        }],
+        output_sets: vec![IoSet {
+            data_refs: vec!["output_port".parse().unwrap()],
+            ..Default::default()
+        }],
+    });
+    for (id, kind, source, target) in [
+        (
+            "input_assoc",
+            DataAssociationKind::Input,
+            "data_ref",
+            "input_port",
+        ),
+        (
+            "output_assoc",
+            DataAssociationKind::Output,
+            "output_port",
+            "data_ref",
+        ),
+    ] {
+        process.data_associations.push(DataAssociation {
+            id: id.parse().unwrap(),
+            owner: "review".parse().unwrap(),
+            kind,
+            sources: vec![source.parse().unwrap()],
+            target: target.parse().unwrap(),
+        });
+    }
+    let diagram = doc
+        .diagrams
+        .iter_mut()
+        .find(|d| d.id.to_string() == "diagram")
+        .unwrap();
+    diagram.shapes.push(Shape {
+        id: "shape_data".parse().unwrap(),
+        element: "data_ref".parse().unwrap(),
+        is_expanded: None,
+        bounds: rect(60.0, 0.0, 10.0, 10.0),
+        label: None,
+        style: None,
+    });
+    for (id, element, points) in [
+        (
+            "input_edge",
+            "input_assoc",
+            vec![p(60.0, 5.0), p(40.0, 5.0)],
+        ),
+        (
+            "output_edge",
+            "output_assoc",
+            vec![p(40.0, 8.0), p(60.0, 8.0)],
+        ),
+    ] {
+        diagram.edges.push(Edge {
+            id: id.parse().unwrap(),
+            element: element.parse().unwrap(),
+            waypoints: points,
+            label: Some(Label {
+                bounds: rect(45.0, 10.0, 8.0, 4.0),
+                style: None,
+            }),
+            style: None,
+        });
+    }
+    project.validate().unwrap();
+    Session::new(project).unwrap()
+}
+
+#[test]
+fn valid_data_association_endpoints_move_undo_and_redo() {
+    for (shape, bounds, edge, first) in [
+        (
+            "shape_data",
+            rect(62.0, 3.0, 10.0, 10.0),
+            "input_edge",
+            true,
+        ),
+        (
+            "shape_review",
+            rect(32.0, 3.0, 10.0, 10.0),
+            "input_edge",
+            false,
+        ),
+        (
+            "shape_review",
+            rect(32.0, 3.0, 10.0, 10.0),
+            "output_edge",
+            true,
+        ),
+        (
+            "shape_data",
+            rect(62.0, 3.0, 10.0, 10.0),
+            "output_edge",
+            false,
+        ),
+    ] {
+        assert_geometry_history(data_geometry_session(), shape, bounds, edge, first);
+    }
+}
+
+fn conversation_geometry_session() -> processcraft_core::commands::Session {
+    use processcraft_core::{
+        bpmn_collaboration::{ConversationKind, ConversationLink, ConversationNode},
+        commands::Session,
+        model::{Collaboration, Diagram, Edge, Label, Participant, Shape},
+    };
+    let (source, _) = session_fixture();
+    let mut project = (*source.snapshot().project).clone();
+    let doc = std::sync::Arc::make_mut(&mut project.documents[0]);
+    doc.collaboration = Some(Collaboration {
+        id: "collaboration".parse().unwrap(),
+        participants: vec![Participant {
+            id: "buyer".parse().unwrap(),
+            name: "Buyer".into(),
+            process: None,
+        }],
+        flows: vec![],
+        conversation_nodes: vec![ConversationNode {
+            id: "conversation".parse().unwrap(),
+            name: "Order".into(),
+            kind: ConversationKind::Conversation,
+            participant_refs: vec!["buyer".parse().unwrap()],
+            parent: None,
+        }],
+        conversation_links: vec![ConversationLink {
+            id: "link".parse().unwrap(),
+            name: String::new(),
+            source: "buyer".parse().unwrap(),
+            target: "conversation".parse().unwrap(),
+        }],
+    });
+    let shape = |id: &str, element: &str, x| Shape {
+        id: id.parse().unwrap(),
+        element: element.parse().unwrap(),
+        is_expanded: None,
+        bounds: rect(x, 0.0, 10.0, 10.0),
+        label: None,
+        style: None,
+    };
+    doc.diagrams.push(Diagram {
+        id: "conversation_diagram".parse().unwrap(),
+        plane_id: "conversation_plane".parse().unwrap(),
+        plane: "collaboration".parse().unwrap(),
+        shapes: vec![
+            shape("buyer_shape", "buyer", 0.0),
+            shape("conversation_shape", "conversation", 30.0),
+        ],
+        edges: vec![Edge {
+            id: "link_edge".parse().unwrap(),
+            element: "link".parse().unwrap(),
+            waypoints: vec![p(10.0, 5.0), p(20.0, 5.0), p(20.0, 8.0), p(30.0, 8.0)],
+            label: Some(Label {
+                bounds: rect(15.0, 10.0, 8.0, 4.0),
+                style: None,
+            }),
+            style: None,
+        }],
+    });
+    project.validate().unwrap();
+    Session::new(project).unwrap()
+}
+
+#[test]
+fn valid_conversation_link_endpoints_move_undo_and_redo() {
+    assert_geometry_history(
+        conversation_geometry_session(),
+        "buyer_shape",
+        rect(2.0, 3.0, 10.0, 10.0),
+        "link_edge",
+        true,
+    );
+    assert_geometry_history(
+        conversation_geometry_session(),
+        "conversation_shape",
+        rect(32.0, 3.0, 10.0, 10.0),
+        "link_edge",
+        false,
+    );
+}
+
+#[test]
+fn semantic_hits_cover_all_event_and_gateway_shapes() {
+    let b = rect(0.0, 0.0, 10.0, 10.0);
+    for kind in [
+        NodeKind::StartEvent,
+        NodeKind::EndEvent,
+        NodeKind::IntermediateCatchEvent,
+        NodeKind::IntermediateThrowEvent,
+        NodeKind::BoundaryEvent,
+        NodeKind::ExclusiveGateway,
+        NodeKind::ParallelGateway,
+        NodeKind::InclusiveGateway,
+        NodeKind::ComplexGateway,
+        NodeKind::EventBasedGateway,
+    ] {
+        assert!(!hit_shape(kind, &b, &p(0.0, 0.0), 0.0, 1.0).unwrap());
+        assert!(hit_shape(kind, &b, &p(5.0, 5.0), 0.0, 1.0).unwrap());
+        assert!(hit_shape(kind, &b, &p(11.0, 5.0), 2.0, 2.0).unwrap());
+    }
+}

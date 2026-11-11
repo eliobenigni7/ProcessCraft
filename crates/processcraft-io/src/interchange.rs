@@ -2,8 +2,8 @@
 use crate::bpmn::{ImportError, import_bpmn};
 use processcraft_core::{
     bpmn_model::{
-        EventDefinition, EventGatewayType, EventResource, GatewayDirection, LoopCharacteristics,
-        NodeDetails, TimerKind,
+        EventDefinition, EventGatewayType, EventResource, Expression, ExpressionData,
+        ExpressionKind, GatewayDirection, LoopCharacteristics, NodeDetails, QNameRef, TimerKind,
     },
     ids::XmlId,
     model::*,
@@ -73,6 +73,22 @@ struct Elem {
     attrs: BTreeMap<String, String>,
     children: Vec<Elem>,
     text: String,
+    namespaces: BTreeMap<String, String>,
+    type_ref: Option<QNameRef>,
+}
+fn is_expression(name: &str) -> bool {
+    matches!(
+        name,
+        "conditionExpression"
+            | "condition"
+            | "timeDate"
+            | "timeDuration"
+            | "timeCycle"
+            | "loopCondition"
+            | "loopCardinality"
+            | "completionCondition"
+            | "activationCondition"
+    )
 }
 fn tree(bytes: &[u8]) -> Option<Elem> {
     let mut r = NsReader::from_reader(bytes);
@@ -93,31 +109,29 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                     name: local.as_ref().into(),
                     ..Elem::default()
                 };
-                // An expression can interpret unprefixed names using the default namespace.
-                // Canonical export uses the BPMN namespace as default, so reject any
-                // other expression context rather than silently changing its meaning.
-                if item.ns == B
-                    && matches!(
-                        item.name.as_str(),
-                        "conditionExpression"
-                            | "condition"
-                            | "timeDate"
-                            | "timeDuration"
-                            | "timeCycle"
-                            | "loopCondition"
-                            | "loopCardinality"
-                            | "completionCondition"
-                            | "activationCondition"
-                            | "script"
-                            | "text"
-                    )
-                {
+                if item.ns == B && matches!(item.name.as_str(), "script" | "text") {
                     let (default, _) = r.resolver().resolve_element(QName("context"));
                     if !matches!(default, ResolveResult::Bound(uri) if uri.0 == B) {
                         return None;
                     }
                 }
-
+                item.namespaces = stack
+                    .last()
+                    .map(|parent| parent.namespaces.clone())
+                    .unwrap_or_default();
+                item.namespaces.entry(String::new()).or_default();
+                for a in e.attributes() {
+                    let a = a.ok()?;
+                    if a.key.as_namespace_binding().is_some() {
+                        let raw = a.key.0;
+                        let prefix = raw.strip_prefix("xmlns:").unwrap_or("");
+                        let value = a
+                            .normalized_value(XmlVersion::Implicit1_0)
+                            .ok()?
+                            .into_owned();
+                        item.namespaces.insert(prefix.into(), value);
+                    }
+                }
                 for a in e.attributes() {
                     let a = a.ok()?;
                     if a.key.as_namespace_binding().is_some() {
@@ -127,7 +141,7 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                     let key = local.as_ref();
                     if let ResolveResult::Bound(uri) = ns {
                         if item.ns != B
-                            || item.name != "conditionExpression"
+                            || !is_expression(&item.name)
                             || uri.0 != "http://www.w3.org/2001/XMLSchema-instance"
                             || key != "type"
                         {
@@ -137,17 +151,13 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                             .normalized_value(XmlVersion::Implicit1_0)
                             .ok()?
                             .into_owned();
-                        if !value.contains(':') {
-                            return None;
-                        }
                         let (resolved, name) = r.resolver().resolve_element(QName(&value));
                         if !matches!(resolved, ResolveResult::Bound(uri) if uri.0==B)
-                            || name.as_ref() != "tFormalExpression"
+                            || !matches!(name.as_ref(), "tExpression" | "tFormalExpression")
                         {
                             return None;
                         }
-                        item.attrs
-                            .insert("xsi:type".into(), "tFormalExpression".into());
+                        item.attrs.insert("xsi:type".into(), name.as_ref().into());
                         continue;
                     } else if !matches!(ns, ResolveResult::Unbound) {
                         return None;
@@ -156,6 +166,18 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                         .normalized_value(XmlVersion::Implicit1_0)
                         .ok()?
                         .into_owned();
+                    if item.ns == B && is_expression(&item.name) && key == "evaluatesToTypeRef" {
+                        let (resolved, local) = r.resolver().resolve_element(QName(&value));
+                        let namespace = match resolved {
+                            ResolveResult::Bound(uri) => uri.0.to_string(),
+                            ResolveResult::Unbound => String::new(),
+                            ResolveResult::Unknown(_) => return None,
+                        };
+                        item.type_ref = Some(QNameRef {
+                            namespace,
+                            local: local.as_ref().parse().ok()?,
+                        });
+                    }
                     if stack.is_empty() && key == "targetNamespace" {
                         target_namespace = Some(value.clone());
                     }
@@ -177,6 +199,7 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                             | (B, "escalationEventDefinition", "escalationRef")
                             | (B, "messageEventDefinition", "messageRef")
                             | (B, "signalEventDefinition", "signalRef")
+                            | (B, "compensateEventDefinition", "activityRef")
                             | (BD, "BPMNPlane" | "BPMNShape" | "BPMNEdge", "bpmnElement")
                     ) {
                         // Only a prefixed QName bound to the definitions target namespace is unambiguous.
@@ -204,7 +227,7 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                 if item.ns == B
                     && matches!(
                         item.name.as_str(),
-                        "flowNodeRef" | "participantRef" | "messageFlowRef"
+                        "flowNodeRef" | "participantRef" | "messageFlowRef" | "source" | "target"
                     )
                 {
                     let q = item.text.trim();
@@ -246,6 +269,8 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                                 | "inputSetRefs"
                                 | "sourceRef"
                                 | "targetRef"
+                                | "source"
+                                | "target"
                                 | "messageFlowRef"
                                 | "conditionExpression"
                                 | "condition"
@@ -326,6 +351,13 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                 last.text.push_str(t.as_ref());
             }
             Event::PI(_) => return None,
+            Event::Comment(_)
+                if stack
+                    .last()
+                    .is_some_and(|e| e.ns == B && is_expression(&e.name)) =>
+            {
+                return None;
+            }
             Event::Eof => break,
             _ => {}
         }
@@ -368,6 +400,50 @@ fn parse_label(e: &Elem) -> Option<Label> {
         style: None,
     })
 }
+fn parse_expression(e: &Elem, implicit_formal: bool) -> Option<Expression> {
+    if e.ns != B
+        || e.text.len() > 16_384
+        || e.namespaces.len() > 256
+        || e.namespaces
+            .iter()
+            .any(|(p, u)| p.len() > 16_384 || u.len() > 16_384)
+        || e.attrs.get("language").is_some_and(|v| v.len() > 16_384)
+        || !e.children.is_empty()
+        || !attrs(e, &["id", "xsi:type", "language", "evaluatesToTypeRef"])
+    {
+        return None;
+    }
+    let explicit = e.attrs.get("xsi:type").map(String::as_str);
+    let formal = match explicit {
+        None => implicit_formal,
+        Some("tExpression") if !implicit_formal => false,
+        Some("tFormalExpression") => true,
+        _ => return None,
+    };
+    if !formal && (e.attrs.contains_key("language") || e.attrs.contains_key("evaluatesToTypeRef")) {
+        return None;
+    }
+    Some(Expression::Structured(ExpressionData {
+        id: e.attrs.get("id").map(|id| id.parse()).transpose().ok()?,
+        kind: if formal {
+            ExpressionKind::Formal {
+                explicit_type: explicit.is_some(),
+                language: e.attrs.get("language").cloned(),
+                evaluates_to_type_ref: e.type_ref.clone(),
+            }
+        } else {
+            ExpressionKind::Base {
+                explicit_type: explicit.is_some(),
+            }
+        },
+        text: e.text.clone(),
+        namespaces: e
+            .namespaces
+            .iter()
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect(),
+    }))
+}
 fn timer_details(e: &Elem) -> Option<(String, NodeDetails)> {
     let mut documentation = String::new();
     let mut seen_doc = false;
@@ -393,13 +469,6 @@ fn timer_details(e: &Elem) -> Option<(String, NodeDetails)> {
             return None;
         }
         let expr = &child.children[0];
-        if expr.ns != B
-            || !expr.attrs.is_empty()
-            || !expr.children.is_empty()
-            || expr.text.is_empty()
-        {
-            return None;
-        }
         let kind = match expr.name.as_str() {
             "timeDate" => TimerKind::Date,
             "timeDuration" => TimerKind::Duration,
@@ -410,7 +479,7 @@ fn timer_details(e: &Elem) -> Option<(String, NodeDetails)> {
         timer = Some(EventDefinition::Timer {
             id,
             kind,
-            expression: expr.text.clone(),
+            expression: parse_expression(expr, false)?,
         });
     }
     Some((
@@ -479,6 +548,82 @@ fn message_signal_details(e: &Elem) -> Option<(String, NodeDetails)> {
         },
     ))
 }
+fn link_cancel_compensate_details(e: &Elem) -> Option<(String, NodeDetails)> {
+    let mut doc = String::new();
+    let mut seen_doc = false;
+    let mut definition = None;
+    for child in &e.children {
+        if child.ns != B {
+            return None;
+        }
+        if child.name == "documentation"
+            && !seen_doc
+            && child.attrs.is_empty()
+            && child.children.is_empty()
+        {
+            doc = child.text.clone();
+            seen_doc = true;
+            continue;
+        }
+        if definition.is_some() {
+            return None;
+        }
+        let def_id = child.attrs.get("id").map(|v| v.parse()).transpose().ok()?;
+        definition = Some(match child.name.as_str() {
+            "cancelEventDefinition" if attrs(child, &["id"]) && child.children.is_empty() => {
+                EventDefinition::Cancel { id: def_id }
+            }
+            "compensateEventDefinition"
+                if attrs(child, &["id", "waitForCompletion", "activityRef"])
+                    && child.children.is_empty() =>
+            {
+                EventDefinition::Compensate {
+                    id: def_id,
+                    wait_for_completion: optional_bool(child.attrs.get("waitForCompletion"))?,
+                    activity_ref: child
+                        .attrs
+                        .get("activityRef")
+                        .map(|v| v.parse())
+                        .transpose()
+                        .ok()?,
+                }
+            }
+            "linkEventDefinition" if attrs(child, &["id", "name"]) => {
+                let name = child.attrs.get("name")?.clone();
+                let mut sources = Vec::new();
+                let mut target = None;
+                for reference in &child.children {
+                    if reference.ns != B
+                        || !reference.attrs.is_empty()
+                        || !reference.children.is_empty()
+                    {
+                        return None;
+                    }
+                    match reference.name.as_str() {
+                        "source" if target.is_none() => sources.push(reference.text.parse().ok()?),
+                        "target" if target.is_none() => target = Some(reference.text.parse().ok()?),
+                        _ => return None,
+                    }
+                }
+                EventDefinition::Link {
+                    id: def_id,
+                    name,
+                    sources,
+                    target,
+                }
+            }
+            _ => return None,
+        });
+    }
+    Some((
+        doc,
+        NodeDetails::Event {
+            definitions: vec![definition?],
+            attached_to: None,
+            cancel_activity: None,
+        },
+    ))
+}
 fn conditional_details(e: &Elem) -> Option<(String, NodeDetails)> {
     let mut doc = String::new();
     let mut seen_doc = false;
@@ -504,18 +649,13 @@ fn conditional_details(e: &Elem) -> Option<(String, NodeDetails)> {
             return None;
         }
         let expr = &child.children[0];
-        if expr.ns != B
-            || expr.name != "condition"
-            || !expr.attrs.is_empty()
-            || !expr.children.is_empty()
-            || expr.text.is_empty()
-        {
+        if expr.ns != B || expr.name != "condition" {
             return None;
         }
         let id = child.attrs.get("id").map(|v| v.parse()).transpose().ok()?;
         definition = Some(EventDefinition::Conditional {
             id,
-            expression: expr.text.clone(),
+            expression: parse_expression(expr, false)?,
         });
     }
     Some((
@@ -556,16 +696,16 @@ fn gateway_details(e: &Elem) -> Option<(String, Option<NodeDetails>)> {
     let mut seen_doc = false;
     let mut activation_condition = None;
     for child in &e.children {
-        if child.ns != B || !child.attrs.is_empty() || !child.children.is_empty() {
+        if child.ns != B {
             return None;
         }
         match child.name.as_str() {
-            "documentation" if !seen_doc => {
+            "documentation" if !seen_doc && child.attrs.is_empty() && child.children.is_empty() => {
                 doc = child.text.clone();
                 seen_doc = true;
             }
-            "activationCondition" if activation_condition.is_none() && !child.text.is_empty() => {
-                activation_condition = Some(child.text.clone())
+            "activationCondition" if activation_condition.is_none() => {
+                activation_condition = Some(parse_expression(child, false)?)
             }
             _ => return None,
         }
@@ -599,11 +739,8 @@ fn loop_characteristics(e: &Elem) -> Option<LoopCharacteristics> {
     let mut expressions = std::collections::BTreeMap::new();
     for child in &e.children {
         if child.ns != B
-            || !child.attrs.is_empty()
-            || !child.children.is_empty()
-            || child.text.is_empty()
             || expressions
-                .insert(child.name.as_str(), child.text.clone())
+                .insert(child.name.as_str(), parse_expression(child, false)?)
                 .is_some()
         {
             return None;
@@ -795,15 +932,10 @@ fn activity_properties(
     };
     for child in &e.children {
         if child.name == "completionCondition" && e.name == "adHocSubProcess" {
-            if child.ns != B
-                || !child.attrs.is_empty()
-                || !child.children.is_empty()
-                || child.text.is_empty()
-                || result.completion_condition.is_some()
-            {
+            if child.ns != B || result.completion_condition.is_some() {
                 return None;
             }
-            result.completion_condition = Some(child.text.clone());
+            result.completion_condition = Some(parse_expression(child, false)?);
         }
         if child.name == "script" {
             if e.name != "scriptTask"
@@ -914,6 +1046,17 @@ fn supported_event_details(n: &Node) -> bool {
             NodeKind::StartEvent | NodeKind::IntermediateCatchEvent | NodeKind::BoundaryEvent
         ),
         [EventDefinition::Terminate { .. }] => matches!(n.kind, NodeKind::EndEvent),
+        [EventDefinition::Link { .. }] => matches!(
+            n.kind,
+            NodeKind::IntermediateCatchEvent | NodeKind::IntermediateThrowEvent
+        ),
+        [EventDefinition::Cancel { .. }] => {
+            matches!(n.kind, NodeKind::BoundaryEvent | NodeKind::EndEvent)
+        }
+        [EventDefinition::Compensate { .. }] => matches!(
+            n.kind,
+            NodeKind::BoundaryEvent | NodeKind::IntermediateThrowEvent | NodeKind::EndEvent
+        ),
         [
             EventDefinition::Error {
                 error_ref: Some(_), ..
@@ -1376,6 +1519,15 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
                 let (doc, mut details) = if n.children.iter().any(|c| {
                     matches!(
                         c.name.as_str(),
+                        "linkEventDefinition"
+                            | "cancelEventDefinition"
+                            | "compensateEventDefinition"
+                    )
+                }) {
+                    link_cancel_compensate_details(n)?
+                } else if n.children.iter().any(|c| {
+                    matches!(
+                        c.name.as_str(),
                         "messageEventDefinition"
                             | "signalEventDefinition"
                             | "errorEventDefinition"
@@ -1409,6 +1561,18 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
                         _ => return None,
                     };
                 }
+                (doc, Some(details))
+            } else if matches!(kind, NodeKind::EndEvent | NodeKind::IntermediateThrowEvent)
+                && n.children.iter().any(|c| {
+                    matches!(
+                        c.name.as_str(),
+                        "linkEventDefinition"
+                            | "cancelEventDefinition"
+                            | "compensateEventDefinition"
+                    )
+                })
+            {
+                let (doc, details) = link_cancel_compensate_details(n)?;
                 (doc, Some(details))
             } else if matches!(
                 kind,
@@ -2176,6 +2340,7 @@ fn write_conversations(
     xml: &mut String,
     nodes: &[processcraft_core::bpmn_collaboration::ConversationNode],
     parent: Option<&XmlId>,
+    namespace: &str,
 ) {
     for node in nodes.iter().filter(|n| n.parent.as_ref() == parent) {
         let tag = match node.kind {
@@ -2191,11 +2356,12 @@ fn write_conversations(
         ));
         for participant in &node.participant_refs {
             xml.push_str(&format!(
-                "<participantRef>tns:{}</participantRef>",
+                "<participantRef xmlns:tns=\"{}\">tns:{}</participantRef>",
+                esc(namespace),
                 participant
             ));
         }
-        write_conversations(xml, nodes, Some(&node.id));
+        write_conversations(xml, nodes, Some(&node.id), namespace);
         xml.push_str(&format!("</{tag}>"));
     }
 }
@@ -2318,6 +2484,8 @@ fn write_data_association(xml: &mut String, a: &processcraft_core::bpmn_data::Da
     }
     xml.push_str(&format!("<targetRef>{}</targetRef></{tag}>", a.target));
 }
+// Recursive scope serialization shares the same document namespace and ID allocation.
+#[allow(clippy::too_many_arguments)]
 fn write_scope(
     xml: &mut String,
     nodes: &[Node],
@@ -2326,6 +2494,7 @@ fn write_scope(
     associations: &[processcraft_core::bpmn_data::DataAssociation],
     groups: &[processcraft_core::bpmn_model::Group],
     lane_set_ids: &BTreeMap<XmlId, XmlId>,
+    namespace: &str,
 ) {
     for o in objects {
         xml.push_str(&format!(
@@ -2379,7 +2548,32 @@ fn write_scope(
             ..
         }) = &n.details
         {
-            xml.push_str(&format!(" attachedToRef=\"tns:{}\"", id));
+            let prefix = match &n.details {
+                Some(NodeDetails::Event { definitions, .. }) => definitions
+                    .iter()
+                    .find_map(|definition| {
+                        let expression = match definition {
+                            EventDefinition::Timer { expression, .. }
+                            | EventDefinition::Conditional { expression, .. } => expression,
+                            _ => return None,
+                        };
+                        if let Expression::Structured(data) = expression {
+                            data.namespaces
+                                .iter()
+                                .find(|(prefix, _)| !prefix.is_empty() && prefix != "xml")
+                                .map(|(prefix, _)| prefix.as_str())
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap_or("tns"),
+                _ => "tns",
+            };
+            xml.push_str(&format!(
+                " xmlns:{prefix}=\"{}\" attachedToRef=\"{prefix}:{}\"",
+                esc(namespace),
+                id
+            ));
             if let Some(cancel) = cancel_activity {
                 xml.push_str(&format!(" cancelActivity=\"{}\"", cancel));
             }
@@ -2452,11 +2646,19 @@ fn write_scope(
             }) => xml.push_str(&format!(" dataObjectRef=\"{}\"", id)),
             Some(NodeDetails::DataStoreReference {
                 data_store_ref: Some(id),
-            }) => xml.push_str(&format!(" dataStoreRef=\"tns:{}\"", id)),
+            }) => xml.push_str(&format!(
+                " xmlns:tns=\"{}\" dataStoreRef=\"tns:{}\"",
+                esc(namespace),
+                id
+            )),
             _ => {}
         }
         if let Some(NodeDetails::CallActivity { called_element }) = &n.details {
-            xml.push_str(&format!(" calledElement=\"tns:{}\"", called_element.local));
+            xml.push_str(&format!(
+                " xmlns:tns=\"{}\" calledElement=\"tns:{}\"",
+                esc(namespace),
+                called_element.local
+            ));
         }
         xml.push('>');
         write_doc(xml, &n.documentation);
@@ -2555,10 +2757,7 @@ fn write_scope(
             ..
         }) = &n.details
         {
-            xml.push_str(&format!(
-                "<activationCondition>{}</activationCondition>",
-                esc(condition)
-            ));
+            write_expression(xml, "activationCondition", condition, false);
         }
         if let Some(lp) = &n.loop_characteristics {
             match lp {
@@ -2576,7 +2775,7 @@ fn write_scope(
                     }
                     xml.push('>');
                     if let Some(value) = condition {
-                        xml.push_str(&format!("<loopCondition>{}</loopCondition>", esc(value)));
+                        write_expression(xml, "loopCondition", value, false);
                     }
                     xml.push_str("</standardLoopCharacteristics>");
                 }
@@ -2590,16 +2789,10 @@ fn write_scope(
                         is_sequential
                     ));
                     if let Some(value) = cardinality {
-                        xml.push_str(&format!(
-                            "<loopCardinality>{}</loopCardinality>",
-                            esc(value)
-                        ));
+                        write_expression(xml, "loopCardinality", value, false);
                     }
                     if let Some(value) = completion_condition {
-                        xml.push_str(&format!(
-                            "<completionCondition>{}</completionCondition>",
-                            esc(value)
-                        ));
+                        write_expression(xml, "completionCondition", value, false);
                     }
                     xml.push_str("</multiInstanceLoopCharacteristics>");
                 }
@@ -2624,6 +2817,7 @@ fn write_scope(
                 &content.data_associations,
                 &content.groups,
                 lane_set_ids,
+                namespace,
             );
         }
         if let Some(NodeDetails::Event { definitions, .. }) = &n.details
@@ -2644,10 +2838,9 @@ fn write_scope(
                 TimerKind::Duration => "timeDuration",
                 TimerKind::Cycle => "timeCycle",
             };
-            xml.push_str(&format!(
-                "><{tag}>{}</{tag}></timerEventDefinition>",
-                esc(expression)
-            ));
+            xml.push('>');
+            write_expression(xml, tag, expression, false);
+            xml.push_str("</timerEventDefinition>");
         }
         if let Some(NodeDetails::Event { definitions, .. }) = &n.details
             && let [EventDefinition::Terminate { id }] = definitions.as_slice()
@@ -2670,7 +2863,11 @@ fn write_scope(
                     if let Some(id) = id {
                         xml.push_str(&format!(" id=\"{}\"", id));
                     }
-                    xml.push_str(&format!(" signalRef=\"tns:{}\"/>", target));
+                    xml.push_str(&format!(
+                        " xmlns:tns=\"{}\" signalRef=\"tns:{}\"/>",
+                        esc(namespace),
+                        target
+                    ));
                 }
                 [
                     EventDefinition::Message {
@@ -2683,7 +2880,11 @@ fn write_scope(
                     if let Some(id) = id {
                         xml.push_str(&format!(" id=\"{}\"", id));
                     }
-                    xml.push_str(&format!(" messageRef=\"tns:{}\"/>", target));
+                    xml.push_str(&format!(
+                        " xmlns:tns=\"{}\" messageRef=\"tns:{}\"/>",
+                        esc(namespace),
+                        target
+                    ));
                 }
                 [
                     EventDefinition::Error {
@@ -2695,7 +2896,11 @@ fn write_scope(
                     if let Some(id) = id {
                         xml.push_str(&format!(" id=\"{}\"", id));
                     }
-                    xml.push_str(&format!(" errorRef=\"tns:{}\"/>", target));
+                    xml.push_str(&format!(
+                        " xmlns:tns=\"{}\" errorRef=\"tns:{}\"/>",
+                        esc(namespace),
+                        target
+                    ));
                 }
                 [
                     EventDefinition::Escalation {
@@ -2707,7 +2912,69 @@ fn write_scope(
                     if let Some(id) = id {
                         xml.push_str(&format!(" id=\"{}\"", id));
                     }
-                    xml.push_str(&format!(" escalationRef=\"tns:{}\"/>", target));
+                    xml.push_str(&format!(
+                        " xmlns:tns=\"{}\" escalationRef=\"tns:{}\"/>",
+                        esc(namespace),
+                        target
+                    ));
+                }
+                _ => {}
+            }
+        }
+        if let Some(NodeDetails::Event { definitions, .. }) = &n.details {
+            match definitions.as_slice() {
+                [EventDefinition::Cancel { id }] => {
+                    xml.push_str("<cancelEventDefinition");
+                    if let Some(id) = id {
+                        xml.push_str(&format!(" id=\"{id}\""));
+                    }
+                    xml.push_str("/>");
+                }
+                [
+                    EventDefinition::Compensate {
+                        id,
+                        wait_for_completion,
+                        activity_ref,
+                    },
+                ] => {
+                    xml.push_str("<compensateEventDefinition");
+                    if let Some(id) = id {
+                        xml.push_str(&format!(" id=\"{id}\""));
+                    }
+                    if let Some(wait) = wait_for_completion {
+                        xml.push_str(&format!(" waitForCompletion=\"{wait}\""));
+                    }
+                    if let Some(activity) = activity_ref {
+                        xml.push_str(&format!(
+                            " xmlns:tns=\"{}\" activityRef=\"tns:{activity}\"",
+                            esc(namespace)
+                        ));
+                    }
+                    xml.push_str("/>");
+                }
+                [
+                    EventDefinition::Link {
+                        id,
+                        name,
+                        sources,
+                        target,
+                    },
+                ] => {
+                    xml.push_str(&format!("<linkEventDefinition name=\"{}\"", esc(name)));
+                    if let Some(id) = id {
+                        xml.push_str(&format!(" id=\"{id}\""));
+                    }
+                    if !sources.is_empty() || target.is_some() {
+                        xml.push_str(&format!(" xmlns:tns=\"{}\"", esc(namespace)));
+                    }
+                    xml.push('>');
+                    for source in sources {
+                        xml.push_str(&format!("<source>tns:{source}</source>"));
+                    }
+                    if let Some(target) = target {
+                        xml.push_str(&format!("<target>tns:{target}</target>"));
+                    }
+                    xml.push_str("</linkEventDefinition>");
                 }
                 _ => {}
             }
@@ -2719,18 +2986,14 @@ fn write_scope(
             if let Some(id) = id {
                 xml.push_str(&format!(" id=\"{}\"", id));
             }
-            xml.push_str(&format!(
-                "><condition>{}</condition></conditionalEventDefinition>",
-                esc(expression)
-            ));
+            xml.push('>');
+            write_expression(xml, "condition", expression, false);
+            xml.push_str("</conditionalEventDefinition>");
         }
         if let Some(a) = &n.activity
             && let Some(value) = &a.completion_condition
         {
-            xml.push_str(&format!(
-                "<completionCondition>{}</completionCondition>",
-                esc(value)
-            ));
+            write_expression(xml, "completionCondition", value, false);
         }
         xml.push_str(&format!("</{tag}>"));
     }
@@ -2744,9 +3007,7 @@ fn write_scope(
         ));
         write_doc(xml, &f.documentation);
         if let Some(condition) = &f.condition {
-            xml.push_str("<conditionExpression xsi:type=\"bpmn:tFormalExpression\">");
-            xml.push_str(&esc(condition));
-            xml.push_str("</conditionExpression>");
+            write_expression(xml, "conditionExpression", condition, true);
         }
         xml.push_str("</sequenceFlow>");
     }
@@ -2768,14 +3029,21 @@ fn write_scope(
     for group in groups {
         xml.push_str(&format!("<group id=\"{}\"", group.id));
         if let Some(id) = &group.category_value_ref {
-            xml.push_str(&format!(" categoryValueRef=\"tns:{}\"", id));
+            xml.push_str(&format!(
+                " xmlns:tns=\"{}\" categoryValueRef=\"tns:{}\"",
+                esc(namespace),
+                id
+            ));
         }
         xml.push_str("/>");
     }
     for f in flows.iter().filter(|f| f.kind == FlowKind::Association) {
         xml.push_str(&format!(
-            "<association id=\"{}\" sourceRef=\"tns:{}\" targetRef=\"tns:{}\"",
-            f.id, f.source, f.target
+            "<association xmlns:tns=\"{}\" id=\"{}\" sourceRef=\"tns:{}\" targetRef=\"tns:{}\"",
+            esc(namespace),
+            f.id,
+            f.source,
+            f.target
         ));
         if let Some(direction) = f.association_direction {
             xml.push_str(&format!(" associationDirection=\"{:?}\"", direction));
@@ -2933,7 +3201,9 @@ fn export_document(
             !matches!(f.kind, FlowKind::Sequence | FlowKind::Association)
                 || (f.kind == FlowKind::Association
                     && (!f.name.is_empty() || f.condition.is_some()))
-                || f.condition.as_ref().is_some_and(|c| c.contains(':'))
+                || f.condition
+                    .as_ref()
+                    .is_some_and(|c| matches!(c, Expression::Legacy(text) if text.contains(':')))
         })
     }) || document.diagrams.iter().any(|d| {
         d.shapes
@@ -2999,8 +3269,7 @@ fn export_document(
         return Err(ExportFailure { report });
     };
     let mut xml = format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><definitions xmlns=\"{B}\" xmlns:bpmndi=\"{BD}\" xmlns:dc=\"{DC}\" xmlns:di=\"{DI}\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:bpmn=\"{B}\" xmlns:tns=\"{}\" id=\"{}\" targetNamespace=\"{}\">",
-        esc(&namespace),
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><definitions xmlns=\"{B}\" id=\"{}\" targetNamespace=\"{}\">",
         document.definitions_id,
         esc(&namespace)
     );
@@ -3101,14 +3370,18 @@ fn export_document(
                 esc(&p.name)
             ));
             if let Some(process) = &p.process {
-                xml.push_str(&format!(" processRef=\"tns:{}\"", process));
+                xml.push_str(&format!(
+                    " xmlns:tns=\"{}\" processRef=\"tns:{}\"",
+                    esc(&namespace),
+                    process
+                ));
             }
             xml.push_str("/>");
         }
         for f in &c.message_flows {
             xml.push_str(&format!(
-                "<messageFlow id=\"{}\" name=\"{}\" sourceRef=\"tns:{}\" targetRef=\"tns:{}\">",
-                f.id,
+                "<messageFlow xmlns:tns=\"{}\" id=\"{}\" name=\"{}\" sourceRef=\"tns:{}\" targetRef=\"tns:{}\">",
+                esc(&namespace), f.id,
                 esc(&f.name),
                 f.source,
                 f.target
@@ -3118,8 +3391,8 @@ fn export_document(
         }
         for a in &c.activities {
             xml.push_str(&format!(
-                "<choreographyTask id=\"{}\" name=\"{}\" initiatingParticipantRef=\"tns:{}\">",
-                a.id,
+                "<choreographyTask xmlns:tns=\"{}\" id=\"{}\" name=\"{}\" initiatingParticipantRef=\"tns:{}\">",
+                esc(&namespace), a.id,
                 esc(&a.name),
                 a.initiating_participant
             ));
@@ -3144,9 +3417,7 @@ fn export_document(
             ));
             write_doc(&mut xml, &f.documentation);
             if let Some(condition) = &f.condition {
-                xml.push_str("<conditionExpression xsi:type=\"bpmn:tFormalExpression\">");
-                xml.push_str(&esc(condition));
-                xml.push_str("</conditionExpression>");
+                write_expression(&mut xml, "conditionExpression", condition, true);
             }
             xml.push_str("</sequenceFlow>");
         }
@@ -3161,14 +3432,18 @@ fn export_document(
                 esc(&p.name)
             ));
             if let Some(process) = &p.process {
-                xml.push_str(&format!(" processRef=\"tns:{}\"", process));
+                xml.push_str(&format!(
+                    " xmlns:tns=\"{}\" processRef=\"tns:{}\"",
+                    esc(&namespace),
+                    process
+                ));
             }
             xml.push_str("/>");
         }
         for f in &c.flows {
             xml.push_str(&format!(
-                "<messageFlow id=\"{}\" name=\"{}\" sourceRef=\"tns:{}\" targetRef=\"tns:{}\">",
-                f.id,
+                "<messageFlow xmlns:tns=\"{}\" id=\"{}\" name=\"{}\" sourceRef=\"tns:{}\" targetRef=\"tns:{}\">",
+                esc(&namespace), f.id,
                 esc(&f.name),
                 f.source,
                 f.target
@@ -3176,9 +3451,9 @@ fn export_document(
             write_doc(&mut xml, &f.documentation);
             xml.push_str("</messageFlow>");
         }
-        write_conversations(&mut xml, &c.conversation_nodes, None);
+        write_conversations(&mut xml, &c.conversation_nodes, None, &namespace);
         for l in &c.conversation_links {
-            xml.push_str(&format!("<conversationLink id=\"{}\" name=\"{}\" sourceRef=\"tns:{}\" targetRef=\"tns:{}\"/>", l.id, esc(&l.name), l.source, l.target));
+            xml.push_str(&format!("<conversationLink xmlns:tns=\"{}\" id=\"{}\" name=\"{}\" sourceRef=\"tns:{}\" targetRef=\"tns:{}\"/>", esc(&namespace), l.id, esc(&l.name), l.source, l.target));
         }
         xml.push_str("</collaboration>");
     }
@@ -3202,13 +3477,14 @@ fn export_document(
             &p.data_associations,
             &p.groups,
             &lane_set_ids,
+            &namespace,
         );
         xml.push_str("</process>");
     }
     for d in &document.diagrams {
         xml.push_str(&format!(
-            "<bpmndi:BPMNDiagram id=\"{}\"><bpmndi:BPMNPlane id=\"{}\" bpmnElement=\"tns:{}\">",
-            d.id, d.plane_id, d.plane
+            "<bpmndi:BPMNDiagram xmlns:bpmndi=\"{BD}\" xmlns:dc=\"{DC}\" xmlns:di=\"{DI}\" xmlns:tns=\"{}\" id=\"{}\"><bpmndi:BPMNPlane id=\"{}\" bpmnElement=\"tns:{}\">",
+            esc(&namespace), d.id, d.plane_id, d.plane
         ));
         for s in &d.shapes {
             let b = &s.bounds;
@@ -3244,7 +3520,40 @@ fn export_document(
         xml.push_str("</bpmndi:BPMNPlane></bpmndi:BPMNDiagram>");
     }
     xml.push_str("</definitions>");
-    if import_bpmn(xml.as_bytes()).is_err() || parse_profile(xml.as_bytes()).is_none() {
+    let reparsed = parse_profile(xml.as_bytes());
+    if let Some(parsed) = &reparsed {
+        let expected = document.expressions();
+        let actual = parsed.expressions();
+        if expected.len() != actual.len()
+            || expected
+                .iter()
+                .zip(actual.iter())
+                .any(|(a, b)| match (a, b) {
+                    (Expression::Structured(a), Expression::Structured(b)) => {
+                        a.id != b.id
+                            || a.kind != b.kind
+                            || a.text != b.text
+                            || a.namespaces
+                                .iter()
+                                .map(|(k, v)| (k, v))
+                                .collect::<BTreeMap<_, _>>()
+                                != b.namespaces
+                                    .iter()
+                                    .map(|(k, v)| (k, v))
+                                    .collect::<BTreeMap<_, _>>()
+                    }
+                    (Expression::Structured(_), _) => true,
+                    _ => false,
+                })
+        {
+            report.blocked.push(
+                "Expression namespace context cannot represent owner QName or expression metadata"
+                    .into(),
+            );
+            return Err(ExportFailure { report });
+        }
+    }
+    if import_bpmn(xml.as_bytes()).is_err() || reparsed.is_none() {
         report
             .blocked
             .push("Document cannot be represented by the qualified profile".into());
@@ -3272,6 +3581,110 @@ fn esc(s: &str) -> String {
         .replace('\r', "&#13;")
 }
 
+fn write_expression(xml: &mut String, tag: &str, expression: &Expression, legacy_formal: bool) {
+    let Expression::Structured(data) = expression else {
+        let xsi = if legacy_formal {
+            " xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:bpmn=\"http://www.omg.org/spec/BPMN/20100524/MODEL\" xsi:type=\"bpmn:tFormalExpression\""
+        } else {
+            ""
+        };
+        xml.push_str(&format!("<{tag}{xsi}>{}</{tag}>", esc(expression.text())));
+        return;
+    };
+    let existing = |uri: &str| {
+        data.namespaces
+            .iter()
+            .find(|(p, u)| !p.is_empty() && p != "xml" && u == uri)
+            .map(|(p, _)| p.clone())
+    };
+    let default = data
+        .namespaces
+        .iter()
+        .find(|(p, _)| p.is_empty())
+        .map(|(_, u)| u.as_str())
+        .unwrap_or("");
+    let tag_name = if default == B {
+        tag.to_string()
+    } else if let Some(prefix) = existing(B) {
+        format!("{prefix}:{tag}")
+    } else {
+        "!".to_string()
+    };
+    let xp = existing("http://www.w3.org/2001/XMLSchema-instance");
+    xml.push_str(&format!("<{tag_name}"));
+    if !data.namespaces.iter().any(|(prefix, _)| prefix.is_empty()) {
+        xml.push_str(" xmlns=\"\"");
+    }
+    for (prefix, uri) in &data.namespaces {
+        if prefix.is_empty() {
+            xml.push_str(&format!(" xmlns=\"{}\"", esc(uri)));
+        } else {
+            xml.push_str(&format!(" xmlns:{prefix}=\"{}\"", esc(uri)));
+        }
+    }
+    let type_value = |local: &str| {
+        if default == B {
+            local.to_owned()
+        } else if let Some(prefix) = existing(B) {
+            format!("{prefix}:{local}")
+        } else {
+            "!".to_string()
+        }
+    };
+    if let Some(id) = &data.id {
+        xml.push_str(&format!(" id=\"{id}\""));
+    }
+    match &data.kind {
+        ExpressionKind::Base { explicit_type } => {
+            if *explicit_type {
+                xml.push_str(&format!(
+                    " {}:type=\"{}\"",
+                    xp.as_deref().unwrap_or("!"),
+                    type_value("tExpression")
+                ));
+            }
+        }
+        ExpressionKind::Formal {
+            explicit_type,
+            language,
+            evaluates_to_type_ref,
+        } => {
+            if *explicit_type {
+                xml.push_str(&format!(
+                    " {}:type=\"{}\"",
+                    xp.as_deref().unwrap_or("!"),
+                    type_value("tFormalExpression")
+                ));
+            }
+            if let Some(language) = language {
+                xml.push_str(&format!(" language=\"{}\"", esc(language)));
+            }
+            if let Some(reference) = evaluates_to_type_ref {
+                if reference.namespace.is_empty() {
+                    if data
+                        .namespaces
+                        .iter()
+                        .any(|(p, n)| p.is_empty() && !n.is_empty())
+                    {
+                        xml.push_str(" evaluatesToTypeRef=\"!\"");
+                    } else {
+                        xml.push_str(&format!(" evaluatesToTypeRef=\"{}\"", reference.local));
+                    }
+                } else if reference.namespace == default {
+                    xml.push_str(&format!(" evaluatesToTypeRef=\"{}\"", reference.local));
+                } else if let Some(prefix) = existing(&reference.namespace) {
+                    xml.push_str(&format!(
+                        " evaluatesToTypeRef=\"{prefix}:{}\"",
+                        reference.local
+                    ));
+                } else {
+                    xml.push_str(" evaluatesToTypeRef=\"!\"");
+                }
+            }
+        }
+    }
+    xml.push_str(&format!(">{}</{tag_name}>", esc(&data.text)));
+}
 fn write_label(xml: &mut String, label: &Label) {
     let b = &label.bounds;
     xml.push_str(&format!("<bpmndi:BPMNLabel><dc:Bounds x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\"/></bpmndi:BPMNLabel>", b.x,b.y,b.width,b.height));
@@ -3298,7 +3711,7 @@ fn write_doc(xml: &mut String, text: &str) {
     }
 }
 
-fn flow_parts(e: &Elem) -> Option<(String, Option<String>)> {
+fn flow_parts(e: &Elem) -> Option<(String, Option<Expression>)> {
     let mut documentation = String::new();
     let mut condition = None;
     let mut seen_doc = false;
@@ -3311,17 +3724,8 @@ fn flow_parts(e: &Elem) -> Option<(String, Option<String>)> {
                 documentation = c.text.clone();
                 seen_doc = true;
             }
-            "conditionExpression"
-                if condition.is_none()
-                    && c.attrs.len() == 1
-                    && c.attrs
-                        .get("xsi:type")
-                        .is_some_and(|v| v == "tFormalExpression") =>
-            {
-                if c.text.contains(':') {
-                    return None;
-                }
-                condition = Some(c.text.clone());
+            "conditionExpression" if condition.is_none() => {
+                condition = Some(parse_expression(c, false)?);
             }
             _ => return None,
         }

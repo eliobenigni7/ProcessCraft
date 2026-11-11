@@ -209,7 +209,7 @@ fn flow(f: &Flow) -> usize {
         + xml(&f.target)
         + string(&f.name)
         + string(&f.documentation)
-        + f.condition.as_ref().map_or(0, string)
+        + f.condition.as_ref().map_or(0, |value| value.text().len())
 }
 fn document(d: &BpmnDocument) -> usize {
     // Charge the complete typed payload, including nested/new BPMN families. Streaming avoids

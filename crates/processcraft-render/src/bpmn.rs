@@ -1967,8 +1967,28 @@ fn draw_new_markers(
                 }
                 EventDefinition::Cancel { .. } => {
                     let r = w.min(h) * 0.21;
-                    lines(scene, &[(cx - r, cy - r), (cx + r, cy + r)], stroke, 3.0)?;
-                    lines(scene, &[(cx + r, cy - r), (cx - r, cy + r)], stroke, 3.0)?;
+                    let t = r * 0.32;
+                    let pts = [
+                        (cx - r, cy - r + t),
+                        (cx - r + t, cy - r),
+                        (cx, cy - t),
+                        (cx + r - t, cy - r),
+                        (cx + r, cy - r + t),
+                        (cx + t, cy),
+                        (cx + r, cy + r - t),
+                        (cx + r - t, cy + r),
+                        (cx, cy + t),
+                        (cx - r + t, cy + r),
+                        (cx - r, cy + r - t),
+                        (cx - t, cy),
+                        (cx - r, cy - r + t),
+                    ];
+                    marker_polygon(
+                        scene,
+                        &pts,
+                        stroke,
+                        matches!(kind, Some(NodeKind::EndEvent)),
+                    )?;
                 }
                 EventDefinition::Compensate { .. } => {
                     let r = w.min(h) * 0.24;

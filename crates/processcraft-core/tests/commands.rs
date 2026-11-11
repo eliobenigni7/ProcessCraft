@@ -214,6 +214,210 @@ fn definitions_import_changes_are_undoable() {
     assert_eq!(s.snapshot().content_id, after);
 }
 #[test]
+fn structured_expression_preserves_identity_and_rejects_duplicate_ids() {
+    use processcraft_core::bpmn_model::{Expression, ExpressionData, ExpressionKind};
+    let mut s = project();
+    fixture(&mut s);
+    let legacy: Expression = serde_json::from_str("\"amount > 10\"").unwrap();
+    assert_eq!(serde_json::to_string(&legacy).unwrap(), "\"amount > 10\"");
+    let structured = Expression::Structured(ExpressionData {
+        id: Some(id("expr1")),
+        kind: ExpressionKind::Formal {
+            explicit_type: true,
+            language: Some("urn:language".into()),
+            evaluates_to_type_ref: None,
+        },
+        text: "amount > 10".into(),
+        namespaces: vec![
+            (
+                "bpmn".into(),
+                "http://www.omg.org/spec/BPMN/20100524/MODEL".into(),
+            ),
+            (
+                "xsi".into(),
+                "http://www.w3.org/2001/XMLSchema-instance".into(),
+            ),
+        ],
+    });
+    let before = s.snapshot().content_id;
+    apply(
+        &mut s,
+        batch(vec![Mutation::SetFlowCondition {
+            document_id: docid(),
+            flow_id: id("flow_approved"),
+            condition: Some(structured.clone()),
+        }]),
+    )
+    .unwrap();
+    let after = s.snapshot().content_id;
+    let mut duplicate = structured;
+    if let Expression::Structured(data) = &mut duplicate {
+        data.id = Some(id("review"));
+    }
+    assert!(
+        apply(
+            &mut s,
+            batch(vec![Mutation::SetFlowCondition {
+                document_id: docid(),
+                flow_id: id("flow_approved"),
+                condition: Some(duplicate),
+            }])
+        )
+        .is_err()
+    );
+    assert_eq!(s.snapshot().content_id, after);
+    apply(&mut s, Request::Undo).unwrap();
+    assert_eq!(s.snapshot().content_id, before);
+    apply(&mut s, Request::Redo).unwrap();
+    assert_eq!(s.snapshot().content_id, after);
+}
+#[test]
+fn expression_profile_preserves_empty_base_and_rejects_unserializable_context() {
+    use processcraft_core::bpmn_model::{Expression, ExpressionData, ExpressionKind};
+    let mut s = project();
+    fixture(&mut s);
+    let base = Expression::Structured(ExpressionData {
+        id: None,
+        kind: ExpressionKind::Base {
+            explicit_type: false,
+        },
+        text: String::new(),
+        namespaces: vec![(
+            "bpmn".into(),
+            "http://www.omg.org/spec/BPMN/20100524/MODEL".into(),
+        )],
+    });
+    apply(
+        &mut s,
+        batch(vec![Mutation::SetFlowCondition {
+            document_id: docid(),
+            flow_id: id("flow_approved"),
+            condition: Some(base.clone()),
+        }]),
+    )
+    .unwrap();
+    assert!(
+        s.snapshot()
+            .project
+            .diagnostics()
+            .iter()
+            .any(|d| d.code == "emptyExpression")
+    );
+    let before = s.snapshot().content_id;
+    let mut invalid = base;
+    if let Expression::Structured(data) = &mut invalid {
+        data.kind = ExpressionKind::Formal {
+            explicit_type: false,
+            language: None,
+            evaluates_to_type_ref: None,
+        };
+    }
+    assert!(
+        apply(
+            &mut s,
+            batch(vec![Mutation::SetFlowCondition {
+                document_id: docid(),
+                flow_id: id("flow_approved"),
+                condition: Some(invalid)
+            }])
+        )
+        .is_err()
+    );
+    let bad = Expression::Structured(ExpressionData {
+        id: None,
+        kind: ExpressionKind::Base {
+            explicit_type: false,
+        },
+        text: "x".into(),
+        namespaces: vec![("p".into(), "urn:bad space".into())],
+    });
+    assert!(
+        apply(
+            &mut s,
+            batch(vec![Mutation::SetFlowCondition {
+                document_id: docid(),
+                flow_id: id("flow_approved"),
+                condition: Some(bad)
+            }])
+        )
+        .is_err()
+    );
+    assert_eq!(s.snapshot().content_id, before);
+}
+#[test]
+fn link_and_compensation_events_validate_atomically() {
+    use processcraft_core::bpmn_model::{EventDefinition, NodeDetails};
+    let mut s = project();
+    fixture(&mut s);
+    let node = |name: &str, kind, definition| Node {
+        id: id(name),
+        name: String::new(),
+        documentation: String::new(),
+        kind,
+        details: Some(NodeDetails::Event {
+            definitions: vec![definition],
+            attached_to: None,
+            cancel_activity: None,
+        }),
+        loop_characteristics: None,
+        io_specification: None,
+        activity: None,
+        owner: String::new(),
+        contact: String::new(),
+    };
+    let throw = node(
+        "link_throw",
+        NodeKind::IntermediateThrowEvent,
+        EventDefinition::Link {
+            id: Some(id("throw_def")),
+            name: "jump".into(),
+            sources: vec![],
+            target: Some(id("catch_def")),
+        },
+    );
+    let catch = node(
+        "link_catch",
+        NodeKind::IntermediateCatchEvent,
+        EventDefinition::Link {
+            id: Some(id("catch_def")),
+            name: "jump".into(),
+            sources: vec![id("throw_def")],
+            target: None,
+        },
+    );
+    let compensation = node(
+        "compensate",
+        NodeKind::IntermediateThrowEvent,
+        EventDefinition::Compensate {
+            id: None,
+            wait_for_completion: None,
+            activity_ref: Some(id("review")),
+        },
+    );
+    let create = |element| Mutation::CreateElement {
+        document_id: docid(),
+        process_id: id("procurement"),
+        element,
+    };
+    apply(
+        &mut s,
+        batch(vec![create(throw), create(catch), create(compensation)]),
+    )
+    .unwrap();
+    let before = s.snapshot().content_id;
+    let bad = node(
+        "bad_cancel",
+        NodeKind::EndEvent,
+        EventDefinition::Cancel { id: None },
+    );
+    assert!(apply(&mut s, batch(vec![create(bad)])).is_err());
+    assert_eq!(s.snapshot().content_id, before);
+    apply(&mut s, Request::Undo).unwrap();
+    assert_ne!(s.snapshot().content_id, before);
+    apply(&mut s, Request::Redo).unwrap();
+    assert_eq!(s.snapshot().content_id, before);
+}
+#[test]
 fn definitions_namespace_change_rejects_existing_qualified_references() {
     use processcraft_core::bpmn_model::{NodeDetails, QNameRef};
     let mut s = project();

@@ -44,6 +44,24 @@ impl ProjectData {
                     "Retained or preserved source cannot be fully checked; BPMN 2.0.2 §2.2.4–2.2.8.",
                 );
             }
+            for expression in doc
+                .expressions()
+                .into_iter()
+                .filter(|e| e.trim().is_empty())
+                .take(10_000)
+            {
+                let id = match expression {
+                    crate::bpmn_model::Expression::Structured(data) => {
+                        data.id.as_ref().unwrap_or(&doc.definitions_id)
+                    }
+                    crate::bpmn_model::Expression::Legacy(_) => &doc.definitions_id,
+                };
+                emit(
+                    id,
+                    "emptyExpression",
+                    "Expression has no content (editing advisory); BPMN 2.0.2 §8.4.6.",
+                );
+            }
             if let Some(collaboration) = &doc.collaboration {
                 emit(
                     &collaboration.id,
@@ -88,6 +106,42 @@ impl ProjectData {
                 for node in scope.nodes {
                     let ins = incoming.get(&node.id).map_or(&[][..], Vec::as_slice);
                     let outs = outgoing.get(&node.id).map_or(&[][..], Vec::as_slice);
+                    if let Some(NodeDetails::Event { definitions, .. }) = &node.details {
+                        for definition in definitions {
+                            if let EventDefinition::Link {
+                                id,
+                                name,
+                                sources,
+                                target,
+                            } = definition
+                            {
+                                if id.is_none()
+                                    || name.trim().is_empty()
+                                    || (node.kind == NodeKind::IntermediateCatchEvent
+                                        && sources.is_empty())
+                                    || (node.kind == NodeKind::IntermediateThrowEvent
+                                        && target.is_none())
+                                {
+                                    emit(
+                                        &node.id,
+                                        "incompleteLinkPairing",
+                                        "Link event pairing is incomplete; BPMN 2.0.2 §10.5.5.",
+                                    );
+                                }
+                                if (node.kind == NodeKind::IntermediateCatchEvent
+                                    && !ins.is_empty())
+                                    || (node.kind == NodeKind::IntermediateThrowEvent
+                                        && !outs.is_empty())
+                                {
+                                    emit(
+                                        &node.id,
+                                        "linkSequenceDirection",
+                                        "Link catch events have no incoming and link throw events have no outgoing sequence flow; BPMN 2.0.2 §10.5.5.",
+                                    );
+                                }
+                            }
+                        }
+                    }
                     has_start |= matches!(node.kind, NodeKind::StartEvent);
                     has_end |= matches!(node.kind, NodeKind::EndEvent);
                     if ins.is_empty()

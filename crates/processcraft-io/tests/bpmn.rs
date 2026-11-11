@@ -149,6 +149,69 @@ fn references_use_namespace_identity_and_text_values() {
 }
 
 #[test]
+fn external_qname_targets_are_preserved_without_resolving_or_aliasing_local_ids() {
+    let bytes = br#"<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+        xmlns:ext="urn:external" targetNamespace="urn:local" id="Defs">
+        <import namespace="urn:external" location="file:///nonexistent/external.bpmn"
+            importType="http://www.omg.org/spec/BPMN/20100524/MODEL"/>
+        <process id="P"><startEvent id="Start"><messageEventDefinition messageRef="ext:Message"/></startEvent></process>
+    </definitions>"#;
+    let preserved = import_bpmn(bytes).unwrap();
+    assert_eq!(preserved.export_source(), bytes);
+    assert!(
+        preserved
+            .report()
+            .limitations
+            .iter()
+            .any(|l| l.contains("External QName"))
+    );
+    let prepared = processcraft_io::interchange::prepare_import(bytes, "external").unwrap();
+    assert!(!prepared.report.editable);
+    let mut project = processcraft_core::model::ProjectData::new("External".into());
+    let id = prepared.document.id;
+    project
+        .documents
+        .push(std::sync::Arc::new(prepared.document));
+    project.resources = prepared.resources;
+    let output = processcraft_io::interchange::export_bpmn(&project, id, false).unwrap();
+    assert_eq!(output.bytes, bytes);
+    let local_missing = std::str::from_utf8(bytes)
+        .unwrap()
+        .replace("ext:Message", "Message");
+    assert_eq!(
+        import_bpmn(local_missing.as_bytes()).unwrap_err().kind,
+        ImportErrorKind::Reference
+    );
+}
+
+#[test]
+fn link_definition_references_and_compensation_activity_use_expanded_qnames() {
+    let bytes = br#"<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+        xmlns:local="urn:links" xmlns:external="urn:external" id="Defs" targetNamespace="urn:links">
+        <process id="P"><task id="Work"/>
+          <intermediateThrowEvent id="Throw"><linkEventDefinition id="From" name="Continue"><target>local:To</target></linkEventDefinition></intermediateThrowEvent>
+          <intermediateCatchEvent id="Catch"><linkEventDefinition id="To" name="Continue"><source>local:From</source></linkEventDefinition></intermediateCatchEvent>
+          <intermediateThrowEvent id="Compensate"><compensateEventDefinition activityRef="local:Work"/></intermediateThrowEvent>
+        </process></definitions>"#;
+    assert_eq!(import_bpmn(bytes).unwrap().export_source(), bytes);
+    let source = std::str::from_utf8(bytes).unwrap();
+    for changed in [
+        source.replace("local:To", "local:Missing"),
+        source.replace("local:Work", "local:Missing"),
+    ] {
+        assert_eq!(
+            import_bpmn(changed.as_bytes()).unwrap_err().kind,
+            ImportErrorKind::Reference
+        );
+    }
+    let external = source.replace("local:To", "external:To");
+    assert_eq!(
+        import_bpmn(external.as_bytes()).unwrap().export_source(),
+        external.as_bytes()
+    );
+}
+
+#[test]
 fn malformed_namespaces_and_entities_are_refused() {
     for body in [
         "<b:task xmlns:v='urn:a' xmlns:w='urn:a' v:flag='1' w:flag='2'/>",

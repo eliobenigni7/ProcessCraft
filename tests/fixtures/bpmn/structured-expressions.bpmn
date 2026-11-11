@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:b="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:type="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:orders="urn:processcraft:orders"
+             xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+             id="ExpressionDefinitions" targetNamespace="urn:processcraft:expressions">
+  <process id="ExpressionProcess">
+    <startEvent id="TimerStart">
+      <timerEventDefinition id="TimerDefinition">
+        <timeDuration id="DurationExpression" type:type="b:tFormalExpression" language="urn:duration">PT5M</timeDuration>
+      </timerEventDefinition>
+    </startEvent>
+    <task id="Review">
+      <standardLoopCharacteristics loopMaximum="18446744073709551616000">
+        <loopCondition id="LoopExpression" type:type="b:tFormalExpression" language="http://www.w3.org/1999/XPath">orders:pending</loopCondition>
+      </standardLoopCharacteristics>
+    </task>
+    <task id="Collect">
+      <multiInstanceLoopCharacteristics isSequential="true">
+        <loopCardinality id="CardinalityExpression">3</loopCardinality>
+        <completionCondition id="CompletionExpression" type:type="b:tFormalExpression">orders:complete</completionCondition>
+      </multiInstanceLoopCharacteristics>
+    </task>
+    <complexGateway id="Complex">
+      <activationCondition id="ActivationExpression" type:type="b:tFormalExpression">orders:ready</activationCondition>
+    </complexGateway>
+    <intermediateCatchEvent id="ConditionalCatch">
+      <conditionalEventDefinition id="ConditionalDefinition">
+        <condition id="ConditionalExpression" type:type="b:tFormalExpression" language="http://www.w3.org/1999/XPath" evaluatesToTypeRef="xsd:boolean">orders:approved</condition>
+      </conditionalEventDefinition>
+    </intermediateCatchEvent>
+    <adHocSubProcess id="AdHoc">
+      <completionCondition id="AdHocExpression" type:type="b:tFormalExpression">orders:finished</completionCondition>
+    </adHocSubProcess>
+    <endEvent id="ExpressionEnd"/>
+    <sequenceFlow id="ConditionalFlow" sourceRef="Review" targetRef="Collect">
+      <conditionExpression id="FlowExpression" type:type="b:tFormalExpression" language="http://www.w3.org/1999/XPath" evaluatesToTypeRef="xsd:boolean">orders:approved</conditionExpression>
+    </sequenceFlow>
+  </process>
+</definitions>

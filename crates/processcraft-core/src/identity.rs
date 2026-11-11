@@ -348,6 +348,13 @@ fn normalize(v: &mut Value) {
 pub(crate) fn semantic_ids(d: &BpmnDocument) -> HashSet<&XmlId> {
     let mut s = HashSet::new();
     s.insert(&d.definitions_id);
+    for expression in d.expressions() {
+        if let crate::bpmn_model::Expression::Structured(data) = expression
+            && let Some(id) = &data.id
+        {
+            s.insert(id);
+        }
+    }
     for category in &d.categories {
         s.insert(&category.id);
         for value in &category.values {
@@ -371,6 +378,26 @@ pub(crate) fn semantic_ids(d: &BpmnDocument) -> HashSet<&XmlId> {
     while let Some((nodes, lanes, flows)) = pending.pop() {
         for n in nodes {
             s.insert(&n.id);
+            if let Some(crate::bpmn_model::NodeDetails::Event { definitions, .. }) = &n.details {
+                use crate::bpmn_model::EventDefinition;
+                for definition in definitions {
+                    let id = match definition {
+                        EventDefinition::Message { id, .. }
+                        | EventDefinition::Signal { id, .. }
+                        | EventDefinition::Error { id, .. }
+                        | EventDefinition::Escalation { id, .. }
+                        | EventDefinition::Conditional { id, .. }
+                        | EventDefinition::Link { id, .. }
+                        | EventDefinition::Cancel { id }
+                        | EventDefinition::Compensate { id, .. }
+                        | EventDefinition::Terminate { id }
+                        | EventDefinition::Timer { id, .. } => id,
+                    };
+                    if let Some(id) = id {
+                        s.insert(id);
+                    }
+                }
+            }
             if let Some(crate::bpmn_model::NodeDetails::SubProcess { content }) = &n.details {
                 if let Some(id) = &content.lane_set_id {
                     s.insert(id);
@@ -498,6 +525,86 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
     }
     let mut ids = HashSet::new();
     add(&mut ids, &d.definitions_id)?;
+    for expression in d.expressions() {
+        use crate::bpmn_model::{Expression, ExpressionKind};
+        if let Expression::Structured(data) = expression {
+            if let Some(id) = &data.id {
+                add(&mut ids, id)?;
+            }
+            definitions_text(&data.text)?;
+            if data.namespaces.len() > 256 {
+                return fail("Expression namespace limit exceeded");
+            }
+            let mut prefixes = HashSet::new();
+            for (prefix, uri) in &data.namespaces {
+                definitions_text(prefix)?;
+                definitions_text(uri)?;
+                if !prefixes.insert(prefix)
+                    || uri.chars().any(char::is_whitespace)
+                    || prefix == "xmlns"
+                    || (!prefix.is_empty() && (prefix.parse::<XmlId>().is_err() || uri.is_empty()))
+                    || (prefix == "xml") != (uri == "http://www.w3.org/XML/1998/namespace")
+                    || uri == "http://www.w3.org/2000/xmlns/"
+                {
+                    return fail("Invalid expression namespace binding");
+                }
+            }
+            if !data
+                .namespaces
+                .iter()
+                .any(|(_, uri)| uri == "http://www.omg.org/spec/BPMN/20100524/MODEL")
+            {
+                return fail("Expression namespace context cannot represent a BPMN element");
+            }
+            let explicit_type = match &data.kind {
+                ExpressionKind::Base { explicit_type }
+                | ExpressionKind::Formal { explicit_type, .. } => *explicit_type,
+            };
+            if explicit_type
+                && !data.namespaces.iter().any(|(prefix, uri)| {
+                    !prefix.is_empty() && uri == "http://www.w3.org/2001/XMLSchema-instance"
+                })
+            {
+                return fail("Expression namespace context cannot represent xsi:type");
+            }
+            if let ExpressionKind::Formal {
+                explicit_type,
+                language,
+                evaluates_to_type_ref,
+                ..
+            } = &data.kind
+            {
+                if !explicit_type {
+                    return fail(
+                        "Formal expression requires an explicit xsi:type in this editable profile",
+                    );
+                }
+                if let Some(language) = language {
+                    definitions_text(language)?;
+                }
+                if let Some(name) = evaluates_to_type_ref {
+                    definitions_text(&name.namespace)?;
+                    let default = data
+                        .namespaces
+                        .iter()
+                        .find(|(prefix, _)| prefix.is_empty())
+                        .map(|(_, uri)| uri.as_str())
+                        .unwrap_or("");
+                    if (name.namespace.is_empty() && !default.is_empty())
+                        || (!name.namespace.is_empty()
+                            && !data
+                                .namespaces
+                                .iter()
+                                .any(|(_, uri)| uri == &name.namespace))
+                    {
+                        return fail(
+                            "Expression namespace context cannot represent evaluatesToTypeRef",
+                        );
+                    }
+                }
+            }
+        }
+    }
     use crate::bpmn_model::EventResource;
     for resource in &d.event_resources {
         let (id, name) = match resource {
@@ -685,9 +792,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                         return fail("event gateway attributes on wrong gateway kind");
                     }
                     if let Some(condition) = activation_condition
-                        && (!matches!(n.kind, NodeKind::ComplexGateway)
-                            || condition.is_empty()
-                            || condition.len() > 16_384)
+                        && (!matches!(n.kind, NodeKind::ComplexGateway) || condition.len() > 16_384)
                     {
                         return fail("invalid gateway activation condition");
                     }
@@ -889,13 +994,15 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                     return fail("script metadata requires script task");
                 }
                 for value in [
-                    &activity.completion_condition,
                     &activity.transaction_method,
                     &activity.implementation,
                     &activity.script_format,
                     &activity.script,
                 ] {
                     check_text(value)?;
+                }
+                if let Some(value) = &activity.completion_condition {
+                    short(value.text())?;
                 }
                 for name in [&activity.message_ref, &activity.operation_ref]
                     .into_iter()
@@ -911,11 +1018,8 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                 if !n.kind.is_activity() {
                     return fail("loop characteristics require an activity");
                 }
-                let check = |value: &Option<String>| -> Result<(), String> {
-                    if value
-                        .as_ref()
-                        .is_some_and(|s| s.is_empty() || s.len() > 16_384)
-                    {
+                let check = |value: Option<&str>| -> Result<(), String> {
+                    if value.is_some_and(|s| s.len() > 16_384) {
                         return fail("invalid loop expression");
                     }
                     Ok(())
@@ -924,8 +1028,8 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                     LoopCharacteristics::Standard {
                         condition, maximum, ..
                     } => {
-                        check(condition)?;
-                        check(maximum)?;
+                        check(condition.as_deref())?;
+                        check(maximum.as_deref())?;
                         if let Some(value) = maximum {
                             let trimmed = value.trim();
                             let digits = trimmed.strip_prefix(['+', '-']).unwrap_or(trimmed);
@@ -939,8 +1043,8 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                         completion_condition,
                         ..
                     } => {
-                        check(cardinality)?;
-                        check(completion_condition)?;
+                        check(cardinality.as_deref())?;
+                        check(completion_condition.as_deref())?;
                     }
                 }
             }
@@ -1018,7 +1122,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                             if let Some(id) = id {
                                 add(&mut ids, id)?;
                             }
-                            if expression.is_empty() || expression.len() > 16_384 {
+                            if expression.len() > 16_384 {
                                 return fail("invalid timer expression");
                             }
                         }
@@ -1094,8 +1198,107 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                             if let Some(id) = id {
                                 add(&mut ids, id)?;
                             }
-                            if expression.is_empty() || expression.len() > 16_384 {
+                            if expression.len() > 16_384 {
                                 return fail("invalid conditional expression");
+                            }
+                        }
+                        EventDefinition::Link {
+                            id,
+                            name,
+                            sources,
+                            target,
+                        } => {
+                            if !matches!(
+                                n.kind,
+                                NodeKind::IntermediateCatchEvent | NodeKind::IntermediateThrowEvent
+                            ) {
+                                return fail(
+                                    "Link definition requires an intermediate catch or throw event",
+                                );
+                            }
+                            if let Some(id) = id {
+                                add(&mut ids, id)?;
+                            }
+                            short(name)?;
+                            if (n.kind == NodeKind::IntermediateCatchEvent && target.is_some())
+                                || (n.kind == NodeKind::IntermediateThrowEvent
+                                    && !sources.is_empty())
+                            {
+                                return fail("Invalid link definition direction");
+                            }
+                            let mut unique = HashSet::new();
+                            for (reference, expected) in sources
+                                .iter()
+                                .map(|r| (r, NodeKind::IntermediateThrowEvent))
+                                .chain(target.iter().map(|r| (r, NodeKind::IntermediateCatchEvent)))
+                            {
+                                if !unique.insert(reference) {
+                                    return fail("Duplicate link reference");
+                                }
+                                let valid = p.nodes.iter().any(|other| other.kind == expected && matches!(&other.details,
+                                    Some(NodeDetails::Event { definitions, .. }) if definitions.iter().any(|definition|
+                                        matches!(definition, EventDefinition::Link { id: Some(other_id), name: other_name, .. }
+                                            if other_id == reference && other_name == name))));
+                                if !valid {
+                                    return fail("Invalid or cross-scope link reference");
+                                }
+                            }
+                        }
+                        EventDefinition::Cancel { id } => {
+                            if let Some(id) = id {
+                                add(&mut ids, id)?;
+                            }
+                            let valid = match n.kind {
+                                NodeKind::BoundaryEvent => {
+                                    cancel != Some(false)
+                                        && attached.is_some_and(|target| {
+                                            p.nodes.iter().any(|other| {
+                                                &other.id == target
+                                                    && other.kind == NodeKind::Transaction
+                                            })
+                                        })
+                                }
+                                NodeKind::EndEvent => crate::queries::find_node(d, p.id)
+                                    .is_some_and(|owner| owner.kind == NodeKind::Transaction),
+                                _ => false,
+                            };
+                            if !valid {
+                                return fail(
+                                    "Cancel definition requires an interrupting transaction boundary or transaction end event",
+                                );
+                            }
+                        }
+                        EventDefinition::Compensate {
+                            id, activity_ref, ..
+                        } => {
+                            if let Some(id) = id {
+                                add(&mut ids, id)?;
+                            }
+                            let valid_kind = matches!(
+                                n.kind,
+                                NodeKind::BoundaryEvent
+                                    | NodeKind::IntermediateThrowEvent
+                                    | NodeKind::EndEvent
+                            ) || (n.kind == NodeKind::StartEvent
+                                && crate::queries::find_node(d, p.id).is_some_and(|owner| {
+                                    owner
+                                        .activity
+                                        .as_ref()
+                                        .is_some_and(|a| a.triggered_by_event == Some(true))
+                                }));
+                            if !valid_kind {
+                                return fail("Invalid compensation event context");
+                            }
+                            if activity_ref.as_ref().is_some_and(|reference| {
+                                !matches!(
+                                    n.kind,
+                                    NodeKind::IntermediateThrowEvent | NodeKind::EndEvent
+                                ) || !p
+                                    .nodes
+                                    .iter()
+                                    .any(|other| &other.id == reference && other.kind.is_activity())
+                            }) {
+                                return fail("Invalid compensation activity reference");
                             }
                         }
                         EventDefinition::Terminate { id }

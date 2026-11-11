@@ -175,7 +175,8 @@ pub struct ProcessCraft {
     problem_key: Option<(String, u64)>,
     problems: Vec<processcraft_core::Diagnostic>,
     docs: String,
-    condition: String,
+    condition: Option<processcraft_core::bpmn_model::Expression>,
+    expression_draft: Option<inspector::ExpressionDraft>,
     association_direction: Option<processcraft_core::bpmn_model::AssociationDirection>,
     connection_kind: FlowKind,
     owner: String,
@@ -261,7 +262,8 @@ impl Default for ProcessCraft {
             problem_key: None,
             problems: vec![],
             docs: String::new(),
-            condition: String::new(),
+            condition: None,
+            expression_draft: None,
             association_direction: None,
             connection_kind: FlowKind::Sequence,
             owner: String::new(),
@@ -324,7 +326,7 @@ impl ProcessCraft {
         self.bpmn_loop = None;
         self.bpmn_activity = None;
         self.docs.clear();
-        self.condition.clear();
+        self.condition = None;
         self.association_direction = None;
         self.owner.clear();
         self.contact.clear();
@@ -403,7 +405,7 @@ impl ProcessCraft {
                     if Some(&f.id) == id.as_ref() {
                         self.draft = f.name.clone();
                         self.docs = f.documentation.clone();
-                        self.condition = f.condition.clone().unwrap_or_default();
+                        self.condition = f.condition.clone();
                         self.is_flow = true;
                         self.association_direction = f.association_direction;
                     }
@@ -429,6 +431,10 @@ impl ProcessCraft {
         );
     }
     fn commit_draft(&mut self) -> bool {
+        if self.expression_draft.is_some() {
+            self.ctl.error = "Apply or cancel the expression metadata draft first.".into();
+            return false;
+        }
         if !self.draft_dirty {
             return true;
         }
@@ -455,11 +461,7 @@ impl ProcessCraft {
                     mutations.push(Mutation::SetFlowCondition {
                         document_id: d.id,
                         flow_id: id.clone(),
-                        condition: if self.condition.is_empty() {
-                            None
-                        } else {
-                            Some(self.condition.clone())
-                        },
+                        condition: self.condition.clone(),
                     });
                 } else if self.is_node && d.capability.allows_structural_editing() {
                     if processcraft_core::queries::find_node(d, &id)
@@ -586,6 +588,7 @@ impl ProcessCraft {
     }
     fn has_drafts(&self) -> bool {
         self.collaboration.has_draft()
+            || self.expression_draft.is_some()
             || self.m3.has_draft()
             || self.draft_dirty
             || self.dictionary_draft_changed(&self.ctl.session.snapshot().project)
@@ -1976,6 +1979,149 @@ mod tests {
         assert!(app.definitions_draft.imports.is_empty());
     }
     #[test]
+    fn link_and_compensation_drafts_use_shared_history() {
+        use processcraft_core::bpmn_model::{EventDefinition, NodeDetails};
+        let mut app = ProcessCraft::default();
+        app.add(NodeKind::IntermediateCatchEvent);
+        let link = EventDefinition::Link {
+            id: Some("LinkDefinition".parse().unwrap()),
+            name: "handoff".into(),
+            sources: Vec::new(),
+            target: None,
+        };
+        app.bpmn_details = Some(NodeDetails::Event {
+            definitions: vec![link.clone()],
+            attached_to: None,
+            cancel_activity: None,
+        });
+        app.draft_dirty = true;
+        assert!(app.commit_draft(), "{}", app.ctl.error);
+        app.history(Request::Undo);
+        assert!(
+            matches!(&app.bpmn_details, Some(NodeDetails::Event { definitions, .. }) if matches!(&definitions[0], EventDefinition::Timer { .. }))
+        );
+        app.history(Request::Redo);
+        assert!(
+            matches!(&app.bpmn_details, Some(NodeDetails::Event { definitions, .. }) if definitions[0] == link)
+        );
+        app.add(NodeKind::IntermediateThrowEvent);
+        let compensate = EventDefinition::Compensate {
+            id: None,
+            wait_for_completion: Some(false),
+            activity_ref: None,
+        };
+        app.bpmn_details = Some(NodeDetails::Event {
+            definitions: vec![compensate.clone()],
+            attached_to: None,
+            cancel_activity: None,
+        });
+        app.draft_dirty = true;
+        assert!(app.commit_draft(), "{}", app.ctl.error);
+        app.history(Request::Undo);
+        app.history(Request::Redo);
+        assert!(
+            matches!(&app.bpmn_details, Some(NodeDetails::Event { definitions, .. }) if definitions[0] == compensate)
+        );
+    }
+
+    #[test]
+    fn cancel_boundary_draft_uses_shared_history() {
+        use processcraft_core::bpmn_model::{EventDefinition, NodeDetails};
+        let mut app = ProcessCraft::default();
+        app.add(NodeKind::Transaction);
+        let transaction = app.selected.clone().unwrap();
+        app.add(NodeKind::BoundaryEvent);
+        app.bpmn_details = Some(NodeDetails::Event {
+            definitions: vec![EventDefinition::Cancel { id: None }],
+            attached_to: Some(transaction),
+            cancel_activity: Some(true),
+        });
+        app.draft_dirty = true;
+        assert!(app.commit_draft(), "{}", app.ctl.error);
+        app.history(Request::Undo);
+        assert!(
+            matches!(&app.bpmn_details, Some(NodeDetails::Event { definitions, .. }) if matches!(&definitions[0], EventDefinition::Timer { .. }))
+        );
+        app.history(Request::Redo);
+        assert!(
+            matches!(&app.bpmn_details, Some(NodeDetails::Event { definitions, .. }) if matches!(&definitions[0], EventDefinition::Cancel { .. }))
+        );
+    }
+
+    #[test]
+    fn expression_text_draft_preserves_metadata_and_history() {
+        use processcraft_core::bpmn_model::{
+            EventDefinition, Expression, ExpressionData, ExpressionKind, NodeDetails, TimerKind,
+        };
+        let mut app = ProcessCraft::default();
+        app.add(NodeKind::IntermediateCatchEvent);
+        let expression = Expression::Structured(ExpressionData {
+            id: Some("TimerExpression".parse().unwrap()),
+            kind: ExpressionKind::Formal {
+                explicit_type: true,
+                language: Some("urn:language".into()),
+                evaluates_to_type_ref: None,
+            },
+            text: "PT1M".into(),
+            namespaces: vec![
+                (
+                    String::new(),
+                    "http://www.omg.org/spec/BPMN/20100524/MODEL".into(),
+                ),
+                (
+                    "xsi".into(),
+                    "http://www.w3.org/2001/XMLSchema-instance".into(),
+                ),
+                ("ex".into(), "urn:example".into()),
+            ],
+        });
+        app.bpmn_details = Some(NodeDetails::Event {
+            definitions: vec![EventDefinition::Timer {
+                id: None,
+                kind: TimerKind::Duration,
+                expression: expression.clone(),
+            }],
+            attached_to: None,
+            cancel_activity: None,
+        });
+        app.draft_dirty = true;
+        assert!(app.commit_draft(), "{}", app.ctl.error);
+        if let Some(NodeDetails::Event { definitions, .. }) = &mut app.bpmn_details
+            && let EventDefinition::Timer { expression, .. } = &mut definitions[0]
+        {
+            expression.set_text("PT5M".into());
+        }
+        app.draft_dirty = true;
+        assert!(app.commit_draft(), "{}", app.ctl.error);
+        let Some(NodeDetails::Event { definitions, .. }) = &app.bpmn_details else {
+            panic!("event missing")
+        };
+        let EventDefinition::Timer {
+            expression: updated,
+            ..
+        } = &definitions[0]
+        else {
+            panic!("timer missing")
+        };
+        let mut expected = expression.clone();
+        expected.set_text("PT5M".into());
+        assert_eq!(updated, &expected);
+        app.history(Request::Undo);
+        let Some(NodeDetails::Event { definitions, .. }) = &app.bpmn_details else {
+            panic!("event missing")
+        };
+        assert!(
+            matches!(&definitions[0], EventDefinition::Timer { expression: actual, .. } if actual == &expression)
+        );
+        app.history(Request::Redo);
+        let Some(NodeDetails::Event { definitions, .. }) = &app.bpmn_details else {
+            panic!("event missing")
+        };
+        assert!(
+            matches!(&definitions[0], EventDefinition::Timer { expression: actual, .. } if actual == &expected)
+        );
+    }
+    #[test]
     fn nested_scope_and_event_properties_use_shared_history() {
         use processcraft_core::{
             bpmn_model::{EventDefinition, NodeDetails, TimerKind},
@@ -2005,11 +2151,11 @@ mod tests {
         assert_eq!(node.details, app.bpmn_details);
         app.history(Request::Undo);
         assert!(
-            matches!(&app.bpmn_details, Some(NodeDetails::Event { definitions, .. }) if matches!(&definitions[0], EventDefinition::Timer { expression, .. } if expression == "PT1M"))
+            matches!(&app.bpmn_details, Some(NodeDetails::Event { definitions, .. }) if matches!(&definitions[0], EventDefinition::Timer { expression, .. } if expression.text() == "PT1M"))
         );
         app.history(Request::Redo);
         assert!(
-            matches!(&app.bpmn_details, Some(NodeDetails::Event { definitions, .. }) if matches!(&definitions[0], EventDefinition::Timer { expression, .. } if expression == "PT5M"))
+            matches!(&app.bpmn_details, Some(NodeDetails::Event { definitions, .. }) if matches!(&definitions[0], EventDefinition::Timer { expression, .. } if expression.text() == "PT5M"))
         );
     }
 }

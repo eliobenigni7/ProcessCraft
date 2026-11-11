@@ -153,6 +153,264 @@ fn definitions_metadata_requires_capability_in_live_and_checkpoint_documents() {
             .contains("definitions metadata requires capability")
     );
 }
+
+#[test]
+fn structured_expression_capability_covers_live_and_checkpoint_documents() {
+    use processcraft_core::{
+        bpmn_model::{Expression, ExpressionData, ExpressionKind},
+        ids::CheckpointId,
+        model::{BpmnDocument, Checkpoint, Flow, FlowKind, FrozenProject, Node, NodeKind, Process},
+    };
+    let mut p = project();
+    let node = |id: &str| Node {
+        id: id.parse().unwrap(),
+        name: String::new(),
+        documentation: String::new(),
+        kind: NodeKind::Task,
+        details: None,
+        loop_characteristics: None,
+        io_specification: None,
+        activity: None,
+        owner: String::new(),
+        contact: String::new(),
+    };
+    let mut doc = BpmnDocument::new("document".into(), "defs".parse().unwrap());
+    doc.processes.push(Process {
+        id: "process".parse().unwrap(),
+        name: String::new(),
+        documentation: String::new(),
+        lane_set_id: None,
+        groups: vec![],
+        data_objects: vec![],
+        data_associations: vec![],
+        nodes: vec![node("a"), node("b")],
+        lanes: vec![],
+        flows: vec![Flow {
+            id: "flow".parse().unwrap(),
+            kind: FlowKind::Sequence,
+            source: "a".parse().unwrap(),
+            target: "b".parse().unwrap(),
+            name: String::new(),
+            documentation: String::new(),
+            association_direction: None,
+            condition: Some(Expression::Legacy("x".into())),
+        }],
+    });
+    p.documents.push(Arc::new(doc));
+    let legacy = write_bytes(&p).unwrap();
+    let legacy_entries = entries(&legacy);
+    let manifest: serde_json::Value = serde_json::from_slice(
+        &legacy_entries
+            .iter()
+            .find(|(n, _)| n == "manifest.json")
+            .unwrap()
+            .1,
+    )
+    .unwrap();
+    assert!(
+        !manifest["required_capabilities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|c| c == "bpmn-structured-expressions")
+    );
+    let json: serde_json::Value = serde_json::from_slice(
+        &legacy_entries
+            .iter()
+            .find(|(n, _)| n == "project.json")
+            .unwrap()
+            .1,
+    )
+    .unwrap();
+    assert_eq!(
+        json["documents"][0]["processes"][0]["flows"][0]["condition"],
+        "x"
+    );
+    let expression = Expression::Structured(ExpressionData {
+        id: Some("expr".parse().unwrap()),
+        kind: ExpressionKind::Base {
+            explicit_type: true,
+        },
+        text: "x".into(),
+        namespaces: vec![
+            (
+                "b".into(),
+                "http://www.omg.org/spec/BPMN/20100524/MODEL".into(),
+            ),
+            ("ex".into(), "urn:example".into()),
+            (
+                "xsi".into(),
+                "http://www.w3.org/2001/XMLSchema-instance".into(),
+            ),
+        ],
+    });
+    Arc::make_mut(&mut p.documents[0]).processes[0].flows[0].condition = Some(expression.clone());
+    let bytes = write_bytes(&p).unwrap();
+    let mut archived = entries(&bytes);
+    let manifest: serde_json::Value = serde_json::from_slice(
+        &archived
+            .iter()
+            .find(|(n, _)| n == "manifest.json")
+            .unwrap()
+            .1,
+    )
+    .unwrap();
+    assert!(
+        manifest["required_capabilities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|c| c == "bpmn-structured-expressions")
+    );
+    assert_eq!(
+        load_bytes(&bytes).unwrap().project.documents[0].processes[0].flows[0].condition,
+        Some(expression)
+    );
+    edit_json(&mut archived, "manifest.json", |v| {
+        v["required_capabilities"] = serde_json::json!(["comments", "checkpoints"])
+    });
+    assert!(
+        load_bytes(&archive(&archived))
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("structured expressions require capability")
+    );
+    p.checkpoints.push(Checkpoint {
+        id: CheckpointId::new(),
+        name: "Before".into(),
+        created_unix_ms: 0,
+        content: FrozenProject::capture(&p),
+    });
+    Arc::make_mut(&mut p.documents[0]).processes[0].flows[0].condition =
+        Some(Expression::Legacy("x".into()));
+    let bytes = write_bytes(&p).unwrap();
+    let mut archived = entries(&bytes);
+    assert_eq!(
+        load_bytes(&bytes).unwrap().project.checkpoints[0]
+            .content
+            .documents[0]
+            .processes[0]
+            .flows[0]
+            .condition,
+        p.checkpoints[0].content.documents[0].processes[0].flows[0].condition
+    );
+    edit_json(&mut archived, "manifest.json", |v| {
+        v["required_capabilities"] = serde_json::json!(["comments", "checkpoints"])
+    });
+    assert!(
+        load_bytes(&archive(&archived))
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("structured expressions require capability")
+    );
+}
+
+#[test]
+fn compensation_event_capability_covers_live_and_checkpoint_documents() {
+    use processcraft_core::{
+        bpmn_model::{EventDefinition, NodeDetails},
+        ids::CheckpointId,
+        model::{BpmnDocument, Checkpoint, FrozenProject, Node, NodeKind, Process},
+    };
+    let mut p = project();
+    let mut doc = BpmnDocument::new("document".into(), "defs".parse().unwrap());
+    let details = NodeDetails::Event {
+        definitions: vec![EventDefinition::Compensate {
+            id: None,
+            wait_for_completion: None,
+            activity_ref: None,
+        }],
+        attached_to: None,
+        cancel_activity: None,
+    };
+    doc.processes.push(Process {
+        id: "process".parse().unwrap(),
+        name: String::new(),
+        documentation: String::new(),
+        lane_set_id: None,
+        groups: vec![],
+        data_objects: vec![],
+        data_associations: vec![],
+        nodes: vec![Node {
+            id: "event".parse().unwrap(),
+            name: String::new(),
+            documentation: String::new(),
+            kind: NodeKind::IntermediateThrowEvent,
+            details: Some(details.clone()),
+            loop_characteristics: None,
+            io_specification: None,
+            activity: None,
+            owner: String::new(),
+            contact: String::new(),
+        }],
+        lanes: vec![],
+        flows: vec![],
+    });
+    p.documents.push(Arc::new(doc));
+    let bytes = write_bytes(&p).unwrap();
+    let mut archived = entries(&bytes);
+    let manifest: serde_json::Value = serde_json::from_slice(
+        &archived
+            .iter()
+            .find(|(n, _)| n == "manifest.json")
+            .unwrap()
+            .1,
+    )
+    .unwrap();
+    assert!(
+        manifest["required_capabilities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|c| c == "bpmn-link-cancel-compensation")
+    );
+    assert_eq!(
+        load_bytes(&bytes).unwrap().project.documents[0].processes[0].nodes[0].details,
+        Some(details)
+    );
+    edit_json(&mut archived, "manifest.json", |v| {
+        v["required_capabilities"] = serde_json::json!(["comments", "checkpoints"])
+    });
+    assert!(
+        load_bytes(&archive(&archived))
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("events require capability")
+    );
+    p.checkpoints.push(Checkpoint {
+        id: CheckpointId::new(),
+        name: "Before".into(),
+        created_unix_ms: 0,
+        content: FrozenProject::capture(&p),
+    });
+    Arc::make_mut(&mut p.documents[0]).processes[0]
+        .nodes
+        .clear();
+    let bytes = write_bytes(&p).unwrap();
+    let mut archived = entries(&bytes);
+    assert_eq!(
+        load_bytes(&bytes).unwrap().project.checkpoints[0]
+            .content
+            .documents[0]
+            .processes[0]
+            .nodes[0]
+            .details,
+        p.checkpoints[0].content.documents[0].processes[0].nodes[0].details
+    );
+    edit_json(&mut archived, "manifest.json", |v| {
+        v["required_capabilities"] = serde_json::json!(["comments", "checkpoints"])
+    });
+    assert!(
+        load_bytes(&archive(&archived))
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("events require capability")
+    );
+}
 #[test]
 fn unknown_required_capability_refuses_write() {
     let mut e = entries(&write_bytes(&project()).unwrap());

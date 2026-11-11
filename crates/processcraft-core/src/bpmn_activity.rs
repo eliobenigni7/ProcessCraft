@@ -28,7 +28,7 @@ pub struct ActivityProperties {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cancel_remaining_instances: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub completion_condition: Option<String>,
+    pub completion_condition: Option<crate::bpmn_model::Expression>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transaction_method: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

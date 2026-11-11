@@ -708,7 +708,7 @@ impl ProcessCraft {
                             },
                         );
                         match &flow.condition {
-                            Some(c) if !c.is_empty() => format!("{target} ({c})"),
+                            Some(c) if !c.is_empty() => format!("{target} ({})", c.text()),
                             _ => target.to_owned(),
                         }
                     })

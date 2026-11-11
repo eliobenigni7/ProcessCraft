@@ -112,7 +112,7 @@ fn lane_and_formal_condition_survive_edit_export_reimport() {
     assert!(String::from_utf8(out.bytes).unwrap().contains("laneSet1"));
 }
 #[test]
-fn prefixed_formal_expression_is_preserved() {
+fn prefixed_formal_expression_retains_namespace() {
     let input = String::from_utf8(
         include_bytes!("../../../tests/fixtures/bpmn/m2-flat-lanes.bpmn").to_vec(),
     )
@@ -120,8 +120,12 @@ fn prefixed_formal_expression_is_preserved() {
     .replace("xmlns:bpmn=", "xmlns:foo=\"urn:foreign\" xmlns:bpmn=")
     .replace("x &gt; 3", "foo:value");
     let b = prepare_import(input.as_bytes(), "source").unwrap();
-    assert!(!b.report.editable);
-    assert_eq!(export(&b).bytes, input.as_bytes());
+    assert!(b.report.editable);
+    let again = prepare_import(&export(&b).bytes, "again").unwrap();
+    assert_eq!(
+        again.document.processes[0].flows[0].condition,
+        b.document.processes[0].flows[0].condition
+    );
     let mut editable = prepare_import(
         include_bytes!("../../../tests/fixtures/bpmn/m2-flat-lanes.bpmn"),
         "source",
@@ -319,16 +323,43 @@ fn conditional_catch_expression_round_trips() {
     let input = FLAT.replace("<task id=\"task\" name=\"Review\"/>", event);
     let parsed = prepare_import(input.as_bytes(), "condition").unwrap();
     assert!(parsed.report.editable);
+    let Some(processcraft_core::bpmn_model::NodeDetails::Event { definitions, .. }) =
+        &parsed.document.processes[0].nodes[1].details
+    else {
+        panic!("event expected")
+    };
+    assert!(matches!(
+        &definitions[0],
+        processcraft_core::bpmn_model::EventDefinition::Conditional {
+            expression: processcraft_core::bpmn_model::Expression::Structured(
+                processcraft_core::bpmn_model::ExpressionData {
+                    kind: processcraft_core::bpmn_model::ExpressionKind::Base {
+                        explicit_type: false
+                    },
+                    ..
+                }
+            ),
+            ..
+        }
+    ));
     let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
     assert!(again.report.editable);
     assert_eq!(
         again.document.processes[0].nodes[1].details,
         parsed.document.processes[0].nodes[1].details
     );
-    let advanced = input.replace("<condition>", "<condition language=\"urn:expr\">");
-    let fallback = prepare_import(advanced.as_bytes(), "advanced").unwrap();
-    assert!(!fallback.report.editable);
-    assert_eq!(export(&fallback).bytes, advanced.as_bytes());
+    let invalid = input.replace("<condition>", "<condition language=\"urn:expr\">");
+    let preserved = prepare_import(invalid.as_bytes(), "invalid").unwrap();
+    assert!(!preserved.report.editable);
+    assert_eq!(export(&preserved).bytes, invalid.as_bytes());
+    let advanced = input.replace("<condition>", "<condition xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:bpmn=\"http://www.omg.org/spec/BPMN/20100524/MODEL\" xsi:type=\"bpmn:tFormalExpression\" language=\"urn:expr\">");
+    let parsed = prepare_import(advanced.as_bytes(), "advanced").unwrap();
+    assert!(parsed.report.editable);
+    let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+    assert_eq!(
+        again.document.processes[0].nodes[1].details,
+        parsed.document.processes[0].nodes[1].details
+    );
 }
 
 #[test]
@@ -923,4 +954,223 @@ fn unrepresented_import_content_is_preserved() {
     let parsed = prepare_import(input.as_bytes(), "source").unwrap();
     assert!(!parsed.report.editable);
     assert_eq!(export(&parsed).bytes, input.as_bytes());
+}
+
+#[test]
+fn expression_metadata_preserves_scoped_prefixes_and_default_namespace() {
+    use processcraft_core::bpmn_model::{Expression, ExpressionKind};
+    let source = std::str::from_utf8(include_bytes!(
+        "../../../tests/fixtures/bpmn/m2-flat-lanes.bpmn"
+    ))
+    .unwrap();
+    let input = source.replace("<conditionExpression xsi:type=\"bpmn:tFormalExpression\">x &gt; 3</conditionExpression>", "<bpmn:conditionExpression xmlns=\"urn:body\" xmlns:xsi=\"urn:shadow\" xmlns:i=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:q=\"urn:types\" i:type=\"bpmn:tFormalExpression\" id=\"expr1\" language=\"urn:lang\" evaluatesToTypeRef=\"q:Item\">q:value &gt; 3</bpmn:conditionExpression>");
+    let parsed = prepare_import(input.as_bytes(), "expression").unwrap();
+    assert!(parsed.report.editable);
+    let Some(Expression::Structured(data)) = &parsed.document.processes[0].flows[0].condition
+    else {
+        panic!("structured expression expected")
+    };
+    assert_eq!(data.id.as_ref().unwrap().to_string(), "expr1");
+    assert!(data.namespaces.contains(&("".into(), "urn:body".into())));
+    assert!(
+        data.namespaces
+            .contains(&("xsi".into(), "urn:shadow".into()))
+    );
+    assert!(
+        matches!(&data.kind, ExpressionKind::Formal { explicit_type: true, language: Some(language), evaluates_to_type_ref: Some(q) } if language == "urn:lang" && q.namespace == "urn:types" && q.local.to_string() == "Item")
+    );
+    let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+    assert_eq!(
+        parsed.document.processes[0].flows[0].condition,
+        again.document.processes[0].flows[0].condition
+    );
+}
+
+#[test]
+fn boundary_expression_keeps_noncanonical_owner_prefix_context() {
+    let node = "<boundaryEvent xmlns:owner=\"urn:test\" id=\"boundary\" attachedToRef=\"owner:task\"><timerEventDefinition id=\"timer\"><timeDuration id=\"duration\" xmlns:tns=\"urn:shadow\">PT5M</timeDuration></timerEventDefinition></boundaryEvent>";
+    let input = FLAT.replace("</process>", &format!("{node}</process>"));
+    let parsed = prepare_import(input.as_bytes(), "boundary").unwrap();
+    assert!(parsed.report.editable);
+    let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+    assert_eq!(
+        parsed.document.processes[0].nodes.last().unwrap().details,
+        again.document.processes[0].nodes.last().unwrap().details
+    );
+}
+
+#[test]
+fn expression_mixed_content_remains_preserved() {
+    let input = FLAT.replace("<task id=\"task\" name=\"Review\"/>", "<task id=\"task\" name=\"Review\"><standardLoopCharacteristics><loopCondition id=\"expr\">before<documentation>note</documentation>after</loopCondition></standardLoopCharacteristics></task>");
+    let parsed = prepare_import(input.as_bytes(), "mixed").unwrap();
+    assert!(!parsed.report.editable);
+    assert_eq!(export(&parsed).bytes, input.as_bytes());
+}
+
+#[test]
+fn structured_expression_metadata_roundtrips_across_loop_and_adhoc_owners() {
+    let cases = [
+        (
+            include_str!("../../../tests/fixtures/bpmn20-schema/loops.bpmn")
+                .replace("<loopCondition>", "<loopCondition id=\"exprA\">")
+                .replace("<loopCardinality>", "<loopCardinality id=\"exprB\">")
+                .replace(
+                    "<completionCondition>",
+                    "<completionCondition id=\"exprC\">",
+                ),
+            3,
+        ),
+        (
+            include_str!("../../../tests/fixtures/bpmn20-schema/advanced-subprocess.bpmn").replace(
+                "<completionCondition>",
+                "<completionCondition id=\"exprD\">",
+            ),
+            1,
+        ),
+    ];
+    for (input, count) in cases {
+        let parsed = prepare_import(input.as_bytes(), "expressions").unwrap();
+        assert!(parsed.report.editable);
+        assert_eq!(parsed.document.expressions().len(), count);
+        let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+        assert_eq!(parsed.document.expressions(), again.document.expressions());
+    }
+}
+
+#[test]
+fn structured_expression_native_namespace_order_does_not_block_export() {
+    use processcraft_core::bpmn_model::Expression;
+    let mut parsed = prepare_import(
+        include_bytes!("../../../tests/fixtures/bpmn/m2-flat-lanes.bpmn"),
+        "condition",
+    )
+    .unwrap();
+    let Some(Expression::Structured(data)) = &mut parsed.document.processes[0].flows[0].condition
+    else {
+        panic!("structured expression expected")
+    };
+    data.namespaces.reverse();
+    let output = export(&parsed);
+    assert!(
+        prepare_import(&output.bytes, "again")
+            .unwrap()
+            .report
+            .editable
+    );
+}
+
+#[test]
+fn expression_type_and_unqualified_type_reference_preserve_omission_and_empty_namespace() {
+    use processcraft_core::bpmn_model::{Expression, ExpressionKind};
+    let source = std::str::from_utf8(include_bytes!(
+        "../../../tests/fixtures/bpmn/m2-flat-lanes.bpmn"
+    ))
+    .unwrap();
+    let old =
+        "<conditionExpression xsi:type=\"bpmn:tFormalExpression\">x &gt; 3</conditionExpression>";
+    for (replacement, expected_formal) in [
+        (
+            "<bpmn:conditionExpression xmlns=\"\" xsi:type=\"bpmn:tFormalExpression\" evaluatesToTypeRef=\"Item\">x</bpmn:conditionExpression>",
+            true,
+        ),
+        (
+            "<conditionExpression xsi:type=\"bpmn:tExpression\">x</conditionExpression>",
+            false,
+        ),
+        ("<conditionExpression>x</conditionExpression>", false),
+    ] {
+        let input = source.replace(old, replacement);
+        let parsed = prepare_import(input.as_bytes(), "type").unwrap();
+        assert!(parsed.report.editable);
+        let Some(Expression::Structured(data)) = &parsed.document.processes[0].flows[0].condition
+        else {
+            panic!("structured expression expected")
+        };
+        if expected_formal {
+            assert!(
+                matches!(&data.kind, ExpressionKind::Formal { explicit_type: true, evaluates_to_type_ref: Some(q), .. } if q.namespace.is_empty() && q.local.to_string() == "Item")
+            );
+        } else {
+            assert!(
+                matches!(&data.kind, ExpressionKind::Base { explicit_type } if *explicit_type == replacement.contains("xsi:type"))
+            );
+        }
+        let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+        assert_eq!(
+            parsed.document.processes[0].flows[0].condition,
+            again.document.processes[0].flows[0].condition
+        );
+    }
+}
+
+#[test]
+fn empty_expression_is_preserved_as_editable_model_data() {
+    let input = FLAT.replace("<task id=\"task\" name=\"Review\"/>", "<task id=\"task\" name=\"Review\"><standardLoopCharacteristics><loopCondition id=\"expr\"/></standardLoopCharacteristics></task>");
+    let parsed = prepare_import(input.as_bytes(), "empty expression").unwrap();
+    assert!(parsed.report.editable);
+    let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+    assert_eq!(parsed.document.expressions(), again.document.expressions());
+}
+
+#[test]
+fn inline_link_cancel_and_compensation_roundtrip() {
+    let input = include_bytes!("../../../tests/fixtures/bpmn/inline-events.bpmn");
+    let parsed = prepare_import(input, "inline events").unwrap();
+    assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+    let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+    assert!(again.report.editable);
+    assert_eq!(
+        parsed.document.processes[0]
+            .nodes
+            .iter()
+            .map(|n| &n.details)
+            .collect::<Vec<_>>(),
+        again.document.processes[0]
+            .nodes
+            .iter()
+            .map(|n| &n.details)
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn inline_events_preserve_unrepresented_or_invalid_content() {
+    let fixture = include_str!("../../../tests/fixtures/bpmn/inline-events.bpmn");
+    for input in [
+        fixture.replace(
+            "id=\"throwLink\"",
+            "id=\"throwLink\" custom=\"unsupported\"",
+        ),
+        fixture.replace(
+            "<target>tns:catchLink</target>",
+            "<target>tns:activity</target>",
+        ),
+        fixture.replace(
+            "attachedToRef=\"tns:transaction\"",
+            "attachedToRef=\"tns:activity\"",
+        ),
+    ] {
+        let parsed = prepare_import(input.as_bytes(), "invalid").unwrap();
+        assert!(!parsed.report.editable);
+        assert_eq!(export(&parsed).bytes, input.as_bytes());
+    }
+}
+
+#[test]
+fn compensation_wait_attribute_presence_roundtrips() {
+    let fixture = include_str!("../../../tests/fixtures/bpmn/inline-events.bpmn");
+    for attribute in [
+        "",
+        " waitForCompletion=\"true\"",
+        " waitForCompletion=\"false\"",
+    ] {
+        let input = fixture.replace(" waitForCompletion=\"false\"", attribute);
+        let parsed = prepare_import(input.as_bytes(), "compensation").unwrap();
+        assert!(parsed.report.editable);
+        let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+        assert_eq!(
+            parsed.document.processes[0].nodes[4].details,
+            again.document.processes[0].nodes[4].details
+        );
+    }
 }

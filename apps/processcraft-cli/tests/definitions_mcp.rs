@@ -50,6 +50,7 @@ fn definitions_metadata_uses_discovered_mcp_command_and_exact_history() {
         .find(|t| t["name"] == "apply")
         .unwrap();
     assert!(apply["inputSchema"]["$defs"]["DefinitionsMetadata"].is_object());
+    assert!(apply["inputSchema"]["$defs"]["Expression"].is_object());
     let inspected = call(
         json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"inspect","arguments":{}}}),
     );
@@ -111,4 +112,41 @@ fn definitions_metadata_uses_discovered_mcp_command_and_exact_history() {
             expected["result"]["structuredContent"]["contentId"]
         );
     }
+    let fixture: Value = serde_json::from_str(include_str!(
+        "../../../tests/fixtures/commands/procurement.json"
+    ))
+    .unwrap();
+    let created = call(
+        json!({"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"apply","arguments":{
+            "sessionId":session,"requestId":"fixture","expectedGeneration":4,"request":fixture
+        }}}),
+    );
+    assert_eq!(created["result"]["structuredContent"]["ok"], true);
+    let expression = json!({
+        "id":"ConditionMetadata","kind":{"type":"formal","explicit_type":true,
+            "language":"urn:expression-language","evaluates_to_type_ref":{"namespace":"urn:item-type","local":"Amount"}},
+        "text":"order:amount > 0", "namespaces":[["","http://www.omg.org/spec/BPMN/20100524/MODEL"],["xsi","http://www.w3.org/2001/XMLSchema-instance"],["order","urn:orders"],["item","urn:item-type"]]
+    });
+    let changed = call(
+        json!({"jsonrpc":"2.0","id":14,"method":"tools/call","params":{"name":"apply","arguments":{
+            "sessionId":session,"requestId":"expression","expectedGeneration":5,"request":{"type":"batch","mutations":[{
+                "type":"setFlowCondition","document_id":"11111111-1111-4111-8111-111111111111",
+                "flow_id":"flow_review_decision","condition":expression
+            }]}
+        }}}),
+    );
+    assert_eq!(changed["result"]["structuredContent"]["ok"], true);
+    let table = call(
+        json!({"jsonrpc":"2.0","id":15,"method":"tools/call","params":{"name":"query","arguments":{
+            "kind":"table","document_id":"11111111-1111-4111-8111-111111111111","process_id":"procurement","offset":0,"limit":100
+        }}}),
+    );
+    let outgoing = table["result"]["structuredContent"]["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|row| row["outgoing"].as_array().unwrap())
+        .find(|flow| flow["id"] == "flow_review_decision")
+        .unwrap();
+    assert_eq!(outgoing["condition"], expression);
 }

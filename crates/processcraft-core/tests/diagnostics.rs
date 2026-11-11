@@ -156,7 +156,7 @@ fn activity_conditions_are_allowed_but_event_gateway_conditions_are_diagnosed() 
         target: id(target),
         name: String::new(),
         documentation: String::new(),
-        condition: condition.map(str::to_owned),
+        condition: condition.map(Into::into),
     };
     let mut doc = BpmnDocument::new("d".into(), id("defs"));
     doc.processes.push(Process {

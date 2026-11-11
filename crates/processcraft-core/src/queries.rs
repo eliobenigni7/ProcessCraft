@@ -220,7 +220,7 @@ pub fn role_lane_choices(
 pub struct TableFlow {
     pub id: XmlId,
     pub target: XmlId,
-    pub condition: Option<String>,
+    pub condition: Option<crate::bpmn_model::Expression>,
 }
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ActivityRow {

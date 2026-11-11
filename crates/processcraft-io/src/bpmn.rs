@@ -115,6 +115,8 @@ struct Frame {
     label: bool,
     text_bytes: usize,
     reference_text: Option<String>,
+    external_reference_allowed: bool,
+    link_definition: bool,
 }
 
 /// Validate into temporary bounded state and publish a source document only after
@@ -211,13 +213,19 @@ pub fn import_bpmn(bytes: &[u8]) -> Result<PreservedBpmn, ImportError> {
                     report.diagram_count += 1;
                 }
                 let mut frame = Frame {
+                    external_reference_allowed: matches!(
+                        local,
+                        "incoming" | "outgoing" | "source" | "target"
+                    ),
+                    link_definition: ns == Some(BPMN) && local == "linkEventDefinition",
                     documentation: ns == Some(BPMN) && local == "documentation",
                     label: ns == Some(BPMN) && local == "text",
                     reference_text: (ns == Some(BPMN)
-                        && matches!(
+                        && (matches!(
                             local,
                             "incoming" | "outgoing" | "flowNodeRef" | "sourceRef" | "targetRef"
-                        ))
+                        ) || (matches!(local, "source" | "target")
+                            && stack.last().is_some_and(|parent| parent.link_definition))))
                     .then(String::new),
                     ..Frame::default()
                 };
@@ -289,7 +297,12 @@ pub fn import_bpmn(bytes: &[u8]) -> Result<PreservedBpmn, ImportError> {
                         }
                         if known_reference(ns, local, key) {
                             let resolved = resolve_value(&reader, &value)?;
-                            push_reference(&mut references, &resolved, &mut metadata_bytes)?;
+                            push_reference(
+                                &mut references,
+                                &resolved,
+                                !idref_reference(ns, local, key),
+                                &mut metadata_bytes,
+                            )?;
                             report.qname_values.insert(resolved);
                         }
                         if matches!(ns, Some(DC | DI))
@@ -318,7 +331,12 @@ pub fn import_bpmn(bytes: &[u8]) -> Result<PreservedBpmn, ImportError> {
                     .ok_or_else(|| xml("unexpected closing element"))?;
                 if let Some(value) = frame.reference_text {
                     let resolved = resolve_value(&reader, value.trim())?;
-                    push_reference(&mut references, &resolved, &mut metadata_bytes)?;
+                    push_reference(
+                        &mut references,
+                        &resolved,
+                        frame.external_reference_allowed,
+                        &mut metadata_bytes,
+                    )?;
                     report.qname_values.insert(resolved);
                 }
             }
@@ -368,13 +386,20 @@ pub fn import_bpmn(bytes: &[u8]) -> Result<PreservedBpmn, ImportError> {
     if !seen_root || !stack.is_empty() {
         return Err(xml("incomplete XML document"));
     }
-    for reference in references {
+    let mut unresolved_external = false;
+    for (reference, external_allowed) in references {
         if !matches!(reference.namespace_uri.as_deref(), None | Some(BPMN))
             && reference.namespace_uri != target_namespace
         {
+            if external_allowed {
+                // QName targets may belong to imported definitions. Preserve the
+                // source without fetching them or claiming reference validation.
+                unresolved_external = true;
+                continue;
+            }
             return Err(error(
                 ImportErrorKind::Reference,
-                "known reference points outside this definitions namespace; external resolution is unavailable",
+                "local ID reference points outside this definitions namespace",
             ));
         }
         if !ids.contains(&reference.local_name) {
@@ -383,6 +408,11 @@ pub fn import_bpmn(bytes: &[u8]) -> Result<PreservedBpmn, ImportError> {
                 format!("known local reference {reference:?} has no standard ID"),
             ));
         }
+    }
+    if unresolved_external {
+        report.limitations.push(
+            "External QName targets are preserved without loading or resolving them; their existence and semantic kind are unverified",
+        );
     }
     report.standard_id_count = ids.len();
     Ok(PreservedBpmn {
@@ -464,13 +494,24 @@ fn resolve_value(reader: &NsReader<&[u8]>, value: &str) -> Result<ExpandedName, 
 }
 
 fn push_reference(
-    refs: &mut Vec<ExpandedName>,
+    refs: &mut Vec<(ExpandedName, bool)>,
     value: &ExpandedName,
+    external_allowed: bool,
     budget: &mut usize,
 ) -> Result<(), ImportError> {
     account(budget, value)?;
-    refs.push(value.clone());
+    refs.push((value.clone(), external_allowed));
     Ok(())
+}
+
+/// These references use xs:IDREF, not xs:QName, in the pinned Semantic.xsd.
+/// Keep local resolution even when other QName-valued references are preserved.
+fn idref_reference(ns: Option<&str>, element: &str, attr: &str) -> bool {
+    ns == Some(BPMN)
+        && (matches!(
+            (element, attr),
+            ("sequenceFlow", "sourceRef" | "targetRef") | ("dataObjectReference", "dataObjectRef")
+        ) || attr == "default")
 }
 fn account(budget: &mut usize, value: &ExpandedName) -> Result<(), ImportError> {
     *budget += value.local_name.len() + value.namespace_uri.as_ref().map_or(0, String::len);
@@ -524,6 +565,7 @@ fn known_reference(ns: Option<&str>, element: &str, attr: &str) -> bool {
                 | ("signalEventDefinition", "signalRef")
                 | ("errorEventDefinition", "errorRef")
                 | ("escalationEventDefinition", "escalationRef")
+                | ("compensateEventDefinition", "activityRef")
         ),
         _ => false,
     }

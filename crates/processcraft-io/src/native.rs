@@ -28,6 +28,38 @@ const EXPANDED_LIMIT: usize = 256 * 1024 * 1024;
 const ZIP_LIMIT: usize = 128 * 1024 * 1024;
 const ENTRY_LIMIT: usize = 4096;
 const DEFINITIONS_CAPABILITY: &str = "bpmn-definitions-metadata";
+const EXPRESSIONS_CAPABILITY: &str = "bpmn-structured-expressions";
+const EVENT_CAPABILITY: &str = "bpmn-link-cancel-compensation";
+
+fn has_extended_event_definitions(document: &BpmnDocument) -> bool {
+    use processcraft_core::bpmn_model::{EventDefinition, NodeDetails};
+    let mut pending: Vec<_> = document
+        .processes
+        .iter()
+        .map(|p| p.nodes.as_slice())
+        .collect();
+    while let Some(nodes) = pending.pop() {
+        for node in nodes {
+            match &node.details {
+                Some(NodeDetails::SubProcess { content }) => pending.push(&content.nodes),
+                Some(NodeDetails::Event { definitions, .. })
+                    if definitions.iter().any(|d| {
+                        matches!(
+                            d,
+                            EventDefinition::Link { .. }
+                                | EventDefinition::Cancel { .. }
+                                | EventDefinition::Compensate { .. }
+                        )
+                    }) =>
+                {
+                    return true;
+                }
+                _ => {}
+            }
+        }
+    }
+    false
+}
 
 #[derive(Debug)]
 pub struct NativeError(pub String);
@@ -186,6 +218,32 @@ pub fn write_bytes(project: &ProjectData) -> Result<Vec<u8>, NativeError> {
             .any(|c| c.content.documents.iter().any(|d| d.definitions.is_some()))
     {
         required_capabilities.push(DEFINITIONS_CAPABILITY.into());
+    }
+    if project
+        .documents
+        .iter()
+        .any(|d| d.has_structured_expressions())
+        || project.checkpoints.iter().any(|c| {
+            c.content
+                .documents
+                .iter()
+                .any(|d| d.has_structured_expressions())
+        })
+    {
+        required_capabilities.push(EXPRESSIONS_CAPABILITY.into());
+    }
+    if project
+        .documents
+        .iter()
+        .any(|d| has_extended_event_definitions(d))
+        || project.checkpoints.iter().any(|c| {
+            c.content
+                .documents
+                .iter()
+                .any(|d| has_extended_event_definitions(d))
+        })
+    {
+        required_capabilities.push(EVENT_CAPABILITY.into());
     }
     let manifest = Manifest {
         format: "processcraft".into(),
@@ -372,10 +430,13 @@ fn load_with_limits(
     if manifest.format != "processcraft"
         || manifest.schema > 3
         || manifest.min_reader > 3
-        || manifest
-            .required_capabilities
-            .iter()
-            .any(|cap| cap != "comments" && cap != "checkpoints" && cap != DEFINITIONS_CAPABILITY)
+        || manifest.required_capabilities.iter().any(|cap| {
+            cap != "comments"
+                && cap != "checkpoints"
+                && cap != DEFINITIONS_CAPABILITY
+                && cap != EXPRESSIONS_CAPABILITY
+                && cap != EVENT_CAPABILITY
+        })
         || (manifest.schema < 3 && !manifest.required_capabilities.is_empty())
         || (manifest.schema == 3
             && !manifest
@@ -460,6 +521,35 @@ fn load_with_limits(
             .any(|cap| cap == DEFINITIONS_CAPABILITY)
     {
         return Err(err("definitions metadata requires capability"));
+    }
+    if (dto.documents.iter().any(|d| d.has_structured_expressions())
+        || frozen
+            .iter()
+            .any(|(_, c)| c.documents.iter().any(|d| d.has_structured_expressions())))
+        && !manifest
+            .required_capabilities
+            .iter()
+            .any(|cap| cap == EXPRESSIONS_CAPABILITY)
+    {
+        return Err(err("structured expressions require capability"));
+    }
+    if (dto
+        .documents
+        .iter()
+        .any(|d| has_extended_event_definitions(d))
+        || frozen.iter().any(|(_, c)| {
+            c.documents
+                .iter()
+                .any(|d| has_extended_event_definitions(d))
+        }))
+        && !manifest
+            .required_capabilities
+            .iter()
+            .any(|cap| cap == EVENT_CAPABILITY)
+    {
+        return Err(err(
+            "link, cancel and compensation events require capability",
+        ));
     }
     for resources in std::iter::once(&dto.resources).chain(frozen.iter().map(|(_, c)| &c.resources))
     {
@@ -643,6 +733,74 @@ fn validate_preview(data: &[u8]) -> Result<(), NativeError> {
 #[cfg(test)]
 mod limit_tests {
     use super::*;
+
+    #[test]
+    fn event_capability_detects_all_variants_in_nested_scopes() {
+        use processcraft_core::{
+            bpmn_model::{EventDefinition, NodeDetails},
+            model::{FlowContainer, Node, NodeKind, Process},
+        };
+        let node = |id: &str, kind, details| Node {
+            id: id.parse().unwrap(),
+            name: String::new(),
+            documentation: String::new(),
+            kind,
+            details: Some(details),
+            loop_characteristics: None,
+            io_specification: None,
+            activity: None,
+            owner: String::new(),
+            contact: String::new(),
+        };
+        for event in [
+            EventDefinition::Link {
+                id: None,
+                name: "link".into(),
+                sources: vec![],
+                target: None,
+            },
+            EventDefinition::Cancel { id: None },
+            EventDefinition::Compensate {
+                id: None,
+                wait_for_completion: None,
+                activity_ref: None,
+            },
+        ] {
+            let inner = node(
+                "event",
+                NodeKind::IntermediateThrowEvent,
+                NodeDetails::Event {
+                    definitions: vec![event],
+                    attached_to: None,
+                    cancel_activity: None,
+                },
+            );
+            let outer = node(
+                "sub",
+                NodeKind::SubProcess,
+                NodeDetails::SubProcess {
+                    content: Box::new(FlowContainer {
+                        nodes: vec![inner],
+                        ..Default::default()
+                    }),
+                },
+            );
+            let mut document = BpmnDocument::new("document".into(), "defs".parse().unwrap());
+            document.processes.push(Process {
+                id: "process".parse().unwrap(),
+                name: String::new(),
+                documentation: String::new(),
+                lane_set_id: None,
+                groups: vec![],
+                data_objects: vec![],
+                data_associations: vec![],
+                nodes: vec![outer],
+                lanes: vec![],
+                flows: vec![],
+            });
+            assert!(has_extended_event_definitions(&document));
+        }
+    }
 
     fn compressed(entries: &[(&str, &[u8])]) -> Vec<u8> {
         let mut writer = ZipWriter::new(Cursor::new(Vec::new()));

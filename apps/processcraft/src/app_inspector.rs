@@ -1,6 +1,282 @@
 use super::{ProcessCraft, node_kind_label};
 use crate::widgets;
 
+#[derive(Clone, Copy)]
+enum ExpressionDefault {
+    Base,
+    SequenceFlow,
+}
+
+pub(super) struct ExpressionDraft {
+    slot: String,
+    id: Option<String>,
+    formal: bool,
+    explicit_type: bool,
+    language: Option<String>,
+    type_reference: Option<(String, String)>,
+    text: String,
+    namespaces: Vec<(String, String)>,
+    error: String,
+}
+
+impl ExpressionDraft {
+    fn new(
+        slot: &str,
+        value: &processcraft_core::bpmn_model::Expression,
+        default: ExpressionDefault,
+    ) -> Self {
+        use processcraft_core::bpmn_model::{Expression, ExpressionKind};
+        let mut draft = Self {
+            slot: slot.into(),
+            id: None,
+            formal: false,
+            explicit_type: false,
+            language: None,
+            type_reference: None,
+            text: value.text().into(),
+            namespaces: Vec::new(),
+            error: String::new(),
+        };
+        if matches!(value, Expression::Legacy(_)) {
+            draft.namespaces.push((
+                String::new(),
+                "http://www.omg.org/spec/BPMN/20100524/MODEL".into(),
+            ));
+            if matches!(default, ExpressionDefault::SequenceFlow) {
+                draft.formal = true;
+                draft.explicit_type = true;
+                draft.namespaces.push((
+                    "xsi".into(),
+                    "http://www.w3.org/2001/XMLSchema-instance".into(),
+                ));
+            }
+        }
+        if let Expression::Structured(data) = value {
+            draft.id = data.id.as_ref().map(ToString::to_string);
+            draft.namespaces = data.namespaces.clone();
+            match &data.kind {
+                ExpressionKind::Base { explicit_type } => draft.explicit_type = *explicit_type,
+                ExpressionKind::Formal {
+                    explicit_type,
+                    language,
+                    evaluates_to_type_ref,
+                } => {
+                    draft.formal = true;
+                    draft.explicit_type = *explicit_type;
+                    draft.language = language.clone();
+                    draft.type_reference = evaluates_to_type_ref
+                        .as_ref()
+                        .map(|q| (q.namespace.clone(), q.local.to_string()));
+                }
+            }
+        }
+        draft
+    }
+    fn build(&self) -> Result<processcraft_core::bpmn_model::ExpressionData, String> {
+        use processcraft_core::bpmn_model::{ExpressionData, ExpressionKind, QNameRef};
+        let id = self
+            .id
+            .as_ref()
+            .map(|s| {
+                s.parse()
+                    .map_err(|_| "Expression ID must be a valid XML ID.".to_owned())
+            })
+            .transpose()?;
+        let type_ref = if self.formal {
+            self.type_reference
+                .as_ref()
+                .map(|(namespace, local)| {
+                    Ok::<QNameRef, String>(QNameRef {
+                        namespace: namespace.clone(),
+                        local: local.parse().map_err(|_| {
+                            "Type reference local name must be a valid XML ID.".to_owned()
+                        })?,
+                    })
+                })
+                .transpose()?
+        } else {
+            None
+        };
+        if self.formal && !self.explicit_type {
+            return Err("Formal expressions require an explicit type in this context.".into());
+        }
+        let kind = if self.formal {
+            ExpressionKind::Formal {
+                explicit_type: self.explicit_type,
+                language: self.language.clone(),
+                evaluates_to_type_ref: type_ref,
+            }
+        } else {
+            ExpressionKind::Base {
+                explicit_type: self.explicit_type,
+            }
+        };
+        Ok(ExpressionData {
+            id,
+            kind,
+            text: self.text.clone(),
+            namespaces: self.namespaces.clone(),
+        })
+    }
+}
+
+fn optional_metadata_text(ui: &mut egui::Ui, label: &str, value: &mut Option<String>) {
+    let mut present = value.is_some();
+    let checkbox = ui.checkbox(&mut present, label);
+    if present {
+        ui.text_edit_singleline(value.get_or_insert_with(String::new))
+            .labelled_by(checkbox.id);
+    } else {
+        *value = None;
+    }
+}
+
+fn expression_ui(
+    ui: &mut egui::Ui,
+    label: &str,
+    value: &mut processcraft_core::bpmn_model::Expression,
+    multiline: bool,
+    draft: &mut Option<ExpressionDraft>,
+    default: ExpressionDefault,
+) -> bool {
+    use processcraft_core::bpmn_model::Expression;
+    let label_response = ui.label(label);
+    let mut changed = false;
+    ui.add_enabled_ui(draft.is_none(), |ui| {
+        let response = if multiline {
+            ui.text_edit_multiline(value.text_mut())
+        } else {
+            ui.text_edit_singleline(value.text_mut())
+        };
+        changed |= response.labelled_by(label_response.id).changed();
+        if ui.button("Edit expression metadata…").clicked() {
+            *draft = Some(ExpressionDraft::new(label, value, default));
+        }
+    });
+    if draft.as_ref().is_some_and(|d| d.slot == label) {
+        let current = draft.as_mut().expect("draft exists");
+        optional_metadata_text(ui, "Expression ID", &mut current.id);
+        let was_formal = current.formal;
+        egui::ComboBox::from_label("Expression kind")
+            .selected_text(if current.formal { "Formal" } else { "Base" })
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut current.formal, false, "Base");
+                ui.selectable_value(&mut current.formal, true, "Formal");
+            });
+        if current.formal && !was_formal {
+            current.explicit_type = true;
+            if !current.namespaces.iter().any(|(prefix, uri)| {
+                !prefix.is_empty() && uri == "http://www.w3.org/2001/XMLSchema-instance"
+            }) {
+                let mut prefix = "xsi".to_owned();
+                while current
+                    .namespaces
+                    .iter()
+                    .any(|(existing, _)| existing == &prefix)
+                {
+                    prefix.push('_');
+                }
+                current
+                    .namespaces
+                    .push((prefix, "http://www.w3.org/2001/XMLSchema-instance".into()));
+            }
+        }
+        ui.checkbox(&mut current.explicit_type, "Explicit expression type");
+        if current.formal {
+            optional_metadata_text(ui, "Language", &mut current.language);
+            let mut present = current.type_reference.is_some();
+            ui.checkbox(&mut present, "Evaluates to type");
+            if present {
+                let (namespace, local) = current
+                    .type_reference
+                    .get_or_insert_with(|| (String::new(), String::new()));
+                let label = ui.label("Type namespace");
+                ui.text_edit_singleline(namespace).labelled_by(label.id);
+                let label = ui.label("Type local name");
+                ui.text_edit_singleline(local).labelled_by(label.id);
+            } else {
+                current.type_reference = None;
+            }
+        }
+        ui.label("Namespace bindings");
+        let mut remove = None;
+        for (index, (prefix, namespace)) in current.namespaces.iter_mut().enumerate() {
+            ui.push_id(index, |ui| {
+                let label = ui.label("Prefix (empty for default)");
+                ui.text_edit_singleline(prefix).labelled_by(label.id);
+                let label = ui.label("Namespace URI");
+                ui.text_edit_singleline(namespace).labelled_by(label.id);
+                if ui.button("Remove namespace").clicked() {
+                    remove = Some(index);
+                }
+            });
+        }
+        if let Some(index) = remove {
+            current.namespaces.remove(index);
+        }
+        if ui
+            .add_enabled(
+                current.namespaces.len() < 256,
+                egui::Button::new("Add namespace"),
+            )
+            .clicked()
+        {
+            current.namespaces.push((String::new(), String::new()));
+        }
+        if !current.error.is_empty() {
+            ui.label(&current.error);
+        }
+        let mut clear = false;
+        if ui.button("Apply expression metadata").clicked() {
+            match current.build() {
+                Ok(data) => {
+                    *value = Expression::Structured(data);
+                    changed = true;
+                    clear = true;
+                }
+                Err(error) => current.error = error,
+            }
+        }
+        if ui.button("Cancel expression metadata").clicked() {
+            clear = true;
+        }
+        if clear {
+            *draft = None;
+        }
+    }
+    changed
+}
+
+fn optional_expression_ui(
+    ui: &mut egui::Ui,
+    label: &str,
+    value: &mut Option<processcraft_core::bpmn_model::Expression>,
+    multiline: bool,
+    draft: &mut Option<ExpressionDraft>,
+) -> bool {
+    optional_expression_ui_with_default(ui, label, value, multiline, draft, ExpressionDefault::Base)
+}
+
+fn optional_expression_ui_with_default(
+    ui: &mut egui::Ui,
+    label: &str,
+    value: &mut Option<processcraft_core::bpmn_model::Expression>,
+    multiline: bool,
+    draft: &mut Option<ExpressionDraft>,
+    default: ExpressionDefault,
+) -> bool {
+    let mut present = value.is_some();
+    let checkbox = ui.add_enabled(draft.is_none(), egui::Checkbox::new(&mut present, label));
+    let mut changed = checkbox.changed();
+    if present {
+        let expression = value.get_or_insert_with(|| String::new().into());
+        changed |= expression_ui(ui, label, expression, multiline, draft, default);
+    } else if value.take().is_some() {
+        changed = true;
+    }
+    changed
+}
+
 impl ProcessCraft {
     pub(super) fn inspector_ui(&mut self, ui: &mut egui::Ui, show_heading: bool) {
         let snap = self.ctl.session.snapshot();
@@ -106,18 +382,7 @@ impl ProcessCraft {
                         && selected_flow
                             .is_some_and(|f| f.kind == processcraft_core::model::FlowKind::Sequence)
                     {
-                        let label = side.label(
-                            egui::RichText::new("Condition")
-                                .small()
-                                .color(palette.muted),
-                        );
-                        if side
-                            .text_edit_multiline(&mut self.condition)
-                            .labelled_by(label.id)
-                            .changed()
-                        {
-                            self.draft_dirty = true;
-                        }
+                        self.draft_dirty |= optional_expression_ui_with_default(side, "Condition", &mut self.condition, true, &mut self.expression_draft, ExpressionDefault::SequenceFlow);
                     } else if self.is_node {
                         let label =
                             side.label(egui::RichText::new("Owner").small().color(palette.muted));
@@ -400,6 +665,7 @@ impl ProcessCraft {
                     });
                 }
             });
+        self.draft_dirty |= self.expression_draft.is_some();
     }
 }
 
@@ -449,18 +715,20 @@ impl ProcessCraft {
                         Some(L::MultiInstance { .. }) => "Parallel instances",
                     };
                     let old_tag = tag;
-                    egui::ComboBox::from_label("Repetition")
-                        .selected_text(tag)
-                        .show_ui(ui, |ui| {
-                            for option in [
-                                "None",
-                                "Standard loop",
-                                "Sequential instances",
-                                "Parallel instances",
-                            ] {
-                                ui.selectable_value(&mut tag, option, option);
-                            }
-                        });
+                    ui.add_enabled_ui(self.expression_draft.is_none(), |ui| {
+                        egui::ComboBox::from_label("Repetition")
+                            .selected_text(tag)
+                            .show_ui(ui, |ui| {
+                                for option in [
+                                    "None",
+                                    "Standard loop",
+                                    "Sequential instances",
+                                    "Parallel instances",
+                                ] {
+                                    ui.selectable_value(&mut tag, option, option);
+                                }
+                            });
+                    });
                     if tag != old_tag {
                         value = match tag {
                             "None" => None,
@@ -494,7 +762,13 @@ impl ProcessCraft {
                             maximum,
                         }) => {
                             ui.checkbox(test_before, "Test before first iteration");
-                            text(ui, "Loop condition", condition);
+                            optional_expression_ui(
+                                ui,
+                                "Loop condition",
+                                condition,
+                                false,
+                                &mut self.expression_draft,
+                            );
                             text(ui, "Maximum iterations", maximum);
                         }
                         Some(L::MultiInstance {
@@ -502,8 +776,20 @@ impl ProcessCraft {
                             completion_condition,
                             ..
                         }) => {
-                            text(ui, "Cardinality expression", cardinality);
-                            text(ui, "Completion condition", completion_condition);
+                            optional_expression_ui(
+                                ui,
+                                "Cardinality expression",
+                                cardinality,
+                                false,
+                                &mut self.expression_draft,
+                            );
+                            optional_expression_ui(
+                                ui,
+                                "Completion condition",
+                                completion_condition,
+                                false,
+                                &mut self.expression_draft,
+                            );
                         }
                         None => {}
                     }
@@ -611,15 +897,13 @@ impl ProcessCraft {
                             });
                     }
                     if node.kind == K::ComplexGateway {
-                        let mut expression = activation_condition.clone().unwrap_or_default();
-                        let label = ui.label("Activation condition");
-                        if ui
-                            .text_edit_multiline(&mut expression)
-                            .labelled_by(label.id)
-                            .changed()
-                        {
-                            *activation_condition = (!expression.is_empty()).then_some(expression);
-                        }
+                        optional_expression_ui(
+                            ui,
+                            "Activation condition",
+                            activation_condition,
+                            true,
+                            &mut self.expression_draft,
+                        );
                     }
                 }
                 let original = self.bpmn_details.clone().unwrap_or(D::Gateway {
@@ -654,30 +938,42 @@ impl ProcessCraft {
             let mut tag = match definitions.first() {
                 None => "None", Some(E::Timer{..}) => "Timer", Some(E::Conditional{..}) => "Conditional",
                 Some(E::Terminate{..}) => "Terminate", Some(E::Message{..}) => "Message", Some(E::Signal{..}) => "Signal",
-                Some(E::Error{..}) => "Error", Some(E::Escalation{..}) => "Escalation", _ => "Retained definition",
+                Some(E::Error{..}) => "Error", Some(E::Escalation{..}) => "Escalation",
+                Some(E::Link{..}) => "Link", Some(E::Cancel{..}) => "Cancel", Some(E::Compensate{..}) => "Compensate",
             };
             let original_tag = tag;
-            egui::ComboBox::from_label("Definition type").selected_text(tag).show_ui(ui, |ui| {
-                for option in ["None", "Timer", "Conditional", "Terminate", "Message", "Signal", "Error", "Escalation"] {
+            let scope = queries::scopes(document).into_iter().find(|scope| scope.nodes.iter().any(|candidate| candidate.id == node.id));
+            let parent = scope.as_ref().and_then(|scope| queries::find_node(document, scope.id));
+            let transaction_scope = parent.is_some_and(|parent| parent.kind == K::Transaction);
+            let event_subprocess = parent.is_some_and(|parent| parent.kind == K::SubProcess && parent.activity.as_ref().is_some_and(|activity| activity.triggered_by_event == Some(true)));
+            let transaction_attachment = attached_to.as_ref().and_then(|id| queries::find_node(document, id)).is_some_and(|target| target.kind == K::Transaction);
+            ui.add_enabled_ui(self.expression_draft.is_none(), |ui| { egui::ComboBox::from_label("Definition type").selected_text(tag).show_ui(ui, |ui| {
+                for option in ["None", "Timer", "Conditional", "Terminate", "Message", "Signal", "Error", "Escalation", "Link", "Cancel", "Compensate"] {
                     let allowed = match option {
                         "Timer" | "Conditional" => matches!(node.kind,K::StartEvent | K::IntermediateCatchEvent | K::BoundaryEvent),
                         "Terminate" => node.kind == K::EndEvent,
                         "Error" => matches!(node.kind,K::EndEvent | K::BoundaryEvent),
+                        "Link" => matches!(node.kind, K::IntermediateCatchEvent | K::IntermediateThrowEvent),
+                        "Cancel" => (node.kind == K::BoundaryEvent && transaction_attachment && cancel_activity.unwrap_or(true)) || (node.kind == K::EndEvent && transaction_scope),
+                        "Compensate" => matches!(node.kind, K::BoundaryEvent | K::IntermediateThrowEvent | K::EndEvent) || (node.kind == K::StartEvent && event_subprocess),
                         "None" => node.kind != K::BoundaryEvent && node.kind != K::IntermediateCatchEvent,
                         _ => true,
                     };
                     if allowed { ui.selectable_value(&mut tag, option, option); }
                 }
-            });
+            }); });
             let mut definition = if tag == original_tag { definitions.first().cloned() } else {
                 match tag {
                     "Timer" => Some(E::Timer { id: None, kind: TimerKind::Duration, expression: "PT1M".into() }),
-                    "Conditional" => Some(E::Conditional { id: None, expression: String::new() }),
+                    "Conditional" => Some(E::Conditional { id: None, expression: String::new().into() }),
                     "Terminate" => Some(E::Terminate { id: None }),
                     "Message" => Some(E::Message { id: None, message_ref: None, operation_ref: None }),
                     "Signal" => Some(E::Signal { id: None, signal_ref: None }),
                     "Error" => Some(E::Error { id: None, error_ref: None }),
-                    "Escalation" => Some(E::Escalation { id: None, escalation_ref: None }), _ => None,
+                    "Escalation" => Some(E::Escalation { id: None, escalation_ref: None }),
+                    "Link" => Some(E::Link { id: Some(crate::controller::id("LinkDefinition")), name: String::new(), sources: Vec::new(), target: None }),
+                    "Cancel" => Some(E::Cancel { id: None }),
+                    "Compensate" => Some(E::Compensate { id: None, wait_for_completion: None, activity_ref: None }), _ => None,
                 }
             };
             let mut changed = tag != original_tag;
@@ -690,12 +986,57 @@ impl ProcessCraft {
                         ui.selectable_value(kind, TimerKind::Cycle, "Cycle");
                     });
                     changed |= old != *kind;
-                    let label = ui.label("Expression");
-                    changed |= ui.text_edit_singleline(expression).labelled_by(label.id).changed();
+                    changed |= expression_ui(ui, "Expression", expression, false, &mut self.expression_draft, ExpressionDefault::Base);
                 }
                 Some(E::Conditional { expression, .. }) => {
-                    let label = ui.label("Condition expression");
-                    changed |= ui.text_edit_multiline(expression).labelled_by(label.id).changed();
+                    changed |= expression_ui(ui, "Condition expression", expression, true, &mut self.expression_draft, ExpressionDefault::Base);
+                }
+                Some(E::Link { id, name, sources, target }) => {
+                    if let Some(id) = id { ui.label(format!("Definition ID: {id}")); }
+                    let label = ui.label("Link name");
+                    changed |= ui.text_edit_singleline(name).labelled_by(label.id).changed();
+                    let mut links: Vec<_> = scope.as_ref().into_iter().flat_map(|scope| scope.nodes.iter()).filter(|other| {
+                        other.id != node.id && if node.kind == K::IntermediateCatchEvent { other.kind == K::IntermediateThrowEvent } else { other.kind == K::IntermediateCatchEvent }
+                    }).flat_map(|other| match &other.details {
+                        Some(D::Event { definitions, .. }) => definitions.as_slice(), _ => &[],
+                    }).filter_map(|event| match event {
+                        E::Link { id: Some(id), name: other_name, .. } if other_name == name => Some(id.clone()), _ => None,
+                    }).collect();
+                    if node.kind == K::IntermediateCatchEvent {
+                        ui.label("Source link definitions");
+                        for existing in sources.iter() { if !links.contains(existing) { links.push(existing.clone()); } }
+                        for candidate in links {
+                            let mut present = sources.contains(&candidate);
+                            if ui.checkbox(&mut present, candidate.to_string()).changed() {
+                                if present { sources.push(candidate); } else { sources.retain(|id| id != &candidate); }
+                                changed = true;
+                            }
+                        }
+                    } else {
+                        let previous = target.clone();
+                        egui::ComboBox::from_label("Target link definition").selected_text(target.as_ref().map_or("None".into(), ToString::to_string)).show_ui(ui, |ui| {
+                            ui.selectable_value(target, None, "None");
+                            for candidate in links { ui.selectable_value(target, Some(candidate.clone()), candidate.to_string()); }
+                        });
+                        changed |= *target != previous;
+                    }
+                }
+                Some(E::Compensate { wait_for_completion, activity_ref, .. }) => {
+                    let previous = *wait_for_completion;
+                    egui::ComboBox::from_label("Wait for completion").selected_text(match wait_for_completion { None => "Default", Some(true) => "Yes", Some(false) => "No" }).show_ui(ui, |ui| {
+                        ui.selectable_value(wait_for_completion, None, "Default");
+                        ui.selectable_value(wait_for_completion, Some(true), "Yes");
+                        ui.selectable_value(wait_for_completion, Some(false), "No");
+                    });
+                    changed |= *wait_for_completion != previous;
+                    let previous = activity_ref.clone();
+                    egui::ComboBox::from_label("Activity reference").selected_text(activity_ref.as_ref().map_or("None".into(), ToString::to_string)).show_ui(ui, |ui| {
+                        ui.selectable_value(activity_ref, None, "None");
+                        for activity in scope.as_ref().into_iter().flat_map(|scope| scope.nodes.iter()).filter(|candidate| candidate.kind.is_activity()) {
+                            ui.selectable_value(activity_ref, Some(activity.id.clone()), format!("{} · {}", activity.name, activity.id));
+                        }
+                    });
+                    changed |= *activity_ref != previous;
                 }
                 _ => {}
             }
@@ -703,7 +1044,7 @@ impl ProcessCraft {
             if node.kind == K::BoundaryEvent {
                 if let Some(target) = &attached_to { ui.label(format!("Attached to: {}", queries::element_name(document, target).unwrap_or("Unnamed activity"))); }
                 let mut interrupt = cancel_activity.unwrap_or(true);
-                if ui.checkbox(&mut interrupt, "Interrupt activity").changed() { cancel_activity = Some(interrupt); changed = true; }
+                if ui.add_enabled(!matches!(definition, Some(E::Cancel { .. })), egui::Checkbox::new(&mut interrupt, "Interrupt activity")).changed() { cancel_activity = Some(interrupt); changed = true; }
             }
             if changed {
                 self.bpmn_details = if definition.is_none() && attached_to.is_none() { None } else {
@@ -757,7 +1098,7 @@ impl ProcessCraft {
                         ui.selectable_value(&mut value.ad_hoc_ordering,Some(AdHocOrdering::Sequential),"Sequential");
                     });
                     checkbox(ui,"Cancel remaining instances",&mut value.cancel_remaining_instances,true);
-                    text(ui,"Ad-hoc completion condition",&mut value.completion_condition,true);
+                    optional_expression_ui(ui,"Ad-hoc completion condition",&mut value.completion_condition,true, &mut self.expression_draft);
                 }
                 if node.kind == K::Transaction { text(ui,"Transaction method (default ##Compensate)",&mut value.transaction_method,false); }
                 if matches!(node.kind,K::ServiceTask|K::SendTask|K::ReceiveTask|K::UserTask|K::BusinessRuleTask) { text(ui,"Implementation",&mut value.implementation,false); }
@@ -771,5 +1112,96 @@ impl ProcessCraft {
                 if value != original { self.bpmn_activity = Some(value); self.draft_dirty = true; }
             });
         });
+    }
+}
+
+#[cfg(test)]
+mod expression_draft_tests {
+    use super::*;
+    use processcraft_core::model::NodeKind;
+
+    #[test]
+    fn legacy_promotion_preserves_flow_and_event_expression_defaults() {
+        use processcraft_core::bpmn_model::ExpressionKind;
+        let flow = ExpressionDraft::new("Condition", &"x".into(), ExpressionDefault::SequenceFlow)
+            .build()
+            .unwrap();
+        assert!(matches!(
+            flow.kind,
+            ExpressionKind::Formal {
+                explicit_type: true,
+                ..
+            }
+        ));
+        assert!(
+            flow.namespaces
+                .iter()
+                .any(|(p, n)| p.is_empty() && n == "http://www.omg.org/spec/BPMN/20100524/MODEL")
+        );
+        assert!(
+            flow.namespaces
+                .iter()
+                .any(|(p, n)| p == "xsi" && n == "http://www.w3.org/2001/XMLSchema-instance")
+        );
+        let event =
+            ExpressionDraft::new("Condition expression", &"x".into(), ExpressionDefault::Base)
+                .build()
+                .unwrap();
+        assert!(matches!(
+            event.kind,
+            ExpressionKind::Base {
+                explicit_type: false
+            }
+        ));
+    }
+
+    #[test]
+    fn expression_metadata_draft_round_trips_and_validates() {
+        use processcraft_core::bpmn_model::{Expression, ExpressionData, ExpressionKind, QNameRef};
+        let data = ExpressionData {
+            id: Some("ExpressionId".parse().unwrap()),
+            kind: ExpressionKind::Formal {
+                explicit_type: true,
+                language: Some(String::new()),
+                evaluates_to_type_ref: Some(QNameRef {
+                    namespace: "urn:type".into(),
+                    local: "Thing".parse().unwrap(),
+                }),
+            },
+            text: "body".into(),
+            namespaces: vec![("t".into(), "urn:type".into())],
+        };
+        let mut draft = ExpressionDraft::new(
+            "Condition",
+            &Expression::Structured(data.clone()),
+            ExpressionDefault::Base,
+        );
+        assert_eq!(draft.build().unwrap(), data);
+        draft.type_reference.as_mut().unwrap().1 = "invalid name".into();
+        assert!(draft.build().is_err());
+        draft.formal = false;
+        assert!(draft.build().is_ok());
+    }
+
+    #[test]
+    fn invalid_expression_metadata_blocks_navigation_and_history() {
+        let mut app = ProcessCraft::default();
+        app.add(NodeKind::IntermediateCatchEvent);
+        let selected = app.selected.clone();
+        let mut metadata =
+            ExpressionDraft::new("Expression", &"PT1M".into(), ExpressionDefault::Base);
+        metadata.id = Some("invalid id".into());
+        assert!(metadata.build().is_err());
+        app.expression_draft = Some(metadata);
+        app.draft_dirty = true;
+        assert!(!app.commit_draft());
+        app.select(None);
+        app.history(processcraft_core::commands::Request::Undo);
+        assert_eq!(app.selected, selected);
+        assert_eq!(
+            app.expression_draft.as_ref().unwrap().id.as_deref(),
+            Some("invalid id")
+        );
+        assert!(app.has_drafts());
     }
 }

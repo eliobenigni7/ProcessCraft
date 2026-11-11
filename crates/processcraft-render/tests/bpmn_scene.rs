@@ -1478,3 +1478,128 @@ fn activity_properties_change_shared_vectors_and_viewport() {
     .unwrap();
     assert_ne!(with.pixels.data(), without.pixels.data());
 }
+
+fn assert_valid_event_document(d: &BpmnDocument) {
+    let mut project = processcraft_core::model::ProjectData::new("events".into());
+    project.documents.push(std::sync::Arc::new(d.clone()));
+    project.validate().unwrap();
+}
+
+#[test]
+fn link_markers_distinguish_catch_and_throw_in_shared_scene() {
+    use processcraft_core::bpmn_model::{EventDefinition, NodeDetails};
+    let mut d = fixture();
+    d.processes[0].nodes[0].name.clear();
+    d.diagrams[0].shapes[0].bounds = Bounds {
+        x: 0.0,
+        y: 0.0,
+        width: 40.0,
+        height: 40.0,
+    };
+    let mut render = |kind| {
+        let node = &mut d.processes[0].nodes[0];
+        node.kind = kind;
+        node.details = Some(NodeDetails::Event {
+            definitions: vec![EventDefinition::Link {
+                id: None,
+                name: "link".into(),
+                sources: vec![],
+                target: None,
+            }],
+            attached_to: None,
+            cancel_activity: None,
+        });
+        assert_valid_event_document(&d);
+        build(&d, Appearance::Light)
+    };
+    let catch = render(NodeKind::IntermediateCatchEvent);
+    let throwing = render(NodeKind::IntermediateThrowEvent);
+    assert_ne!(catch.scene.to_svg(), throwing.scene.to_svg());
+    assert!(catch.hit_test(20.0, 20.0, 0.0).is_some());
+    assert!(catch.hit_test(0.0, 0.0, 0.0).is_none());
+}
+
+#[test]
+fn cancel_boundary_and_end_use_hollow_and_filled_crosses() {
+    use processcraft_core::bpmn_model::{EventDefinition, NodeDetails};
+    use processcraft_core::model::FlowContainer;
+    let mut d = fixture();
+    let mut transaction = d.processes[0].nodes[0].clone();
+    transaction.id = id("transaction");
+    transaction.kind = NodeKind::Transaction;
+    transaction.name.clear();
+    transaction.details = Some(NodeDetails::SubProcess {
+        content: Box::new(FlowContainer {
+            lane_set_id: None,
+            groups: vec![],
+            data_objects: vec![],
+            data_associations: vec![],
+            nodes: vec![],
+            lanes: vec![],
+            flows: vec![],
+        }),
+    });
+    d.processes[0].nodes.push(transaction);
+    let node = &mut d.processes[0].nodes[0];
+    node.name.clear();
+    node.kind = NodeKind::BoundaryEvent;
+    node.details = Some(NodeDetails::Event {
+        definitions: vec![EventDefinition::Cancel { id: None }],
+        attached_to: Some(id("transaction")),
+        cancel_activity: Some(true),
+    });
+    assert_valid_event_document(&d);
+    let boundary = build(&d, Appearance::Light).scene.to_svg();
+    let mut end = d.processes[0].nodes.remove(0);
+    end.kind = NodeKind::EndEvent;
+    end.details = Some(NodeDetails::Event {
+        definitions: vec![EventDefinition::Cancel { id: None }],
+        attached_to: None,
+        cancel_activity: None,
+    });
+    let Some(NodeDetails::SubProcess { content }) = &mut d.processes[0].nodes[0].details else {
+        panic!("transaction content")
+    };
+    content.nodes.push(end);
+    d.diagrams[0].plane = id("transaction");
+    assert_valid_event_document(&d);
+    let end = build(&d, Appearance::Light).scene.to_svg();
+    assert_ne!(boundary, end);
+}
+
+#[test]
+fn compensation_boundary_and_throw_render_distinct_markers() {
+    use processcraft_core::bpmn_model::{EventDefinition, NodeDetails};
+    let mut d = fixture();
+    let mut activity = d.processes[0].nodes[0].clone();
+    activity.id = id("activity");
+    activity.name.clear();
+    d.processes[0].nodes.push(activity);
+    let node = &mut d.processes[0].nodes[0];
+    node.name.clear();
+    node.kind = NodeKind::BoundaryEvent;
+    node.details = Some(NodeDetails::Event {
+        definitions: vec![EventDefinition::Compensate {
+            id: None,
+            wait_for_completion: None,
+            activity_ref: None,
+        }],
+        attached_to: Some(id("activity")),
+        cancel_activity: Some(true),
+    });
+    assert_valid_event_document(&d);
+    let boundary = build(&d, Appearance::Light).scene.to_svg();
+    d.processes[0].nodes[0].kind = NodeKind::IntermediateThrowEvent;
+    d.processes[0].nodes[0].details = Some(NodeDetails::Event {
+        definitions: vec![EventDefinition::Compensate {
+            id: None,
+            wait_for_completion: None,
+            activity_ref: None,
+        }],
+        attached_to: None,
+        cancel_activity: None,
+    });
+    assert_valid_event_document(&d);
+    let throwing = build(&d, Appearance::Light).scene.to_svg();
+    assert_ne!(boundary, throwing);
+}

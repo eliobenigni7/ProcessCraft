@@ -198,6 +198,76 @@ impl BpmnDocument {
             capability: Capability::Editable,
         }
     }
+    pub fn expressions(&self) -> Vec<&crate::bpmn_model::Expression> {
+        use crate::bpmn_model::{EventDefinition, LoopCharacteristics, NodeDetails};
+        let mut result = Vec::new();
+        let mut pending: Vec<(&[Node], &[Flow])> = self
+            .processes
+            .iter()
+            .map(|p| (p.nodes.as_slice(), p.flows.as_slice()))
+            .collect();
+        while let Some((nodes, flows)) = pending.pop() {
+            result.extend(flows.iter().filter_map(|f| f.condition.as_ref()));
+            for node in nodes {
+                if let Some(a) = &node.activity {
+                    result.extend(a.completion_condition.iter());
+                }
+                if let Some(l) = &node.loop_characteristics {
+                    match l {
+                        LoopCharacteristics::Standard { condition, .. } => {
+                            result.extend(condition.iter())
+                        }
+                        LoopCharacteristics::MultiInstance {
+                            cardinality,
+                            completion_condition,
+                            ..
+                        } => {
+                            result.extend(cardinality.iter());
+                            result.extend(completion_condition.iter());
+                        }
+                    }
+                }
+                match &node.details {
+                    Some(NodeDetails::SubProcess { content }) => {
+                        pending.push((&content.nodes, &content.flows))
+                    }
+                    Some(NodeDetails::Gateway {
+                        activation_condition,
+                        ..
+                    }) => result.extend(activation_condition.iter()),
+                    Some(NodeDetails::Event { definitions, .. }) => {
+                        for definition in definitions {
+                            match definition {
+                                EventDefinition::Conditional { expression, .. }
+                                | EventDefinition::Timer { expression, .. } => {
+                                    result.push(expression)
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        if let Some(c) = &self.collaboration {
+            result.extend(c.flows.iter().filter_map(|f| f.condition.as_ref()));
+        }
+        for c in &self.choreographies {
+            result.extend(
+                c.sequence_flows
+                    .iter()
+                    .chain(&c.message_flows)
+                    .filter_map(|f| f.condition.as_ref()),
+            );
+        }
+        result
+    }
+    pub fn has_structured_expressions(&self) -> bool {
+        self.expressions()
+            .iter()
+            .any(|e| matches!(e, crate::bpmn_model::Expression::Structured(_)))
+    }
 }
 /// Attributes of the BPMN definitions element. Optional fields preserve XML omission.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
@@ -390,7 +460,7 @@ pub struct Flow {
     pub target: XmlId,
     pub name: String,
     pub documentation: String,
-    pub condition: Option<String>,
+    pub condition: Option<crate::bpmn_model::Expression>,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]

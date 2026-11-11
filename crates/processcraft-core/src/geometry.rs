@@ -56,8 +56,16 @@ pub fn hit_shape(
         return Ok(dx <= rx && dy <= ry);
     }
     Ok(match kind {
-        NodeKind::StartEvent | NodeKind::EndEvent => (dx / rx).powi(2) + (dy / ry).powi(2) <= 1.0,
-        NodeKind::ExclusiveGateway | NodeKind::ParallelGateway => dx / rx + dy / ry <= 1.0,
+        NodeKind::StartEvent
+        | NodeKind::EndEvent
+        | NodeKind::IntermediateCatchEvent
+        | NodeKind::IntermediateThrowEvent
+        | NodeKind::BoundaryEvent => (dx / rx).powi(2) + (dy / ry).powi(2) <= 1.0,
+        NodeKind::ExclusiveGateway
+        | NodeKind::ParallelGateway
+        | NodeKind::InclusiveGateway
+        | NodeKind::ComplexGateway
+        | NodeKind::EventBasedGateway => dx / rx + dy / ry <= 1.0,
         _ => dx <= rx && dy <= ry,
     })
 }
@@ -406,7 +414,8 @@ pub fn prepare_move(
         ));
     }
     let scopes = crate::queries::scopes(document);
-    let flows: Vec<_> = scopes
+    // Normalize the qualified binary edge families to their visible endpoints.
+    let mut connections: Vec<(&XmlId, &XmlId, &XmlId)> = scopes
         .iter()
         .flat_map(|scope| scope.flows.iter())
         .chain(document.collaboration.iter().flat_map(|c| c.flows.iter()))
@@ -416,38 +425,97 @@ pub fn prepare_move(
                 .iter()
                 .flat_map(|c| c.sequence_flows.iter().chain(c.message_flows.iter())),
         )
+        .map(|flow| (&flow.id, &flow.source, &flow.target))
         .collect();
     for scope in &scopes {
         for association in scope.data_associations {
-            if moved.iter().any(|(_, id, _, _)| {
-                association.sources.iter().any(|source| source == *id)
-                    || &association.target == *id
-                    || &association.owner == *id
-            }) && diagram
+            if !diagram
                 .edges
                 .iter()
                 .any(|edge| edge.element == association.id)
             {
-                return Err("moving connected data associations is not yet supported");
+                continue;
             }
+            let affected = moved.iter().any(|(_, id, dx, dy)| {
+                (*dx != 0.0 || *dy != 0.0)
+                    && (association.sources.iter().any(|source| source == *id)
+                        || &association.target == *id
+                        || &association.owner == *id)
+            });
+            // A data port normally has no DI shape: its activity is the visible endpoint.
+            // Multiple sources cannot be represented unambiguously by one DI edge.
+            if association.sources.len() != 1 {
+                if affected {
+                    return Err("moving multi-source data association is unsupported");
+                }
+                continue;
+            }
+            let visible = |id: &XmlId| diagram.shapes.iter().any(|shape| &shape.element == id);
+            let owner_io = crate::queries::find_node(document, &association.owner)
+                .and_then(|node| node.io_specification.as_ref());
+            let input_port = owner_io
+                .is_some_and(|io| io.inputs.iter().any(|port| port.id == association.target));
+            let output_port = owner_io.is_some_and(|io| {
+                io.outputs
+                    .iter()
+                    .any(|port| port.id == association.sources[0])
+            });
+            if (association.kind == crate::bpmn_data::DataAssociationKind::Input
+                && !visible(&association.target)
+                && !input_port)
+                || (association.kind == crate::bpmn_data::DataAssociationKind::Output
+                    && !visible(&association.sources[0])
+                    && !output_port)
+            {
+                if affected {
+                    return Err("data association has unresolved activity port");
+                }
+                continue;
+            }
+            let (source, target) = match association.kind {
+                crate::bpmn_data::DataAssociationKind::Input => (
+                    &association.sources[0],
+                    if visible(&association.target) {
+                        &association.target
+                    } else {
+                        &association.owner
+                    },
+                ),
+                crate::bpmn_data::DataAssociationKind::Output => (
+                    if visible(&association.sources[0]) {
+                        &association.sources[0]
+                    } else {
+                        &association.owner
+                    },
+                    &association.target,
+                ),
+            };
+            if !visible(source) || !visible(target) {
+                if affected {
+                    return Err("data association has unresolved visible endpoint");
+                }
+                continue;
+            }
+            connections.push((&association.id, source, target));
         }
     }
     if let Some(collaboration) = &document.collaboration {
-        for link in &collaboration.conversation_links {
-            if moved
+        connections.extend(
+            collaboration
+                .conversation_links
                 .iter()
-                .any(|(_, id, _, _)| *id == &link.source || *id == &link.target)
-                && diagram.edges.iter().any(|edge| edge.element == link.id)
-            {
-                return Err("moving connected conversation links is not yet supported");
-            }
-        }
+                .map(|link| (&link.id, &link.source, &link.target)),
+        );
     }
     let mut routes = Vec::new();
     let mut label_moves = Vec::new();
     let mut warnings = Vec::new();
     for edge in &diagram.edges {
-        let Some(flow) = flows.iter().find(|f| f.id == edge.element) else {
+        let Some((_, source, target)) = connections
+            .iter()
+            .find(|(id, _, _)| **id == edge.element)
+            .copied()
+        else {
             continue;
         };
         let endpoint = |element: &XmlId, point: &Point| -> Result<Option<Point>, &'static str> {
@@ -469,27 +537,27 @@ pub fn prepare_move(
         if edge.waypoints.len() < 2 {
             if moved
                 .iter()
-                .any(|(_, id, _, _)| *id == &flow.source || *id == &flow.target)
+                .any(|(_, id, _, _)| *id == source || *id == target)
             {
                 return Err("connected edge has insufficient waypoints");
             }
             continue;
         }
-        let start = endpoint(&flow.source, &edge.waypoints[0])?;
-        let end = endpoint(&flow.target, &edge.waypoints[edge.waypoints.len() - 1])?;
+        let start = endpoint(source, &edge.waypoints[0])?;
+        let end = endpoint(target, &edge.waypoints[edge.waypoints.len() - 1])?;
         let source_delta = moved
             .iter()
-            .find(|(_, id, _, _)| *id == &flow.source)
+            .find(|(_, id, _, _)| *id == source)
             .map(|(_, _, dx, dy)| (*dx, *dy));
         let target_delta = moved
             .iter()
-            .find(|(_, id, _, _)| *id == &flow.target)
+            .find(|(_, id, _, _)| *id == target)
             .map(|(_, _, dx, dy)| (*dx, *dy));
         if let (Some((dx, dy)), Some(other)) = (source_delta, target_delta)
             && (dx, dy) == other
             && (dx != 0.0 || dy != 0.0)
-            && nested_translated.contains(&flow.source)
-            && nested_translated.contains(&flow.target)
+            && nested_translated.contains(source)
+            && nested_translated.contains(target)
         {
             if let Some(label) = &edge.label {
                 let mut bounds = label.bounds.clone();
@@ -522,7 +590,7 @@ pub fn prepare_move(
         let obstacles: Vec<_> = diagram
             .shapes
             .iter()
-            .filter(|s| s.element != flow.source && s.element != flow.target)
+            .filter(|s| s.element != *source && s.element != *target)
             // Ignore only containers of an endpoint; unrelated containers remain obstacles.
             .filter(|s| {
                 let is_scope_ancestor = |element: &XmlId, target: &XmlId| {
@@ -558,7 +626,7 @@ pub fn prepare_move(
                                 })
                             })
                     };
-                !contains(&flow.source) && !contains(&flow.target)
+                !contains(source) && !contains(target)
             })
             .map(|s| {
                 bounds
