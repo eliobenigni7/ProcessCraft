@@ -264,9 +264,72 @@ impl ProcessCraft {
                     {
                         self.draft_dirty = true;
                     }
+                    if let Some(document) = snap.project.documents.get(self.doc) {
+                        side.separator();
+                        widgets::section_label(side, "BPMN definitions");
+                        side.label(format!("ID · {}", document.definitions_id));
+                        let legacy_import = document.definitions.is_none() && document.provenance.is_some();
+                        if legacy_import {
+                            side.label("Metadata editing is unavailable until the original target namespace is recovered.");
+                        } else if document.definitions.is_none() {
+                            side.label("The generated target namespace is used until changed.");
+                        }
+                        side.add_enabled_ui(editable && !legacy_import, |side| {
+                            let label = side.label("Target namespace");
+                            if side.text_edit_singleline(&mut self.definitions_draft.target_namespace)
+                                .labelled_by(label.id).changed() {
+                                self.definitions_dirty = true;
+                            }
+                            fn optional_field(ui: &mut egui::Ui, label: &str, value: &mut Option<String>) -> bool {
+                                let mut present = value.is_some();
+                                let checkbox = ui.checkbox(&mut present, label);
+                                let mut changed = checkbox.changed();
+                                if present {
+                                    let text = value.get_or_insert_with(String::new);
+                                    changed |= ui.text_edit_singleline(text).labelled_by(checkbox.id).changed();
+                                } else if value.take().is_some() {
+                                    changed = true;
+                                }
+                                changed
+                            }
+                            self.definitions_dirty |= optional_field(side, "Name", &mut self.definitions_draft.name);
+                            self.definitions_dirty |= optional_field(side, "Expression language", &mut self.definitions_draft.expression_language);
+                            self.definitions_dirty |= optional_field(side, "Type language", &mut self.definitions_draft.type_language);
+                            self.definitions_dirty |= optional_field(side, "Exporter", &mut self.definitions_draft.exporter);
+                            self.definitions_dirty |= optional_field(side, "Exporter version", &mut self.definitions_draft.exporter_version);
+                            egui::CollapsingHeader::new("Imports").show(side, |side| {
+                                side.label("Import declarations are stored as model data.");
+                                let mut remove = None;
+                                for (index, import) in self.definitions_draft.imports.iter_mut().enumerate() {
+                                    side.push_id(index, |side| {
+                                        side.separator();
+                                        side.label(format!("Import {}", index + 1));
+                                        let label = side.label("Namespace");
+                                        self.definitions_dirty |= side.text_edit_singleline(&mut import.namespace).labelled_by(label.id).changed();
+                                        let label = side.label("Location");
+                                        self.definitions_dirty |= side.text_edit_singleline(&mut import.location).labelled_by(label.id).changed();
+                                        let label = side.label("Import type");
+                                        self.definitions_dirty |= side.text_edit_singleline(&mut import.import_type).labelled_by(label.id).changed();
+                                        if side.button("Remove import").clicked() { remove = Some(index); }
+                                    });
+                                }
+                                if let Some(index) = remove {
+                                    self.definitions_draft.imports.remove(index);
+                                    self.definitions_dirty = true;
+                                }
+                                if side.add_enabled(self.definitions_draft.imports.len() < 256, egui::Button::new("Add import")).clicked() {
+                                    self.definitions_draft.imports.push(processcraft_core::model::DefinitionsImport {
+                                        namespace: String::new(), location: String::new(), import_type: String::new(),
+                                    });
+                                    self.definitions_dirty = true;
+                                }
+                            });
+                        });
+                        self.draft_dirty |= self.definitions_dirty;
+                    }
                     if side
                         .add_enabled_ui(self.draft_dirty, |ui| {
-                            widgets::primary_button(ui, "Apply names")
+                            widgets::primary_button(ui, "Apply properties")
                         })
                         .inner
                         .clicked()

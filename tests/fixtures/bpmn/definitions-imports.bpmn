@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             id="DefinitionsImports" targetNamespace="urn:processcraft:definitions-fixture"
+             name="Definitions &amp; imports" exporter="ProcessCraft fixture" exporterVersion="1"
+             expressionLanguage="http://www.w3.org/1999/XPath"
+             typeLanguage="http://www.w3.org/2001/XMLSchema">
+  <import namespace="urn:processcraft:external" location="file:///nonexistent/processcraft.wsdl"
+          importType="http://schemas.xmlsoap.org/wsdl/"/>
+  <import namespace="urn:processcraft:other" location="https://example.invalid/not-fetched.bpmn"
+          importType="http://www.omg.org/spec/BPMN/20100524/MODEL"/>
+  <process id="ProcessImports" name="Local process">
+    <startEvent id="StartImports"/>
+    <endEvent id="EndImports"/>
+    <sequenceFlow id="FlowImports" sourceRef="StartImports" targetRef="EndImports"/>
+  </process>
+</definitions>

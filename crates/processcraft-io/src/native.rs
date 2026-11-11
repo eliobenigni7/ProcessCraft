@@ -27,6 +27,7 @@ const RESOURCE_LIMIT: usize = 32 * 1024 * 1024;
 const EXPANDED_LIMIT: usize = 256 * 1024 * 1024;
 const ZIP_LIMIT: usize = 128 * 1024 * 1024;
 const ENTRY_LIMIT: usize = 4096;
+const DEFINITIONS_CAPABILITY: &str = "bpmn-definitions-metadata";
 
 #[derive(Debug)]
 pub struct NativeError(pub String);
@@ -177,13 +178,22 @@ pub fn write_bytes(project: &ProjectData) -> Result<Vec<u8>, NativeError> {
             })
             .collect(),
     };
+    let mut required_capabilities = vec!["comments".into(), "checkpoints".into()];
+    if project.documents.iter().any(|d| d.definitions.is_some())
+        || project
+            .checkpoints
+            .iter()
+            .any(|c| c.content.documents.iter().any(|d| d.definitions.is_some()))
+    {
+        required_capabilities.push(DEFINITIONS_CAPABILITY.into());
+    }
     let manifest = Manifest {
         format: "processcraft".into(),
         schema: 3,
         min_reader: 3,
         project_id: project.id,
         content_identity: identity,
-        required_capabilities: vec!["comments".into(), "checkpoints".into()],
+        required_capabilities,
         writer_version: env!("CARGO_PKG_VERSION").into(),
     };
     let manifest = serde_json::to_vec(&manifest).map_err(err)?;
@@ -365,7 +375,7 @@ fn load_with_limits(
         || manifest
             .required_capabilities
             .iter()
-            .any(|cap| cap != "comments" && cap != "checkpoints")
+            .any(|cap| cap != "comments" && cap != "checkpoints" && cap != DEFINITIONS_CAPABILITY)
         || (manifest.schema < 3 && !manifest.required_capabilities.is_empty())
         || (manifest.schema == 3
             && !manifest
@@ -439,6 +449,17 @@ fn load_with_limits(
             .ok_or_else(|| err("missing checkpoint payload"))?;
         let payload: FrozenDto = parse_json(&raw)?;
         frozen.push((meta, payload));
+    }
+    if (dto.documents.iter().any(|d| d.definitions.is_some())
+        || frozen
+            .iter()
+            .any(|(_, c)| c.documents.iter().any(|d| d.definitions.is_some())))
+        && !manifest
+            .required_capabilities
+            .iter()
+            .any(|cap| cap == DEFINITIONS_CAPABILITY)
+    {
+        return Err(err("definitions metadata requires capability"));
     }
     for resources in std::iter::once(&dto.resources).chain(frozen.iter().map(|(_, c)| &c.resources))
     {

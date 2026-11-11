@@ -394,6 +394,7 @@ pub fn compare_checkpoint(project: &ProjectData, id: CheckpointId) -> Option<Che
         if before.name != document.name
             || before.folder != document.folder
             || before.definitions_id != document.definitions_id
+            || before.definitions != document.definitions
         {
             changed_document_properties.push(document.id);
         }
@@ -612,6 +613,7 @@ fn semantic_properties(
         "name",
         "folder",
         "definitions_id",
+        "definitions",
         "diagrams",
         "provenance",
         "capability",
@@ -619,6 +621,10 @@ fn semantic_properties(
         object.remove(key);
     }
     let mut result = std::collections::BTreeMap::new();
+    result.insert(
+        document.definitions_id.clone(),
+        serde_json::json!({ "definitions": document.definitions }),
+    );
     let mut pending = vec![&value];
     while let Some(value) = pending.pop() {
         match value {

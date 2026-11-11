@@ -62,6 +62,97 @@ fn native_round_trip_preserves_content() {
     let json = &list.iter().find(|(n, _)| n == "project.json").unwrap().1;
     assert!(!String::from_utf8_lossy(json).contains("bytes"));
 }
+
+#[test]
+fn definitions_metadata_requires_capability_in_live_and_checkpoint_documents() {
+    use processcraft_core::{
+        ids::CheckpointId,
+        model::{BpmnDocument, Checkpoint, DefinitionsImport, DefinitionsMetadata, FrozenProject},
+    };
+    let mut p = project();
+    let mut doc = BpmnDocument::new("document".into(), "defs".parse().unwrap());
+    doc.definitions = Some(DefinitionsMetadata {
+        target_namespace: "urn:example".into(),
+        name: Some("Definitions".into()),
+        expression_language: Some("urn:expressions".into()),
+        type_language: None,
+        exporter: Some("ProcessCraft".into()),
+        exporter_version: Some("1".into()),
+        imports: vec![
+            DefinitionsImport {
+                namespace: "urn:first".into(),
+                location: "first.bpmn".into(),
+                import_type: "urn:bpmn".into(),
+            },
+            DefinitionsImport {
+                namespace: "urn:second".into(),
+                location: "second.xsd".into(),
+                import_type: "urn:xsd".into(),
+            },
+        ],
+    });
+    p.documents.push(Arc::new(doc));
+    let bytes = write_bytes(&p).unwrap();
+    let mut archived = entries(&bytes);
+    let manifest: serde_json::Value = serde_json::from_slice(
+        &archived
+            .iter()
+            .find(|(n, _)| n == "manifest.json")
+            .unwrap()
+            .1,
+    )
+    .unwrap();
+    assert!(
+        manifest["required_capabilities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|c| c == "bpmn-definitions-metadata")
+    );
+    let loaded = load_bytes(&bytes).unwrap().project;
+    assert_eq!(loaded.documents[0].definitions, p.documents[0].definitions);
+    assert_eq!(
+        loaded.content_identity().unwrap(),
+        p.content_identity().unwrap()
+    );
+    edit_json(&mut archived, "manifest.json", |v| {
+        v["required_capabilities"] = serde_json::json!(["comments", "checkpoints"])
+    });
+    assert!(
+        load_bytes(&archive(&archived))
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("definitions metadata requires capability")
+    );
+
+    p.checkpoints.push(Checkpoint {
+        id: CheckpointId::new(),
+        name: "Before".into(),
+        created_unix_ms: 0,
+        content: FrozenProject::capture(&p),
+    });
+    Arc::make_mut(&mut p.documents[0]).definitions = None;
+    let bytes = write_bytes(&p).unwrap();
+    let mut archived = entries(&bytes);
+    assert_eq!(
+        load_bytes(&bytes).unwrap().project.checkpoints[0]
+            .content
+            .documents[0]
+            .definitions,
+        p.checkpoints[0].content.documents[0].definitions
+    );
+    edit_json(&mut archived, "manifest.json", |v| {
+        v["required_capabilities"] = serde_json::json!(["comments", "checkpoints"])
+    });
+    assert!(
+        load_bytes(&archive(&archived))
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("definitions metadata requires capability")
+    );
+}
 #[test]
 fn unknown_required_capability_refuses_write() {
     let mut e = entries(&write_bytes(&project()).unwrap());

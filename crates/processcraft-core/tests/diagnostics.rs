@@ -143,3 +143,58 @@ fn nested_gateway_diagnostics_are_advisory_and_anchored() {
         assert_eq!(diagnostic.severity, DiagnosticSeverity::Warning);
     }
 }
+
+#[test]
+fn activity_conditions_are_allowed_but_event_gateway_conditions_are_diagnosed() {
+    // BPMN 2.0.2 §8.4.13 permits conditions on Activity flows (with another
+    // outgoing flow); §10.6.6 prohibits them on Event-Based Gateway flows.
+    let flow = |name: &str, source: &str, target: &str, condition: Option<&str>| Flow {
+        association_direction: None,
+        id: id(name),
+        kind: FlowKind::Sequence,
+        source: id(source),
+        target: id(target),
+        name: String::new(),
+        documentation: String::new(),
+        condition: condition.map(str::to_owned),
+    };
+    let mut doc = BpmnDocument::new("d".into(), id("defs"));
+    doc.processes.push(Process {
+        lane_set_id: None,
+        groups: vec![],
+        data_objects: vec![],
+        data_associations: vec![],
+        id: id("process"),
+        name: "p".into(),
+        documentation: String::new(),
+        nodes: vec![
+            node("task", NodeKind::Task, "Task"),
+            node("gateway", NodeKind::EventBasedGateway, "Events"),
+            node("receive1", NodeKind::ReceiveTask, "Receive 1"),
+            node("receive2", NodeKind::ReceiveTask, "Receive 2"),
+            node("end", NodeKind::EndEvent, "End"),
+        ],
+        lanes: vec![],
+        flows: vec![
+            flow("task_condition", "task", "gateway", Some("true")),
+            flow("task_other", "task", "end", None),
+            flow("gateway_condition", "gateway", "receive1", Some("true")),
+            flow("gateway_other", "gateway", "receive2", None),
+        ],
+    });
+    let mut project = ProjectData::new("p".into());
+    project.documents.push(Arc::new(doc));
+    assert!(project.validate().is_ok());
+    let diagnostics = project.diagnostics();
+    assert!(
+        !diagnostics
+            .iter()
+            .any(|d| d.element_id == Some(id("task_condition")))
+    );
+    assert!(
+        diagnostics
+            .iter()
+            .any(|d| d.code == "eventGatewayConditionalFlow"
+                && d.element_id == Some(id("gateway_condition")))
+    );
+}

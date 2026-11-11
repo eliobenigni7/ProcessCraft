@@ -2,6 +2,69 @@ use processcraft_core::{ids::CheckpointId, model::*, queries};
 use std::sync::Arc;
 
 #[test]
+fn comparison_reports_definitions_values_without_inventing_semantic_elements() {
+    let mut project = ProjectData::new("Metadata".into());
+    let mut document = BpmnDocument::new("Model".into(), "Definitions".parse().unwrap());
+    document.definitions = Some(DefinitionsMetadata {
+        imports: vec![],
+        target_namespace: "urn:original".into(),
+        name: None,
+        expression_language: None,
+        type_language: None,
+        exporter: Some("First tool".into()),
+        exporter_version: None,
+    });
+    let document_id = document.id;
+    project.documents.push(Arc::new(document));
+    let id = CheckpointId::new();
+    project.checkpoints.push(Checkpoint {
+        id,
+        name: "Before".into(),
+        created_unix_ms: 1,
+        content: FrozenProject::capture(&project),
+    });
+    let metadata = Arc::make_mut(&mut project.documents[0])
+        .definitions
+        .as_mut()
+        .unwrap();
+    metadata.exporter = Some("Second tool".into());
+    metadata.expression_language = Some("http://www.w3.org/1999/XPath".into());
+    let diff = queries::compare_checkpoint(&project, id).unwrap();
+    assert_eq!(diff.changed_document_properties, vec![document_id]);
+    assert!(diff.added_elements.is_empty());
+    assert!(diff.removed_elements.is_empty());
+    assert!(diff.renamed_elements.is_empty());
+    assert_eq!(diff.changed_properties.len(), 1);
+    let change = &diff.changed_properties[0];
+    assert_eq!(change.key.xml_id.to_string(), "Definitions");
+    assert!(
+        change
+            .properties
+            .iter()
+            .any(|p| p.property == "definitions.exporter"
+                && p.before == "First tool"
+                && p.after == "Second tool")
+    );
+    assert!(
+        change
+            .properties
+            .iter()
+            .any(|p| p.property == "definitions.expression_language"
+                && p.before.is_null()
+                && p.after == "http://www.w3.org/1999/XPath")
+    );
+    assert_eq!(
+        project.checkpoints[0].content.documents[0]
+            .definitions
+            .as_ref()
+            .unwrap()
+            .exporter
+            .as_deref(),
+        Some("First tool")
+    );
+}
+
+#[test]
 fn comparison_separates_rename_properties_geometry_and_frozen_context() {
     let mut project = ProjectData::new("Analysis".into());
     let mut document = BpmnDocument::new("Model".into(), "Definitions".parse().unwrap());

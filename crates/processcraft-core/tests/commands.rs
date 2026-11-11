@@ -40,6 +40,306 @@ fn rename(name: &str) -> Mutation {
     Mutation::RenameProject { name: name.into() }
 }
 #[test]
+fn definitions_metadata_is_undoable_and_validated_atomically() {
+    let mut s = project();
+    fixture(&mut s);
+    let before = s.snapshot().content_id;
+    let metadata = DefinitionsMetadata {
+        target_namespace: GENERATED_TARGET_NAMESPACE.into(),
+        name: Some("Definitions".into()),
+        expression_language: None,
+        type_language: Some("http://www.w3.org/2001/XMLSchema".into()),
+        exporter: Some(String::new()),
+        exporter_version: None,
+        imports: vec![DefinitionsImport {
+            namespace: String::new(),
+            location: "local.xsd".into(),
+            import_type: "urn:type".into(),
+        }],
+    };
+    apply(
+        &mut s,
+        batch(vec![Mutation::SetDefinitionsMetadata {
+            document_id: docid(),
+            metadata: metadata.clone(),
+        }]),
+    )
+    .unwrap();
+    assert_eq!(
+        s.snapshot().project.documents[0].definitions,
+        Some(metadata.clone())
+    );
+    let after = s.snapshot().content_id;
+    let generation = s.snapshot().generation;
+    apply(
+        &mut s,
+        batch(vec![Mutation::SetDefinitionsMetadata {
+            document_id: docid(),
+            metadata: metadata.clone(),
+        }]),
+    )
+    .unwrap();
+    assert_eq!(s.snapshot().generation, generation);
+    let mut invalid = metadata;
+    invalid.target_namespace = "x".repeat(16_385);
+    assert!(
+        apply(
+            &mut s,
+            batch(vec![Mutation::SetDefinitionsMetadata {
+                document_id: docid(),
+                metadata: invalid,
+            }])
+        )
+        .is_err()
+    );
+    assert_eq!(s.snapshot().content_id, after);
+    for bad in ["", "urn:bad\u{1}"] {
+        let mut invalid = s.snapshot().project.documents[0]
+            .definitions
+            .clone()
+            .unwrap();
+        invalid.target_namespace = bad.into();
+        assert!(
+            apply(
+                &mut s,
+                batch(vec![Mutation::SetDefinitionsMetadata {
+                    document_id: docid(),
+                    metadata: invalid,
+                }])
+            )
+            .is_err()
+        );
+        assert_eq!(s.snapshot().content_id, after);
+    }
+    let mut invalid = s.snapshot().project.documents[0]
+        .definitions
+        .clone()
+        .unwrap();
+    invalid.exporter = Some("bad\u{0}".into());
+    assert!(
+        apply(
+            &mut s,
+            batch(vec![Mutation::SetDefinitionsMetadata {
+                document_id: docid(),
+                metadata: invalid,
+            }])
+        )
+        .is_err()
+    );
+    assert_eq!(s.snapshot().content_id, after);
+    let mut invalid = s.snapshot().project.documents[0]
+        .definitions
+        .clone()
+        .unwrap();
+    invalid.imports = vec![
+        DefinitionsImport {
+            namespace: String::new(),
+            location: String::new(),
+            import_type: String::new(),
+        };
+        257
+    ];
+    assert!(
+        apply(
+            &mut s,
+            batch(vec![Mutation::SetDefinitionsMetadata {
+                document_id: docid(),
+                metadata: invalid,
+            }])
+        )
+        .is_err()
+    );
+    assert_eq!(s.snapshot().content_id, after);
+    let mut invalid = s.snapshot().project.documents[0]
+        .definitions
+        .clone()
+        .unwrap();
+    invalid.imports[0].location = "bad\u{1}".into();
+    assert!(
+        apply(
+            &mut s,
+            batch(vec![Mutation::SetDefinitionsMetadata {
+                document_id: docid(),
+                metadata: invalid,
+            }])
+        )
+        .is_err()
+    );
+    assert_eq!(s.snapshot().content_id, after);
+    apply(&mut s, Request::Undo).unwrap();
+    assert_eq!(s.snapshot().content_id, before);
+    apply(&mut s, Request::Redo).unwrap();
+    assert_eq!(s.snapshot().content_id, after);
+}
+#[test]
+fn definitions_import_changes_are_undoable() {
+    let mut s = project();
+    fixture(&mut s);
+    let mut metadata = DefinitionsMetadata {
+        target_namespace: "urn:example".into(),
+        name: None,
+        expression_language: None,
+        type_language: None,
+        exporter: None,
+        exporter_version: None,
+        imports: vec![],
+    };
+    apply(
+        &mut s,
+        batch(vec![Mutation::SetDefinitionsMetadata {
+            document_id: docid(),
+            metadata: metadata.clone(),
+        }]),
+    )
+    .unwrap();
+    let before = s.snapshot().content_id;
+    metadata.imports.push(DefinitionsImport {
+        namespace: String::new(),
+        location: String::new(),
+        import_type: String::new(),
+    });
+    apply(
+        &mut s,
+        batch(vec![Mutation::SetDefinitionsMetadata {
+            document_id: docid(),
+            metadata,
+        }]),
+    )
+    .unwrap();
+    let after = s.snapshot().content_id;
+    assert_ne!(before, after);
+    apply(&mut s, Request::Undo).unwrap();
+    assert_eq!(s.snapshot().content_id, before);
+    apply(&mut s, Request::Redo).unwrap();
+    assert_eq!(s.snapshot().content_id, after);
+}
+#[test]
+fn definitions_namespace_change_rejects_existing_qualified_references() {
+    use processcraft_core::bpmn_model::{NodeDetails, QNameRef};
+    let mut s = project();
+    fixture(&mut s);
+    let metadata = DefinitionsMetadata {
+        target_namespace: GENERATED_TARGET_NAMESPACE.into(),
+        name: None,
+        expression_language: None,
+        type_language: None,
+        exporter: None,
+        exporter_version: None,
+        imports: vec![],
+    };
+    let node = Node {
+        id: id("call"),
+        name: String::new(),
+        documentation: String::new(),
+        kind: NodeKind::CallActivity,
+        details: Some(NodeDetails::CallActivity {
+            called_element: QNameRef {
+                namespace: GENERATED_TARGET_NAMESPACE.into(),
+                local: id("procurement"),
+            },
+        }),
+        loop_characteristics: None,
+        io_specification: None,
+        activity: None,
+        owner: String::new(),
+        contact: String::new(),
+    };
+    apply(
+        &mut s,
+        batch(vec![Mutation::CreateElement {
+            document_id: docid(),
+            process_id: id("procurement"),
+            element: node,
+        }]),
+    )
+    .unwrap();
+    apply(
+        &mut s,
+        batch(vec![Mutation::SetDefinitionsMetadata {
+            document_id: docid(),
+            metadata: metadata.clone(),
+        }]),
+    )
+    .unwrap();
+    let before = s.snapshot().content_id;
+    let mut changed = metadata;
+    changed.target_namespace = "urn:other".into();
+    assert!(
+        apply(
+            &mut s,
+            batch(vec![Mutation::SetDefinitionsMetadata {
+                document_id: docid(),
+                metadata: changed,
+            }])
+        )
+        .is_err()
+    );
+    assert_eq!(s.snapshot().content_id, before);
+}
+#[test]
+fn definitions_metadata_refuses_protected_and_unresolved_legacy_documents() {
+    let mut s = project();
+    fixture(&mut s);
+    let mut p = (*s.snapshot().project).clone();
+    p.resources.push(Resource::new(
+        id("source"),
+        "text/xml".into(),
+        Arc::from(&b"xml"[..]),
+    ));
+    let metadata = DefinitionsMetadata {
+        target_namespace: "urn:example".into(),
+        name: None,
+        expression_language: None,
+        type_language: None,
+        exporter: None,
+        exporter_version: None,
+        imports: vec![],
+    };
+    for capability in [
+        Capability::RetainedExtensions {
+            source_resource_id: id("source"),
+            extensions: vec![],
+        },
+        Capability::PreservedSource {
+            source_resource_id: id("source"),
+        },
+    ] {
+        let mut protected_project = p.clone();
+        Arc::make_mut(&mut protected_project.documents[0]).capability = capability;
+        let mut session = Session::new(protected_project).unwrap();
+        let before = session.snapshot().content_id;
+        assert_eq!(
+            apply(
+                &mut session,
+                batch(vec![Mutation::SetDefinitionsMetadata {
+                    document_id: docid(),
+                    metadata: metadata.clone(),
+                }])
+            )
+            .unwrap_err(),
+            CommandError::CapabilityDenied
+        );
+        assert_eq!(session.snapshot().content_id, before);
+    }
+    Arc::make_mut(&mut p.documents[0]).provenance = Some(Provenance {
+        source_resource_id: id("source"),
+        source_name: "original.bpmn".into(),
+    });
+    let mut legacy = Session::new(p).unwrap();
+    let before = legacy.snapshot().content_id;
+    assert!(
+        apply(
+            &mut legacy,
+            batch(vec![Mutation::SetDefinitionsMetadata {
+                document_id: docid(),
+                metadata,
+            }])
+        )
+        .is_err()
+    );
+    assert_eq!(legacy.snapshot().content_id, before);
+}
+#[test]
 fn failed_batch_preserves_state_and_history() {
     let mut s = project();
     fixture(&mut s);
@@ -413,6 +713,7 @@ fn flow_condition_changes_identity_and_protected_document_rejects_it() {
 fn descriptors_match_protocol_tags() {
     let descriptors = processcraft_core::commands::command_descriptors();
     let expected = [
+        "setDefinitionsMetadata",
         "setActivityProperties",
         "createCategory",
         "updateCategory",

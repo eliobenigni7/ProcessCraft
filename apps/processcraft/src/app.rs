@@ -170,6 +170,8 @@ pub struct ProcessCraft {
     bpmn_activity: Option<processcraft_core::bpmn_activity::ActivityProperties>,
     project_name: String,
     document_name: String,
+    definitions_draft: processcraft_core::model::DefinitionsMetadata,
+    definitions_dirty: bool,
     problem_key: Option<(String, u64)>,
     problems: Vec<processcraft_core::Diagnostic>,
     docs: String,
@@ -254,6 +256,8 @@ impl Default for ProcessCraft {
             bpmn_activity: None,
             project_name: "Untitled project".into(),
             document_name: "Untitled process".into(),
+            definitions_draft: empty_definitions_metadata(),
+            definitions_dirty: false,
             problem_key: None,
             problems: vec![],
             docs: String::new(),
@@ -294,6 +298,17 @@ impl Default for ProcessCraft {
         }
     }
 }
+fn empty_definitions_metadata() -> processcraft_core::model::DefinitionsMetadata {
+    processcraft_core::model::DefinitionsMetadata {
+        target_namespace: processcraft_core::model::GENERATED_TARGET_NAMESPACE.into(),
+        name: None,
+        expression_language: None,
+        type_language: None,
+        exporter: None,
+        exporter_version: None,
+        imports: Vec::new(),
+    }
+}
 impl ProcessCraft {
     pub fn apply_theme(&self, ctx: &egui::Context) {
         self.theme.apply(ctx);
@@ -318,6 +333,21 @@ impl ProcessCraft {
         let snap = self.ctl.session.snapshot();
         if id.is_none() {
             self.project_name = snap.project.name.clone();
+            self.definitions_dirty = false;
+            self.definitions_draft = snap
+                .project
+                .documents
+                .get(self.doc)
+                .and_then(|d| d.definitions.clone())
+                .unwrap_or_else(empty_definitions_metadata);
+            if snap
+                .project
+                .documents
+                .get(self.doc)
+                .is_some_and(|d| d.definitions.is_none() && d.provenance.is_some())
+            {
+                self.definitions_draft.target_namespace.clear();
+            }
             self.document_name = snap
                 .project
                 .documents
@@ -490,7 +520,7 @@ impl ProcessCraft {
             let Some(d) = snap.project.documents.get(self.doc) else {
                 return false;
             };
-            let ok = self.ctl.mutate(vec![
+            let mut mutations = vec![
                 Mutation::ProjectProperties {
                     name: self.project_name.clone(),
                     description: snap.project.description.clone(),
@@ -500,11 +530,23 @@ impl ProcessCraft {
                     name: self.document_name.clone(),
                     folder: d.folder.clone(),
                 },
-            ]);
-            if !ok {
+            ];
+            if self.definitions_dirty {
+                if self.definitions_draft.target_namespace.is_empty() {
+                    self.ctl.error =
+                        "Target namespace is required for definitions metadata.".into();
+                    return false;
+                }
+                mutations.push(Mutation::SetDefinitionsMetadata {
+                    document_id: d.id,
+                    metadata: self.definitions_draft.clone(),
+                });
+            }
+            if !self.ctl.mutate(mutations) {
                 return false;
             }
         }
+        self.definitions_dirty = false;
         self.draft_dirty = false;
         true
     }
@@ -1866,6 +1908,72 @@ mod tests {
         assert_eq!(minx, 0.0);
         assert!(maxx >= 300.0);
         assert!(maxy >= 104.0);
+    }
+    #[test]
+    fn definitions_draft_is_guarded_and_uses_history() {
+        let mut app = ProcessCraft::default();
+        app.select(None);
+        app.definitions_draft.name = Some(String::new());
+        app.definitions_draft.target_namespace.clear();
+        app.definitions_dirty = true;
+        app.draft_dirty = true;
+        assert!(!app.commit_draft());
+        assert!(app.draft_dirty);
+        assert!(
+            app.ctl.session.snapshot().project.documents[0]
+                .definitions
+                .is_none()
+        );
+        app.definitions_draft.target_namespace = "urn:example".into();
+        assert!(app.commit_draft(), "{}", app.ctl.error);
+        assert_eq!(
+            app.ctl.session.snapshot().project.documents[0]
+                .definitions
+                .as_ref()
+                .unwrap()
+                .name,
+            Some(String::new())
+        );
+        app.history(Request::Undo);
+        assert!(
+            app.ctl.session.snapshot().project.documents[0]
+                .definitions
+                .is_none()
+        );
+        app.history(Request::Redo);
+        assert_eq!(app.definitions_draft.target_namespace, "urn:example");
+    }
+    #[test]
+    fn definitions_import_drafts_add_edit_remove_and_undo() {
+        use processcraft_core::model::DefinitionsImport;
+        let mut app = ProcessCraft::default();
+        app.select(None);
+        app.definitions_draft.target_namespace = "urn:example".into();
+        app.definitions_draft.imports.push(DefinitionsImport {
+            namespace: "urn:other".into(),
+            location: "other.bpmn".into(),
+            import_type: "http://www.omg.org/spec/BPMN/20100524/MODEL".into(),
+        });
+        app.definitions_dirty = true;
+        app.draft_dirty = true;
+        assert!(app.commit_draft(), "{}", app.ctl.error);
+        app.definitions_draft.imports[0].location = "renamed.bpmn".into();
+        app.definitions_dirty = true;
+        app.draft_dirty = true;
+        assert!(app.commit_draft(), "{}", app.ctl.error);
+        app.definitions_draft.imports.clear();
+        app.definitions_dirty = true;
+        app.draft_dirty = true;
+        assert!(app.commit_draft(), "{}", app.ctl.error);
+        assert!(app.definitions_draft.imports.is_empty());
+        app.history(Request::Undo);
+        assert_eq!(app.definitions_draft.imports[0].location, "renamed.bpmn");
+        app.history(Request::Undo);
+        assert_eq!(app.definitions_draft.imports[0].location, "other.bpmn");
+        app.history(Request::Redo);
+        assert_eq!(app.definitions_draft.imports[0].location, "renamed.bpmn");
+        app.history(Request::Redo);
+        assert!(app.definitions_draft.imports.is_empty());
     }
     #[test]
     fn nested_scope_and_event_properties_use_shared_history() {

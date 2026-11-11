@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
 
+pub const GENERATED_TARGET_NAMESPACE: &str = "urn:processcraft:generated";
+
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ProjectData {
@@ -161,6 +163,8 @@ pub struct BpmnDocument {
     pub name: String,
     pub folder: Option<XmlId>,
     pub definitions_id: XmlId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub definitions: Option<DefinitionsMetadata>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub categories: Vec<crate::bpmn_model::Category>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -182,6 +186,7 @@ impl BpmnDocument {
             name,
             folder: None,
             definitions_id,
+            definitions: None,
             categories: vec![],
             event_resources: vec![],
             data_stores: vec![],
@@ -193,6 +198,27 @@ impl BpmnDocument {
             capability: Capability::Editable,
         }
     }
+}
+/// Attributes of the BPMN definitions element. Optional fields preserve XML omission.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct DefinitionsMetadata {
+    pub target_namespace: String,
+    pub name: Option<String>,
+    pub expression_language: Option<String>,
+    pub type_language: Option<String>,
+    pub exporter: Option<String>,
+    pub exporter_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub imports: Vec<DefinitionsImport>,
+}
+/// A BPMN import declaration; its location is model data and is never fetched.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct DefinitionsImport {
+    pub namespace: String,
+    pub location: String,
+    pub import_type: String,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]

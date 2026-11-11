@@ -799,3 +799,128 @@ fn ad_hoc_and_transaction_properties_round_trip() {
         assert_eq!(export(&fallback).bytes, modified.as_bytes());
     }
 }
+
+#[test]
+fn definitions_metadata_roundtrips_with_presence_and_namespace_identity() {
+    let input = FLAT.replace(
+        "id=\"defs\" targetNamespace=\"urn:test\"",
+        "id=\"defs\" targetNamespace=\"urn:test\" name=\"A &amp; B\" expressionLanguage=\"http://www.w3.org/1999/XPath\" typeLanguage=\"urn:types\" exporter=\"Tool\" exporterVersion=\"1\"",
+    );
+    let parsed = prepare_import(input.as_bytes(), "metadata").unwrap();
+    assert!(parsed.report.editable);
+    let metadata = parsed.document.definitions.as_ref().unwrap();
+    assert_eq!(metadata.target_namespace, "urn:test");
+    assert_eq!(metadata.name.as_deref(), Some("A & B"));
+    assert_eq!(
+        metadata.expression_language.as_deref(),
+        Some("http://www.w3.org/1999/XPath")
+    );
+    assert_eq!(metadata.type_language.as_deref(), Some("urn:types"));
+    assert_eq!(metadata.exporter.as_deref(), Some("Tool"));
+    assert_eq!(metadata.exporter_version.as_deref(), Some("1"));
+    let output = export(&parsed);
+    let again = prepare_import(&output.bytes, "again").unwrap();
+    assert!(again.report.editable);
+    assert_eq!(again.document.definitions, parsed.document.definitions);
+
+    let omitted = prepare_import(FLAT.as_bytes(), "omitted").unwrap();
+    let output = export(&omitted);
+    let xml = std::str::from_utf8(&output.bytes).unwrap();
+    assert!(!xml.contains("expressionLanguage="));
+    assert!(!xml.contains("typeLanguage="));
+}
+
+#[test]
+fn definitions_namespace_survives_legacy_provenance_and_local_calls() {
+    let input = include_bytes!("../../../tests/fixtures/bpmn20-schema/nested.bpmn");
+    let mut parsed = prepare_import(input, "nested").unwrap();
+    assert!(parsed.report.editable);
+    parsed.document.definitions = None;
+    let output = export(&parsed);
+    let xml = std::str::from_utf8(&output.bytes).unwrap();
+    assert!(xml.contains("targetNamespace=\"urn:nested\""));
+    assert!(xml.contains("calledElement=\"tns:called\""));
+    assert!(
+        prepare_import(&output.bytes, "again")
+            .unwrap()
+            .report
+            .editable
+    );
+
+    let unprefixed = std::str::from_utf8(input)
+        .unwrap()
+        .replace("calledElement=\"tns:called\"", "calledElement=\"called\"");
+    let parsed = prepare_import(unprefixed.as_bytes(), "unprefixed").unwrap();
+    assert!(!parsed.report.editable);
+    assert_eq!(export(&parsed).bytes, unprefixed.as_bytes());
+}
+
+#[test]
+fn definitions_outside_qualified_metadata_limits_are_preserved() {
+    let oversized = FLAT.replace(
+        "id=\"defs\"",
+        &format!("id=\"defs\" exporter=\"{}\"", "x".repeat(16_385)),
+    );
+    let empty_namespace = r#"<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" id="defs" targetNamespace=""/>"#.to_string();
+    for input in [oversized, empty_namespace] {
+        let parsed = prepare_import(input.as_bytes(), "source").unwrap();
+        assert!(!parsed.report.editable);
+        assert_eq!(export(&parsed).bytes, input.as_bytes());
+    }
+}
+
+#[test]
+fn definitions_attribute_whitespace_and_empty_values_roundtrip() {
+    let input = FLAT.replace("id=\"defs\"", "id=\"defs\" name=\"A&#9;B&#10;C&#13;D &amp; &quot;E&quot;\" exporter=\"\" exporterVersion=\"&#9;&#10;&#13;\"");
+    let parsed = prepare_import(input.as_bytes(), "metadata").unwrap();
+    assert!(parsed.report.editable);
+    let metadata = parsed.document.definitions.as_ref().unwrap();
+    assert_eq!(metadata.name.as_deref(), Some("A\tB\nC\rD & \"E\""));
+    assert_eq!(metadata.exporter.as_deref(), Some(""));
+    assert_eq!(metadata.exporter_version.as_deref(), Some("\t\n\r"));
+    let output = export(&parsed);
+    let again = prepare_import(&output.bytes, "again").unwrap();
+    assert_eq!(again.document.definitions, parsed.document.definitions);
+}
+
+#[test]
+fn definitions_imports_roundtrip_without_loading_locations() {
+    let input = FLAT.replace("<process id=", "<import namespace=\"urn:external&amp;x\" location=\"file:///nonexistent/processcraft-import\" importType=\"urn:type\"/><import namespace=\"\" location=\"\" importType=\"\"/><process id=");
+    let parsed = prepare_import(input.as_bytes(), "imports").unwrap();
+    assert!(parsed.report.editable);
+    let imports = &parsed.document.definitions.as_ref().unwrap().imports;
+    assert_eq!(imports.len(), 2);
+    assert_eq!(imports[0].namespace, "urn:external&x");
+    assert_eq!(
+        imports[0].location,
+        "file:///nonexistent/processcraft-import"
+    );
+    assert_eq!(imports[1].import_type, "");
+    let output = export(&parsed);
+    let xml = std::str::from_utf8(&output.bytes).unwrap();
+    assert!(xml.find("<import ").unwrap() < xml.find("<process ").unwrap());
+    let again = prepare_import(&output.bytes, "again").unwrap();
+    assert!(again.report.editable);
+    assert_eq!(again.document.definitions, parsed.document.definitions);
+}
+
+#[test]
+fn unrepresented_import_content_is_preserved() {
+    let imports = [
+        "<import namespace=\"urn:x\" location=\"x\"/>",
+        "<import namespace=\"urn:x\" location=\"x\" importType=\"t\" extra=\"x\"/>",
+        "<import namespace=\"urn:x\" location=\"x\" importType=\"t\"><other/></import>",
+        "<import namespace=\"urn:x\" location=\"x\" importType=\"t\">unexpected text</import>",
+    ];
+    for import in imports {
+        let input = FLAT.replace("<process id=", &format!("{import}<process id="));
+        let parsed = prepare_import(input.as_bytes(), "source").unwrap();
+        assert!(!parsed.report.editable);
+        assert_eq!(export(&parsed).bytes, input.as_bytes());
+    }
+    let import = "<import namespace=\"urn:x\" location=\"x\" importType=\"t\"/>".repeat(257);
+    let input = FLAT.replace("<process id=", &format!("{import}<process id="));
+    let parsed = prepare_import(input.as_bytes(), "source").unwrap();
+    assert!(!parsed.report.editable);
+    assert_eq!(export(&parsed).bytes, input.as_bytes());
+}

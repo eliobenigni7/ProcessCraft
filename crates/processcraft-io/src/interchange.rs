@@ -1743,13 +1743,69 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
     let root = tree(bytes)?;
     if root.ns != B
         || root.name != "definitions"
-        || !attrs(&root, &["id", "targetNamespace"])
+        || !attrs(
+            &root,
+            &[
+                "id",
+                "targetNamespace",
+                "name",
+                "expressionLanguage",
+                "typeLanguage",
+                "exporter",
+                "exporterVersion",
+            ],
+        )
         || !root.attrs.contains_key("targetNamespace")
+        // The editable profile must fit the native metadata limits and the
+        // qualified exporter's nonempty target namespace requirement.
+        || root.attrs.get("targetNamespace").is_some_and(String::is_empty)
+        || ["targetNamespace", "name", "expressionLanguage", "typeLanguage", "exporter", "exporterVersion"]
+            .iter()
+            .any(|name| root.attrs.get(*name).is_some_and(|value| value.len() > 16_384))
     {
         return None;
     }
     let mut d = BpmnDocument::new(String::new(), id(&root, "id")?);
+    d.definitions = Some(DefinitionsMetadata {
+        target_namespace: root.attrs.get("targetNamespace")?.clone(),
+        name: root.attrs.get("name").cloned(),
+        expression_language: root.attrs.get("expressionLanguage").cloned(),
+        type_language: root.attrs.get("typeLanguage").cloned(),
+        exporter: root.attrs.get("exporter").cloned(),
+        exporter_version: root.attrs.get("exporterVersion").cloned(),
+        imports: Vec::new(),
+    });
+    let mut seen_non_import = false;
     for e in &root.children {
+        if e.ns == B && e.name == "import" {
+            if seen_non_import
+                || !attrs(e, &["namespace", "location", "importType"])
+                || !e.children.is_empty()
+                || !e.text.trim().is_empty()
+            {
+                return None;
+            }
+            let imports = &mut d.definitions.as_mut()?.imports;
+            if imports.len() >= 256 {
+                return None;
+            }
+            let namespace = e.attrs.get("namespace")?.clone();
+            let location = e.attrs.get("location")?.clone();
+            let import_type = e.attrs.get("importType")?.clone();
+            if [&namespace, &location, &import_type]
+                .iter()
+                .any(|value| value.len() > 16_384)
+            {
+                return None;
+            }
+            imports.push(DefinitionsImport {
+                namespace,
+                location,
+                import_type,
+            });
+            continue;
+        }
+        seen_non_import = true;
         match (e.ns.as_str(), e.name.as_str()) {
             (B, "category") => {
                 if !attrs(e, &["id", "name"]) {
@@ -2900,9 +2956,16 @@ fn export_document(
         .and_then(|p| resources.iter().find(|r| r.id == p.source_resource_id))
         .and_then(|r| tree(&r.bytes))
         .and_then(|e| e.attrs.get("targetNamespace").cloned());
-    let namespace = match (namespace, &document.provenance) {
+    let namespace = match (
+        document
+            .definitions
+            .as_ref()
+            .map(|d| d.target_namespace.clone())
+            .or(namespace),
+        &document.provenance,
+    ) {
         (Some(ns), _) if !ns.is_empty() => ns,
-        (None, None) => "urn:processcraft:generated".into(),
+        (None, None) => GENERATED_TARGET_NAMESPACE.into(),
         _ => {
             report
                 .blocked
@@ -2941,6 +3004,32 @@ fn export_document(
         document.definitions_id,
         esc(&namespace)
     );
+    if let Some(definitions) = &document.definitions {
+        // Insert optional metadata before the closing bracket of the root tag.
+        xml.pop();
+        for (name, value) in [
+            ("name", &definitions.name),
+            ("expressionLanguage", &definitions.expression_language),
+            ("typeLanguage", &definitions.type_language),
+            ("exporter", &definitions.exporter),
+            ("exporterVersion", &definitions.exporter_version),
+        ] {
+            if let Some(value) = value {
+                xml.push_str(&format!(" {name}=\"{}\"", esc(value)));
+            }
+        }
+        xml.push('>');
+    }
+    if let Some(definitions) = &document.definitions {
+        for import in &definitions.imports {
+            xml.push_str(&format!(
+                "<import namespace=\"{}\" location=\"{}\" importType=\"{}\"/>",
+                esc(&import.namespace),
+                esc(&import.location),
+                esc(&import.import_type)
+            ));
+        }
+    }
     for category in &document.categories {
         xml.push_str(&format!("<category id=\"{}\"", category.id));
         if let Some(name) = &category.name {

@@ -60,6 +60,13 @@ fn short(s: &str) -> Result<(), String> {
         Ok(())
     }
 }
+fn definitions_text(s: &str) -> Result<(), String> {
+    short(s)?;
+    if s.chars().any(|c| !matches!(c, '\u{9}' | '\u{a}' | '\u{d}' | '\u{20}'..='\u{d7ff}' | '\u{e000}'..='\u{fffd}' | '\u{10000}'..='\u{10ffff}')) {
+        return fail("Definitions metadata contains a character forbidden in XML 1.0");
+    }
+    Ok(())
+}
 impl ProjectData {
     pub fn validate(&self) -> Result<(), String> {
         short(&self.name)?;
@@ -463,6 +470,32 @@ pub(crate) fn semantic_ids(d: &BpmnDocument) -> HashSet<&XmlId> {
 }
 fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<usize, String> {
     short(&d.name)?;
+    if let Some(metadata) = &d.definitions {
+        if metadata.target_namespace.is_empty() {
+            return fail("Empty target namespace is outside the qualified editable profile");
+        }
+        definitions_text(&metadata.target_namespace)?;
+        if metadata.imports.len() > 256 {
+            return fail("Definitions import limit exceeded");
+        }
+        for import in &metadata.imports {
+            definitions_text(&import.namespace)?;
+            definitions_text(&import.location)?;
+            definitions_text(&import.import_type)?;
+        }
+        for value in [
+            &metadata.name,
+            &metadata.expression_language,
+            &metadata.type_language,
+            &metadata.exporter,
+            &metadata.exporter_version,
+        ]
+        .into_iter()
+        .flatten()
+        {
+            definitions_text(value)?;
+        }
+    }
     let mut ids = HashSet::new();
     add(&mut ids, &d.definitions_id)?;
     use crate::bpmn_model::EventResource;

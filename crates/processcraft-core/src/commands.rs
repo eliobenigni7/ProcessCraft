@@ -19,6 +19,10 @@ pub struct Envelope {
 #[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
 #[allow(clippy::large_enum_variant)]
 pub enum Mutation {
+    SetDefinitionsMetadata {
+        document_id: DocumentId,
+        metadata: DefinitionsMetadata,
+    },
     SetActivityProperties {
         document_id: DocumentId,
         element_id: XmlId,
@@ -592,6 +596,21 @@ fn move_shape(s: &mut Shape, bounds: Bounds) {
 }
 fn invalid(s: &str) -> CommandError {
     CommandError::InvalidParams(s.into())
+}
+fn has_qualified_references(nodes: &[Node]) -> bool {
+    nodes.iter().any(|node| {
+        matches!(
+            node.details,
+            Some(crate::bpmn_model::NodeDetails::CallActivity { .. })
+        ) || node.activity.as_ref().is_some_and(|activity| {
+            activity.message_ref.is_some() || activity.operation_ref.is_some()
+        }) || match &node.details {
+            Some(crate::bpmn_model::NodeDetails::SubProcess { content }) => {
+                has_qualified_references(&content.nodes)
+            }
+            _ => false,
+        }
+    })
 }
 fn doc(
     p: &mut ProjectData,
@@ -1693,6 +1712,36 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             d.name = name;
             d.folder = folder;
         }
+        Mutation::SetDefinitionsMetadata {
+            document_id,
+            metadata,
+        } => {
+            let d = doc(p, document_id, true)?;
+            if metadata.target_namespace.is_empty() {
+                return Err(invalid(
+                    "Empty target namespace is outside the qualified editable profile",
+                ));
+            }
+            if d.definitions.is_none() && d.provenance.is_some() {
+                return Err(invalid(
+                    "Original target namespace must be recovered before editing definitions metadata",
+                ));
+            }
+            if d.definitions
+                .as_ref()
+                .map(|old| old.target_namespace.as_str())
+                .unwrap_or(GENERATED_TARGET_NAMESPACE)
+                != metadata.target_namespace.as_str()
+                && d.processes
+                    .iter()
+                    .any(|p| has_qualified_references(&p.nodes))
+            {
+                return Err(invalid(
+                    "Cannot change an unknown or referenced target namespace",
+                ));
+            }
+            d.definitions = Some(metadata);
+        }
         Mutation::Rename {
             document_id,
             element_id,
@@ -1917,6 +1966,7 @@ pub struct CommandParam {
 }
 macro_rules! descriptor { ($id:literal,$label:literal $(,$name:literal:$ty:literal)* $(,)?) => { CommandDescriptor { id: $id, serde_tag: $id, label: $label, params: &[$(CommandParam {name:$name,value_type:$ty,required:true}),*] } }; }
 static COMMAND_DESCRIPTORS: &[CommandDescriptor] = &[
+    descriptor!("setDefinitionsMetadata", "Set definitions metadata", "document_id":"DocumentId", "metadata":"DefinitionsMetadata"),
     descriptor!("setActivityProperties", "Set activity properties", "document_id":"DocumentId", "element_id":"XmlId", "activity":"ActivityProperties|null"),
     descriptor!("createCategory","Create category","document_id":"DocumentId","category":"Category"),
     descriptor!("updateCategory","Update category","document_id":"DocumentId","category":"Category"),
