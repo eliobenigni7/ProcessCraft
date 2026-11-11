@@ -878,6 +878,12 @@ Release blockers include:
 9. Switch theme and DPI; verify persisted process content is unchanged.
 10. Export text with Unicode and fallback fonts; verify the report and resulting layout.
 
+### Product quality ambition and comparison
+
+Aim for measurable superiority to tools such as SAP Signavio and Camunda in the agreed **offline modeling and workbench** scope: BPMN modeling/interchange completeness, task usability, analyst productivity, accessibility, reliability, interoperability and performance. This is an engineering objective, not a claim that ProcessCraft currently exceeds any product. Preserve the local, native, offline architecture; this objective does not introduce an account requirement, cloud dependency or workflow execution server.
+
+Establish reproducible comparisons before making comparative claims: name the product and exact version, edition, configuration, platform and date; use equivalent licensed or synthetic fixtures and defined analyst workflows; record task success, errors, time, accessibility and resource measurements, fixture provenance and test conditions. Include representative complex models and failure/recovery paths. Publish limitations and distinguish unsupported capabilities from failed tasks. Re-run comparisons when versions or scope change; do not infer superiority from a single benchmark or broad vendor reputation.
+
 ### 20.4 Quality gates
 
 Formatting, Clippy, unit/integration tests, dependency-layer checks, asset/license checks, parser fuzz regressions, native Windows interaction checks, and release smoke tests.

@@ -23,6 +23,10 @@ The audited target is complete **Process Modeling** plus **Choreography Modeling
 - **Optional and extensions — §2.2.7 p. 9; §8.2 pp. 53–59.** Separate optional support from optional display, and preserve unknown extensions without changing their meaning. Read-only preservation is a safe fallback but is not evidence of the relevant modeling capability.
 - **Visual interchange — §2.2.8 p. 9; §2.5.5 p. 11; BPMNDI/DC/DI schemas.** Prove stable IDs, plane ownership, waypoints, labels, expansion, nested scopes and all typed metadata through native save/reopen and BPMN export/reimport. Validate against the pinned XSD and independently reopen a licensed fixture in other qualified tool/version combinations. Existing CLI fixtures in `tests/fixtures/bpmn20-schema/` and `scripts/check_bpmn20_xsd.py` establish only the narrow cases actually checked, not full vendor compatibility.
 
+The [foundation and root-catalog matrix](bpmn-2-foundation-matrix.md) expands the infrastructure rows into construct-level obligations, inheritance and six separate capability dimensions.
+
+The [modeling and interchange matrix](bpmn-2-modeling-matrix.md) breaks out event and control-flow contexts and records collaboration, choreography, data and diagram requirements.
+
 ## Family crosswalk and open work
 
 | Family | Normative pointers | Specific unfinished requirements |

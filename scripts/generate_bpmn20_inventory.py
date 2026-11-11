@@ -110,6 +110,42 @@ for declaration in declarations:
             "Ordered bounded declarations and their three required attributes only; no external resolution or loading. "
             "Native GUI and CLI/MCP end-to-end qualification and import-dependent reference semantics remain unverified."
         )
+# Structured text expressions cover a bounded set of owners, not arbitrary mixed XML.
+for declaration in declarations:
+    is_expression = (declaration["schema"] == "Semantic.xsd" and (
+        (declaration["kind"] == "element" and declaration["name"] in {"expression", "formalExpression"}) or
+        (declaration["kind"] == "complexType" and declaration["name"] in {"tExpression", "tFormalExpression"}) or
+        (declaration["kind"] == "attribute" and "/complexType[@name=tFormalExpression]/" in declaration["path"]
+         and declaration["name"] in {"language", "evaluatesToTypeRef"})))
+    if is_expression:
+        declaration["coverage"].update({"model": "partial", "import": "partial", "export": "partial"})
+        declaration["evidence"] = [
+            "crates/processcraft-io/tests/interchange.rs:expression_metadata_preserves_scoped_prefixes_and_default_namespace",
+            "crates/processcraft-io/tests/interchange.rs:structured_expression_metadata_roundtrips_across_loop_and_adhoc_owners",
+            "crates/processcraft-io/tests/interchange.rs:expression_mixed_content_remains_preserved",
+            "tests/fixtures/bpmn/structured-expressions.manifest.json",
+        ]
+        declaration["limitations"] = (
+            "Structured text, selected owners, optional type/language and namespace context only; "
+            "mixed XML, inherited documentation/extensions and all-owner editing/validation remain unverified or preserved."
+        )
+# Inline event definitions are a limited local-reference profile, not all contexts.
+for declaration in declarations:
+    if (declaration["schema"] == "Semantic.xsd" and declaration["kind"] == "element"
+            and declaration["name"] in {"linkEventDefinition", "cancelEventDefinition", "compensateEventDefinition"}):
+        declaration["coverage"].update({k: "partial" for k in ("model", "edit", "render", "import", "export", "validate")})
+        declaration["evidence"] = [
+            "crates/processcraft-io/tests/interchange.rs:inline_link_cancel_and_compensation_roundtrip",
+            "crates/processcraft-io/tests/interchange.rs:inline_events_preserve_unrepresented_or_invalid_content",
+            "crates/processcraft-core/tests/commands.rs:link_and_compensation_events_validate_atomically",
+            "crates/processcraft-render/tests/bpmn_scene.rs:link_markers_distinguish_catch_and_throw_in_shared_scene",
+            "crates/processcraft-render/tests/bpmn_scene.rs:cancel_boundary_and_end_use_hollow_and_filled_crosses",
+            "crates/processcraft-render/tests/bpmn_scene.rs:compensation_boundary_and_throw_render_distinct_markers",
+        ]
+        declaration["limitations"] = (
+            "Bounded inline local-reference profile and selected context checks only; "
+            "root/referenced definitions, complete context rules, GUI and independent consumers remain unverified."
+        )
 result = {"profiles": profiles, "cmof_declarations": cmof, "version": "2.0.2", "coverage_policy": "unverified means no construct-level evidence recorded; raw retention is not modeling support", "sources": sources, "declarations": declarations,
           "conformance": {"status": "not_assessed", "note": "OMG PDF conformance classes and semantic constraints require separate clause-by-clause mapping; XSD declarations do not establish conformance."}}
 serialized = json.dumps(result, indent=2, ensure_ascii=False) + "\n"

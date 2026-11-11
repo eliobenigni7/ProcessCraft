@@ -18022,13 +18022,22 @@
       "abstract": null,
       "substitution_group": "eventDefinition",
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
-        "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "model": "partial",
+        "edit": "partial",
+        "render": "partial",
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:inline_link_cancel_and_compensation_roundtrip",
+        "crates/processcraft-io/tests/interchange.rs:inline_events_preserve_unrepresented_or_invalid_content",
+        "crates/processcraft-core/tests/commands.rs:link_and_compensation_events_validate_atomically",
+        "crates/processcraft-render/tests/bpmn_scene.rs:link_markers_distinguish_catch_and_throw_in_shared_scene",
+        "crates/processcraft-render/tests/bpmn_scene.rs:cancel_boundary_and_end_use_hollow_and_filled_crosses",
+        "crates/processcraft-render/tests/bpmn_scene.rs:compensation_boundary_and_throw_render_distinct_markers"
+      ],
+      "limitations": "Bounded inline local-reference profile and selected context checks only; root/referenced definitions, complete context rules, GUI and independent consumers remain unverified."
     },
     {
       "schema": "Semantic.xsd",
@@ -18672,13 +18681,22 @@
       "abstract": null,
       "substitution_group": "eventDefinition",
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
-        "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "model": "partial",
+        "edit": "partial",
+        "render": "partial",
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:inline_link_cancel_and_compensation_roundtrip",
+        "crates/processcraft-io/tests/interchange.rs:inline_events_preserve_unrepresented_or_invalid_content",
+        "crates/processcraft-core/tests/commands.rs:link_and_compensation_events_validate_atomically",
+        "crates/processcraft-render/tests/bpmn_scene.rs:link_markers_distinguish_catch_and_throw_in_shared_scene",
+        "crates/processcraft-render/tests/bpmn_scene.rs:cancel_boundary_and_end_use_hollow_and_filled_crosses",
+        "crates/processcraft-render/tests/bpmn_scene.rs:compensation_boundary_and_throw_render_distinct_markers"
+      ],
+      "limitations": "Bounded inline local-reference profile and selected context checks only; root/referenced definitions, complete context rules, GUI and independent consumers remain unverified."
     },
     {
       "schema": "Semantic.xsd",
@@ -21562,13 +21580,20 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
+        "model": "partial",
         "edit": "unverified",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
+        "import": "partial",
+        "export": "partial",
         "validate": "unverified"
-      }
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:expression_metadata_preserves_scoped_prefixes_and_default_namespace",
+        "crates/processcraft-io/tests/interchange.rs:structured_expression_metadata_roundtrips_across_loop_and_adhoc_owners",
+        "crates/processcraft-io/tests/interchange.rs:expression_mixed_content_remains_preserved",
+        "tests/fixtures/bpmn/structured-expressions.manifest.json"
+      ],
+      "limitations": "Structured text, selected owners, optional type/language and namespace context only; mixed XML, inherited documentation/extensions and all-owner editing/validation remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -21584,13 +21609,20 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
+        "model": "partial",
         "edit": "unverified",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
+        "import": "partial",
+        "export": "partial",
         "validate": "unverified"
-      }
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:expression_metadata_preserves_scoped_prefixes_and_default_namespace",
+        "crates/processcraft-io/tests/interchange.rs:structured_expression_metadata_roundtrips_across_loop_and_adhoc_owners",
+        "crates/processcraft-io/tests/interchange.rs:expression_mixed_content_remains_preserved",
+        "tests/fixtures/bpmn/structured-expressions.manifest.json"
+      ],
+      "limitations": "Structured text, selected owners, optional type/language and namespace context only; mixed XML, inherited documentation/extensions and all-owner editing/validation remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -21914,13 +21946,20 @@
       "abstract": null,
       "substitution_group": "expression",
       "coverage": {
-        "model": "unverified",
+        "model": "partial",
         "edit": "unverified",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
+        "import": "partial",
+        "export": "partial",
         "validate": "unverified"
-      }
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:expression_metadata_preserves_scoped_prefixes_and_default_namespace",
+        "crates/processcraft-io/tests/interchange.rs:structured_expression_metadata_roundtrips_across_loop_and_adhoc_owners",
+        "crates/processcraft-io/tests/interchange.rs:expression_mixed_content_remains_preserved",
+        "tests/fixtures/bpmn/structured-expressions.manifest.json"
+      ],
+      "limitations": "Structured text, selected owners, optional type/language and namespace context only; mixed XML, inherited documentation/extensions and all-owner editing/validation remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -21936,13 +21975,20 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
+        "model": "partial",
         "edit": "unverified",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
+        "import": "partial",
+        "export": "partial",
         "validate": "unverified"
-      }
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:expression_metadata_preserves_scoped_prefixes_and_default_namespace",
+        "crates/processcraft-io/tests/interchange.rs:structured_expression_metadata_roundtrips_across_loop_and_adhoc_owners",
+        "crates/processcraft-io/tests/interchange.rs:expression_mixed_content_remains_preserved",
+        "tests/fixtures/bpmn/structured-expressions.manifest.json"
+      ],
+      "limitations": "Structured text, selected owners, optional type/language and namespace context only; mixed XML, inherited documentation/extensions and all-owner editing/validation remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -21958,13 +22004,20 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
+        "model": "partial",
         "edit": "unverified",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
+        "import": "partial",
+        "export": "partial",
         "validate": "unverified"
-      }
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:expression_metadata_preserves_scoped_prefixes_and_default_namespace",
+        "crates/processcraft-io/tests/interchange.rs:structured_expression_metadata_roundtrips_across_loop_and_adhoc_owners",
+        "crates/processcraft-io/tests/interchange.rs:expression_mixed_content_remains_preserved",
+        "tests/fixtures/bpmn/structured-expressions.manifest.json"
+      ],
+      "limitations": "Structured text, selected owners, optional type/language and namespace context only; mixed XML, inherited documentation/extensions and all-owner editing/validation remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -21980,13 +22033,20 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
+        "model": "partial",
         "edit": "unverified",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
+        "import": "partial",
+        "export": "partial",
         "validate": "unverified"
-      }
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:expression_metadata_preserves_scoped_prefixes_and_default_namespace",
+        "crates/processcraft-io/tests/interchange.rs:structured_expression_metadata_roundtrips_across_loop_and_adhoc_owners",
+        "crates/processcraft-io/tests/interchange.rs:expression_mixed_content_remains_preserved",
+        "tests/fixtures/bpmn/structured-expressions.manifest.json"
+      ],
+      "limitations": "Structured text, selected owners, optional type/language and namespace context only; mixed XML, inherited documentation/extensions and all-owner editing/validation remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -23613,13 +23673,22 @@
       "abstract": null,
       "substitution_group": "eventDefinition",
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
-        "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "model": "partial",
+        "edit": "partial",
+        "render": "partial",
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:inline_link_cancel_and_compensation_roundtrip",
+        "crates/processcraft-io/tests/interchange.rs:inline_events_preserve_unrepresented_or_invalid_content",
+        "crates/processcraft-core/tests/commands.rs:link_and_compensation_events_validate_atomically",
+        "crates/processcraft-render/tests/bpmn_scene.rs:link_markers_distinguish_catch_and_throw_in_shared_scene",
+        "crates/processcraft-render/tests/bpmn_scene.rs:cancel_boundary_and_end_use_hollow_and_filled_crosses",
+        "crates/processcraft-render/tests/bpmn_scene.rs:compensation_boundary_and_throw_render_distinct_markers"
+      ],
+      "limitations": "Bounded inline local-reference profile and selected context checks only; root/referenced definitions, complete context rules, GUI and independent consumers remain unverified."
     },
     {
       "schema": "Semantic.xsd",

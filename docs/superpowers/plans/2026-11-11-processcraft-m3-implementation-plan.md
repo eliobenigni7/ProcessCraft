@@ -52,6 +52,10 @@ The [crosswalk](../../research/bpmn-2-conformance-gap.md) records the current fa
 - [ ] Qualify full namespace-aware XML import/export and DI semantics, complete per-family properties, nesting, references and failure paths. Unsupported or unqualified data remains safely retained; no selective field dropping to claim wider editing support.
 - [ ] Add normative semantic diagnostics with PDF clause references and negative fixtures, plus external reopen checks in named tool/version combinations. Record limits and failures explicitly. Zero pending required rows, not a rounded headline percentage, is the full-coverage gate.
 
+## Comparative product-quality gate
+
+Aim for measurable superiority to named versions of tools such as SAP Signavio and Camunda within the agreed offline modeling/workbench scope, across complete BPMN modeling and interchange, usability, analyst productivity, accessibility, reliability, interoperability and performance. Record reproducible equivalent workflows, fixtures, platform, product editions/versions, settings, metrics and limitations before making any comparative claim. Benchmark complex work and recovery as well as common tasks. This ambition preserves the native local/offline architecture and does not add accounts, a cloud dependency or an execution server. A comparison is not evidence of superiority until measured; M3's normative and qualification gates still apply.
+
 ## Checks and acceptance
 
 - [ ] Core feature tests: preview/cancel/stale/apply/undo/no-op; comment orphans and author/text limits; frozen checkpoint dictionary/resources, compare/restore/reference guards; typed BPMN references and invalid combinations.

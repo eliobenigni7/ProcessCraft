@@ -2,6 +2,43 @@
 
 M3 work resumed on 2026-11-11 at the user's explicit request. The earlier Windows partial-close evidence below remains historical; it is not a Cloud result. M3 and full BPMN 2.0.2 modeling/interchange remain unfinished.
 
+## Expanded Cloud modeling checkpoint
+
+Source commit `962ea6e` extends the preceding definitions/import work. It does not complete M3. The product-quality objective now explicitly calls for reproducible, named-version comparisons with tools such as Signavio and Camunda across the agreed native/offline modeling workflows; no superiority claim has been established by these tests.
+
+### Implemented behavior
+
+- Every existing expression owner uses one `Expression` value: a legacy JSON string or structured text with optional XML ID, Base/Formal type and explicit-type presence, optional language/result QName, and effective namespace bindings. Legacy string serialization remains unchanged. Flow conditions, timer/conditional events, gateway activation, standard/multi-instance loops and ad-hoc completion share this representation. Core validates XML characters, identity collisions, namespace bindings and representability; empty expressions remain editable with an advisory. All current owners declare `tExpression`, so Formal metadata requires an explicit type. In particular, a conditional-event condition is not implicitly Formal in the pinned XSD.
+- Import captures namespace scope. Export declares namespaces at narrower scopes and verifies structured expression metadata and namespace meaning after reparse; incompatible owner contexts cause an explicit refusal. Binding order is not treated as semantic identity. The desktop provides persistent typed metadata drafts, native fields for ID/type/language/result QName/bindings, explicit Apply/Cancel and protected navigation/history. Text edits retain structured metadata. CLI/MCP discovery and activity-table queries retain the whole expression instead of flattening it to text.
+- A bounded inline Link/Cancel/Compensate profile has core commands, context/reference checks, desktop fields, codec paths and native capability handling. Link references resolve to opposite-direction definitions in the same scope with the same name; missing pairing remains advisory. Complete reciprocity is not yet enforced. Cancel is limited to interrupting transaction boundaries and transaction-scope end events. Compensation supports the qualified start/event-subprocess, boundary and throw/end contexts and local activity references. Optional `waitForCompletion` presence survives roundtrip. Multiple/root/referenced event definitions and full event-subprocess metadata remain open.
+- The Cancel glyph is an outlined X for catching boundary events and a filled X for throwing end events. Link arrows and paired compensation triangles are tested on validated context fixtures. Semantic hit tests now use circles for all event kinds and diamonds for all gateway kinds.
+- Moving a qualified single-source data association repairs its visible endpoints, including verified activity input/output ports. Conversation links use the shared repair path. Tests apply moves of both endpoints through valid sessions, checking route/label preservation and exact Undo/Redo identities. Multi-source data associations, unresolved visible endpoints and the existing routing/collision budgets remain explicit limits.
+- The bounded XML preservation validator distinguishes external QName targets from local ID references. External targets can remain unchanged source without being loaded or falsely resolved against an identically named local ID. Local ID checks remain in place. Link source/target text and compensation activity references are checked as expanded QNames.
+
+Native schema remains 3. Structured expressions require `bpmn-structured-expressions`, and the newly qualified inline event variants require `bpmn-link-cancel-compensation`, in current documents and nested checkpoint content. Missing declarations are rejected and old readers must refuse unknown required capabilities. Native tests cover legacy strings, nested traversal, live/checkpoint round trips and missing-capability rejection.
+
+### Integrated checks
+
+| Gate | Actual result |
+|---|---|
+| Final formatting and all-target/all-feature Clippy with `-D warnings`, locked/offline | Passed; `target/m3-expanded-clippy.log`. |
+| Workspace all-target/all-feature tests, locked/offline with `--no-fail-fast` | **300 passed, 15 failed, 0 ignored across 34 targets**; exit 101, `target/m3-expanded-tests.log`. The same 15 CLI persistence/grant-dependent cases listed below remain unavailable on Linux. No test was skipped. |
+| Normal release desktop and CLI | Passed; `target/m3-expanded-release.log`. |
+| Normative inventory generator `--check` | Passed: 580 declarations, not a conformance denominator. Pinned normative files, Cargo.lock, toolchain and dependency revisions are unchanged. |
+| `expressions_qualify` example | Eight expression positions passed in-memory native identity/reopen and BPMN metadata roundtrip; actual source and output passed pinned XSD. `target/m3-expression-codec-qualification.log`. |
+| `inline_events_qualify` example | Typed process/event data passed native identity/reopen and BPMN roundtrip; actual source and output passed pinned XSD. `target/m3-inline-events-qualification.log`. |
+| Fixture provenance | Synthetic CC0 fixtures and version/hash manifests committed beside `structured-expressions.bpmn` and `inline-events.bpmn`; hashes independently checked. No external consumer qualification follows. |
+
+Reproduce codec evidence with `cargo run -p processcraft-io --example expressions_qualify --locked --offline` and `cargo run -p processcraft-io --example inline_events_qualify --locked --offline`, then pass each generated `input.bpmn` and `output.bpmn` under `target/m3-qualification/` to `scripts/check_bpmn20_xsd.py`. These examples write synthetic qualification artifacts; they do not qualify the Windows file-session adapter.
+
+### Native Linux inspection
+
+The shared-desktop control tool remained unavailable as recorded below, but a separate native release smoke test succeeded on isolated Xvfb `:99`, 1440 × 900, with XTEST pointer/keyboard input and captured X11 screenshots. A private temporary XDG profile was used. The window was verified by X11 title/class, not merely by PID. Artifacts and input helper are under ignored `target/m3-qualification/native-smoke/`.
+
+The smoke test created an intermediate catch timer, opened the new expression editor, retained invalid ID `1bad` with a visible error, refused table navigation without dropping that draft, corrected the ID to `TimerExpression`, applied metadata and properties, and inspected the stored metadata. Undo removed the ID; Redo restored the committed history state. Light 100%, Dark 100% and Dark 200% were inspected. At 200%, the bounded Properties window scrolls to the new metadata fields and Apply/Cancel actions. An ordinary window-close request showed the unsaved-change guard; the synthetic unsaved model was explicitly discarded and the native process exited normally. The expected Windows-NTFS recovery refusal remained visible. No production/user documents were opened or discarded.
+
+This is a narrow native smoke test, not full Light/Dark/DPI/keyboard/accessibility qualification for every family. No screen reader or audio assistant was launched. Windows NTFS save/locking/ACL/recovery and named pipes, independent external consumers, full mixed/XML expression content with inherited documentation/extensions, root catalogs, full events, choreography, DI and the remaining matrix rows are still unfinished.
+
 ## Cloud continuation: definitions and import declarations
 
 Starting checkout: clean branch `work`, commit `5a90a7626bfeec0b779e7faa0b537eb1efbc6a15`. The Linux Cloud executor uses the pinned Rust 1.98.1 and existing Craft revisions and lockfile. Load `/workspace/.processcraft-setup/env.sh` before Rust commands. `cargo fetch --locked` succeeded before offline checks. No repository visibility, dependency revision or file-adapter safety policy was changed. Terra workers handled independent core, interchange, native, desktop and crosswalk lanes; the coordinator integrated them.
