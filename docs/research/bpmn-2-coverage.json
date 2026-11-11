@@ -15487,13 +15487,19 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
-        "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "model": "partial",
+        "edit": "partial",
+        "render": "partial",
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:event_root_refs_flags_properties_and_owned_io_roundtrip",
+        "crates/processcraft-io/tests/interchange.rs:empty_timer_choice_and_event_flags_preserve_omission",
+        "crates/processcraft-io/tests/interchange.rs:explicit_di_representation_endpoints_and_shape_flags_roundtrip"
+      ],
+      "limitations": "Bounded event/DI fixture profile; complete contexts, user paths, style, native interaction and independent consumers remain unverified or preserved."
     },
     {
       "schema": "BPMNDI.xsd",
@@ -15509,13 +15515,19 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
-        "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "model": "partial",
+        "edit": "partial",
+        "render": "partial",
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:event_root_refs_flags_properties_and_owned_io_roundtrip",
+        "crates/processcraft-io/tests/interchange.rs:empty_timer_choice_and_event_flags_preserve_omission",
+        "crates/processcraft-io/tests/interchange.rs:explicit_di_representation_endpoints_and_shape_flags_roundtrip"
+      ],
+      "limitations": "Bounded event/DI fixture profile; complete contexts, user paths, style, native interaction and independent consumers remain unverified or preserved."
     },
     {
       "schema": "BPMNDI.xsd",
@@ -15597,13 +15609,19 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
-        "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "model": "partial",
+        "edit": "partial",
+        "render": "partial",
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:event_root_refs_flags_properties_and_owned_io_roundtrip",
+        "crates/processcraft-io/tests/interchange.rs:empty_timer_choice_and_event_flags_preserve_omission",
+        "crates/processcraft-io/tests/interchange.rs:explicit_di_representation_endpoints_and_shape_flags_roundtrip"
+      ],
+      "limitations": "Bounded event/DI fixture profile; complete contexts, user paths, style, native interaction and independent consumers remain unverified or preserved."
     },
     {
       "schema": "BPMNDI.xsd",
@@ -15641,13 +15659,19 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
-        "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "model": "partial",
+        "edit": "partial",
+        "render": "partial",
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:event_root_refs_flags_properties_and_owned_io_roundtrip",
+        "crates/processcraft-io/tests/interchange.rs:empty_timer_choice_and_event_flags_preserve_omission",
+        "crates/processcraft-io/tests/interchange.rs:explicit_di_representation_endpoints_and_shape_flags_roundtrip"
+      ],
+      "limitations": "Bounded event/DI fixture profile; complete contexts, user paths, style, native interaction and independent consumers remain unverified or preserved."
     },
     {
       "schema": "BPMNDI.xsd",
@@ -18133,13 +18157,19 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
-        "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "model": "partial",
+        "edit": "partial",
+        "render": "partial",
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:event_root_refs_flags_properties_and_owned_io_roundtrip",
+        "crates/processcraft-io/tests/interchange.rs:empty_timer_choice_and_event_flags_preserve_omission",
+        "crates/processcraft-io/tests/interchange.rs:explicit_di_representation_endpoints_and_shape_flags_roundtrip"
+      ],
+      "limitations": "Bounded event/DI fixture profile; complete contexts, user paths, style, native interaction and independent consumers remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -18155,13 +18185,19 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
-        "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "model": "partial",
+        "edit": "partial",
+        "render": "partial",
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:event_root_refs_flags_properties_and_owned_io_roundtrip",
+        "crates/processcraft-io/tests/interchange.rs:empty_timer_choice_and_event_flags_preserve_omission",
+        "crates/processcraft-io/tests/interchange.rs:explicit_di_representation_endpoints_and_shape_flags_roundtrip"
+      ],
+      "limitations": "Bounded event/DI fixture profile; complete contexts, user paths, style, native interaction and independent consumers remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -27706,13 +27742,19 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
-        "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "model": "partial",
+        "edit": "partial",
+        "render": "partial",
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:event_root_refs_flags_properties_and_owned_io_roundtrip",
+        "crates/processcraft-io/tests/interchange.rs:empty_timer_choice_and_event_flags_preserve_omission",
+        "crates/processcraft-io/tests/interchange.rs:explicit_di_representation_endpoints_and_shape_flags_roundtrip"
+      ],
+      "limitations": "Bounded event/DI fixture profile; complete contexts, user paths, style, native interaction and independent consumers remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -28153,13 +28195,19 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
-        "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "model": "partial",
+        "edit": "partial",
+        "render": "partial",
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:event_root_refs_flags_properties_and_owned_io_roundtrip",
+        "crates/processcraft-io/tests/interchange.rs:empty_timer_choice_and_event_flags_preserve_omission",
+        "crates/processcraft-io/tests/interchange.rs:explicit_di_representation_endpoints_and_shape_flags_roundtrip"
+      ],
+      "limitations": "Bounded event/DI fixture profile; complete contexts, user paths, style, native interaction and independent consumers remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",

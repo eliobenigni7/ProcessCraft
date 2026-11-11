@@ -202,6 +202,27 @@ for declaration in declarations:
             "Bounded data metadata, expressions and optional identities only; all owners, inherited content, "
             "event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
         )
+# Selected event and DI properties: bounded fixtures, not family-wide conformance.
+for declaration in declarations:
+    event_field = (declaration["schema"] == "Semantic.xsd" and (
+        (declaration["kind"] == "attribute" and declaration["name"] in {"parallelMultiple", "isInterrupting"}
+         and any(f"/complexType[@name={name}]/" in declaration["path"] for name in {"tCatchEvent", "tStartEvent"})) or
+        (declaration["kind"] == "element" and declaration["name"] == "eventDefinitionRef"
+         and any(f"/complexType[@name={name}]/" in declaration["path"] for name in {"tCatchEvent", "tThrowEvent"}))))
+    di_field = (declaration["schema"] == "BPMNDI.xsd" and declaration["kind"] == "attribute" and (
+        ("/complexType[@name=BPMNShape]/" in declaration["path"] and declaration["name"] in {"isHorizontal", "isMarkerVisible"}) or
+        ("/complexType[@name=BPMNEdge]/" in declaration["path"] and declaration["name"] in {"sourceElement", "targetElement"})))
+    if event_field or di_field:
+        declaration["coverage"].update({k: "partial" for k in ("model", "edit", "render", "import", "export", "validate")})
+        declaration["evidence"] = [
+            "crates/processcraft-io/tests/interchange.rs:event_root_refs_flags_properties_and_owned_io_roundtrip",
+            "crates/processcraft-io/tests/interchange.rs:empty_timer_choice_and_event_flags_preserve_omission",
+            "crates/processcraft-io/tests/interchange.rs:explicit_di_representation_endpoints_and_shape_flags_roundtrip",
+        ]
+        declaration["limitations"] = (
+            "Bounded event/DI fixture profile; complete contexts, user paths, style, "
+            "native interaction and independent consumers remain unverified or preserved."
+        )
 result = {"profiles": profiles, "cmof_declarations": cmof, "version": "2.0.2", "coverage_policy": "unverified means no construct-level evidence recorded; raw retention is not modeling support", "sources": sources, "declarations": declarations,
           "conformance": {"status": "not_assessed", "note": "OMG PDF conformance classes and semantic constraints require separate clause-by-clause mapping; XSD declarations do not establish conformance."}}
 serialized = json.dumps(result, indent=2, ensure_ascii=False) + "\n"
