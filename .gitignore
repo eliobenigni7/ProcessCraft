@@ -1,0 +1,6 @@
+/target/
+/.playwright-mcp/
+/output/playwright/
+.env
+.env.*
+!.env.example

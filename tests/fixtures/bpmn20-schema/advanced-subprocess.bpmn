@@ -1,0 +1,2 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" id="defs" targetNamespace="urn:advanced"><process id="p" isExecutable="false"><adHocSubProcess id="adhoc" ordering="Sequential" cancelRemainingInstances="false"><task id="inner"/><completionCondition>x &gt; 2</completionCondition></adHocSubProcess><transaction id="transaction" method="##Store"><laneSet id="lanes"><lane id="lane"><flowNodeRef>work</flowNodeRef></lane></laneSet><task id="work"/></transaction></process></definitions>

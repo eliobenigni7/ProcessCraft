@@ -1,0 +1,2 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:tns="urn:data" id="defs" targetNamespace="urn:data"><dataStore id="store" name="Archive" capacity="25" isUnlimited="false"/><process id="p" isExecutable="false"><dataObject id="invoice" name="Invoice" isCollection="true"/><dataObjectReference id="invoiceRef" dataObjectRef="invoice"/><dataStoreReference id="storeRef" dataStoreRef="tns:store"/></process></definitions>

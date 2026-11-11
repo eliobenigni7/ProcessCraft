@@ -1,0 +1,25 @@
+[package]
+name = "processcraft"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+processcraft-core = { path = "../../crates/processcraft-core" }
+processcraft-io = { path = "../../crates/processcraft-io" }
+processcraft-render = { path = "../../crates/processcraft-render" }
+egui.workspace = true
+eframe.workspace = true
+egui_extras = { version = "=0.37.0", default-features = false }
+egui_ltreeview = { version = "=0.10.0", default-features = false }
+rfd = "0.15"
+uuid.workspace = true
+sha2 = "0.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+png = "0.17"
+
+[lints]
+workspace = true
+

@@ -1,0 +1,25 @@
+[package]
+name = "processcraft-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+processcraft-core = { path = "../../crates/processcraft-core" }
+processcraft-io = { path = "../../crates/processcraft-io" }
+processcraft-render = { path = "../../crates/processcraft-render" }
+clap = { version = "4", features = ["derive"] }
+serde = "1"
+serde_json = "1"
+schemars = "1"
+sha2 = "0.10"
+uuid.workspace = true
+rmcp = { version = "=3.9.0", default-features = false, features = ["server", "transport-io"] }
+tokio = { version = "1", features = ["rt", "io-util", "io-std", "sync"] }
+
+[lints]
+workspace = true
+
+[features]
+test-fault = []

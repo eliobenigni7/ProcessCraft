@@ -1,0 +1,183 @@
+use egui::{
+    Color32, ColorImage, Id, Response, RichText, Role, Sense, TextureHandle, TextureOptions, Ui,
+    Vec2, WidgetInfo, vec2,
+};
+use std::io::Cursor;
+
+#[derive(Clone, Copy, Debug, Hash)]
+pub enum Icon {
+    Workflow,
+    Folder,
+    FolderOpen,
+    Book,
+    Table,
+    Save,
+    Undo,
+    Redo,
+    Plus,
+    X,
+    Settings,
+    PanelLeft,
+    PanelRight,
+    HardDrive,
+    ZoomIn,
+    ZoomOut,
+}
+
+impl Icon {
+    fn bytes(self) -> &'static [u8] {
+        match self {
+            Self::PanelRight => include_bytes!("../../../assets/ui-icons/panel-right.png"),
+            Self::Undo => include_bytes!("../../../assets/ui-icons/undo-2.png"),
+            Self::Plus => include_bytes!("../../../assets/ui-icons/plus.png"),
+            Self::ZoomIn => include_bytes!("../../../assets/ui-icons/zoom-in.png"),
+            Self::Redo => include_bytes!("../../../assets/ui-icons/redo-2.png"),
+            Self::Book => include_bytes!("../../../assets/ui-icons/book-open.png"),
+            Self::Folder => include_bytes!("../../../assets/ui-icons/folder.png"),
+            Self::Settings => include_bytes!("../../../assets/ui-icons/settings.png"),
+            Self::HardDrive => include_bytes!("../../../assets/ui-icons/hard-drive.png"),
+            Self::Table => include_bytes!("../../../assets/ui-icons/list.png"),
+            Self::PanelLeft => include_bytes!("../../../assets/ui-icons/panel-left.png"),
+            Self::X => include_bytes!("../../../assets/ui-icons/x.png"),
+            Self::Save => include_bytes!("../../../assets/ui-icons/save.png"),
+            Self::Workflow => include_bytes!("../../../assets/ui-icons/workflow.png"),
+            Self::FolderOpen => include_bytes!("../../../assets/ui-icons/folder-open.png"),
+            Self::ZoomOut => include_bytes!("../../../assets/ui-icons/zoom-out.png"),
+        }
+    }
+}
+
+fn texture(ui: &Ui, icon: Icon) -> TextureHandle {
+    let id = Id::unique(("processcraft-icon", icon));
+    if let Some(handle) = ui.ctx().data(|data| data.get_temp::<TextureHandle>(id)) {
+        return handle;
+    }
+    let decoder = png::Decoder::new(Cursor::new(icon.bytes()));
+    let mut reader = decoder.read_info().expect("embedded icon PNG");
+    let mut pixels = vec![0; reader.output_buffer_size()];
+    let info = reader
+        .next_frame(&mut pixels)
+        .expect("embedded icon pixels");
+    let image = ColorImage::from_rgba_unmultiplied(
+        [info.width as usize, info.height as usize],
+        &pixels[..info.buffer_size()],
+    );
+    let handle = ui.ctx().load_texture(
+        format!("processcraft-{icon:?}"),
+        image,
+        TextureOptions::LINEAR,
+    );
+    ui.ctx()
+        .data_mut(|data| data.insert_temp(id, handle.clone()));
+    handle
+}
+
+fn paint_icon(ui: &Ui, icon: Icon, rect: egui::Rect, color: Color32) {
+    let texture = texture(ui, icon);
+    ui.painter().image(
+        texture.id(),
+        rect,
+        egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0)),
+        color,
+    );
+}
+
+pub fn icon(ui: &mut Ui, icon: Icon, size: f32, color: Color32) -> Response {
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(size), Sense::hover());
+    if ui.is_rect_visible(rect) {
+        paint_icon(ui, icon, rect, color);
+    }
+    response
+}
+
+pub fn icon_button(ui: &mut Ui, icon: Icon, label: &str, selected: bool) -> Response {
+    icon_button_sized(ui, icon, label, selected, 32.0)
+}
+
+pub fn icon_button_sized(
+    ui: &mut Ui,
+    icon: Icon,
+    label: &str,
+    selected: bool,
+    size: f32,
+) -> Response {
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(size), Sense::click());
+    let visuals = ui.style().interact_selectable(&response, selected);
+    if selected || response.hovered() || response.has_focus() {
+        ui.painter().rect_filled(rect, 4, visuals.bg_fill);
+    }
+    let color = if selected {
+        ui.visuals().selection.stroke.color
+    } else {
+        visuals.fg_stroke.color
+    };
+    paint_icon(
+        ui,
+        icon,
+        egui::Rect::from_center_size(rect.center(), Vec2::splat((size - 12.0).max(12.0))),
+        color,
+    );
+    response.widget_info(|| WidgetInfo::labeled(Role::Button, ui.is_enabled(), label));
+    response.on_hover_text(label)
+}
+
+pub fn action_button(ui: &mut Ui, icon: Icon, label: &str) -> Response {
+    let handle = texture(ui, icon);
+    ui.add(egui::Button::image_and_text(
+        egui::Image::new((handle.id(), vec2(16.0, 16.0))).tint(ui.visuals().text_color()),
+        label,
+    ))
+}
+
+pub fn application_icon() -> egui::IconData {
+    let mut reader = png::Decoder::new(Cursor::new(Icon::Workflow.bytes()))
+        .read_info()
+        .expect("embedded application icon");
+    let mut rgba = vec![0; reader.output_buffer_size()];
+    let info = reader
+        .next_frame(&mut rgba)
+        .expect("embedded application icon pixels");
+    rgba.truncate(info.buffer_size());
+    for pixel in rgba.as_chunks_mut::<4>().0 {
+        pixel[..3].copy_from_slice(&[36, 99, 212]);
+    }
+    egui::IconData {
+        rgba,
+        width: info.width,
+        height: info.height,
+    }
+}
+
+pub fn primary_button(ui: &mut Ui, text: &str) -> Response {
+    let accent = ui.visuals().selection.stroke.color;
+    let text_color = if ui.visuals().dark_mode {
+        Color32::from_rgb(16, 36, 65)
+    } else {
+        Color32::WHITE
+    };
+    ui.add(
+        egui::Button::new(RichText::new(text).color(text_color))
+            .fill(accent)
+            .min_size(vec2(0.0, 32.0)),
+    )
+}
+pub fn secondary_button(ui: &mut Ui, text: &str) -> Response {
+    ui.add(egui::Button::new(text).min_size(vec2(0.0, 32.0)))
+}
+pub fn section_label(ui: &mut Ui, text: &str) -> Response {
+    ui.label(
+        RichText::new(text.to_uppercase())
+            .size(12.0)
+            .color(ui.visuals().weak_text_color()),
+    )
+}
+pub fn badge(ui: &mut Ui, text: &str, foreground: Color32, background: Color32) -> Response {
+    egui::Frame::new()
+        .fill(background)
+        .corner_radius(4)
+        .inner_margin(egui::Margin::symmetric(8, 4))
+        .show(ui, |ui| {
+            ui.label(RichText::new(text).size(12.0).color(foreground))
+        })
+        .inner
+}

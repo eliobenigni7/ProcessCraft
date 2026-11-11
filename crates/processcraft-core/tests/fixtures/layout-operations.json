@@ -1,0 +1,333 @@
+{
+  "id": "11111111-1111-4111-8111-111111111111",
+  "name": "Purchase requisition",
+  "folder": "folder_procurement",
+  "definitions_id": "defs",
+  "processes": [
+    {
+      "id": "procurement",
+      "name": "Procurement",
+      "documentation": "",
+      "nodes": [
+        {
+          "id": "start",
+          "name": "Request received",
+          "documentation": "",
+          "kind": "StartEvent",
+          "owner": "",
+          "contact": ""
+        },
+        {
+          "id": "review",
+          "name": "Review request",
+          "documentation": "",
+          "kind": "UserTask",
+          "owner": "",
+          "contact": ""
+        },
+        {
+          "id": "decision",
+          "name": "Approved?",
+          "documentation": "",
+          "kind": "ExclusiveGateway",
+          "owner": "",
+          "contact": ""
+        },
+        {
+          "id": "order",
+          "name": "Place order",
+          "documentation": "",
+          "kind": "Task",
+          "owner": "",
+          "contact": ""
+        },
+        {
+          "id": "end",
+          "name": "Complete",
+          "documentation": "",
+          "kind": "EndEvent",
+          "owner": "",
+          "contact": ""
+        }
+      ],
+      "lanes": [
+        {
+          "id": "lane_request",
+          "name": "Request and review",
+          "parent": null,
+          "members": [
+            "start",
+            "review",
+            "decision"
+          ]
+        },
+        {
+          "id": "lane_procurement",
+          "name": "Procurement",
+          "parent": null,
+          "members": [
+            "order",
+            "end"
+          ]
+        }
+      ],
+      "flows": [
+        {
+          "id": "flow_start_review",
+          "kind": "Sequence",
+          "source": "start",
+          "target": "review",
+          "name": "",
+          "documentation": "",
+          "condition": null
+        },
+        {
+          "id": "flow_review_decision",
+          "kind": "Sequence",
+          "source": "review",
+          "target": "decision",
+          "name": "",
+          "documentation": "",
+          "condition": null
+        },
+        {
+          "id": "flow_approved",
+          "kind": "Sequence",
+          "source": "decision",
+          "target": "order",
+          "name": "Approved",
+          "documentation": "",
+          "condition": "approved"
+        },
+        {
+          "id": "flow_rejected",
+          "kind": "Sequence",
+          "source": "decision",
+          "target": "end",
+          "name": "Rejected",
+          "documentation": "",
+          "condition": "not approved"
+        },
+        {
+          "id": "flow_order_end",
+          "kind": "Sequence",
+          "source": "order",
+          "target": "end",
+          "name": "",
+          "documentation": "",
+          "condition": null
+        }
+      ]
+    }
+  ],
+  "collaboration": null,
+  "diagrams": [
+    {
+      "id": "procurement_diagram",
+      "plane_id": "procurement_plane",
+      "plane": "procurement",
+      "shapes": [
+        {
+          "id": "pc_shape_lane_request",
+          "element": "lane_request",
+          "bounds": {
+            "x": 40.0,
+            "y": 40.0,
+            "width": 850.0,
+            "height": 180.0
+          },
+          "label": null,
+          "style": null
+        },
+        {
+          "id": "pc_shape_lane_procurement",
+          "element": "lane_procurement",
+          "bounds": {
+            "x": 40.0,
+            "y": 220.0,
+            "width": 850.0,
+            "height": 180.0
+          },
+          "label": null,
+          "style": null
+        },
+        {
+          "id": "pc_shape_start",
+          "element": "start",
+          "bounds": {
+            "x": 100.0,
+            "y": 110.0,
+            "width": 36.0,
+            "height": 36.0
+          },
+          "label": {
+            "bounds": {
+              "x": 53.0,
+              "y": 151.0,
+              "width": 130.0,
+              "height": 38.0
+            },
+            "style": null
+          },
+          "style": null
+        },
+        {
+          "id": "pc_shape_review",
+          "element": "review",
+          "bounds": {
+            "x": 190.0,
+            "y": 88.0,
+            "width": 140.0,
+            "height": 80.0
+          },
+          "label": null,
+          "style": null
+        },
+        {
+          "id": "pc_shape_decision",
+          "element": "decision",
+          "bounds": {
+            "x": 390.0,
+            "y": 103.0,
+            "width": 50.0,
+            "height": 50.0
+          },
+          "label": {
+            "bounds": {
+              "x": 360.0,
+              "y": 158.0,
+              "width": 110.0,
+              "height": 32.0
+            },
+            "style": null
+          },
+          "style": null
+        },
+        {
+          "id": "pc_shape_order",
+          "element": "order",
+          "bounds": {
+            "x": 515.0,
+            "y": 270.0,
+            "width": 140.0,
+            "height": 80.0
+          },
+          "label": null,
+          "style": null
+        },
+        {
+          "id": "pc_shape_end",
+          "element": "end",
+          "bounds": {
+            "x": 780.0,
+            "y": 292.0,
+            "width": 36.0,
+            "height": 36.0
+          },
+          "label": {
+            "bounds": {
+              "x": 748.0,
+              "y": 333.0,
+              "width": 100.0,
+              "height": 32.0
+            },
+            "style": null
+          },
+          "style": null
+        }
+      ],
+      "edges": [
+        {
+          "id": "pc_edge_flow_start_review",
+          "element": "flow_start_review",
+          "waypoints": [
+            {
+              "x": 136.0,
+              "y": 128.0
+            },
+            {
+              "x": 190.0,
+              "y": 128.0
+            }
+          ],
+          "label": null,
+          "style": null
+        },
+        {
+          "id": "pc_edge_flow_review_decision",
+          "element": "flow_review_decision",
+          "waypoints": [
+            {
+              "x": 330.0,
+              "y": 128.0
+            },
+            {
+              "x": 390.0,
+              "y": 128.0
+            }
+          ],
+          "label": null,
+          "style": null
+        },
+        {
+          "id": "pc_edge_flow_approved",
+          "element": "flow_approved",
+          "waypoints": [
+            {
+              "x": 415.0,
+              "y": 153.0
+            },
+            {
+              "x": 415.0,
+              "y": 310.0
+            },
+            {
+              "x": 515.0,
+              "y": 310.0
+            }
+          ],
+          "label": null,
+          "style": null
+        },
+        {
+          "id": "pc_edge_flow_rejected",
+          "element": "flow_rejected",
+          "waypoints": [
+            {
+              "x": 440.0,
+              "y": 128.0
+            },
+            {
+              "x": 798.0,
+              "y": 128.0
+            },
+            {
+              "x": 798.0,
+              "y": 292.0
+            }
+          ],
+          "label": null,
+          "style": null
+        },
+        {
+          "id": "pc_edge_flow_order_end",
+          "element": "flow_order_end",
+          "waypoints": [
+            {
+              "x": 655.0,
+              "y": 310.0
+            },
+            {
+              "x": 780.0,
+              "y": 310.0
+            }
+          ],
+          "label": null,
+          "style": null
+        }
+      ]
+    }
+  ],
+  "provenance": null,
+  "capability": "Editable"
+}

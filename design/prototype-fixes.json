@@ -1,0 +1,492 @@
+[
+  {
+    "command": "proto.interaction.set",
+    "params": {
+      "id": {
+        "$ref": "darkScreens",
+        "field": "map/289"
+      },
+      "index": 0,
+      "dest": {
+        "$ref": "darkScreens",
+        "field": "map/210"
+      }
+    }
+  },
+  {
+    "command": "proto.interaction.set",
+    "params": {
+      "id": {
+        "$ref": "darkScreens",
+        "field": "map/294"
+      },
+      "index": 0,
+      "dest": {
+        "$ref": "darkScreens",
+        "field": "map/211"
+      }
+    }
+  },
+  {
+    "command": "proto.interaction.set",
+    "params": {
+      "id": {
+        "$ref": "darkScreens",
+        "field": "map/301"
+      },
+      "index": 0,
+      "dest": {
+        "$ref": "darkScreens",
+        "field": "map/210"
+      }
+    }
+  },
+  {
+    "command": "proto.interaction.set",
+    "params": {
+      "id": {
+        "$ref": "darkScreens",
+        "field": "map/305"
+      },
+      "index": 0,
+      "dest": {
+        "$ref": "darkScreens",
+        "field": "map/212"
+      }
+    }
+  },
+  {
+    "command": "proto.interaction.set",
+    "params": {
+      "id": {
+        "$ref": "darkScreens",
+        "field": "map/310"
+      },
+      "index": 0,
+      "dest": {
+        "$ref": "darkScreens",
+        "field": "map/210"
+      }
+    }
+  },
+  {
+    "command": "proto.interaction.set",
+    "params": {
+      "id": {
+        "$ref": "darkScreens",
+        "field": "map/342"
+      },
+      "index": 0,
+      "dest": {
+        "$ref": "darkScreens",
+        "field": "map/210"
+      }
+    }
+  },
+  {
+    "command": "proto.interaction.set",
+    "params": {
+      "id": {
+        "$ref": "darkScreens",
+        "field": "map/415"
+      },
+      "index": 0,
+      "dest": {
+        "$ref": "darkScreens",
+        "field": "map/213"
+      }
+    }
+  },
+  {
+    "command": "proto.interaction.set",
+    "params": {
+      "id": {
+        "$ref": "darkScreens",
+        "field": "map/551"
+      },
+      "index": 0,
+      "dest": {
+        "$ref": "darkScreens",
+        "field": "map/212"
+      }
+    }
+  },
+  {
+    "command": "proto.interaction.set",
+    "params": {
+      "id": {
+        "$ref": "darkScreens",
+        "field": "map/632"
+      },
+      "index": 0,
+      "dest": {
+        "$ref": "darkScreens",
+        "field": "map/210"
+      }
+    }
+  },
+  {
+    "command": "proto.interaction.set",
+    "params": {
+      "id": {
+        "$ref": "darkScreens",
+        "field": "map/639"
+      },
+      "index": 0,
+      "dest": {
+        "$ref": "darkScreens",
+        "field": "map/211"
+      }
+    }
+  },
+  {
+    "command": "proto.interaction.set",
+    "params": {
+      "id": {
+        "$ref": "darkScreens",
+        "field": "map/644"
+      },
+      "index": 0,
+      "dest": {
+        "$ref": "darkScreens",
+        "field": "map/210"
+      }
+    }
+  },
+  {
+    "command": "proto.interaction.set",
+    "params": {
+      "id": {
+        "$ref": "darkScreens",
+        "field": "map/648"
+      },
+      "index": 0,
+      "dest": {
+        "$ref": "darkScreens",
+        "field": "map/212"
+      }
+    }
+  },
+  {
+    "command": "proto.interaction.set",
+    "params": {
+      "id": {
+        "$ref": "darkScreens",
+        "field": "map/653"
+      },
+      "index": 0,
+      "dest": {
+        "$ref": "darkScreens",
+        "field": "map/210"
+      }
+    }
+  },
+  {
+    "command": "proto.interaction.set",
+    "params": {
+      "id": {
+        "$ref": "darkScreens",
+        "field": "map/685"
+      },
+      "index": 0,
+      "dest": {
+        "$ref": "darkScreens",
+        "field": "map/210"
+      }
+    }
+  },
+  {
+    "command": "proto.interaction.set",
+    "params": {
+      "id": {
+        "$ref": "darkScreens",
+        "field": "map/717"
+      },
+      "index": 0,
+      "dest": {
+        "$ref": "darkScreens",
+        "field": "map/212"
+      }
+    }
+  },
+  {
+    "command": "proto.interaction.set",
+    "params": {
+      "id": {
+        "$ref": "darkScreens",
+        "field": "map/781"
+      },
+      "index": 0,
+      "dest": {
+        "$ref": "darkScreens",
+        "field": "map/210"
+      }
+    }
+  },
+  {
+    "command": "proto.interaction.set",
+    "params": {
+      "id": {
+        "$ref": "darkScreens",
+        "field": "map/884"
+      },
+      "index": 0,
+      "dest": {
+        "$ref": "darkScreens",
+        "field": "map/210"
+      }
+    }
+  },
+  {
+    "command": "proto.interaction.set",
+    "params": {
+      "id": {
+        "$ref": "darkScreens",
+        "field": "map/962"
+      },
+      "index": 0,
+      "dest": {
+        "$ref": "darkScreens",
+        "field": "map/210"
+      }
+    }
+  },
+  {
+    "command": "proto.interaction.set",
+    "params": {
+      "id": {
+        "$ref": "darkScreens",
+        "field": "map/967"
+      },
+      "index": 0,
+      "dest": {
+        "$ref": "darkScreens",
+        "field": "map/211"
+      }
+    }
+  },
+  {
+    "command": "proto.interaction.set",
+    "params": {
+      "id": {
+        "$ref": "darkScreens",
+        "field": "map/972"
+      },
+      "index": 0,
+      "dest": {
+        "$ref": "darkScreens",
+        "field": "map/210"
+      }
+    }
+  },
+  {
+    "command": "proto.interaction.set",
+    "params": {
+      "id": {
+        "$ref": "darkScreens",
+        "field": "map/978"
+      },
+      "index": 0,
+      "dest": {
+        "$ref": "darkScreens",
+        "field": "map/212"
+      }
+    }
+  },
+  {
+    "command": "proto.interaction.set",
+    "params": {
+      "id": {
+        "$ref": "darkScreens",
+        "field": "map/983"
+      },
+      "index": 0,
+      "dest": {
+        "$ref": "darkScreens",
+        "field": "map/210"
+      }
+    }
+  },
+  {
+    "command": "proto.interaction.set",
+    "params": {
+      "id": {
+        "$ref": "darkScreens",
+        "field": "map/1015"
+      },
+      "index": 0,
+      "dest": {
+        "$ref": "darkScreens",
+        "field": "map/210"
+      }
+    }
+  },
+  {
+    "command": "proto.interaction.set",
+    "params": {
+      "id": {
+        "$ref": "darkScreens",
+        "field": "map/1047"
+      },
+      "index": 0,
+      "dest": {
+        "$ref": "darkScreens",
+        "field": "map/212"
+      }
+    }
+  },
+  {
+    "command": "proto.interaction.set",
+    "params": {
+      "id": {
+        "$ref": "darkScreens",
+        "field": "map/1170"
+      },
+      "index": 0,
+      "dest": {
+        "$ref": "darkScreens",
+        "field": "map/210"
+      }
+    }
+  },
+  {
+    "command": "proto.interaction.set",
+    "params": {
+      "id": {
+        "$ref": "darkScreens",
+        "field": "map/1180"
+      },
+      "index": 0,
+      "dest": {
+        "$ref": "darkScreens",
+        "field": "map/210"
+      }
+    }
+  },
+  {
+    "command": "proto.interaction.set",
+    "params": {
+      "id": {
+        "$ref": "darkScreens",
+        "field": "map/1190"
+      },
+      "index": 0,
+      "dest": {
+        "$ref": "darkScreens",
+        "field": "map/210"
+      }
+    }
+  },
+  {
+    "command": "proto.interaction.set",
+    "params": {
+      "id": {
+        "$ref": "darkScreens",
+        "field": "map/1268"
+      },
+      "index": 0,
+      "dest": {
+        "$ref": "darkScreens",
+        "field": "map/210"
+      }
+    }
+  },
+  {
+    "command": "proto.interaction.set",
+    "params": {
+      "id": {
+        "$ref": "darkScreens",
+        "field": "map/1273"
+      },
+      "index": 0,
+      "dest": {
+        "$ref": "darkScreens",
+        "field": "map/211"
+      }
+    }
+  },
+  {
+    "command": "proto.interaction.set",
+    "params": {
+      "id": {
+        "$ref": "darkScreens",
+        "field": "map/1280"
+      },
+      "index": 0,
+      "dest": {
+        "$ref": "darkScreens",
+        "field": "map/210"
+      }
+    }
+  },
+  {
+    "command": "proto.interaction.set",
+    "params": {
+      "id": {
+        "$ref": "darkScreens",
+        "field": "map/1284"
+      },
+      "index": 0,
+      "dest": {
+        "$ref": "darkScreens",
+        "field": "map/212"
+      }
+    }
+  },
+  {
+    "command": "proto.interaction.set",
+    "params": {
+      "id": {
+        "$ref": "darkScreens",
+        "field": "map/1289"
+      },
+      "index": 0,
+      "dest": {
+        "$ref": "darkScreens",
+        "field": "map/210"
+      }
+    }
+  },
+  {
+    "command": "proto.interaction.set",
+    "params": {
+      "id": {
+        "$ref": "darkScreens",
+        "field": "map/1321"
+      },
+      "index": 0,
+      "dest": {
+        "$ref": "darkScreens",
+        "field": "map/210"
+      }
+    }
+  },
+  {
+    "command": "proto.interaction.set",
+    "params": {
+      "id": {
+        "$ref": "darkScreens",
+        "field": "map/1353"
+      },
+      "index": 0,
+      "dest": {
+        "$ref": "darkScreens",
+        "field": "map/212"
+      }
+    }
+  },
+  {
+    "command": "proto.interaction.set",
+    "params": {
+      "id": {
+        "$ref": "darkScreens",
+        "field": "map/1391"
+      },
+      "index": 0,
+      "dest": {
+        "$ref": "darkScreens",
+        "field": "map/210"
+      }
+    }
+  }
+]

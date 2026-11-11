@@ -1,0 +1,585 @@
+//! Bounded, non-executing BPMN source preservation. This is not an XSD validator.
+//!
+//! Every accepted input remains read-only; the original bytes are the authority.
+//! No URL, schema, external entity or document-stored path is ever opened here.
+use std::collections::{BTreeSet, HashSet};
+use std::fmt;
+
+use quick_xml::XmlVersion;
+use quick_xml::events::Event;
+use quick_xml::name::{PrefixDeclaration, QName, ResolveResult};
+use quick_xml::reader::NsReader;
+
+const BPMN: &str = "http://www.omg.org/spec/BPMN/20100524/MODEL";
+const BPMNDI: &str = "http://www.omg.org/spec/BPMN/20100524/DI";
+const DC: &str = "http://www.omg.org/spec/DD/20100524/DC";
+const DI: &str = "http://www.omg.org/spec/DD/20100524/DI";
+const XSI: &str = "http://www.w3.org/2001/XMLSchema-instance";
+pub const MAX_RAW_BYTES: usize = 32 * 1024 * 1024;
+pub const MAX_DEPTH: usize = 128;
+pub const MAX_ELEMENTS: usize = 10_000;
+pub const MAX_LABEL_BYTES: usize = 16 * 1024;
+pub const MAX_DOCUMENTATION_BYTES: usize = 1024 * 1024;
+/// Conservative M0 import bound in diagram units; sizes are also non-negative.
+pub const MAX_GEOMETRY: f64 = 1_000_000_000.0;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ImportMode {
+    PreservedSource,
+}
+
+/// Expanded identity; prefixes are deliberately not used as identity.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ExpandedName {
+    pub namespace_uri: Option<String>,
+    pub local_name: String,
+}
+
+#[derive(Debug)]
+pub struct CapabilityReport {
+    pub mode: ImportMode,
+    pub semantic_edits_allowed: bool,
+    pub limitations: Vec<&'static str>,
+    pub element_count: usize,
+    pub diagram_count: usize,
+    pub standard_id_count: usize,
+    /// Resolved QName-valued standard reference attributes and xsi:type values.
+    pub qname_values: BTreeSet<ExpandedName>,
+    pub foreign_element_names: BTreeSet<ExpandedName>,
+}
+
+#[derive(Debug)]
+pub struct PreservedBpmn {
+    source: Vec<u8>,
+    report: CapabilityReport,
+}
+
+impl PreservedBpmn {
+    pub fn report(&self) -> &CapabilityReport {
+        &self.report
+    }
+
+    /// Complete unchanged XML, including BOM, whitespace and prefix spelling.
+    /// This function performs no filesystem writes. Use an explicit output grant
+    /// and the storage boundary when committing these bytes to a destination.
+    pub fn export_source(&self) -> &[u8] {
+        &self.source
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ImportErrorKind {
+    RawBytes,
+    Depth,
+    Elements,
+    Label,
+    Documentation,
+    Metadata,
+    DtdForbidden,
+    Xml,
+    Id,
+    Reference,
+    Geometry,
+}
+
+#[derive(Debug)]
+pub struct ImportError {
+    pub kind: ImportErrorKind,
+    pub detail: String,
+}
+
+impl fmt::Display for ImportError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{:?}: {}. Keep the existing document and inspect a smaller or corrected source file",
+            self.kind, self.detail
+        )
+    }
+}
+impl std::error::Error for ImportError {}
+
+fn error(kind: ImportErrorKind, detail: impl Into<String>) -> ImportError {
+    ImportError {
+        kind,
+        detail: detail.into(),
+    }
+}
+fn xml(e: impl fmt::Display) -> ImportError {
+    error(ImportErrorKind::Xml, e.to_string())
+}
+
+#[derive(Default)]
+struct Frame {
+    documentation: bool,
+    label: bool,
+    text_bytes: usize,
+    reference_text: Option<String>,
+}
+
+/// Validate into temporary bounded state and publish a source document only after
+/// the entire input and its known local references pass. No session is mutated.
+pub fn import_bpmn(bytes: &[u8]) -> Result<PreservedBpmn, ImportError> {
+    if bytes.len() > MAX_RAW_BYTES {
+        return Err(error(ImportErrorKind::RawBytes, "raw XML exceeds 32 MiB"));
+    }
+    let source = std::str::from_utf8(bytes).map_err(xml)?;
+    if !source.chars().all(xml_char) {
+        return Err(xml("invalid XML 1.0 character"));
+    }
+    let mut reader = NsReader::from_str(source);
+    reader.config_mut().check_comments = true;
+    reader.config_mut().expand_empty_elements = true;
+    let mut stack: Vec<Frame> = Vec::new();
+    let mut seen_root = false;
+    let mut seen_declaration = false;
+    let mut preceding_content = false;
+    let mut ids = HashSet::new();
+    let mut target_namespace = None;
+    let mut references = Vec::new();
+    let mut metadata_bytes = 0usize;
+    let mut report = CapabilityReport {
+        mode: ImportMode::PreservedSource,
+        semantic_edits_allowed: false,
+        limitations: vec![
+            "M0 preserves all accepted imports as read-only original XML bytes; semantic edits are unavailable",
+            "Structural checks cover known IDs, references and DI numbers; this is not complete BPMN XSD or semantic validation",
+            "No rendering or visual compatibility is qualified by this importer",
+            "M0 refuses whitespace-containing namespace names rather than normalizing namespace identity",
+        ],
+        element_count: 0,
+        diagram_count: 0,
+        standard_id_count: 0,
+        qname_values: BTreeSet::new(),
+        foreign_element_names: BTreeSet::new(),
+    };
+    loop {
+        let event = reader.read_event().map_err(xml)?;
+        match event {
+            Event::DocType(_) => {
+                return Err(error(
+                    ImportErrorKind::DtdForbidden,
+                    "DTDs and external entities are forbidden",
+                ));
+            }
+            Event::Decl(decl) => {
+                if seen_declaration
+                    || preceding_content
+                    || seen_root
+                    || decl.version().map_err(xml)?.as_ref() != "1.0"
+                {
+                    return Err(xml("only an initial XML 1.0 declaration is accepted"));
+                }
+                if let Some(encoding) = decl.encoding()
+                    && !encoding.map_err(xml)?.eq_ignore_ascii_case("UTF-8")
+                {
+                    return Err(xml("M0 accepts UTF-8 XML only"));
+                }
+                seen_declaration = true;
+            }
+            Event::Start(start) => {
+                preceding_content = true;
+                if stack.len() >= MAX_DEPTH {
+                    return Err(error(
+                        ImportErrorKind::Depth,
+                        "XML nesting exceeds 128 levels",
+                    ));
+                }
+                report.element_count += 1;
+                if report.element_count > MAX_ELEMENTS {
+                    return Err(error(
+                        ImportErrorKind::Elements,
+                        "XML elements exceed 10,000 per document",
+                    ));
+                }
+                validate_qname(start.name().0)?;
+                let name = expanded(reader.resolver().resolve_element(start.name()))?;
+                account(&mut metadata_bytes, &name)?;
+                let ns = name.namespace_uri.as_deref();
+                let local = name.local_name.as_str();
+                if stack.is_empty() {
+                    if seen_root || ns != Some(BPMN) || local != "definitions" {
+                        return Err(xml("expected exactly one BPMN definitions root"));
+                    }
+                    seen_root = true;
+                }
+                let standard = matches!(ns, Some(BPMN | BPMNDI | DC | DI));
+                if !standard && report.foreign_element_names.insert(name.clone()) {
+                    account(&mut metadata_bytes, &name)?;
+                }
+                if ns == Some(BPMNDI) && local == "BPMNDiagram" {
+                    report.diagram_count += 1;
+                }
+                let mut frame = Frame {
+                    documentation: ns == Some(BPMN) && local == "documentation",
+                    label: ns == Some(BPMN) && local == "text",
+                    reference_text: (ns == Some(BPMN)
+                        && matches!(
+                            local,
+                            "incoming" | "outgoing" | "flowNodeRef" | "sourceRef" | "targetRef"
+                        ))
+                    .then(String::new),
+                    ..Frame::default()
+                };
+                let mut attrs = std::collections::HashMap::new();
+                let mut expanded_attrs = HashSet::new();
+                for attr in start.attributes() {
+                    let attr = attr.map_err(xml)?;
+                    validate_qname(attr.key.0)?;
+                    let value = attr
+                        .normalized_value(XmlVersion::Implicit1_0)
+                        .map_err(xml)?;
+                    if !value.chars().all(xml_char) || attr.value.contains('<') {
+                        return Err(xml("invalid XML attribute value"));
+                    }
+                    if let Some(binding) = attr.key.as_namespace_binding() {
+                        if value.len() > MAX_LABEL_BYTES {
+                            return Err(error(
+                                ImportErrorKind::Metadata,
+                                "namespace URI exceeds 16 KiB",
+                            ));
+                        }
+                        validate_namespace_name(&value)?;
+                        // NsReader checks raw declarations. Check decoded values
+                        // too so character/entity escapes cannot hide reserved URIs.
+                        let xml_uri = "http://www.w3.org/XML/1998/namespace";
+                        let xmlns_uri = "http://www.w3.org/2000/xmlns/";
+                        let xml_prefix = binding == PrefixDeclaration::Named("xml");
+                        if binding == PrefixDeclaration::Named("xmlns")
+                            || value == xmlns_uri
+                            || (xml_prefix && value != xml_uri)
+                            || (!xml_prefix && value == xml_uri)
+                        {
+                            return Err(xml("invalid normalized reserved namespace binding"));
+                        }
+                        continue;
+                    }
+                    let attr_name = expanded(reader.resolver().resolve_attribute(attr.key))?;
+                    account(&mut metadata_bytes, &attr_name)?;
+                    if !expanded_attrs.insert(attr_name.clone()) {
+                        return Err(xml("duplicate expanded attribute name"));
+                    }
+                    if attr_name.namespace_uri.is_none() {
+                        let key = attr_name.local_name.as_str();
+                        if stack.is_empty() && key == "targetNamespace" {
+                            if value.len() > MAX_LABEL_BYTES {
+                                return Err(error(
+                                    ImportErrorKind::Metadata,
+                                    "target namespace exceeds 16 KiB",
+                                ));
+                            }
+                            target_namespace = Some(value.to_string());
+                        }
+                        if standard
+                            && key == "id"
+                            && (!ncname(&value)
+                                || value.len() > MAX_LABEL_BYTES
+                                || !ids.insert(value.to_string()))
+                        {
+                            return Err(error(
+                                ImportErrorKind::Id,
+                                "standard ID is invalid or duplicated",
+                            ));
+                        }
+                        if ns == Some(BPMN) && key == "name" && value.len() > MAX_LABEL_BYTES {
+                            return Err(error(
+                                ImportErrorKind::Label,
+                                "individual label exceeds 16 KiB",
+                            ));
+                        }
+                        if known_reference(ns, local, key) {
+                            let resolved = resolve_value(&reader, &value)?;
+                            push_reference(&mut references, &resolved, &mut metadata_bytes)?;
+                            report.qname_values.insert(resolved);
+                        }
+                        if matches!(ns, Some(DC | DI))
+                            && matches!(key, "x" | "y" | "width" | "height")
+                        {
+                            attrs.insert(key.to_owned(), value.to_string());
+                        }
+                    }
+                    if attr_name.namespace_uri.as_deref() == Some(XSI)
+                        && attr_name.local_name == "type"
+                    {
+                        let resolved = resolve_value(&reader, &value)?;
+                        if report.qname_values.insert(resolved.clone()) {
+                            account(&mut metadata_bytes, &resolved)?;
+                        }
+                    }
+                }
+                geometry(ns, local, &attrs)?;
+                // Keep the frame, including empty tags expanded by quick-xml.
+                frame.text_bytes = 0;
+                stack.push(frame);
+            }
+            Event::End(_) => {
+                let frame = stack
+                    .pop()
+                    .ok_or_else(|| xml("unexpected closing element"))?;
+                if let Some(value) = frame.reference_text {
+                    let resolved = resolve_value(&reader, value.trim())?;
+                    push_reference(&mut references, &resolved, &mut metadata_bytes)?;
+                    report.qname_values.insert(resolved);
+                }
+            }
+            Event::Text(text) => {
+                preceding_content = true;
+                if text.contains("]]>") {
+                    return Err(xml("CDATA terminator in plain text"));
+                }
+                add_text(&mut stack, &text)?;
+            }
+            Event::CData(text) => {
+                if stack.is_empty() {
+                    return Err(xml("CDATA outside root"));
+                }
+                add_text(&mut stack, &text)?;
+            }
+            Event::GeneralRef(value) => {
+                if stack.is_empty() {
+                    return Err(xml("entity reference outside root"));
+                }
+                let ch = value.resolve_char_ref().map_err(xml)?;
+                let text = if let Some(ch) = ch {
+                    if !xml_char(ch) {
+                        return Err(xml("invalid XML character reference"));
+                    }
+                    ch.to_string()
+                } else {
+                    match value.as_ref() {
+                        "lt" => "<",
+                        "gt" => ">",
+                        "amp" => "&",
+                        "apos" => "'",
+                        "quot" => "\"",
+                        _ => return Err(xml("unknown or external entity reference")),
+                    }
+                    .to_owned()
+                };
+                add_text(&mut stack, &text)?;
+            }
+            Event::PI(_) | Event::Comment(_) => {
+                preceding_content = true;
+            }
+            Event::Eof => break,
+            Event::Empty(_) => unreachable!("empty tags are expanded"),
+        }
+    }
+    if !seen_root || !stack.is_empty() {
+        return Err(xml("incomplete XML document"));
+    }
+    for reference in references {
+        if !matches!(reference.namespace_uri.as_deref(), None | Some(BPMN))
+            && reference.namespace_uri != target_namespace
+        {
+            return Err(error(
+                ImportErrorKind::Reference,
+                "known reference points outside this definitions namespace; external resolution is unavailable",
+            ));
+        }
+        if !ids.contains(&reference.local_name) {
+            return Err(error(
+                ImportErrorKind::Reference,
+                format!("known local reference {reference:?} has no standard ID"),
+            ));
+        }
+    }
+    report.standard_id_count = ids.len();
+    Ok(PreservedBpmn {
+        source: bytes.to_vec(),
+        report,
+    })
+}
+
+fn add_text(stack: &mut [Frame], text: &str) -> Result<(), ImportError> {
+    if stack.is_empty() && !text.trim_matches([' ', '\t', '\r', '\n']).is_empty() {
+        return Err(xml("non-whitespace outside root"));
+    }
+    for frame in stack.iter_mut() {
+        if frame.documentation || frame.label {
+            frame.text_bytes += text.len();
+            let (max, kind) = if frame.documentation {
+                (MAX_DOCUMENTATION_BYTES, ImportErrorKind::Documentation)
+            } else {
+                (MAX_LABEL_BYTES, ImportErrorKind::Label)
+            };
+            if frame.text_bytes > max {
+                return Err(error(kind, format!("individual text exceeds {max} bytes")));
+            }
+        }
+    }
+    if let Some(frame) = stack.last_mut()
+        && let Some(value) = &mut frame.reference_text
+    {
+        if value.len() + text.len() > MAX_LABEL_BYTES {
+            return Err(error(
+                ImportErrorKind::Reference,
+                "reference exceeds 16 KiB",
+            ));
+        }
+        value.push_str(text);
+    }
+    Ok(())
+}
+
+fn expanded(
+    (ns, local): (ResolveResult<'_>, quick_xml::name::LocalName<'_>),
+) -> Result<ExpandedName, ImportError> {
+    let namespace_uri = match ns {
+        ResolveResult::Unbound => None,
+        ResolveResult::Bound(ns) => {
+            let value = quick_xml::escape::unescape(ns.0).map_err(xml)?;
+            validate_namespace_name(&value)?;
+            if value.len() > MAX_LABEL_BYTES {
+                return Err(error(
+                    ImportErrorKind::Metadata,
+                    "namespace URI exceeds 16 KiB",
+                ));
+            }
+            Some(value.into_owned())
+        }
+        ResolveResult::Unknown(prefix) => {
+            return Err(xml(format!("unbound namespace prefix {prefix}")));
+        }
+    };
+    if !ncname(local.into_inner()) || local.into_inner().len() > MAX_LABEL_BYTES {
+        return Err(xml("invalid or excessive XML local name"));
+    }
+    Ok(ExpandedName {
+        namespace_uri,
+        local_name: local.into_inner().to_owned(),
+    })
+}
+
+fn validate_namespace_name(value: &str) -> Result<(), ImportError> {
+    if value.chars().any(char::is_whitespace) {
+        return Err(xml("M0 refuses whitespace-containing namespace names"));
+    }
+    Ok(())
+}
+
+fn resolve_value(reader: &NsReader<&[u8]>, value: &str) -> Result<ExpandedName, ImportError> {
+    validate_qname(value)?;
+    expanded(reader.resolver().resolve_element(QName(value)))
+}
+
+fn push_reference(
+    refs: &mut Vec<ExpandedName>,
+    value: &ExpandedName,
+    budget: &mut usize,
+) -> Result<(), ImportError> {
+    account(budget, value)?;
+    refs.push(value.clone());
+    Ok(())
+}
+fn account(budget: &mut usize, value: &ExpandedName) -> Result<(), ImportError> {
+    *budget += value.local_name.len() + value.namespace_uri.as_ref().map_or(0, String::len);
+    if *budget > MAX_RAW_BYTES {
+        return Err(error(
+            ImportErrorKind::Metadata,
+            "expanded report metadata exceeds 32 MiB",
+        ));
+    }
+    Ok(())
+}
+
+fn known_reference(ns: Option<&str>, element: &str, attr: &str) -> bool {
+    match ns {
+        Some(BPMNDI) => matches!(
+            (element, attr),
+            ("BPMNPlane" | "BPMNShape" | "BPMNEdge", "bpmnElement")
+                | ("BPMNShape", "choreographyActivityShape")
+                | ("BPMNEdge", "sourceElement" | "targetElement")
+                | ("BPMNLabel", "labelStyle")
+        ),
+        Some(BPMN) => matches!(
+            (element, attr),
+            (
+                "sequenceFlow" | "messageFlow" | "association",
+                "sourceRef" | "targetRef"
+            ) | ("participant", "processRef")
+                | ("lane", "partitionElementRef")
+                | ("boundaryEvent", "attachedToRef")
+                | ("dataObjectReference", "dataObjectRef")
+                | ("dataStoreReference", "dataStoreRef")
+                | (
+                    "exclusiveGateway"
+                        | "inclusiveGateway"
+                        | "complexGateway"
+                        | "task"
+                        | "userTask"
+                        | "manualTask"
+                        | "serviceTask"
+                        | "scriptTask"
+                        | "sendTask"
+                        | "receiveTask"
+                        | "businessRuleTask"
+                        | "subProcess",
+                    "default"
+                )
+                | (
+                    "messageEventDefinition" | "receiveTask" | "sendTask",
+                    "messageRef"
+                )
+                | ("signalEventDefinition", "signalRef")
+                | ("errorEventDefinition", "errorRef")
+                | ("escalationEventDefinition", "escalationRef")
+        ),
+        _ => false,
+    }
+}
+
+fn geometry(
+    ns: Option<&str>,
+    name: &str,
+    attrs: &std::collections::HashMap<String, String>,
+) -> Result<(), ImportError> {
+    let keys: &[&str] = match (ns, name) {
+        (Some(DC), "Bounds") => &["x", "y", "width", "height"],
+        (Some(DC), "Point") | (Some(DI), "waypoint") => &["x", "y"],
+        _ => return Ok(()),
+    };
+    for key in keys {
+        let value = attrs
+            .get(*key)
+            .and_then(|s| s.parse::<f64>().ok())
+            .ok_or_else(|| {
+                error(
+                    ImportErrorKind::Geometry,
+                    format!("missing or invalid {key}"),
+                )
+            })?;
+        if !value.is_finite()
+            || value.abs() > MAX_GEOMETRY
+            || (matches!(*key, "width" | "height") && value < 0.0)
+        {
+            return Err(error(
+                ImportErrorKind::Geometry,
+                "DI geometry must be finite and bounded; sizes must be non-negative",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_qname(value: &str) -> Result<(), ImportError> {
+    let mut parts = value.split(':');
+    if !parts.next().is_some_and(ncname)
+        || parts.next().is_some_and(|s| !ncname(s))
+        || parts.next().is_some()
+        || value.len() > MAX_LABEL_BYTES
+    {
+        return Err(xml("invalid or excessive QName"));
+    }
+    Ok(())
+}
+fn ncname(value: &str) -> bool {
+    let mut chars = value.chars();
+    chars.next().is_some_and(name_start) && chars.all(|c| name_start(c) || matches!(c, '-' | '.' | '0'..='9' | '\u{b7}' | '\u{300}'..='\u{36f}' | '\u{203f}'..='\u{2040}'))
+}
+fn name_start(c: char) -> bool {
+    matches!(c, '_' | 'A'..='Z' | 'a'..='z' | '\u{c0}'..='\u{d6}' | '\u{d8}'..='\u{f6}' | '\u{f8}'..='\u{2ff}' | '\u{370}'..='\u{37d}' | '\u{37f}'..='\u{1fff}' | '\u{200c}'..='\u{200d}' | '\u{2070}'..='\u{218f}' | '\u{2c00}'..='\u{2fef}' | '\u{3001}'..='\u{d7ff}' | '\u{f900}'..='\u{fdcf}' | '\u{fdf0}'..='\u{fffd}' | '\u{10000}'..='\u{effff}')
+}
+fn xml_char(c: char) -> bool {
+    matches!(c, '\t' | '\n' | '\r' | '\u{20}'..='\u{d7ff}' | '\u{e000}'..='\u{fffd}' | '\u{10000}'..='\u{10ffff}')
+}

@@ -1,0 +1,416 @@
+{
+  "type": "batch",
+  "mutations": [
+    {
+      "type": "createDocument",
+      "document": {
+        "id": "11111111-1111-4111-8111-111111111111",
+        "name": "Procurement",
+        "folder": null,
+        "definitions_id": "defs",
+        "processes": [],
+        "collaboration": null,
+        "diagrams": [],
+        "provenance": null,
+        "capability": "Editable"
+      }
+    },
+    {
+      "type": "createProcess",
+      "document_id": "11111111-1111-4111-8111-111111111111",
+      "process": {
+        "id": "procurement",
+        "name": "Procurement",
+        "documentation": "",
+        "nodes": [],
+        "lanes": [],
+        "flows": []
+      }
+    },
+    {
+      "type": "createElement",
+      "document_id": "11111111-1111-4111-8111-111111111111",
+      "process_id": "procurement",
+      "element": {
+        "id": "start",
+        "name": "Request received",
+        "documentation": "",
+        "kind": "StartEvent",
+        "owner": "",
+        "contact": ""
+      }
+    },
+    {
+      "type": "createElement",
+      "document_id": "11111111-1111-4111-8111-111111111111",
+      "process_id": "procurement",
+      "element": {
+        "id": "review",
+        "name": "Review request",
+        "documentation": "",
+        "kind": "UserTask",
+        "owner": "",
+        "contact": ""
+      }
+    },
+    {
+      "type": "createElement",
+      "document_id": "11111111-1111-4111-8111-111111111111",
+      "process_id": "procurement",
+      "element": {
+        "id": "decision",
+        "name": "Approved?",
+        "documentation": "",
+        "kind": "ExclusiveGateway",
+        "owner": "",
+        "contact": ""
+      }
+    },
+    {
+      "type": "createElement",
+      "document_id": "11111111-1111-4111-8111-111111111111",
+      "process_id": "procurement",
+      "element": {
+        "id": "order",
+        "name": "Place order",
+        "documentation": "",
+        "kind": "Task",
+        "owner": "",
+        "contact": ""
+      }
+    },
+    {
+      "type": "createElement",
+      "document_id": "11111111-1111-4111-8111-111111111111",
+      "process_id": "procurement",
+      "element": {
+        "id": "end",
+        "name": "Complete",
+        "documentation": "",
+        "kind": "EndEvent",
+        "owner": "",
+        "contact": ""
+      }
+    },
+    {
+      "type": "createFlow",
+      "document_id": "11111111-1111-4111-8111-111111111111",
+      "process_id": "procurement",
+      "flow": {
+        "id": "flow_start_review",
+        "kind": "Sequence",
+        "source": "start",
+        "target": "review",
+        "name": "",
+        "documentation": "",
+        "condition": null
+      }
+    },
+    {
+      "type": "createFlow",
+      "document_id": "11111111-1111-4111-8111-111111111111",
+      "process_id": "procurement",
+      "flow": {
+        "id": "flow_review_decision",
+        "kind": "Sequence",
+        "source": "review",
+        "target": "decision",
+        "name": "",
+        "documentation": "",
+        "condition": null
+      }
+    },
+    {
+      "type": "createFlow",
+      "document_id": "11111111-1111-4111-8111-111111111111",
+      "process_id": "procurement",
+      "flow": {
+        "id": "flow_approved",
+        "kind": "Sequence",
+        "source": "decision",
+        "target": "order",
+        "name": "Approved",
+        "documentation": "",
+        "condition": null
+      }
+    },
+    {
+      "type": "createFlow",
+      "document_id": "11111111-1111-4111-8111-111111111111",
+      "process_id": "procurement",
+      "flow": {
+        "id": "flow_rejected",
+        "kind": "Sequence",
+        "source": "decision",
+        "target": "end",
+        "name": "Rejected",
+        "documentation": "",
+        "condition": null
+      }
+    },
+    {
+      "type": "createFlow",
+      "document_id": "11111111-1111-4111-8111-111111111111",
+      "process_id": "procurement",
+      "flow": {
+        "id": "flow_order_end",
+        "kind": "Sequence",
+        "source": "order",
+        "target": "end",
+        "name": "",
+        "documentation": "",
+        "condition": null
+      }
+    },
+    {
+      "type": "createLane",
+      "document_id": "11111111-1111-4111-8111-111111111111",
+      "process_id": "procurement",
+      "lane": {
+        "id": "lane_request",
+        "name": "Request and review",
+        "parent": null,
+        "members": [
+          "start",
+          "review",
+          "decision"
+        ]
+      }
+    },
+    {
+      "type": "createLane",
+      "document_id": "11111111-1111-4111-8111-111111111111",
+      "process_id": "procurement",
+      "lane": {
+        "id": "lane_procurement",
+        "name": "Procurement",
+        "parent": null,
+        "members": [
+          "order",
+          "end"
+        ]
+      }
+    },
+    {
+      "type": "setFlowCondition",
+      "document_id": "11111111-1111-4111-8111-111111111111",
+      "flow_id": "flow_approved",
+      "condition": "approved"
+    },
+    {
+      "type": "setFlowCondition",
+      "document_id": "11111111-1111-4111-8111-111111111111",
+      "flow_id": "flow_rejected",
+      "condition": "not approved"
+    },
+    {
+      "type": "createDiagram",
+      "document_id": "11111111-1111-4111-8111-111111111111",
+      "diagram": {
+        "id": "procurement_diagram",
+        "plane_id": "procurement_plane",
+        "plane": "procurement",
+        "shapes": [
+          {
+            "id": "pc_shape_lane_request",
+            "element": "lane_request",
+            "bounds": {
+              "x": 40,
+              "y": 40,
+              "width": 850,
+              "height": 180
+            },
+            "label": null,
+            "style": null
+          },
+          {
+            "id": "pc_shape_lane_procurement",
+            "element": "lane_procurement",
+            "bounds": {
+              "x": 40,
+              "y": 220,
+              "width": 850,
+              "height": 180
+            },
+            "label": null,
+            "style": null
+          },
+          {
+            "id": "pc_shape_start",
+            "element": "start",
+            "bounds": {
+              "x": 100,
+              "y": 110,
+              "width": 36,
+              "height": 36
+            },
+            "label": {
+              "bounds": {
+                "x": 53,
+                "y": 151,
+                "width": 130,
+                "height": 38
+              },
+              "style": null
+            },
+            "style": null
+          },
+          {
+            "id": "pc_shape_review",
+            "element": "review",
+            "bounds": {
+              "x": 190,
+              "y": 88,
+              "width": 140,
+              "height": 80
+            },
+            "label": null,
+            "style": null
+          },
+          {
+            "id": "pc_shape_decision",
+            "element": "decision",
+            "bounds": {
+              "x": 390,
+              "y": 103,
+              "width": 50,
+              "height": 50
+            },
+            "label": {
+              "bounds": {
+                "x": 360,
+                "y": 158,
+                "width": 110,
+                "height": 32
+              },
+              "style": null
+            },
+            "style": null
+          },
+          {
+            "id": "pc_shape_order",
+            "element": "order",
+            "bounds": {
+              "x": 515,
+              "y": 270,
+              "width": 140,
+              "height": 80
+            },
+            "label": null,
+            "style": null
+          },
+          {
+            "id": "pc_shape_end",
+            "element": "end",
+            "bounds": {
+              "x": 780,
+              "y": 292,
+              "width": 36,
+              "height": 36
+            },
+            "label": {
+              "bounds": {
+                "x": 748,
+                "y": 333,
+                "width": 100,
+                "height": 32
+              },
+              "style": null
+            },
+            "style": null
+          }
+        ],
+        "edges": [
+          {
+            "id": "pc_edge_flow_start_review",
+            "element": "flow_start_review",
+            "waypoints": [
+              {
+                "x": 136,
+                "y": 128
+              },
+              {
+                "x": 190,
+                "y": 128
+              }
+            ],
+            "label": null,
+            "style": null
+          },
+          {
+            "id": "pc_edge_flow_review_decision",
+            "element": "flow_review_decision",
+            "waypoints": [
+              {
+                "x": 330,
+                "y": 128
+              },
+              {
+                "x": 390,
+                "y": 128
+              }
+            ],
+            "label": null,
+            "style": null
+          },
+          {
+            "id": "pc_edge_flow_approved",
+            "element": "flow_approved",
+            "waypoints": [
+              {
+                "x": 415,
+                "y": 153
+              },
+              {
+                "x": 415,
+                "y": 310
+              },
+              {
+                "x": 515,
+                "y": 310
+              }
+            ],
+            "label": null,
+            "style": null
+          },
+          {
+            "id": "pc_edge_flow_rejected",
+            "element": "flow_rejected",
+            "waypoints": [
+              {
+                "x": 440,
+                "y": 128
+              },
+              {
+                "x": 798,
+                "y": 128
+              },
+              {
+                "x": 798,
+                "y": 292
+              }
+            ],
+            "label": null,
+            "style": null
+          },
+          {
+            "id": "pc_edge_flow_order_end",
+            "element": "flow_order_end",
+            "waypoints": [
+              {
+                "x": 655,
+                "y": 310
+              },
+              {
+                "x": 780,
+                "y": 310
+              }
+            ],
+            "label": null,
+            "style": null
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,2 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:tns="urn:artifacts" id="defs" targetNamespace="urn:artifacts"><process id="p" isExecutable="false"><task id="work"/><textAnnotation id="note" textFormat="text/plain"><text>Review &amp; approve</text></textAnnotation><association id="a" sourceRef="tns:work" targetRef="tns:note" associationDirection="One"/></process></definitions>

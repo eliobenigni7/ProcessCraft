@@ -1,0 +1,2 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" id="defs" targetNamespace="urn:activity"><process id="p" isExecutable="false"><scriptTask id="work" name="Work" scriptFormat="text/plain" isForCompensation="false" startQuantity="2" completionQuantity="1" default="next"><script>hello &amp; goodbye</script></scriptTask><endEvent id="end"/><sequenceFlow id="next" sourceRef="work" targetRef="end"/></process></definitions>

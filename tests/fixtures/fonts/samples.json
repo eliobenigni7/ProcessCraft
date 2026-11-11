@@ -1,0 +1,8 @@
+[
+  { "id": "latin-accents", "title": "Latin accents and ligatures", "text": "Café, naïve, Ångström — déjà vu. Office affinity.", "size": 26, "width": 860, "y": 110 },
+  { "id": "rtl", "title": "Arabic RTL with Latin and digits", "text": "مرحبا بالعالم — ProcessCraft 123", "size": 30, "width": 860, "y": 220 },
+  { "id": "cjk", "title": "CJK with explicit catalog fallback", "text": "中文流程 日本語 世界 — ProcessCraft", "size": 30, "width": 860, "y": 330 },
+  { "id": "combining", "title": "Combining marks and precomposed accents", "text": "e\u0301 = é; A\u030a = Å; a\u0323\u0302; n\u0303 = ñ", "size": 30, "width": 860, "y": 440 },
+  { "id": "wrapping", "title": "Word wrapping, constrained to 420 logical pixels", "text": "Approve the request after reviewing all purchase details. A long label wraps through the shared layout engine.", "size": 24, "width": 420, "y": 550 },
+  { "id": "missing-glyph", "title": "Deliberately unavailable U+10FFFF: visible .notdef + diagnostic", "text": "Unavailable: \udbff\udfff", "size": 28, "width": 860, "y": 750 }
+]

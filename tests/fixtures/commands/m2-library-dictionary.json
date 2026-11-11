@@ -1,0 +1,120 @@
+{
+  "type": "batch",
+  "mutations": [
+    {
+      "type": "createFolder",
+      "folder": {
+        "id": "folder_procurement",
+        "name": "Procurement",
+        "parent": null
+      }
+    },
+    {
+      "type": "documentProperties",
+      "document_id": "11111111-1111-4111-8111-111111111111",
+      "name": "Purchase requisition",
+      "folder": "folder_procurement"
+    },
+    {
+      "type": "createDictionaryEntry",
+      "entry": {
+        "id": "22222222-2222-4222-8222-222222222222",
+        "kind": "Role",
+        "name": "Requester",
+        "description": "Synthetic M2 qualification data"
+      }
+    },
+    {
+      "type": "createDictionaryEntry",
+      "entry": {
+        "id": "33333333-3333-4333-8333-333333333333",
+        "kind": "Role",
+        "name": "Procurement",
+        "description": "Synthetic M2 qualification data"
+      }
+    },
+    {
+      "type": "createDictionaryEntry",
+      "entry": {
+        "id": "44444444-4444-4444-8444-444444444444",
+        "kind": "System",
+        "name": "Procurement ERP",
+        "description": "Synthetic M2 qualification data"
+      }
+    },
+    {
+      "type": "createDictionaryEntry",
+      "entry": {
+        "id": "55555555-5555-4555-8555-555555555555",
+        "kind": "Document",
+        "name": "Purchase policy",
+        "description": "Synthetic M2 qualification data"
+      }
+    },
+    {
+      "type": "setDictionaryLinks",
+      "source": {
+        "document_id": "11111111-1111-4111-8111-111111111111",
+        "xml_id": "lane_request"
+      },
+      "kind": "Role",
+      "targets": [
+        {
+          "Entry": "22222222-2222-4222-8222-222222222222"
+        }
+      ]
+    },
+    {
+      "type": "setDictionaryLinks",
+      "source": {
+        "document_id": "11111111-1111-4111-8111-111111111111",
+        "xml_id": "lane_procurement"
+      },
+      "kind": "Role",
+      "targets": [
+        {
+          "Entry": "33333333-3333-4333-8333-333333333333"
+        }
+      ]
+    },
+    {
+      "type": "setDictionaryLinks",
+      "source": {
+        "document_id": "11111111-1111-4111-8111-111111111111",
+        "xml_id": "review"
+      },
+      "kind": "System",
+      "targets": [
+        {
+          "Entry": "44444444-4444-4444-8444-444444444444"
+        }
+      ]
+    },
+    {
+      "type": "setDictionaryLinks",
+      "source": {
+        "document_id": "11111111-1111-4111-8111-111111111111",
+        "xml_id": "order"
+      },
+      "kind": "System",
+      "targets": [
+        {
+          "Entry": "44444444-4444-4444-8444-444444444444"
+        }
+      ]
+    },
+    {
+      "type": "setDictionaryLinks",
+      "source": {
+        "document_id": "11111111-1111-4111-8111-111111111111",
+        "xml_id": "review"
+      },
+      "kind": "Document",
+      "targets": [
+        {
+          "Entry": "55555555-5555-4555-8555-555555555555"
+        }
+      ]
+    }
+  ]
+}

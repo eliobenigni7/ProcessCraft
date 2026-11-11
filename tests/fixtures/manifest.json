@@ -1,0 +1,136 @@
+{
+  "schema_version": 1,
+  "scope": "Synthetic M0 preservation/text, M1 commands and M2 library/dictionary fixtures; qualified flat BPMN has its own m2-flat-lanes manifest; no full XSD/vendor interchange claim",
+  "fixtures": [
+    {
+      "path": "bpmn/minimal.bpmn",
+      "sha256": "88416f10240d06ab97c6bb3a5b5e8f9dc41854d52f8caa7a5877c66c9b792926",
+      "provenance": "Synthetic ProcessCraft M0 regression authored for Task03 on 2026-11-11; no external model copied",
+      "license": "CC0-1.0",
+      "expected_mode": "preserved-source",
+      "expected_semantic_edits": false,
+      "expected_diagrams": 1,
+      "expected_retention": "all source bytes, namespaces, comments, extensions and DI unchanged",
+      "visual_result": "not rendered or qualified in Task03",
+      "semantic_di_checks": "one process, three nodes, two flows, one diagram"
+    },
+    {
+      "path": "bpmn/extensions.bpmn",
+      "sha256": "2c18782b0b6eaee3ca23caa1a36f66dc065d4aa3c58a0a3171ddeac750bcd589",
+      "provenance": "Synthetic ProcessCraft M0 regression authored for Task03 on 2026-11-11; no external model copied",
+      "license": "CC0-1.0",
+      "expected_mode": "preserved-source",
+      "expected_semantic_edits": false,
+      "expected_diagrams": 1,
+      "expected_retention": "all source bytes, namespaces, comments, extensions and DI unchanged",
+      "visual_result": "not rendered or qualified in Task03",
+      "semantic_di_checks": "minimal plus opaque vendor element/attributes and CDATA"
+    },
+    {
+      "path": "bpmn/multiple-diagrams.bpmn",
+      "sha256": "4993f6c7033d3ec6d4dd2ba45d30c8e2421ae67a4c94d440e338b3289ed159ee",
+      "provenance": "Synthetic ProcessCraft M0 regression authored for Task03 on 2026-11-11; no external model copied",
+      "license": "CC0-1.0",
+      "expected_mode": "preserved-source",
+      "expected_semantic_edits": false,
+      "expected_diagrams": 2,
+      "expected_retention": "all source bytes, namespaces, comments, extensions and DI unchanged",
+      "visual_result": "not rendered or qualified in Task03",
+      "semantic_di_checks": "same process referenced by two distinct diagrams"
+    },
+    {
+      "path": "bpmn/unsupported-event.bpmn",
+      "sha256": "1769f837ecde7394b1b5de888bcccd4aa481e38cd6b364797f90e32caad3e2d4",
+      "provenance": "Synthetic ProcessCraft M0 regression authored for Task03 on 2026-11-11; no external model copied",
+      "license": "CC0-1.0",
+      "expected_mode": "preserved-source",
+      "expected_semantic_edits": false,
+      "expected_diagrams": 1,
+      "expected_retention": "all source bytes, namespaces, comments, extensions and DI unchanged",
+      "visual_result": "not rendered or qualified in Task03",
+      "semantic_di_checks": "timer start event retained; never editable"
+    },
+    {
+      "path": "bpmn/namespace-rebinding.bpmn",
+      "sha256": "db4ab30d7efa2531846ba5ca2d630695bfb5d72e236f11ff3beabe052b52170f",
+      "provenance": "Synthetic ProcessCraft M0 regression authored for Task03 on 2026-11-11; no external model copied",
+      "license": "CC0-1.0",
+      "expected_mode": "preserved-source",
+      "expected_semantic_edits": false,
+      "expected_diagrams": 0,
+      "expected_retention": "all source bytes, namespaces, comments, extensions and DI unchanged",
+      "visual_result": "not rendered or qualified in Task03",
+      "semantic_di_checks": "same v:Kind spelling resolves to two URIs; distinct v:After after nested scope resolves to the restored outer URI"
+    },
+    {
+      "path": "bpmn/malformed.bpmn",
+      "sha256": "68e0505893061078e21da3c1b019a9ed4524e6618096cd063e5a2a626c9b7d6a",
+      "provenance": "Synthetic ProcessCraft M0 regression authored for Task03 on 2026-11-11; no external model copied",
+      "license": "CC0-1.0",
+      "expected_mode": "rejected",
+      "expected_semantic_edits": false,
+      "expected_diagrams": null,
+      "expected_retention": "no imported document",
+      "visual_result": "not rendered or qualified in Task03",
+      "semantic_di_checks": "mismatched closing tag is rejected"
+    },
+    {
+      "path": "bpmn/dtd.bpmn",
+      "sha256": "4feaf0d1b8c5d213b3c7d2c456a7cf9cd2c0d30359437785d33c181a66101ae5",
+      "provenance": "Synthetic ProcessCraft M0 regression authored for Task03 on 2026-11-11; no external model copied",
+      "license": "CC0-1.0",
+      "expected_mode": "rejected",
+      "expected_semantic_edits": false,
+      "expected_diagrams": null,
+      "expected_retention": "no imported document",
+      "visual_result": "not rendered or qualified in Task03",
+      "semantic_di_checks": "external DTD declaration is rejected without opening its system identifier"
+    },
+    {
+      "path": "commands/procurement.json",
+      "sha256": "7a8b2d563c346cfce723e1aeeb53dc1fe9e78edb93b2c8c6c6adc8ebdea58a10",
+      "provenance": "Synthetic ProcessCraft M1 transactional batch authored 2026-11-11",
+      "license": "CC0-1.0",
+      "expected_mode": "editable",
+      "semantic_di_checks": "branching procurement process with two lanes, conditions, deterministic diagram shapes, edges, and external labels"
+    },
+    {
+      "path": "commands/m2-library-dictionary.json",
+      "sha256": "a4b870dda4dfd8b68b52bd7ad984559ce60a1bf52cda4000e3bab6269a227c85",
+      "provenance": "Synthetic ProcessCraft M2 library/dictionary qualification authored 2026-11-11; apply after procurement.json",
+      "license": "CC0-1.0",
+      "expected_mode": "native editable project",
+      "semantic_di_checks": "Stable document and entry IDs; two role mappings; system/document usages; folder and graph unchanged by entry rename"
+    }
+  ],
+  "fonts": [
+    {
+      "path": "assets/fonts/NotoSans-Regular.ttf",
+      "license": "OFL-1.1",
+      "sha256": "b85c38ecea8a7cfb39c24e395a4007474fa5a4fc864f6ee33309eb4948d232d5",
+      "source": "https://raw.githubusercontent.com/notofonts/noto-fonts/ffebf8c1ee449e544955a7e813c54f9b73848eac/hinted/ttf/NotoSans/NotoSans-Regular.ttf",
+      "revision": "ffebf8c1ee449e544955a7e813c54f9b73848eac"
+    },
+    {
+      "path": "assets/fonts/NotoSansArabic-Regular.ttf",
+      "license": "OFL-1.1",
+      "sha256": "ceea25b464a656dc3b26849bab9356740401af62aedf1bfa8b7f0d9b75925b1b",
+      "source": "https://raw.githubusercontent.com/notofonts/noto-fonts/ffebf8c1ee449e544955a7e813c54f9b73848eac/hinted/ttf/NotoSansArabic/NotoSansArabic-Regular.ttf",
+      "revision": "ffebf8c1ee449e544955a7e813c54f9b73848eac"
+    },
+    {
+      "path": "assets/fonts/NotoSansCJKsc-Regular.otf",
+      "license": "OFL-1.1",
+      "sha256": "2c76254f6fc379fddfce0a7e84fb5385bb135d3e399294f6eeb6680d0365b74b",
+      "source": "https://raw.githubusercontent.com/notofonts/noto-cjk/f8d157532fbfaeda587e826d4cd5b21a49186f7c/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf",
+      "revision": "f8d157532fbfaeda587e826d4cd5b21a49186f7c"
+    },
+    {
+      "license": "CC0-1.0",
+      "path": "tests/fixtures/fonts/samples.json",
+      "expected": "Latin accents, Arabic bidi, CJK fallback, combining marks, word wrapping, and deliberate U+10FFFF .notdef with explicit diagnostic",
+      "provenance": "Synthetic ProcessCraft M0 samples authored 2026-11-11",
+      "sha256": "469302452bfcc6af2a89edfa1a09bdd3bc8567de45785acf2409c48c589ce948"
+    }
+  ]
+}

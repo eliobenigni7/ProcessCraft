@@ -1,0 +1,2 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" id="defs" targetNamespace="urn:gateways"><process id="p" isExecutable="false"><exclusiveGateway id="choose" gatewayDirection="Diverging" default="fallback"/><task id="work"/><complexGateway id="complex" gatewayDirection="Mixed"><activationCondition>x &gt; 1</activationCondition></complexGateway><eventBasedGateway id="event" instantiate="true" eventGatewayType="Parallel"/><sequenceFlow id="fallback" sourceRef="choose" targetRef="work"/></process></definitions>
