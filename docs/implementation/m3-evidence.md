@@ -131,7 +131,7 @@ At the nested-renderer checkpoint, `cargo test -p processcraft-render --locked -
 
 ## Nested geometry move
 
-`cargo test -p processcraft-core --test geometry --locked --offline` passed 16 tests after nested move changes. The targeted fixtures verify a subprocess drag moves child shapes, translates its internal route and explicit edge-label bounds in one undoable batch, preserves label style, repairs a directly moved nested child route, and refuses conflicting parent/child deltas without mutation. The existing direct multi-selection policy keeps manual interior bends. Connected data associations and conversation links are refused when their endpoints move until their geometry handling is qualified. These tests do not cover every nested BPMN family or native pointer interaction.
+`cargo test -p processcraft-core --test geometry --locked --offline` passed 16 tests after nested move changes. The targeted fixtures verify a subprocess drag moves child shapes, translates its internal route and explicit edge-label bounds in one undoable batch, preserves label style, repairs a directly moved nested child route, and refuses conflicting parent/child deltas without mutation. The existing direct multi-selection policy keeps manual interior bends. At that historical checkpoint, connected data associations and conversation links were refused when their endpoints moved. Later bounded endpoint-move tests cover selected data associations and conversation links; full family and native interaction qualification remains open. These tests do not cover every nested BPMN family or native pointer interaction.
 
 ## Checkpoint and native limits: synthetic release run
 
@@ -178,4 +178,16 @@ The normal release build of `processcraft.exe` and `processcraft-cli.exe` comple
 
 A final native run of this release opened the schema-3 review fixture, prepared the labelled two-lane auto-layout preview, applied it, invoked Undo then Redo, and saved a separate `native-layout-review.processcraft`. Independent ZIP/JSON inspection verified changed DI with unchanged process semantics, comments, checkpoint catalog and reference. The release CLI reopened and validated the result with no warnings. The Collaboration and data window was opened and captured; complete per-form native authoring qualification remains open. Release captures are in `target/m3-qualification/ui/processcraft-m3-release-*.png`. The application was closed after the synthetic test reached Saved state.
 
-No further feature work is active at this user-requested partial close. Full M3 completion has not been claimed.
+This was a historical user-requested partial close. Implementation has since resumed; full M3 completion has not been claimed.
+
+
+## Cloud expanded-data checkpoint
+
+At commit `4e1830f` (Linux x86_64, kernel 6.18.57), the expanded data slice includes bounded item-aware metadata, optional data IDs/names, process I/O, transformation/assignment expressions, selected data reference handling and shared commands/UI/rendering. It remains a profile: ancestor-scope references, complete identity/name presence, all owners and full semantic/interaction coverage remain open. A follow-on shared identity migration is in progress. Names omitted on data reference nodes still require protected-source handling until shared node-name presence is supported.
+
+- Workspace all-target/all-feature tests with the locked offline dependencies completed with **343 passed, 15 failed, 0 ignored across 38 test targets**, using `--no-fail-fast`; `target/m3-data-workspace-tests.log` records the result. All 15 failures were in `processcraft-cli --test cli`, whose file-based flows encounter the deliberately unqualified non-Windows replacement adapter; the workspace gate therefore **did not pass**. This does not qualify Windows NTFS saves, ownership, ACLs, named pipes or native desktop behavior.
+- Workspace all-target/all-feature Clippy with `-D warnings` passed (`target/m3-data-clippy.log`); release builds of desktop and CLI passed (`target/m3-data-release.log`). These are Linux build/check results, not Windows qualification.
+- `target/m3-data-qualification.log` records codec identity/field round trips and independent pinned-XSD validation of both source and exported XML for three synthetic fixtures (six validations). The fixture manifests document their origin. This is bounded interoperability evidence, not external-consumer qualification. The interchange suite had 65 passing tests and the focused expanded-data native-capability test passed. A further golden baseline test passed after the workspace run; it is not included in that run's count.
+- Current research and generator record per-property partial evidence and preserve unverified cells; `python scripts/generate_bpmn20_inventory.py --check` reproduces 580 declarations. The count is an inventory, not a conformance percentage.
+
+Native Windows interaction, keyboard/accessibility, theme/DPI, qualified file safety and recovery gates, named-version independent consumer reopen checks, expanded-model performance and remaining BPMN requirements are still outstanding. No external-compatibility or comparative-superiority claim is established by this checkpoint.

@@ -182,6 +182,26 @@ for declaration in declarations:
             "Bounded QName binding profile; full task I/O, external resolution, GUI and normative semantics remain unverified. "
             "No general equality between task messageRef and operation messages is inferred."
         )
+# Expanded data declarations: evidence is bounded to typed metadata and selected owners.
+data_types = {"tDataObject", "tDataStore", "tDataInput", "tDataOutput", "tDataState", "tDataAssociation", "tAssignment"}
+data_elements = {"dataObject", "dataStore", "dataInput", "dataOutput", "dataState", "dataAssociation", "assignment"}
+for declaration in declarations:
+    if (declaration["schema"] == "Semantic.xsd" and (
+        (declaration["kind"] == "element" and declaration["name"] in data_elements) or
+        (declaration["kind"] == "complexType" and declaration["name"] in data_types) or
+        (declaration["kind"] == "attribute" and any(
+            f"/complexType[@name={name}]/" in declaration["path"] for name in data_types)))):
+        declaration["coverage"].update({k: "partial" for k in ("model", "import", "export", "validate")})
+        declaration["evidence"] = [
+            "crates/processcraft-io/tests/interchange.rs:item_aware_metadata_transformations_and_assignments_roundtrip",
+            "crates/processcraft-io/tests/interchange.rs:data_elements_allow_optional_xml_ids_and_process_io",
+            "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
+            "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents",
+        ]
+        declaration["limitations"] = (
+            "Bounded data metadata, expressions and optional identities only; all owners, inherited content, "
+            "ancestor-scope references, renderer/UI and semantic qualification remain unverified or preserved."
+        )
 result = {"profiles": profiles, "cmof_declarations": cmof, "version": "2.0.2", "coverage_policy": "unverified means no construct-level evidence recorded; raw retention is not modeling support", "sources": sources, "declarations": declarations,
           "conformance": {"status": "not_assessed", "note": "OMG PDF conformance classes and semantic constraints require separate clause-by-clause mapping; XSD declarations do not establish conformance."}}
 serialized = json.dumps(result, indent=2, ensure_ascii=False) + "\n"

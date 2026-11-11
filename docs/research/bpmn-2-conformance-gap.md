@@ -27,6 +27,8 @@ The [foundation and root-catalog matrix](bpmn-2-foundation-matrix.md) expands th
 
 The [modeling and interchange matrix](bpmn-2-modeling-matrix.md) breaks out event and control-flow contexts and records collaboration, choreography, data and diagram requirements.
 
+The [identity and presence matrix](bpmn-2-identity-matrix.md) audits optional source IDs and names against the current semantic and DI model.
+
 ## Family crosswalk and open work
 
 | Family | Normative pointers | Specific unfinished requirements |
