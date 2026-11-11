@@ -898,6 +898,7 @@ impl ProcessCraft {
         );
     }
     fn automation_ui(&mut self, ui: &mut egui::Ui) {
+        #[cfg(windows)]
         let ctx = ui.ctx().clone();
         ui.label(
             "Connect local tools to this open project. Folder access requires an explicit grant.",

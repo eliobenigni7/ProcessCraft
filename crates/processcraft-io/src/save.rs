@@ -1,5 +1,7 @@
 use crate::{Access, FileGrant};
-use std::fs::{self, File, OpenOptions};
+#[cfg(windows)]
+use std::fs::OpenOptions;
+use std::fs::{self, File};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 

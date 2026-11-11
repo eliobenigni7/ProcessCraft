@@ -63,12 +63,14 @@ struct SaveResult {
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(not(windows), allow(dead_code))]
 pub struct UncertainSave {
     pub attempted: processcraft_io::project::SaveReceipt,
     pub stage: PathBuf,
     pub backup: PathBuf,
 }
 #[derive(Debug, Clone)]
+#[cfg_attr(not(windows), allow(dead_code))]
 pub struct SaveReport {
     pub receipt: Option<processcraft_io::project::SaveReceipt>,
     pub uncertain: bool,
@@ -194,6 +196,7 @@ impl Controller {
     pub fn is_saving(&self) -> bool {
         self.pending.is_some()
     }
+    #[cfg_attr(not(windows), allow(dead_code))]
     pub fn take_save_report(&mut self) -> Option<SaveReport> {
         self.last_save_report.take()
     }
@@ -271,6 +274,7 @@ impl Controller {
     pub fn save(&mut self, as_path: Option<PathBuf>) -> bool {
         self.save_inner(as_path, None)
     }
+    #[cfg_attr(not(windows), allow(dead_code))]
     pub fn save_granted(&mut self, grant: FileGrant) -> bool {
         self.save_inner(Some(grant.path().to_path_buf()), Some(grant))
     }

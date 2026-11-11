@@ -78,6 +78,7 @@ impl PendingEffect {
         }
     }
 }
+#[cfg_attr(not(windows), allow(dead_code))]
 struct Attachment {
     endpoint: String,
     token: String,
