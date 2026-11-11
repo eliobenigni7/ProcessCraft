@@ -1174,3 +1174,208 @@ fn compensation_wait_attribute_presence_roundtrips() {
         );
     }
 }
+
+#[test]
+fn supporting_catalog_qnames_and_presence_roundtrip() {
+    let input = include_bytes!("../../../tests/fixtures/bpmn/supporting-catalog.bpmn");
+    let parsed = prepare_import(input, "catalog").unwrap();
+    assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+    let catalog = &parsed.document.catalog;
+    assert_eq!(catalog.item_definitions.len(), 2);
+    assert_eq!(catalog.item_definitions[0].is_collection, Some(false));
+    assert_eq!(catalog.item_definitions[1].id, None);
+    assert_eq!(
+        catalog.resources[0].parameters[1]
+            .type_ref
+            .as_ref()
+            .unwrap()
+            .namespace,
+        ""
+    );
+    let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+    assert!(again.report.editable);
+    assert_eq!(parsed.document.catalog, again.document.catalog);
+}
+
+#[test]
+fn supporting_catalog_unrepresented_metadata_is_preserved() {
+    let input = include_str!("../../../tests/fixtures/bpmn/supporting-catalog.bpmn");
+    for variant in [
+        input.replace(
+            "<itemDefinition id=\"item\"",
+            "<itemDefinition custom=\"x\" id=\"item\"",
+        ),
+        input.replace(
+            "<resource id=\"analyst\" name=\"Analyst\">",
+            "<resource id=\"analyst\" name=\"Analyst\"><documentation>note</documentation>",
+        ),
+        input.replace("<inMessageRef>tns:request</inMessageRef>", ""),
+    ] {
+        let parsed = prepare_import(variant.as_bytes(), "unsupported").unwrap();
+        assert!(!parsed.report.editable);
+        assert_eq!(export(&parsed).bytes, variant.as_bytes());
+    }
+}
+
+#[test]
+fn supporting_catalog_external_operation_references_are_retained_without_resolution() {
+    let input = include_str!("../../../tests/fixtures/bpmn/supporting-catalog.bpmn")
+        .replace(
+            "<outMessageRef>tns:response</outMessageRef>",
+            "<outMessageRef>svc:RemoteMessage</outMessageRef>",
+        )
+        .replace(
+            "<errorRef>tns:failure</errorRef>",
+            "<errorRef>svc:RemoteError</errorRef>",
+        );
+    let parsed = prepare_import(input.as_bytes(), "external references").unwrap();
+    assert!(parsed.report.editable);
+    let op = &parsed.document.catalog.interfaces[0].operations[0];
+    assert_eq!(
+        op.out_message_ref.as_ref().unwrap().namespace,
+        "urn:service"
+    );
+    assert_eq!(op.error_refs[0].local.to_string(), "RemoteError");
+    let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+    assert_eq!(parsed.document.catalog, again.document.catalog);
+}
+
+#[test]
+fn catalog_only_prefixed_document_keeps_unqualified_message_qname() {
+    let input = br#"<b:definitions xmlns:b="http://www.omg.org/spec/BPMN/20100524/MODEL" id="D" targetNamespace="urn:catalog"><b:interface name="Service"><b:operation name="Run"><b:inMessageRef>ExternalMessage</b:inMessageRef></b:operation></b:interface></b:definitions>"#;
+    let parsed = prepare_import(input, "catalog").unwrap();
+    assert!(parsed.report.editable);
+    assert!(
+        parsed.document.catalog.interfaces[0].operations[0]
+            .in_message_ref
+            .namespace
+            .is_empty()
+    );
+    let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+    assert!(again.report.editable);
+    assert_eq!(parsed.document.catalog, again.document.catalog);
+}
+
+#[test]
+fn activity_message_and_operation_qnames_roundtrip_with_loop_context() {
+    use processcraft_core::bpmn_model::Expression;
+    let input = include_str!("../../../tests/fixtures/bpmn/supporting-catalog.bpmn").replace(
+        "<process id=\"process\" isExecutable=\"false\"/>",
+        "<process id=\"process\" isExecutable=\"false\"><serviceTask id=\"serviceTask\" operationRef=\"tns:lookup\"><standardLoopCharacteristics><loopCondition id=\"loopExpr\" xmlns:tns=\"urn:shadow\" xmlns:body=\"urn:body\">body:value</loopCondition></standardLoopCharacteristics></serviceTask><receiveTask id=\"receive\" messageRef=\"tns:request\" operationRef=\"tns:lookup\"/><sendTask id=\"send\" messageRef=\"svc:RemoteMessage\" operationRef=\"svc:RemoteOperation\"/></process>",
+    );
+    let parsed = prepare_import(input.as_bytes(), "bindings").unwrap();
+    assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+    let nodes = &parsed.document.processes[0].nodes;
+    assert_eq!(
+        nodes[0]
+            .activity
+            .as_ref()
+            .unwrap()
+            .operation_ref
+            .as_ref()
+            .unwrap()
+            .namespace,
+        "urn:catalog"
+    );
+    assert_eq!(
+        nodes[2]
+            .activity
+            .as_ref()
+            .unwrap()
+            .message_ref
+            .as_ref()
+            .unwrap()
+            .namespace,
+        "urn:service"
+    );
+    assert!(matches!(
+        parsed.document.expressions()[0],
+        Expression::Structured(_)
+    ));
+    let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+    let after = &again.document.processes[0].nodes;
+    for index in 0..3 {
+        assert_eq!(nodes[index].activity, after[index].activity);
+    }
+    assert_eq!(parsed.document.expressions(), again.document.expressions());
+}
+
+#[test]
+fn activity_unqualified_qname_and_wrong_subtype_are_safe() {
+    let source = include_str!("../../../tests/fixtures/bpmn/supporting-catalog.bpmn");
+    let input = source.replace("<process id=\"process\" isExecutable=\"false\"/>", "<process id=\"process\" isExecutable=\"false\"><b:sendTask xmlns=\"\" id=\"send\" messageRef=\"ExternalMessage\" operationRef=\"ExternalOperation\"/></process>");
+    let parsed = prepare_import(input.as_bytes(), "unqualified").unwrap();
+    assert!(parsed.report.editable);
+    let refs = parsed.document.processes[0].nodes[0]
+        .activity
+        .as_ref()
+        .unwrap();
+    assert!(refs.message_ref.as_ref().unwrap().namespace.is_empty());
+    assert!(refs.operation_ref.as_ref().unwrap().namespace.is_empty());
+    let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+    assert_eq!(
+        parsed.document.processes[0].nodes[0].activity,
+        again.document.processes[0].nodes[0].activity
+    );
+    let wrong = source.replace("<process id=\"process\" isExecutable=\"false\"/>", "<process id=\"process\" isExecutable=\"false\"><manualTask id=\"wrong\" messageRef=\"tns:request\"/></process>");
+    let preserved = prepare_import(wrong.as_bytes(), "wrong").unwrap();
+    assert!(!preserved.report.editable);
+    assert_eq!(export(&preserved).bytes, wrong.as_bytes());
+}
+
+#[test]
+fn activity_unqualified_operation_with_loop_and_documentation_roundtrips() {
+    let source = include_str!("../../../tests/fixtures/bpmn/supporting-catalog.bpmn");
+    let input = source.replace("<process id=\"process\" isExecutable=\"false\"/>", "<process id=\"process\" isExecutable=\"false\"><b:serviceTask xmlns=\"\" id=\"serviceTask\" operationRef=\"ExternalOperation\"><b:documentation>notes</b:documentation><b:standardLoopCharacteristics><b:loopCondition id=\"condition\">counter</b:loopCondition></b:standardLoopCharacteristics></b:serviceTask></process>");
+    let parsed = prepare_import(input.as_bytes(), "unqualified loop").unwrap();
+    assert!(parsed.report.editable);
+    let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+    assert_eq!(
+        parsed.document.processes[0].nodes[0].activity,
+        again.document.processes[0].nodes[0].activity
+    );
+    assert_eq!(parsed.document.expressions(), again.document.expressions());
+    assert_eq!(again.document.processes[0].nodes[0].documentation, "notes");
+}
+
+#[test]
+fn unqualified_activity_operation_with_io_and_data_associations_roundtrips() {
+    let source = include_str!("../../../tests/fixtures/bpmn20-schema/data-io.bpmn");
+    let input = source.replace("<task id=\"work\" name=\"Review\">", "<b:serviceTask xmlns:b=\"http://www.omg.org/spec/BPMN/20100524/MODEL\" xmlns=\"\" id=\"work\" name=\"Review\" operationRef=\"ExternalOperation\">")
+        .replace("</task>", "</b:serviceTask>")
+        .replace("<ioSpecification id=", "<b:ioSpecification xmlns=\"http://www.omg.org/spec/BPMN/20100524/MODEL\" id=")
+        .replace("</ioSpecification>", "</b:ioSpecification>")
+        .replace("<dataInputAssociation id=", "<b:dataInputAssociation xmlns=\"http://www.omg.org/spec/BPMN/20100524/MODEL\" id=")
+        .replace("</dataInputAssociation>", "</b:dataInputAssociation>")
+        .replace("<dataOutputAssociation id=", "<b:dataOutputAssociation xmlns=\"http://www.omg.org/spec/BPMN/20100524/MODEL\" id=")
+        .replace("</dataOutputAssociation>", "</b:dataOutputAssociation>");
+    let parsed = prepare_import(input.as_bytes(), "unqualified io").unwrap();
+    assert!(parsed.report.editable);
+    let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+    assert_eq!(
+        parsed.document.processes[0].data_associations,
+        again.document.processes[0].data_associations
+    );
+    assert_eq!(
+        parsed.document.processes[0].nodes.last().unwrap().activity,
+        again.document.processes[0].nodes.last().unwrap().activity
+    );
+}
+
+#[test]
+fn activity_binding_to_wrong_local_kind_never_becomes_editable() {
+    let source = include_str!("../../../tests/fixtures/bpmn/supporting-catalog.bpmn");
+    for node in [
+        "<serviceTask id=\"wrong\" operationRef=\"tns:request\"/>",
+        "<sendTask id=\"wrong\" messageRef=\"tns:failure\"/>",
+    ] {
+        let input = source.replace(
+            "<process id=\"process\" isExecutable=\"false\"/>",
+            &format!("<process id=\"process\" isExecutable=\"false\">{node}</process>"),
+        );
+        if let Ok(parsed) = prepare_import(input.as_bytes(), "wrong kind") {
+            assert!(!parsed.report.editable);
+            assert_eq!(export(&parsed).bytes, input.as_bytes());
+        }
+    }
+}

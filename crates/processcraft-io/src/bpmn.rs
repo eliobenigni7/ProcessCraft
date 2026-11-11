@@ -117,6 +117,7 @@ struct Frame {
     reference_text: Option<String>,
     external_reference_allowed: bool,
     link_definition: bool,
+    operation: bool,
 }
 
 /// Validate into temporary bounded state and publish a source document only after
@@ -215,9 +216,16 @@ pub fn import_bpmn(bytes: &[u8]) -> Result<PreservedBpmn, ImportError> {
                 let mut frame = Frame {
                     external_reference_allowed: matches!(
                         local,
-                        "incoming" | "outgoing" | "source" | "target"
+                        "incoming"
+                            | "outgoing"
+                            | "source"
+                            | "target"
+                            | "inMessageRef"
+                            | "outMessageRef"
+                            | "errorRef"
                     ),
                     link_definition: ns == Some(BPMN) && local == "linkEventDefinition",
+                    operation: ns == Some(BPMN) && local == "operation",
                     documentation: ns == Some(BPMN) && local == "documentation",
                     label: ns == Some(BPMN) && local == "text",
                     reference_text: (ns == Some(BPMN)
@@ -225,7 +233,9 @@ pub fn import_bpmn(bytes: &[u8]) -> Result<PreservedBpmn, ImportError> {
                             local,
                             "incoming" | "outgoing" | "flowNodeRef" | "sourceRef" | "targetRef"
                         ) || (matches!(local, "source" | "target")
-                            && stack.last().is_some_and(|parent| parent.link_definition))))
+                            && stack.last().is_some_and(|parent| parent.link_definition))
+                            || (matches!(local, "inMessageRef" | "outMessageRef" | "errorRef")
+                                && stack.last().is_some_and(|parent| parent.operation))))
                     .then(String::new),
                     ..Frame::default()
                 };
@@ -311,8 +321,10 @@ pub fn import_bpmn(bytes: &[u8]) -> Result<PreservedBpmn, ImportError> {
                             attrs.insert(key.to_owned(), value.to_string());
                         }
                     }
-                    if attr_name.namespace_uri.as_deref() == Some(XSI)
-                        && attr_name.local_name == "type"
+                    if (attr_name.namespace_uri.as_deref() == Some(XSI)
+                        && attr_name.local_name == "type")
+                        || (attr_name.namespace_uri.is_none()
+                            && metadata_qname(ns, local, &attr_name.local_name))
                     {
                         let resolved = resolve_value(&reader, &value)?;
                         if report.qname_values.insert(resolved.clone()) {
@@ -388,9 +400,16 @@ pub fn import_bpmn(bytes: &[u8]) -> Result<PreservedBpmn, ImportError> {
     }
     let mut unresolved_external = false;
     for (reference, external_allowed) in references {
-        if !matches!(reference.namespace_uri.as_deref(), None | Some(BPMN))
-            && reference.namespace_uri != target_namespace
-        {
+        let outside = if external_allowed {
+            target_namespace.as_ref().map_or_else(
+                || !matches!(reference.namespace_uri.as_deref(), None | Some(BPMN)),
+                |target| reference.namespace_uri.as_deref().unwrap_or("") != target,
+            )
+        } else {
+            !matches!(reference.namespace_uri.as_deref(), None | Some(BPMN))
+                && reference.namespace_uri != target_namespace
+        };
+        if outside {
             if external_allowed {
                 // QName targets may belong to imported definitions. Preserve the
                 // source without fetching them or claiming reference validation.
@@ -513,6 +532,17 @@ fn idref_reference(ns: Option<&str>, element: &str, attr: &str) -> bool {
             ("sequenceFlow", "sourceRef" | "targetRef") | ("dataObjectReference", "dataObjectRef")
         ) || attr == "default")
 }
+/// Service/type bindings name declarations outside the BPMN ID catalog, even
+/// when a schema or WSDL declaration shares the definitions target namespace.
+fn metadata_qname(ns: Option<&str>, element: &str, attr: &str) -> bool {
+    ns == Some(BPMN)
+        && matches!(
+            (element, attr),
+            ("itemDefinition", "structureRef")
+                | ("interface" | "operation", "implementationRef")
+                | ("resourceParameter", "type")
+        )
+}
 fn account(budget: &mut usize, value: &ExpandedName) -> Result<(), ImportError> {
     *budget += value.local_name.len() + value.namespace_uri.as_ref().map_or(0, String::len);
     if *budget > MAX_RAW_BYTES {
@@ -562,6 +592,7 @@ fn known_reference(ns: Option<&str>, element: &str, attr: &str) -> bool {
                     "messageEventDefinition" | "receiveTask" | "sendTask",
                     "messageRef"
                 )
+                | ("serviceTask" | "receiveTask" | "sendTask", "operationRef")
                 | ("signalEventDefinition", "signalRef")
                 | ("errorEventDefinition", "errorRef")
                 | ("escalationEventDefinition", "escalationRef")

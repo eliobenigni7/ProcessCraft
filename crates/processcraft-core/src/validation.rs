@@ -8,6 +8,64 @@ use crate::{
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 
+pub fn invalid_activity_namespace(namespace: &str) -> bool {
+    namespace.chars().any(|c| c.is_whitespace() || !matches!(c, '\u{9}' | '\u{a}' | '\u{d}' | '\u{20}'..='\u{d7ff}' | '\u{e000}'..='\u{fffd}' | '\u{10000}'..='\u{10ffff}'))
+}
+
+/// Local references that cannot be resolved. External namespaces remain opaque.
+pub fn activity_reference_issues(
+    document: &crate::model::BpmnDocument,
+    activity: &crate::bpmn_activity::ActivityProperties,
+) -> Vec<&'static str> {
+    let namespace = document
+        .definitions
+        .as_ref()
+        .map(|m| m.target_namespace.as_str())
+        .or_else(|| {
+            document
+                .provenance
+                .is_none()
+                .then_some(crate::model::GENERATED_TARGET_NAMESPACE)
+        });
+    let mut issues = Vec::new();
+    if activity
+        .message_ref
+        .as_ref()
+        .is_some_and(|r| invalid_activity_namespace(&r.namespace))
+    {
+        issues.push("invalidActivityMessageNamespace");
+    }
+    if activity
+        .operation_ref
+        .as_ref()
+        .is_some_and(|r| invalid_activity_namespace(&r.namespace))
+    {
+        issues.push("invalidActivityOperationNamespace");
+    }
+    if activity.message_ref.as_ref().is_some_and(|r| {
+        namespace == Some(r.namespace.as_str())
+            && !document
+                .event_resources
+                .iter()
+                .any(|e| matches!(e, EventDefinitionResource::Message { id, .. } if id == &r.local))
+    }) {
+        issues.push("missingLocalActivityMessage");
+    }
+    if activity.operation_ref.as_ref().is_some_and(|r| {
+        namespace == Some(r.namespace.as_str())
+            && !document
+                .catalog
+                .interfaces
+                .iter()
+                .flat_map(|i| &i.operations)
+                .any(|o| o.id.as_ref() == Some(&r.local))
+    }) {
+        issues.push("missingLocalActivityOperation");
+    }
+    issues
+}
+use crate::bpmn_model::EventResource as EventDefinitionResource;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum DiagnosticSeverity {
@@ -104,6 +162,26 @@ impl ProjectData {
                 let mut has_start = false;
                 let mut has_end = false;
                 for node in scope.nodes {
+                    if let Some(activity) = &node.activity {
+                        for issue in activity_reference_issues(doc, activity) {
+                            emit(
+                                &node.id,
+                                issue,
+                                if issue.starts_with("invalidActivity") {
+                                    "Activity reference has a namespace that cannot be represented in XML (editing advisory)."
+                                } else {
+                                    "Activity has an unresolved local message or operation reference (editing advisory); BPMN 2.0.2 §10.3."
+                                },
+                            );
+                        }
+                        if activity.message_ref.is_some() && activity.operation_ref.is_some() {
+                            emit(
+                                &node.id,
+                                "activityBindingCompatibilityUnverified",
+                                "Message and operation I/O compatibility is not fully checked; BPMN 2.0.2 §10.3.3–10.3.4.",
+                            );
+                        }
+                    }
                     let ins = incoming.get(&node.id).map_or(&[][..], Vec::as_slice);
                     let outs = outgoing.get(&node.id).map_or(&[][..], Vec::as_slice);
                     if let Some(NodeDetails::Event { definitions, .. }) = &node.details {

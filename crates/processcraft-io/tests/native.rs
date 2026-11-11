@@ -64,6 +64,257 @@ fn native_round_trip_preserves_content() {
 }
 
 #[test]
+fn historical_unresolved_activity_bindings_round_trip_without_new_capabilities() {
+    use processcraft_core::{
+        bpmn_activity::ActivityProperties,
+        bpmn_model::QNameRef,
+        ids::CheckpointId,
+        model::{BpmnDocument, Checkpoint, FrozenProject, Node, NodeKind, Process},
+    };
+    let mut p = project();
+    let mut doc = BpmnDocument::new("document".into(), "defs".parse().unwrap());
+    let binding = |local: &str| {
+        Some(QNameRef {
+            namespace: "urn:old namespace".into(),
+            local: local.parse().unwrap(),
+        })
+    };
+    doc.processes.push(Process {
+        id: "process".parse().unwrap(),
+        name: String::new(),
+        documentation: String::new(),
+        lane_set_id: None,
+        groups: vec![],
+        data_objects: vec![],
+        data_associations: vec![],
+        nodes: vec![Node {
+            id: "task".parse().unwrap(),
+            name: String::new(),
+            documentation: String::new(),
+            kind: NodeKind::SendTask,
+            details: None,
+            loop_characteristics: None,
+            io_specification: None,
+            activity: Some(ActivityProperties {
+                message_ref: binding("missingMessage"),
+                operation_ref: binding("missingOperation"),
+                ..Default::default()
+            }),
+            owner: String::new(),
+            contact: String::new(),
+        }],
+        lanes: vec![],
+        flows: vec![],
+    });
+    p.documents.push(Arc::new(doc));
+    let identity = p.content_identity().unwrap();
+    let bytes = write_bytes(&p).unwrap();
+    let archived = entries(&bytes);
+    let manifest: serde_json::Value = serde_json::from_slice(
+        &archived
+            .iter()
+            .find(|(n, _)| n == "manifest.json")
+            .unwrap()
+            .1,
+    )
+    .unwrap();
+    assert_eq!(
+        manifest["required_capabilities"],
+        serde_json::json!(["comments", "checkpoints"])
+    );
+    let raw: serde_json::Value = serde_json::from_slice(
+        &archived
+            .iter()
+            .find(|(n, _)| n == "project.json")
+            .unwrap()
+            .1,
+    )
+    .unwrap();
+    assert!(raw["documents"][0].get("catalog").is_none());
+    let loaded = load_bytes(&bytes).unwrap().project;
+    assert_eq!(loaded.content_identity().unwrap(), identity);
+    assert_eq!(
+        loaded.documents[0].processes[0].nodes[0].activity,
+        p.documents[0].processes[0].nodes[0].activity
+    );
+    let activity = Arc::make_mut(&mut p.documents[0]).processes[0].nodes[0]
+        .activity
+        .as_mut()
+        .unwrap();
+    activity.message_ref.as_mut().unwrap().namespace.clear();
+    activity.operation_ref.as_mut().unwrap().namespace.clear();
+    let bytes = write_bytes(&p).unwrap();
+    let mut archived = entries(&bytes);
+    let manifest: serde_json::Value = serde_json::from_slice(
+        &archived
+            .iter()
+            .find(|(n, _)| n == "manifest.json")
+            .unwrap()
+            .1,
+    )
+    .unwrap();
+    assert!(
+        manifest["required_capabilities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|c| c == "bpmn-empty-namespace-activity-bindings")
+    );
+    assert_eq!(
+        load_bytes(&bytes).unwrap().project.documents[0].processes[0].nodes[0].activity,
+        p.documents[0].processes[0].nodes[0].activity
+    );
+    edit_json(&mut archived, "manifest.json", |v| {
+        v["required_capabilities"] = serde_json::json!(["comments", "checkpoints"])
+    });
+    assert!(
+        load_bytes(&archive(&archived))
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("empty namespace activity bindings require capability")
+    );
+    p.checkpoints.push(Checkpoint {
+        id: CheckpointId::new(),
+        name: "Before".into(),
+        created_unix_ms: 0,
+        content: FrozenProject::capture(&p),
+    });
+    let activity = Arc::make_mut(&mut p.documents[0]).processes[0].nodes[0]
+        .activity
+        .as_mut()
+        .unwrap();
+    activity.message_ref.as_mut().unwrap().namespace = "urn:old namespace".into();
+    activity.operation_ref.as_mut().unwrap().namespace = "urn:old namespace".into();
+    let bytes = write_bytes(&p).unwrap();
+    let mut archived = entries(&bytes);
+    assert_eq!(
+        load_bytes(&bytes).unwrap().project.checkpoints[0]
+            .content
+            .documents[0]
+            .processes[0]
+            .nodes[0]
+            .activity,
+        p.checkpoints[0].content.documents[0].processes[0].nodes[0].activity
+    );
+    edit_json(&mut archived, "manifest.json", |v| {
+        v["required_capabilities"] = serde_json::json!(["comments", "checkpoints"])
+    });
+    assert!(
+        load_bytes(&archive(&archived))
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("empty namespace activity bindings require capability")
+    );
+}
+
+#[test]
+fn supporting_catalog_capability_covers_live_and_checkpoint_documents() {
+    use processcraft_core::{
+        bpmn_catalog::{
+            BpmnResource, Interface, ItemDefinition, ItemKind, Operation, ResourceParameter,
+        },
+        bpmn_model::QNameRef,
+        ids::CheckpointId,
+        model::{BpmnDocument, Checkpoint, FrozenProject},
+    };
+    let reference = |local: &str| QNameRef {
+        namespace: "urn:external".into(),
+        local: local.parse().unwrap(),
+    };
+    let mut p = project();
+    let mut doc = BpmnDocument::new("document".into(), "defs".parse().unwrap());
+    doc.catalog.item_definitions.push(ItemDefinition {
+        id: Some("item".parse().unwrap()),
+        structure_ref: Some(reference("Type")),
+        is_collection: Some(true),
+        item_kind: Some(ItemKind::Information),
+    });
+    doc.catalog.interfaces.push(Interface {
+        id: Some("interface".parse().unwrap()),
+        name: "Service".into(),
+        implementation_ref: Some(reference("Service")),
+        operations: vec![Operation {
+            id: Some("operation".parse().unwrap()),
+            name: "Execute".into(),
+            implementation_ref: None,
+            in_message_ref: reference("Input"),
+            out_message_ref: Some(reference("Output")),
+            error_refs: vec![reference("Error")],
+        }],
+    });
+    doc.catalog.resources.push(BpmnResource {
+        id: Some("resource".parse().unwrap()),
+        name: "Team".into(),
+        parameters: vec![ResourceParameter {
+            id: Some("parameter".parse().unwrap()),
+            name: Some("Role".into()),
+            type_ref: Some(reference("Role")),
+            is_required: Some(true),
+        }],
+    });
+    p.documents.push(Arc::new(doc));
+    let bytes = write_bytes(&p).unwrap();
+    let mut archived = entries(&bytes);
+    let manifest: serde_json::Value = serde_json::from_slice(
+        &archived
+            .iter()
+            .find(|(n, _)| n == "manifest.json")
+            .unwrap()
+            .1,
+    )
+    .unwrap();
+    assert!(
+        manifest["required_capabilities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|c| c == "bpmn-supporting-catalog")
+    );
+    assert_eq!(
+        load_bytes(&bytes).unwrap().project.documents[0].catalog,
+        p.documents[0].catalog
+    );
+    edit_json(&mut archived, "manifest.json", |v| {
+        v["required_capabilities"] = serde_json::json!(["comments", "checkpoints"])
+    });
+    assert!(
+        load_bytes(&archive(&archived))
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("supporting catalog requires capability")
+    );
+    p.checkpoints.push(Checkpoint {
+        id: CheckpointId::new(),
+        name: "Before".into(),
+        created_unix_ms: 0,
+        content: FrozenProject::capture(&p),
+    });
+    Arc::make_mut(&mut p.documents[0]).catalog = Default::default();
+    let bytes = write_bytes(&p).unwrap();
+    let mut archived = entries(&bytes);
+    assert_eq!(
+        load_bytes(&bytes).unwrap().project.checkpoints[0]
+            .content
+            .documents[0]
+            .catalog,
+        p.checkpoints[0].content.documents[0].catalog
+    );
+    edit_json(&mut archived, "manifest.json", |v| {
+        v["required_capabilities"] = serde_json::json!(["comments", "checkpoints"])
+    });
+    assert!(
+        load_bytes(&archive(&archived))
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("supporting catalog requires capability")
+    );
+}
+
+#[test]
 fn definitions_metadata_requires_capability_in_live_and_checkpoint_documents() {
     use processcraft_core::{
         ids::CheckpointId,

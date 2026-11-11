@@ -1,6 +1,9 @@
 //! Conservative interchange: validate first, then qualify a small lossless profile.
 use crate::bpmn::{ImportError, import_bpmn};
 use processcraft_core::{
+    bpmn_catalog::{
+        BpmnResource, Interface, ItemDefinition, ItemKind, Operation, ResourceParameter,
+    },
     bpmn_model::{
         EventDefinition, EventGatewayType, EventResource, Expression, ExpressionData,
         ExpressionKind, GatewayDirection, LoopCharacteristics, NodeDetails, QNameRef, TimerKind,
@@ -75,6 +78,8 @@ struct Elem {
     text: String,
     namespaces: BTreeMap<String, String>,
     type_ref: Option<QNameRef>,
+    catalog_qnames: BTreeMap<String, QNameRef>,
+    catalog_text_qname: Option<QNameRef>,
 }
 fn is_expression(name: &str) -> bool {
     matches!(
@@ -166,6 +171,30 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                         .normalized_value(XmlVersion::Implicit1_0)
                         .ok()?
                         .into_owned();
+                    if item.ns == B
+                        && matches!(
+                            (item.name.as_str(), key),
+                            ("itemDefinition", "structureRef")
+                                | ("interface" | "operation", "implementationRef")
+                                | ("resourceParameter", "type")
+                                | ("serviceTask" | "sendTask" | "receiveTask", "operationRef")
+                                | ("sendTask" | "receiveTask", "messageRef")
+                        )
+                    {
+                        let (resolved, local) = r.resolver().resolve_element(QName(value.trim()));
+                        let namespace = match resolved {
+                            ResolveResult::Bound(uri) => uri.0.to_string(),
+                            ResolveResult::Unbound => String::new(),
+                            ResolveResult::Unknown(_) => return None,
+                        };
+                        item.catalog_qnames.insert(
+                            key.into(),
+                            QNameRef {
+                                namespace,
+                                local: local.as_ref().parse().ok()?,
+                            },
+                        );
+                    }
                     if item.ns == B && is_expression(&item.name) && key == "evaluatesToTypeRef" {
                         let (resolved, local) = r.resolver().resolve_element(QName(&value));
                         let namespace = match resolved {
@@ -244,6 +273,23 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                         return None;
                     }
                 }
+                if item.ns == B
+                    && matches!(
+                        item.name.as_str(),
+                        "inMessageRef" | "outMessageRef" | "errorRef"
+                    )
+                {
+                    let (resolved, local) = r.resolver().resolve_element(QName(item.text.trim()));
+                    let namespace = match resolved {
+                        ResolveResult::Bound(uri) => uri.0.to_string(),
+                        ResolveResult::Unbound => String::new(),
+                        ResolveResult::Unknown(_) => return None,
+                    };
+                    item.catalog_text_qname = Some(QNameRef {
+                        namespace,
+                        local: local.as_ref().parse().ok()?,
+                    });
+                }
                 if let Some(parent) = stack.last_mut() {
                     parent.children.push(item);
                 } else if root.replace(item).is_some() {
@@ -272,6 +318,9 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                                 | "source"
                                 | "target"
                                 | "messageFlowRef"
+                                | "inMessageRef"
+                                | "outMessageRef"
+                                | "errorRef"
                                 | "conditionExpression"
                                 | "condition"
                                 | "timeDate"
@@ -911,6 +960,12 @@ fn activity_properties(
     e: &Elem,
 ) -> Option<Option<processcraft_core::bpmn_activity::ActivityProperties>> {
     use processcraft_core::bpmn_activity::ActivityProperties;
+    if ["messageRef", "operationRef"]
+        .iter()
+        .any(|key| e.attrs.contains_key(*key) && !e.catalog_qnames.contains_key(*key))
+    {
+        return None;
+    }
     let mut result = ActivityProperties {
         is_for_compensation: optional_bool(e.attrs.get("isForCompensation"))?,
         start_quantity: e.attrs.get("startQuantity").cloned(),
@@ -926,6 +981,8 @@ fn activity_properties(
         cancel_remaining_instances: optional_bool(e.attrs.get("cancelRemainingInstances"))?,
         transaction_method: e.attrs.get("method").cloned(),
         implementation: e.attrs.get("implementation").cloned(),
+        message_ref: e.catalog_qnames.get("messageRef").cloned(),
+        operation_ref: e.catalog_qnames.get("operationRef").cloned(),
         instantiate: optional_bool(e.attrs.get("instantiate"))?,
         script_format: e.attrs.get("scriptFormat").cloned(),
         ..Default::default()
@@ -1499,6 +1556,8 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
                         "implementation",
                         "instantiate",
                         "scriptFormat",
+                        "messageRef",
+                        "operationRef",
                     ]
                 } else {
                     &["id", "name"]
@@ -1903,6 +1962,99 @@ fn parse_choreography(e: &Elem) -> Option<processcraft_core::bpmn_collaboration:
     }
     Some(c)
 }
+fn optional_id(e: &Elem) -> Option<Option<XmlId>> {
+    e.attrs.get("id").map(|v| v.parse()).transpose().ok()
+}
+fn catalog_item(e: &Elem) -> Option<ItemDefinition> {
+    if !attrs(e, &["id", "structureRef", "isCollection", "itemKind"]) || !e.children.is_empty() {
+        return None;
+    }
+    Some(ItemDefinition {
+        id: optional_id(e)?,
+        structure_ref: e.catalog_qnames.get("structureRef").cloned(),
+        is_collection: optional_bool(e.attrs.get("isCollection"))?,
+        item_kind: match e.attrs.get("itemKind").map(String::as_str) {
+            None => None,
+            Some("Information") => Some(ItemKind::Information),
+            Some("Physical") => Some(ItemKind::Physical),
+            _ => return None,
+        },
+    })
+}
+fn catalog_interface(e: &Elem) -> Option<Interface> {
+    if !attrs(e, &["id", "name", "implementationRef"])
+        || e.children.is_empty()
+        || e.children.len() > 256
+    {
+        return None;
+    }
+    let mut operations = Vec::new();
+    for op in &e.children {
+        if op.ns != B || op.name != "operation" || !attrs(op, &["id", "name", "implementationRef"])
+        {
+            return None;
+        }
+        let mut input = None;
+        let mut output = None;
+        let mut errors = Vec::new();
+        for child in &op.children {
+            if child.ns != B || !child.attrs.is_empty() || !child.children.is_empty() {
+                return None;
+            }
+            let q = child.catalog_text_qname.clone()?;
+            match child.name.as_str() {
+                "inMessageRef" if input.is_none() && output.is_none() && errors.is_empty() => {
+                    input = Some(q)
+                }
+                "outMessageRef" if input.is_some() && output.is_none() && errors.is_empty() => {
+                    output = Some(q)
+                }
+                "errorRef" if input.is_some() && errors.len() < 256 => errors.push(q),
+                _ => return None,
+            }
+        }
+        operations.push(Operation {
+            id: optional_id(op)?,
+            name: op.attrs.get("name")?.clone(),
+            implementation_ref: op.catalog_qnames.get("implementationRef").cloned(),
+            in_message_ref: input?,
+            out_message_ref: output,
+            error_refs: errors,
+        });
+    }
+    Some(Interface {
+        id: optional_id(e)?,
+        name: e.attrs.get("name")?.clone(),
+        implementation_ref: e.catalog_qnames.get("implementationRef").cloned(),
+        operations,
+    })
+}
+fn catalog_resource(e: &Elem) -> Option<BpmnResource> {
+    if !attrs(e, &["id", "name"]) || e.children.len() > 256 {
+        return None;
+    }
+    let mut parameters = Vec::new();
+    for p in &e.children {
+        if p.ns != B
+            || p.name != "resourceParameter"
+            || !attrs(p, &["id", "name", "type", "isRequired"])
+            || !p.children.is_empty()
+        {
+            return None;
+        }
+        parameters.push(ResourceParameter {
+            id: optional_id(p)?,
+            name: p.attrs.get("name").cloned(),
+            type_ref: p.catalog_qnames.get("type").cloned(),
+            is_required: optional_bool(p.attrs.get("isRequired"))?,
+        });
+    }
+    Some(BpmnResource {
+        id: optional_id(e)?,
+        name: e.attrs.get("name")?.clone(),
+        parameters,
+    })
+}
 fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
     let root = tree(bytes)?;
     if root.ns != B
@@ -1971,6 +2123,15 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
         }
         seen_non_import = true;
         match (e.ns.as_str(), e.name.as_str()) {
+            (B, "itemDefinition") if d.catalog.item_definitions.len() < 256 => {
+                d.catalog.item_definitions.push(catalog_item(e)?)
+            }
+            (B, "interface") if d.catalog.interfaces.len() < 256 => {
+                d.catalog.interfaces.push(catalog_interface(e)?)
+            }
+            (B, "resource") if d.catalog.resources.len() < 256 => {
+                d.catalog.resources.push(catalog_resource(e)?)
+            }
             (B, "category") => {
                 if !attrs(e, &["id", "name"]) {
                     return None;
@@ -2169,13 +2330,22 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
             _ => return None,
         }
     }
-    if d.processes.is_empty() && d.collaboration.is_none() && d.choreographies.is_empty() {
+    if d.processes.is_empty()
+        && d.collaboration.is_none()
+        && d.choreographies.is_empty()
+        && d.catalog.is_empty()
+    {
         return None;
     }
     // Every flow and lane reference is validated in its owning scope.
     let all_scopes = scopes(&d)?;
     for p in &all_scopes {
         for node in p.nodes {
+            if node.activity.as_ref().is_some_and(|activity| {
+                !processcraft_core::validation::activity_reference_issues(&d, activity).is_empty()
+            }) {
+                return None;
+            }
             if let Some(NodeDetails::CallActivity { called_element }) = &node.details
                 && (called_element.namespace != *root.attrs.get("targetNamespace")?
                     || !d
@@ -2473,12 +2643,24 @@ fn write_lanes(
         xml.push_str("</lane>");
     }
 }
-fn write_data_association(xml: &mut String, a: &processcraft_core::bpmn_data::DataAssociation) {
+fn write_data_association(
+    xml: &mut String,
+    a: &processcraft_core::bpmn_data::DataAssociation,
+    restore_default: bool,
+) {
     let tag = match a.kind {
         processcraft_core::bpmn_data::DataAssociationKind::Input => "dataInputAssociation",
         processcraft_core::bpmn_data::DataAssociationKind::Output => "dataOutputAssociation",
     };
-    xml.push_str(&format!("<{tag} id=\"{}\">", a.id));
+    xml.push_str(&format!(
+        "<{tag}{} id=\"{}\">",
+        if restore_default {
+            format!(" xmlns=\"{B}\"")
+        } else {
+            String::new()
+        },
+        a.id
+    ));
     for source in &a.sources {
         xml.push_str(&format!("<sourceRef>{source}</sourceRef>"));
     }
@@ -2538,7 +2720,102 @@ fn write_scope(
             NodeKind::ExclusiveGateway => "exclusiveGateway",
             NodeKind::ParallelGateway => "parallelGateway",
         };
-        xml.push_str(&format!("<{tag} id=\"{}\"", n.id));
+        let refs = n
+            .activity
+            .as_ref()
+            .map(|a| [a.message_ref.as_ref(), a.operation_ref.as_ref()])
+            .unwrap_or([None, None]);
+        let unqualified = refs.iter().flatten().any(|q| q.namespace.is_empty());
+        let mut expressions = Vec::new();
+        if let Some(lp) = &n.loop_characteristics {
+            match lp {
+                LoopCharacteristics::Standard { condition, .. } => {
+                    expressions.extend(condition.iter())
+                }
+                LoopCharacteristics::MultiInstance {
+                    cardinality,
+                    completion_condition,
+                    ..
+                } => {
+                    expressions.extend(cardinality.iter());
+                    expressions.extend(completion_condition.iter());
+                }
+            }
+        }
+        let contexts: Vec<_> = expressions
+            .iter()
+            .filter_map(|e| match e {
+                Expression::Structured(d) => Some(d),
+                _ => None,
+            })
+            .collect();
+        let mut prefixes: Vec<String> = contexts
+            .first()
+            .map(|first| {
+                first
+                    .namespaces
+                    .iter()
+                    .filter(|(prefix, _)| {
+                        !prefix.is_empty()
+                            && prefix != "xml"
+                            && contexts
+                                .iter()
+                                .all(|d| d.namespaces.iter().any(|(p, _)| p == prefix))
+                    })
+                    .map(|(prefix, _)| prefix.clone())
+                    .collect()
+            })
+            .unwrap_or_default();
+        let owner_prefix = if unqualified {
+            let candidate = contexts.first().and_then(|first| {
+                first
+                    .namespaces
+                    .iter()
+                    .find(|(prefix, uri)| {
+                        !prefix.is_empty()
+                            && prefix != "xml"
+                            && uri == B
+                            && contexts
+                                .iter()
+                                .all(|d| d.namespaces.iter().any(|(p, _)| p == prefix))
+                    })
+                    .map(|(prefix, _)| prefix.clone())
+            });
+            candidate.unwrap_or_else(|| "pc_owner".into())
+        } else {
+            String::new()
+        };
+        prefixes.retain(|prefix| prefix != &owner_prefix);
+        let tag_name = if unqualified {
+            format!("{owner_prefix}:{tag}")
+        } else {
+            tag.to_owned()
+        };
+        xml.push_str(&format!("<{tag_name} id=\"{}\"", n.id));
+        if unqualified {
+            xml.push_str(&format!(" xmlns:{owner_prefix}=\"{B}\" xmlns=\"\""));
+        }
+        for (index, (name, reference)) in [("messageRef", refs[0]), ("operationRef", refs[1])]
+            .into_iter()
+            .enumerate()
+        {
+            if let Some(reference) = reference {
+                if reference.namespace.is_empty() {
+                    xml.push_str(&format!(" {name}=\"{}\"", reference.local));
+                } else {
+                    let prefix = if prefixes.is_empty() {
+                        format!("pc_ref{index}")
+                    } else {
+                        prefixes.remove(0)
+                    };
+                    xml.push_str(&format!(
+                        " xmlns:{prefix}=\"{}\" {name}=\"{prefix}:{}\"",
+                        esc(&reference.namespace),
+                        reference.local
+                    ));
+                }
+            }
+        }
         if !matches!(n.kind, NodeKind::TextAnnotation) {
             xml.push_str(&format!(" name=\"{}\"", esc(&n.name)));
         }
@@ -2661,12 +2938,22 @@ fn write_scope(
             ));
         }
         xml.push('>');
-        write_doc(xml, &n.documentation);
+        if unqualified && !n.documentation.is_empty() {
+            xml.push_str(&format!(
+                "<documentation xmlns=\"{B}\">{}</documentation>",
+                esc(&n.documentation)
+            ));
+        } else {
+            write_doc(xml, &n.documentation);
+        }
         if matches!(n.kind, NodeKind::TextAnnotation) {
             xml.push_str(&format!("<text>{}</text>", esc(&n.name)));
         }
         if let Some(io) = &n.io_specification {
             xml.push_str("<ioSpecification");
+            if unqualified {
+                xml.push_str(&format!(" xmlns=\"{B}\""));
+            }
             if let Some(id) = &io.id {
                 xml.push_str(&format!(" id=\"{}\"", id));
             }
@@ -2741,7 +3028,7 @@ fn write_scope(
                     processcraft_core::bpmn_data::DataAssociationKind::Input
                 )
         }) {
-            write_data_association(xml, association);
+            write_data_association(xml, association, unqualified);
         }
         for association in associations.iter().filter(|a| {
             a.owner == n.id
@@ -2750,7 +3037,7 @@ fn write_scope(
                     processcraft_core::bpmn_data::DataAssociationKind::Output
                 )
         }) {
-            write_data_association(xml, association);
+            write_data_association(xml, association, unqualified);
         }
         if let Some(NodeDetails::Gateway {
             activation_condition: Some(condition),
@@ -2767,7 +3054,12 @@ fn write_scope(
                     maximum,
                 } => {
                     xml.push_str(&format!(
-                        "<standardLoopCharacteristics testBefore=\"{}\"",
+                        "<standardLoopCharacteristics{} testBefore=\"{}\"",
+                        if unqualified {
+                            format!(" xmlns=\"{B}\"")
+                        } else {
+                            String::new()
+                        },
                         test_before
                     ));
                     if let Some(maximum) = maximum {
@@ -2785,7 +3077,12 @@ fn write_scope(
                     completion_condition,
                 } => {
                     xml.push_str(&format!(
-                        "<multiInstanceLoopCharacteristics isSequential=\"{}\">",
+                        "<multiInstanceLoopCharacteristics{} isSequential=\"{}\">",
+                        if unqualified {
+                            format!(" xmlns=\"{B}\"")
+                        } else {
+                            String::new()
+                        },
                         is_sequential
                     ));
                     if let Some(value) = cardinality {
@@ -2995,7 +3292,7 @@ fn write_scope(
         {
             write_expression(xml, "completionCondition", value, false);
         }
-        xml.push_str(&format!("</{tag}>"));
+        xml.push_str(&format!("</{tag_name}>"));
     }
     for f in flows.iter().filter(|f| f.kind == FlowKind::Sequence) {
         xml.push_str(&format!(
@@ -3148,10 +3445,6 @@ fn export_document(
     }
     let unsupported = all_scopes.iter().any(|p| {
         p.nodes.iter().any(|n| {
-            n.activity
-                .as_ref()
-                .is_some_and(|a| a.message_ref.is_some() || a.operation_ref.is_some())
-        }) || p.nodes.iter().any(|n| {
             n.io_specification
                 .as_ref()
                 .is_some_and(|io| io.input_sets.is_empty() || io.output_sets.is_empty())
@@ -3299,6 +3592,7 @@ fn export_document(
             ));
         }
     }
+    write_catalog(&mut xml, &document.catalog);
     for category in &document.categories {
         xml.push_str(&format!("<category id=\"{}\"", category.id));
         if let Some(name) = &category.name {
@@ -3581,6 +3875,107 @@ fn esc(s: &str) -> String {
         .replace('\r', "&#13;")
 }
 
+fn write_catalog_qname_attribute(xml: &mut String, attribute: &str, q: &QNameRef, prefix: &str) {
+    if q.namespace.is_empty() {
+        xml.push_str(&format!(" {attribute}=\"{}\"", q.local));
+    } else {
+        xml.push_str(&format!(
+            " xmlns:{prefix}=\"{}\" {attribute}=\"{prefix}:{}\"",
+            esc(&q.namespace),
+            q.local
+        ));
+    }
+}
+fn write_catalog_qname_text(xml: &mut String, tag: &str, q: &QNameRef) {
+    if q.namespace.is_empty() {
+        xml.push_str(&format!("<bpmn:{tag}>{}</bpmn:{tag}>", q.local));
+    } else {
+        xml.push_str(&format!(
+            "<bpmn:{tag} xmlns:q=\"{}\">q:{}</bpmn:{tag}>",
+            esc(&q.namespace),
+            q.local
+        ));
+    }
+}
+fn write_catalog(xml: &mut String, catalog: &processcraft_core::bpmn_catalog::SupportingCatalog) {
+    for item in &catalog.item_definitions {
+        xml.push_str(&format!(
+            "<bpmn:itemDefinition xmlns:bpmn=\"{B}\" xmlns=\"\""
+        ));
+        if let Some(id) = &item.id {
+            xml.push_str(&format!(" id=\"{id}\""));
+        }
+        if let Some(q) = &item.structure_ref {
+            write_catalog_qname_attribute(xml, "structureRef", q, "q");
+        }
+        if let Some(value) = item.is_collection {
+            xml.push_str(&format!(" isCollection=\"{value}\""));
+        }
+        if let Some(kind) = item.item_kind {
+            xml.push_str(&format!(" itemKind=\"{kind:?}\""));
+        }
+        xml.push_str("/>");
+    }
+    for interface in &catalog.interfaces {
+        xml.push_str(&format!(
+            "<bpmn:interface xmlns:bpmn=\"{B}\" xmlns=\"\" name=\"{}\"",
+            esc(&interface.name)
+        ));
+        if let Some(id) = &interface.id {
+            xml.push_str(&format!(" id=\"{id}\""));
+        }
+        if let Some(q) = &interface.implementation_ref {
+            write_catalog_qname_attribute(xml, "implementationRef", q, "q");
+        }
+        xml.push('>');
+        for op in &interface.operations {
+            xml.push_str(&format!("<bpmn:operation name=\"{}\"", esc(&op.name)));
+            if let Some(id) = &op.id {
+                xml.push_str(&format!(" id=\"{id}\""));
+            }
+            if let Some(q) = &op.implementation_ref {
+                write_catalog_qname_attribute(xml, "implementationRef", q, "r");
+            }
+            xml.push('>');
+            write_catalog_qname_text(xml, "inMessageRef", &op.in_message_ref);
+            if let Some(q) = &op.out_message_ref {
+                write_catalog_qname_text(xml, "outMessageRef", q);
+            }
+            for q in &op.error_refs {
+                write_catalog_qname_text(xml, "errorRef", q);
+            }
+            xml.push_str("</bpmn:operation>");
+        }
+        xml.push_str("</bpmn:interface>");
+    }
+    for resource in &catalog.resources {
+        xml.push_str(&format!(
+            "<bpmn:resource xmlns:bpmn=\"{B}\" xmlns=\"\" name=\"{}\"",
+            esc(&resource.name)
+        ));
+        if let Some(id) = &resource.id {
+            xml.push_str(&format!(" id=\"{id}\""));
+        }
+        xml.push('>');
+        for parameter in &resource.parameters {
+            xml.push_str("<bpmn:resourceParameter");
+            if let Some(id) = &parameter.id {
+                xml.push_str(&format!(" id=\"{id}\""));
+            }
+            if let Some(name) = &parameter.name {
+                xml.push_str(&format!(" name=\"{}\"", esc(name)));
+            }
+            if let Some(q) = &parameter.type_ref {
+                write_catalog_qname_attribute(xml, "type", q, "q");
+            }
+            if let Some(value) = parameter.is_required {
+                xml.push_str(&format!(" isRequired=\"{value}\""));
+            }
+            xml.push_str("/>");
+        }
+        xml.push_str("</bpmn:resource>");
+    }
+}
 fn write_expression(xml: &mut String, tag: &str, expression: &Expression, legacy_formal: bool) {
     let Expression::Structured(data) = expression else {
         let xsi = if legacy_formal {

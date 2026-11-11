@@ -30,6 +30,33 @@ const ENTRY_LIMIT: usize = 4096;
 const DEFINITIONS_CAPABILITY: &str = "bpmn-definitions-metadata";
 const EXPRESSIONS_CAPABILITY: &str = "bpmn-structured-expressions";
 const EVENT_CAPABILITY: &str = "bpmn-link-cancel-compensation";
+const CATALOG_CAPABILITY: &str = "bpmn-supporting-catalog";
+const EMPTY_ACTIVITY_BINDING_CAPABILITY: &str = "bpmn-empty-namespace-activity-bindings";
+
+fn has_empty_activity_bindings(document: &BpmnDocument) -> bool {
+    use processcraft_core::bpmn_model::NodeDetails;
+    let mut pending: Vec<_> = document
+        .processes
+        .iter()
+        .map(|p| p.nodes.as_slice())
+        .collect();
+    while let Some(nodes) = pending.pop() {
+        for node in nodes {
+            if node.activity.as_ref().is_some_and(|a| {
+                [&a.message_ref, &a.operation_ref]
+                    .into_iter()
+                    .flatten()
+                    .any(|r| r.namespace.is_empty())
+            }) {
+                return true;
+            }
+            if let Some(NodeDetails::SubProcess { content }) = &node.details {
+                pending.push(&content.nodes);
+            }
+        }
+    }
+    false
+}
 
 fn has_extended_event_definitions(document: &BpmnDocument) -> bool {
     use processcraft_core::bpmn_model::{EventDefinition, NodeDetails};
@@ -245,6 +272,27 @@ pub fn write_bytes(project: &ProjectData) -> Result<Vec<u8>, NativeError> {
     {
         required_capabilities.push(EVENT_CAPABILITY.into());
     }
+    if project.documents.iter().any(|d| !d.catalog.is_empty())
+        || project
+            .checkpoints
+            .iter()
+            .any(|c| c.content.documents.iter().any(|d| !d.catalog.is_empty()))
+    {
+        required_capabilities.push(CATALOG_CAPABILITY.into());
+    }
+    if project
+        .documents
+        .iter()
+        .any(|d| has_empty_activity_bindings(d))
+        || project.checkpoints.iter().any(|c| {
+            c.content
+                .documents
+                .iter()
+                .any(|d| has_empty_activity_bindings(d))
+        })
+    {
+        required_capabilities.push(EMPTY_ACTIVITY_BINDING_CAPABILITY.into());
+    }
     let manifest = Manifest {
         format: "processcraft".into(),
         schema: 3,
@@ -436,6 +484,8 @@ fn load_with_limits(
                 && cap != DEFINITIONS_CAPABILITY
                 && cap != EXPRESSIONS_CAPABILITY
                 && cap != EVENT_CAPABILITY
+                && cap != CATALOG_CAPABILITY
+                && cap != EMPTY_ACTIVITY_BINDING_CAPABILITY
         })
         || (manifest.schema < 3 && !manifest.required_capabilities.is_empty())
         || (manifest.schema == 3
@@ -550,6 +600,28 @@ fn load_with_limits(
         return Err(err(
             "link, cancel and compensation events require capability",
         ));
+    }
+    if (dto.documents.iter().any(|d| !d.catalog.is_empty())
+        || frozen
+            .iter()
+            .any(|(_, c)| c.documents.iter().any(|d| !d.catalog.is_empty())))
+        && !manifest
+            .required_capabilities
+            .iter()
+            .any(|cap| cap == CATALOG_CAPABILITY)
+    {
+        return Err(err("supporting catalog requires capability"));
+    }
+    if (dto.documents.iter().any(|d| has_empty_activity_bindings(d))
+        || frozen
+            .iter()
+            .any(|(_, c)| c.documents.iter().any(|d| has_empty_activity_bindings(d))))
+        && !manifest
+            .required_capabilities
+            .iter()
+            .any(|cap| cap == EMPTY_ACTIVITY_BINDING_CAPABILITY)
+    {
+        return Err(err("empty namespace activity bindings require capability"));
     }
     for resources in std::iter::once(&dto.resources).chain(frozen.iter().map(|(_, c)| &c.resources))
     {

@@ -14,6 +14,7 @@ pub use validation::{Diagnostic, DiagnosticSeverity};
 
 pub mod layout;
 
+pub mod bpmn_catalog;
 pub mod bpmn_model;
 
 pub mod bpmn_scope;

@@ -1,6 +1,27 @@
 use super::{ProcessCraft, node_kind_label};
 use crate::widgets;
 
+pub(super) struct BindingDraft {
+    message: Option<super::catalog::QNameDraft>,
+    operation: Option<super::catalog::QNameDraft>,
+    error: String,
+}
+impl BindingDraft {
+    fn new(value: &processcraft_core::bpmn_activity::ActivityProperties) -> Self {
+        Self {
+            message: value
+                .message_ref
+                .as_ref()
+                .map(super::catalog::QNameDraft::from),
+            operation: value
+                .operation_ref
+                .as_ref()
+                .map(super::catalog::QNameDraft::from),
+            error: String::new(),
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 enum ExpressionDefault {
     Base,
@@ -440,6 +461,7 @@ impl ProcessCraft {
                         self.dictionary_links_ui(side);
                     }
                     side.add_space(8.0);
+                    self.catalog_ui(side, editable);
                     if side
                         .add_enabled_ui(self.draft_dirty, |ui| {
                             widgets::primary_button(ui, "Apply properties")
@@ -665,7 +687,7 @@ impl ProcessCraft {
                     });
                 }
             });
-        self.draft_dirty |= self.expression_draft.is_some();
+        self.draft_dirty |= self.expression_draft.is_some() || self.binding_draft.is_some();
     }
 }
 
@@ -1102,6 +1124,24 @@ impl ProcessCraft {
                 }
                 if node.kind == K::Transaction { text(ui,"Transaction method (default ##Compensate)",&mut value.transaction_method,false); }
                 if matches!(node.kind,K::ServiceTask|K::SendTask|K::ReceiveTask|K::UserTask|K::BusinessRuleTask) { text(ui,"Implementation",&mut value.implementation,false); }
+                if matches!(node.kind, K::ServiceTask | K::SendTask | K::ReceiveTask) {
+                    if self.binding_draft.is_none() {
+                        if ui.button(if node.kind == K::ServiceTask { "Edit operation reference…" } else { "Edit message and operation references…" }).clicked() { self.binding_draft = Some(BindingDraft::new(&value)); }
+                    } else if let Some(draft) = &mut self.binding_draft {
+                        if matches!(node.kind, K::SendTask | K::ReceiveTask) { super::catalog::optional_qname(ui, "Message reference", &mut draft.message); }
+                        super::catalog::optional_qname(ui, "Operation reference", &mut draft.operation);
+                        if !draft.error.is_empty() { ui.label(&draft.error); }
+                        let mut clear = false;
+                        if ui.button("Apply activity references").clicked() {
+                            match (super::catalog::q_build(&draft.message), super::catalog::q_build(&draft.operation)) {
+                                (Ok(message), Ok(operation)) => { value.message_ref = message; value.operation_ref = operation; clear = true; }
+                                (Err(error), _) | (_, Err(error)) => draft.error = error,
+                            }
+                        }
+                        if ui.button("Cancel activity references").clicked() { clear = true; }
+                        if clear { self.binding_draft = None; }
+                    }
+                }
                 if node.kind == K::ReceiveTask { checkbox(ui,"Instantiate process",&mut value.instantiate,false); }
                 if node.kind == K::ScriptTask {
                     ui.label("Script source is stored as model data and is never executed by ProcessCraft.");
@@ -1181,6 +1221,34 @@ mod expression_draft_tests {
         assert!(draft.build().is_err());
         draft.formal = false;
         assert!(draft.build().is_ok());
+    }
+
+    #[test]
+    fn activity_reference_draft_retains_invalid_local_name() {
+        let mut app = ProcessCraft::default();
+        app.add(NodeKind::SendTask);
+        let selected = app.selected.clone();
+        let mut draft = BindingDraft::new(&Default::default());
+        draft.message = Some(super::super::catalog::QNameDraft {
+            namespace: "urn:messages".into(),
+            local: "bad name".into(),
+        });
+        assert!(super::super::catalog::q_build(&draft.message).is_err());
+        app.binding_draft = Some(draft);
+        app.draft_dirty = true;
+        app.select(None);
+        app.history(processcraft_core::commands::Request::Undo);
+        assert_eq!(app.selected, selected);
+        assert_eq!(
+            app.binding_draft
+                .as_ref()
+                .unwrap()
+                .message
+                .as_ref()
+                .unwrap()
+                .local,
+            "bad name"
+        );
     }
 
     #[test]

@@ -97,6 +97,11 @@ enum ExportKind {
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
 enum Query {
+    Catalog {
+        document_id: processcraft_core::ids::DocumentId,
+        offset: usize,
+        limit: usize,
+    },
     Comments {
         offset: usize,
         limit: usize,
@@ -481,7 +486,14 @@ impl Attachment {
                     Err(e) => return json!({"ok":false,"error":e.to_string()}),
                 };
                 let snapshot = controller.session.snapshot();
+                let catalog_query = matches!(&q, Query::Catalog { .. });
                 let (items, offset, limit): (Vec<Value>, usize, usize) = match q {
+                    Query::Catalog { document_id, offset, limit } => {
+                        let Some(rows) = processcraft_core::queries::supporting_catalog_fields(&snapshot.project, document_id) else {
+                            return json!({"ok":false,"error":"document not found"});
+                        };
+                        (rows.into_iter().map(|row| json!(row)).collect(), offset, limit)
+                    },
                     Query::Comments { offset, limit } => (snapshot.project.comments.iter().map(|c| json!({"comment":c,"orphan":processcraft_core::queries::comment_is_orphan(&snapshot.project,c)})).collect(), offset, limit),
                     Query::Checkpoints { offset, limit } => (snapshot.project.checkpoints.iter().map(|c| json!({"id":c.id,"name":c.name,"createdUnixMs":c.created_unix_ms,"reference":snapshot.project.reference_checkpoint == Some(c.id)})).collect(), offset, limit),
                     Query::CompareCheckpoint { checkpoint_id, offset, limit } => {
@@ -561,7 +573,12 @@ impl Attachment {
                     page.push(item);
                 }
                 let next = offset.saturating_add(page.len());
-                json!({"total":total,"items":page,"nextOffset":if next < total { Some(next) } else { None }})
+                let mut result = json!({"total":total,"items":page,"nextOffset":if next < total { Some(next) } else { None }});
+                if catalog_query {
+                    result["generation"] = json!(snapshot.generation);
+                    result["contentId"] = json!(snapshot.content_id);
+                }
+                result
             }
             "apply" => {
                 let parsed: Apply = match serde_json::from_value(req.params.clone()) {

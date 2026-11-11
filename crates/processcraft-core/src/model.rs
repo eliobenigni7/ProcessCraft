@@ -165,6 +165,11 @@ pub struct BpmnDocument {
     pub definitions_id: XmlId,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub definitions: Option<DefinitionsMetadata>,
+    #[serde(
+        default,
+        skip_serializing_if = "crate::bpmn_catalog::SupportingCatalog::is_empty"
+    )]
+    pub catalog: crate::bpmn_catalog::SupportingCatalog,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub categories: Vec<crate::bpmn_model::Category>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -187,6 +192,7 @@ impl BpmnDocument {
             folder: None,
             definitions_id,
             definitions: None,
+            catalog: crate::bpmn_catalog::SupportingCatalog::default(),
             categories: vec![],
             event_resources: vec![],
             data_stores: vec![],

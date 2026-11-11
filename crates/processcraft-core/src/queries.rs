@@ -4,6 +4,44 @@ use crate::{
     model::*,
 };
 
+/// Scalar catalog fields use JSON Pointer paths so bounded pages never need to
+/// flatten or truncate a large operation's error-reference list into one item.
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct CatalogField {
+    pub path: String,
+    pub value: serde_json::Value,
+}
+
+pub fn supporting_catalog_fields(
+    project: &ProjectData,
+    document_id: DocumentId,
+) -> Option<Vec<CatalogField>> {
+    fn fields(value: serde_json::Value, path: String, out: &mut Vec<CatalogField>) {
+        match value {
+            serde_json::Value::Object(object) if !object.is_empty() => {
+                for (key, value) in object {
+                    let key = key.replace('~', "~0").replace('/', "~1");
+                    fields(value, format!("{path}/{key}"), out);
+                }
+            }
+            serde_json::Value::Array(array) if !array.is_empty() => {
+                for (index, value) in array.into_iter().enumerate() {
+                    fields(value, format!("{path}/{index}"), out);
+                }
+            }
+            value => out.push(CatalogField { path, value }),
+        }
+    }
+    let document = project.documents.iter().find(|d| d.id == document_id)?;
+    let mut result = Vec::new();
+    fields(
+        serde_json::to_value(&document.catalog).ok()?,
+        String::new(),
+        &mut result,
+    );
+    Some(result)
+}
+
 /// One semantic scope; subprocess contents remain separate from their parent.
 #[derive(Clone, Copy, Debug)]
 pub struct ScopeRef<'a> {

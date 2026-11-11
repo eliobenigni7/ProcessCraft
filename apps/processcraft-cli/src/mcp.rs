@@ -148,6 +148,11 @@ enum ExportKind {
 #[derive(Deserialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
 enum Query {
+    Catalog {
+        document_id: processcraft_core::ids::DocumentId,
+        offset: usize,
+        limit: usize,
+    },
     Comments {
         offset: usize,
         limit: usize,
@@ -226,7 +231,7 @@ fn tools() -> Vec<Tool> {
             .annotate(ToolAnnotations::new().read_only(true)),
         Tool::new(
             "query",
-            "Read paginated library, dictionary, or usages",
+            "Read paginated catalog fields, library, dictionary, usages, or review data",
             query,
         )
         .annotate(ToolAnnotations::new().read_only(true)),
@@ -290,7 +295,12 @@ impl ServerHandler for Server {
                 let query: Query = serde_json::from_value(args)
                     .map_err(|e| ErrorData::invalid_params(e.to_string(), None))?;
                 let snapshot = state.session.snapshot();
+                let catalog_query = matches!(&query, Query::Catalog { .. });
                 let (items, offset, limit) = match query {
+                    Query::Catalog { document_id, offset, limit } => (
+                        processcraft_core::queries::supporting_catalog_fields(&snapshot.project, document_id)
+                            .ok_or_else(|| ErrorData::invalid_params("document not found", None))?
+                            .into_iter().map(|row| json!(row)).collect(), offset, limit),
                     Query::Comments { offset, limit } => (snapshot.project.comments.iter().map(|c| json!({"comment":c,"orphan":processcraft_core::queries::comment_is_orphan(&snapshot.project,c)})).collect(), offset, limit),
                     Query::Checkpoints { offset, limit } => (snapshot.project.checkpoints.iter().map(|c| json!({"id":c.id,"name":c.name,"createdUnixMs":c.created_unix_ms,"reference":snapshot.project.reference_checkpoint == Some(c.id)})).collect(), offset, limit),
                     Query::CompareCheckpoint { checkpoint_id, offset, limit } => (vec![json!(processcraft_core::queries::compare_checkpoint(&snapshot.project, checkpoint_id).ok_or_else(|| ErrorData::invalid_params("checkpoint not found", None))?)], offset, limit),
@@ -356,7 +366,12 @@ impl ServerHandler for Server {
                     page.push(item);
                 }
                 let next = offset.saturating_add(page.len());
-                json!({"total":total,"items":page,"nextOffset":if next < total { Some(next) } else { None }})
+                let mut result = json!({"total":total,"items":page,"nextOffset":if next < total { Some(next) } else { None }});
+                if catalog_query {
+                    result["generation"] = json!(snapshot.generation);
+                    result["contentId"] = json!(snapshot.content_id);
+                }
+                result
             }
             "apply" => {
                 let parsed: Apply = serde_json::from_value(args.clone())

@@ -149,4 +149,53 @@ fn definitions_metadata_uses_discovered_mcp_command_and_exact_history() {
         .find(|flow| flow["id"] == "flow_review_decision")
         .unwrap();
     assert_eq!(outgoing["condition"], expression);
+    let catalog = json!({"item_definitions":[{"id":"ResultType","structure_ref":{"namespace":"http://www.w3.org/2001/XMLSchema","local":"string"},"is_collection":false,"item_kind":"Information"}],
+    "interfaces":[{"id":"ServiceInterface","name":"Lookup","implementation_ref":null,"operations":[{
+        "id":"LookupOperation","name":"Run","implementation_ref":null,"in_message_ref":{"namespace":"urn:external","local":"Request"},"out_message_ref":null,"error_refs":[]
+    }]}]});
+    let updated = call(
+        json!({"jsonrpc":"2.0","id":16,"method":"tools/call","params":{"name":"apply","arguments":{
+            "sessionId":session,"requestId":"catalog","expectedGeneration":6,"request":{"type":"batch","mutations":[{
+                "type":"setSupportingCatalog","document_id":document_id,"catalog":catalog
+            }]}
+        }}}),
+    );
+    assert_eq!(updated["result"]["structuredContent"]["ok"], true);
+    let normalized = serde_json::to_value(
+        serde_json::from_value::<processcraft_core::bpmn_catalog::SupportingCatalog>(catalog)
+            .unwrap(),
+    )
+    .unwrap();
+    let mut offset = 0;
+    let mut seen = 0;
+    let mut identity = None;
+    loop {
+        let page = call(
+            json!({"jsonrpc":"2.0","id":17+offset,"method":"tools/call","params":{"name":"query","arguments":{
+                "kind":"catalog","document_id":document_id,"offset":offset,"limit":2
+            }}}),
+        );
+        let page = &page["result"]["structuredContent"];
+        assert_eq!(page["generation"], 7);
+        if let Some(previous) = &identity {
+            assert_eq!(previous, &page["contentId"]);
+        } else {
+            identity = Some(page["contentId"].clone());
+        }
+        for row in page["items"].as_array().unwrap() {
+            assert_eq!(
+                normalized.pointer(row["path"].as_str().unwrap()),
+                Some(&row["value"])
+            );
+            seen += 1;
+        }
+        if let Some(next) = page["nextOffset"].as_u64() {
+            assert!(next as usize > offset);
+            offset = next as usize;
+        } else {
+            assert_eq!(page["total"], seen);
+            break;
+        }
+    }
+    assert!(seen > 2);
 }

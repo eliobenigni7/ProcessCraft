@@ -348,6 +348,31 @@ fn normalize(v: &mut Value) {
 pub(crate) fn semantic_ids(d: &BpmnDocument) -> HashSet<&XmlId> {
     let mut s = HashSet::new();
     s.insert(&d.definitions_id);
+    for item in &d.catalog.item_definitions {
+        if let Some(id) = &item.id {
+            s.insert(id);
+        }
+    }
+    for interface in &d.catalog.interfaces {
+        if let Some(id) = &interface.id {
+            s.insert(id);
+        }
+        for operation in &interface.operations {
+            if let Some(id) = &operation.id {
+                s.insert(id);
+            }
+        }
+    }
+    for resource in &d.catalog.resources {
+        if let Some(id) = &resource.id {
+            s.insert(id);
+        }
+        for parameter in &resource.parameters {
+            if let Some(id) = &parameter.id {
+                s.insert(id);
+            }
+        }
+    }
     for expression in d.expressions() {
         if let crate::bpmn_model::Expression::Structured(data) = expression
             && let Some(id) = &data.id
@@ -525,6 +550,105 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
     }
     let mut ids = HashSet::new();
     add(&mut ids, &d.definitions_id)?;
+    let local_namespace = d
+        .definitions
+        .as_ref()
+        .map(|v| v.target_namespace.as_str())
+        .or_else(|| {
+            d.provenance
+                .is_none()
+                .then_some(crate::model::GENERATED_TARGET_NAMESPACE)
+        });
+    let check_qname = |name: &crate::bpmn_model::QNameRef| -> Result<(), String> {
+        definitions_text(&name.namespace)?;
+        if name.namespace.chars().any(char::is_whitespace) {
+            return fail("Invalid QName namespace");
+        }
+        Ok(())
+    };
+    let local =
+        |name: &crate::bpmn_model::QNameRef| local_namespace == Some(name.namespace.as_str());
+    let catalog = &d.catalog;
+    if catalog.item_definitions.len() > 256
+        || catalog.interfaces.len() > 256
+        || catalog.resources.len() > 256
+    {
+        return fail("Supporting catalog limit exceeded");
+    }
+    for item in &catalog.item_definitions {
+        if let Some(id) = &item.id {
+            add(&mut ids, id)?;
+        }
+        if let Some(name) = &item.structure_ref {
+            check_qname(name)?;
+        }
+    }
+    for interface in &catalog.interfaces {
+        if let Some(id) = &interface.id {
+            add(&mut ids, id)?;
+        }
+        definitions_text(&interface.name)?;
+        if let Some(name) = &interface.implementation_ref {
+            check_qname(name)?;
+        }
+        if interface.operations.is_empty() || interface.operations.len() > 256 {
+            return fail("Interface requires one to 256 operations");
+        }
+        for operation in &interface.operations {
+            if let Some(id) = &operation.id {
+                add(&mut ids, id)?;
+            }
+            definitions_text(&operation.name)?;
+            if let Some(name) = &operation.implementation_ref {
+                check_qname(name)?;
+            }
+            if operation.error_refs.len() > 256 {
+                return fail("Operation error reference limit exceeded");
+            }
+            for reference in
+                std::iter::once(&operation.in_message_ref).chain(operation.out_message_ref.iter())
+            {
+                check_qname(reference)?;
+                if local(reference) && !d.event_resources.iter().any(|e| matches!(e, crate::bpmn_model::EventResource::Message { id, .. } if id == &reference.local)) {
+                    return fail("Operation references a missing local message");
+                }
+            }
+            for reference in &operation.error_refs {
+                check_qname(reference)?;
+                if local(reference) && !d.event_resources.iter().any(|e| matches!(e, crate::bpmn_model::EventResource::Error { id, .. } if id == &reference.local)) {
+                    return fail("Operation references a missing local error");
+                }
+            }
+        }
+    }
+    for resource in &catalog.resources {
+        if let Some(id) = &resource.id {
+            add(&mut ids, id)?;
+        }
+        definitions_text(&resource.name)?;
+        if resource.parameters.len() > 256 {
+            return fail("Resource parameter limit exceeded");
+        }
+        for parameter in &resource.parameters {
+            if let Some(id) = &parameter.id {
+                add(&mut ids, id)?;
+            }
+            if let Some(name) = &parameter.name {
+                definitions_text(name)?;
+            }
+            if let Some(reference) = &parameter.type_ref {
+                check_qname(reference)?;
+                if local(reference)
+                    && !catalog
+                        .item_definitions
+                        .iter()
+                        .any(|item| item.id.as_ref() == Some(&reference.local))
+                {
+                    return fail("Resource parameter references a missing local item definition");
+                }
+            }
+        }
+    }
     for expression in d.expressions() {
         use crate::bpmn_model::{Expression, ExpressionKind};
         if let Expression::Structured(data) = expression {
@@ -584,6 +708,14 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                 }
                 if let Some(name) = evaluates_to_type_ref {
                     definitions_text(&name.namespace)?;
+                    if local(name)
+                        && !catalog
+                            .item_definitions
+                            .iter()
+                            .any(|item| item.id.as_ref() == Some(&name.local))
+                    {
+                        return fail("Expression references a missing local item definition");
+                    }
                     let default = data
                         .namespaces
                         .iter()
@@ -1008,7 +1140,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                     .into_iter()
                     .flatten()
                 {
-                    if name.namespace.is_empty() || name.namespace.len() > 16_384 {
+                    if name.namespace.len() > 16_384 {
                         return fail("invalid QName namespace");
                     }
                 }

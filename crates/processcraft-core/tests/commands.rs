@@ -214,6 +214,310 @@ fn definitions_import_changes_are_undoable() {
     assert_eq!(s.snapshot().content_id, after);
 }
 #[test]
+fn supporting_catalog_validates_references_and_undoes_atomically() {
+    use processcraft_core::{
+        bpmn_catalog::*,
+        bpmn_model::{EventResource, QNameRef},
+    };
+    let mut s = project();
+    fixture(&mut s);
+    let mut project = (*s.snapshot().project).clone();
+    Arc::make_mut(&mut project.documents[0])
+        .event_resources
+        .push(EventResource::Message {
+            id: id("message1"),
+            name: None,
+        });
+    let mut s = Session::new(project).unwrap();
+    let q = |local| QNameRef {
+        namespace: GENERATED_TARGET_NAMESPACE.into(),
+        local: id(local),
+    };
+    let catalog = SupportingCatalog {
+        item_definitions: vec![ItemDefinition {
+            id: Some(id("item1")),
+            structure_ref: None,
+            is_collection: None,
+            item_kind: None,
+        }],
+        interfaces: vec![Interface {
+            id: Some(id("interface1")),
+            name: String::new(),
+            implementation_ref: None,
+            operations: vec![Operation {
+                id: Some(id("operation1")),
+                name: "op".into(),
+                implementation_ref: None,
+                in_message_ref: q("message1"),
+                out_message_ref: None,
+                error_refs: vec![],
+            }],
+        }],
+        resources: vec![BpmnResource {
+            id: Some(id("resource1")),
+            name: "r".into(),
+            parameters: vec![ResourceParameter {
+                id: Some(id("parameter1")),
+                name: None,
+                type_ref: Some(q("item1")),
+                is_required: None,
+            }],
+        }],
+    };
+    let before = s.snapshot().content_id;
+    apply(
+        &mut s,
+        batch(vec![Mutation::SetSupportingCatalog {
+            document_id: docid(),
+            catalog: catalog.clone(),
+        }]),
+    )
+    .unwrap();
+    let after = s.snapshot().content_id;
+    let mut invalid = catalog.clone();
+    invalid.item_definitions.clear();
+    assert!(
+        apply(
+            &mut s,
+            batch(vec![Mutation::SetSupportingCatalog {
+                document_id: docid(),
+                catalog: invalid
+            }])
+        )
+        .is_err()
+    );
+    let mut invalid = catalog.clone();
+    invalid.interfaces[0].operations[0].in_message_ref = q("missing");
+    assert!(
+        apply(
+            &mut s,
+            batch(vec![Mutation::SetSupportingCatalog {
+                document_id: docid(),
+                catalog: invalid
+            }])
+        )
+        .is_err()
+    );
+    let mut invalid = catalog.clone();
+    invalid.interfaces[0].id = Some(id("review"));
+    assert!(
+        apply(
+            &mut s,
+            batch(vec![Mutation::SetSupportingCatalog {
+                document_id: docid(),
+                catalog: invalid
+            }])
+        )
+        .is_err()
+    );
+    let mut invalid = catalog;
+    invalid.interfaces[0].operations.clear();
+    assert!(
+        apply(
+            &mut s,
+            batch(vec![Mutation::SetSupportingCatalog {
+                document_id: docid(),
+                catalog: invalid
+            }])
+        )
+        .is_err()
+    );
+    assert_eq!(s.snapshot().content_id, after);
+    apply(&mut s, Request::Undo).unwrap();
+    assert_eq!(s.snapshot().content_id, before);
+    apply(&mut s, Request::Redo).unwrap();
+    assert_eq!(s.snapshot().content_id, after);
+}
+#[test]
+fn activity_bindings_validate_new_local_refs_and_preserve_legacy() {
+    use processcraft_core::{
+        bpmn_activity::ActivityProperties,
+        bpmn_catalog::*,
+        bpmn_model::{EventResource, QNameRef},
+    };
+    let mut s = project();
+    fixture(&mut s);
+    let mut p = (*s.snapshot().project).clone();
+    let d = Arc::make_mut(&mut p.documents[0]);
+    d.event_resources.push(EventResource::Message {
+        id: id("message1"),
+        name: None,
+    });
+    let q = |local| QNameRef {
+        namespace: GENERATED_TARGET_NAMESPACE.into(),
+        local: id(local),
+    };
+    d.catalog.interfaces.push(Interface {
+        id: Some(id("interface1")),
+        name: "i".into(),
+        implementation_ref: None,
+        operations: vec![Operation {
+            id: Some(id("operation1")),
+            name: "o".into(),
+            implementation_ref: None,
+            in_message_ref: q("message1"),
+            out_message_ref: None,
+            error_refs: vec![],
+        }],
+    });
+    let node = Node {
+        id: id("send"),
+        name: String::new(),
+        documentation: String::new(),
+        kind: NodeKind::SendTask,
+        details: None,
+        loop_characteristics: None,
+        io_specification: None,
+        activity: None,
+        owner: String::new(),
+        contact: String::new(),
+    };
+    d.processes[0].nodes.push(node);
+    let mut s = Session::new(p).unwrap();
+    let valid = ActivityProperties {
+        message_ref: Some(q("message1")),
+        operation_ref: Some(q("operation1")),
+        ..Default::default()
+    };
+    apply(
+        &mut s,
+        batch(vec![Mutation::SetActivityProperties {
+            document_id: docid(),
+            element_id: id("send"),
+            activity: Some(valid.clone()),
+        }]),
+    )
+    .unwrap();
+    let bound = s.snapshot().content_id;
+    let mut invalid = valid.clone();
+    invalid.operation_ref = Some(q("message1"));
+    assert!(
+        apply(
+            &mut s,
+            batch(vec![Mutation::SetActivityProperties {
+                document_id: docid(),
+                element_id: id("send"),
+                activity: Some(invalid)
+            }])
+        )
+        .is_err()
+    );
+    assert!(
+        apply(
+            &mut s,
+            batch(vec![Mutation::SetSupportingCatalog {
+                document_id: docid(),
+                catalog: SupportingCatalog::default()
+            }])
+        )
+        .is_err()
+    );
+    assert_eq!(s.snapshot().content_id, bound);
+    apply(&mut s, Request::Undo).unwrap();
+    apply(&mut s, Request::Redo).unwrap();
+    assert_eq!(s.snapshot().content_id, bound);
+    let mut external = valid;
+    external.operation_ref = Some(QNameRef {
+        namespace: String::new(),
+        local: id("external"),
+    });
+    apply(
+        &mut s,
+        batch(vec![Mutation::SetActivityProperties {
+            document_id: docid(),
+            element_id: id("send"),
+            activity: Some(external),
+        }]),
+    )
+    .unwrap();
+    let mut legacy = (*s.snapshot().project).clone();
+    Arc::make_mut(&mut legacy.documents[0]).processes[0]
+        .nodes
+        .iter_mut()
+        .find(|n| n.id == id("send"))
+        .unwrap()
+        .activity
+        .as_mut()
+        .unwrap()
+        .operation_ref = Some(q("legacy_missing"));
+    let mut legacy = Session::new(legacy).unwrap();
+    assert!(
+        legacy
+            .snapshot()
+            .project
+            .diagnostics()
+            .iter()
+            .any(|d| d.code == "missingLocalActivityOperation")
+    );
+    let mut props = legacy.snapshot().project.documents[0].processes[0]
+        .nodes
+        .iter()
+        .find(|n| n.id == id("send"))
+        .unwrap()
+        .activity
+        .clone()
+        .unwrap();
+    props.implementation = Some("##WebService".into());
+    apply(
+        &mut legacy,
+        batch(vec![Mutation::SetActivityProperties {
+            document_id: docid(),
+            element_id: id("send"),
+            activity: Some(props),
+        }]),
+    )
+    .unwrap();
+    let mut stored = (*legacy.snapshot().project).clone();
+    let node = Arc::make_mut(&mut stored.documents[0]).processes[0]
+        .nodes
+        .iter_mut()
+        .find(|n| n.id == id("send"))
+        .unwrap();
+    node.activity.as_mut().unwrap().operation_ref = Some(QNameRef {
+        namespace: "urn:old namespace".into(),
+        local: id("op"),
+    });
+    let mut old_namespace = Session::new(stored).unwrap();
+    assert!(
+        old_namespace
+            .snapshot()
+            .project
+            .diagnostics()
+            .iter()
+            .any(|d| d.code == "invalidActivityOperationNamespace")
+    );
+    let mut props = old_namespace.snapshot().project.documents[0].processes[0]
+        .nodes
+        .iter()
+        .find(|n| n.id == id("send"))
+        .unwrap()
+        .activity
+        .clone()
+        .unwrap();
+    props.implementation = Some("custom".into());
+    apply(
+        &mut old_namespace,
+        batch(vec![Mutation::SetActivityProperties {
+            document_id: docid(),
+            element_id: id("send"),
+            activity: Some(props.clone()),
+        }]),
+    )
+    .unwrap();
+    props.operation_ref.as_mut().unwrap().namespace = "urn:new bad".into();
+    assert!(
+        apply(
+            &mut old_namespace,
+            batch(vec![Mutation::SetActivityProperties {
+                document_id: docid(),
+                element_id: id("send"),
+                activity: Some(props)
+            }])
+        )
+        .is_err()
+    );
+}
+#[test]
 fn structured_expression_preserves_identity_and_rejects_duplicate_ids() {
     use processcraft_core::bpmn_model::{Expression, ExpressionData, ExpressionKind};
     let mut s = project();
@@ -917,6 +1221,7 @@ fn flow_condition_changes_identity_and_protected_document_rejects_it() {
 fn descriptors_match_protocol_tags() {
     let descriptors = processcraft_core::commands::command_descriptors();
     let expected = [
+        "setSupportingCatalog",
         "setDefinitionsMetadata",
         "setActivityProperties",
         "createCategory",

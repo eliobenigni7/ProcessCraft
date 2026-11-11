@@ -19,6 +19,10 @@ pub struct Envelope {
 #[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
 #[allow(clippy::large_enum_variant)]
 pub enum Mutation {
+    SetSupportingCatalog {
+        document_id: DocumentId,
+        catalog: crate::bpmn_catalog::SupportingCatalog,
+    },
     SetDefinitionsMetadata {
         document_id: DocumentId,
         metadata: DefinitionsMetadata,
@@ -612,6 +616,58 @@ fn has_qualified_references(nodes: &[Node]) -> bool {
         }
     })
 }
+fn local_operation_exists(
+    d: &BpmnDocument,
+    reference: &crate::bpmn_model::QNameRef,
+    catalog: &crate::bpmn_catalog::SupportingCatalog,
+) -> bool {
+    let namespace = d
+        .definitions
+        .as_ref()
+        .map(|m| m.target_namespace.as_str())
+        .or_else(|| d.provenance.is_none().then_some(GENERATED_TARGET_NAMESPACE));
+    namespace != Some(reference.namespace.as_str())
+        || catalog
+            .interfaces
+            .iter()
+            .flat_map(|i| &i.operations)
+            .any(|o| o.id.as_ref() == Some(&reference.local))
+}
+fn check_activity_references(
+    d: &BpmnDocument,
+    activity: &crate::bpmn_activity::ActivityProperties,
+    previous: Option<&crate::bpmn_activity::ActivityProperties>,
+) -> Result<(), CommandError> {
+    let issues = crate::validation::activity_reference_issues(d, activity);
+    for (current, old) in [
+        (
+            &activity.message_ref,
+            previous.and_then(|p| p.message_ref.as_ref()),
+        ),
+        (
+            &activity.operation_ref,
+            previous.and_then(|p| p.operation_ref.as_ref()),
+        ),
+    ] {
+        if let Some(name) = current
+            && Some(name) != old
+            && crate::validation::invalid_activity_namespace(&name.namespace)
+        {
+            return Err(invalid("Invalid activity QName namespace"));
+        }
+    }
+    if issues.contains(&"missingLocalActivityMessage")
+        && previous.map(|p| &p.message_ref) != Some(&activity.message_ref)
+    {
+        return Err(invalid("Activity references a missing local message"));
+    }
+    if issues.contains(&"missingLocalActivityOperation")
+        && previous.map(|p| &p.operation_ref) != Some(&activity.operation_ref)
+    {
+        return Err(invalid("Activity references a missing local operation"));
+    }
+    Ok(())
+}
 fn doc(
     p: &mut ProjectData,
     id: DocumentId,
@@ -912,12 +968,40 @@ fn diagram<'a>(d: &'a mut BpmnDocument, id: &XmlId) -> Result<&'a mut Diagram, C
 }
 fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
     match m {
+        Mutation::SetSupportingCatalog {
+            document_id,
+            catalog,
+        } => {
+            let d = doc(p, document_id, true)?;
+            for scope in crate::queries::scopes(d) {
+                for node in scope.nodes {
+                    if let Some(reference) = node
+                        .activity
+                        .as_ref()
+                        .and_then(|a| a.operation_ref.as_ref())
+                        && local_operation_exists(d, reference, &d.catalog)
+                        && !local_operation_exists(d, reference, &catalog)
+                    {
+                        return Err(invalid(
+                            "Catalog change would remove a referenced local operation",
+                        ));
+                    }
+                }
+            }
+            d.catalog = catalog;
+        }
         Mutation::SetActivityProperties {
             document_id,
             element_id,
             activity,
         } => {
-            let node = node_mut(doc(p, document_id, true)?, &element_id)?;
+            let d = doc(p, document_id, true)?;
+            if let Some(activity) = &activity {
+                let previous =
+                    crate::queries::find_node(d, &element_id).and_then(|n| n.activity.as_ref());
+                check_activity_references(d, activity, previous)?;
+            }
+            let node = node_mut(d, &element_id)?;
             if !node.kind.is_activity() {
                 return Err(invalid("activity properties require an activity"));
             }
@@ -1677,9 +1761,20 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             document_id,
             process_id,
             element,
-        } => scope_parts_mut(doc(p, document_id, true)?, &process_id)?
-            .0
-            .push(element),
+        } => {
+            let d = doc(p, document_id, true)?;
+            let mut pending = vec![&element];
+            while let Some(node) = pending.pop() {
+                if let Some(activity) = &node.activity {
+                    check_activity_references(d, activity, None)?;
+                }
+                if let Some(crate::bpmn_model::NodeDetails::SubProcess { content }) = &node.details
+                {
+                    pending.extend(&content.nodes);
+                }
+            }
+            scope_parts_mut(d, &process_id)?.0.push(element);
+        }
         Mutation::CreateFlow {
             document_id,
             process_id,
@@ -1734,10 +1829,10 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                 .unwrap_or(GENERATED_TARGET_NAMESPACE)
                 != metadata.target_namespace.as_str();
             if namespace_changed
-                && (d
-                    .processes
-                    .iter()
-                    .any(|p| has_qualified_references(&p.nodes))
+                && (d.catalog.has_qname_refs()
+                    || d.processes
+                        .iter()
+                        .any(|p| has_qualified_references(&p.nodes))
                     || d.expressions().iter().any(|expression| {
                         matches!(
                             expression,
@@ -1983,6 +2078,7 @@ pub struct CommandParam {
 }
 macro_rules! descriptor { ($id:literal,$label:literal $(,$name:literal:$ty:literal)* $(,)?) => { CommandDescriptor { id: $id, serde_tag: $id, label: $label, params: &[$(CommandParam {name:$name,value_type:$ty,required:true}),*] } }; }
 static COMMAND_DESCRIPTORS: &[CommandDescriptor] = &[
+    descriptor!("setSupportingCatalog", "Set supporting BPMN catalog", "document_id":"DocumentId", "catalog":"SupportingCatalog"),
     descriptor!("setDefinitionsMetadata", "Set definitions metadata", "document_id":"DocumentId", "metadata":"DefinitionsMetadata"),
     descriptor!("setActivityProperties", "Set activity properties", "document_id":"DocumentId", "element_id":"XmlId", "activity":"ActivityProperties|null"),
     descriptor!("createCategory","Create category","document_id":"DocumentId","category":"Category"),

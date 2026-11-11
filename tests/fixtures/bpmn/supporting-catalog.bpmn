@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:b="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:tns="urn:catalog" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:svc="urn:service" id="defs" targetNamespace="urn:catalog">
+  <itemDefinition id="item" structureRef="xs:string" isCollection="false" itemKind="Information"/>
+  <itemDefinition itemKind="Physical"/>
+  <message id="request" name="Request"/>
+  <message id="response" name="Response"/>
+  <error id="failure" name="Failure"/>
+  <interface id="service" name="Lookup" implementationRef="svc:Interface">
+    <operation id="lookup" name="Find" implementationRef="svc:Operation"><inMessageRef>tns:request</inMessageRef><outMessageRef>tns:response</outMessageRef><errorRef>tns:failure</errorRef></operation>
+  </interface>
+  <resource id="analyst" name="Analyst"><resourceParameter id="region" name="Region" type="xs:string" isRequired="false"/><b:resourceParameter xmlns="" name="" type="Unqualified"/></resource>
+  <process id="process" isExecutable="false"/>
+</definitions>

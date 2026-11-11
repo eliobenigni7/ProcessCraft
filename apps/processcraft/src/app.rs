@@ -177,6 +177,8 @@ pub struct ProcessCraft {
     docs: String,
     condition: Option<processcraft_core::bpmn_model::Expression>,
     expression_draft: Option<inspector::ExpressionDraft>,
+    catalog_draft: Option<catalog::CatalogDraft>,
+    binding_draft: Option<inspector::BindingDraft>,
     association_direction: Option<processcraft_core::bpmn_model::AssociationDirection>,
     connection_kind: FlowKind,
     owner: String,
@@ -264,6 +266,8 @@ impl Default for ProcessCraft {
             docs: String::new(),
             condition: None,
             expression_draft: None,
+            catalog_draft: None,
+            binding_draft: None,
             association_direction: None,
             connection_kind: FlowKind::Sequence,
             owner: String::new(),
@@ -431,6 +435,14 @@ impl ProcessCraft {
         );
     }
     fn commit_draft(&mut self) -> bool {
+        if self.binding_draft.is_some() {
+            self.ctl.error = "Apply or cancel the activity reference draft first.".into();
+            return false;
+        }
+        if self.catalog_draft.is_some() {
+            self.ctl.error = "Apply or cancel the supporting catalog draft first.".into();
+            return false;
+        }
         if self.expression_draft.is_some() {
             self.ctl.error = "Apply or cancel the expression metadata draft first.".into();
             return false;
@@ -589,6 +601,8 @@ impl ProcessCraft {
     fn has_drafts(&self) -> bool {
         self.collaboration.has_draft()
             || self.expression_draft.is_some()
+            || self.catalog_draft.is_some()
+            || self.binding_draft.is_some()
             || self.m3.has_draft()
             || self.draft_dirty
             || self.dictionary_draft_changed(&self.ctl.session.snapshot().project)
@@ -2049,6 +2063,57 @@ mod tests {
     }
 
     #[test]
+    fn activity_references_use_shared_history_with_local_catalog() {
+        use processcraft_core::bpmn_catalog::{Interface, Operation};
+        use processcraft_core::bpmn_model::{EventResource, QNameRef};
+        let namespace = "urn:processcraft:generated";
+        let message = QNameRef {
+            namespace: namespace.into(),
+            local: "Message".parse().unwrap(),
+        };
+        let operation = QNameRef {
+            namespace: namespace.into(),
+            local: "Operation".parse().unwrap(),
+        };
+        let mut project = crate::controller::blank_project();
+        let document = std::sync::Arc::make_mut(&mut project.documents[0]);
+        document.event_resources.push(EventResource::Message {
+            id: message.local.clone(),
+            name: None,
+        });
+        document.catalog.interfaces.push(Interface {
+            id: None,
+            name: "Service".into(),
+            implementation_ref: None,
+            operations: vec![Operation {
+                id: Some(operation.local.clone()),
+                name: "Send".into(),
+                implementation_ref: None,
+                in_message_ref: message.clone(),
+                out_message_ref: None,
+                error_refs: Vec::new(),
+            }],
+        });
+        let mut app = ProcessCraft::default();
+        app.ctl.session = processcraft_core::commands::Session::new(project).unwrap();
+        app.add(NodeKind::SendTask);
+        let mut properties = app.bpmn_activity.clone().unwrap_or_default();
+        properties.message_ref = Some(message);
+        properties.operation_ref = Some(operation);
+        app.bpmn_activity = Some(properties.clone());
+        app.draft_dirty = true;
+        assert!(app.commit_draft(), "{}", app.ctl.error);
+        app.history(Request::Undo);
+        assert!(
+            app.bpmn_activity
+                .as_ref()
+                .is_none_or(|value| value.message_ref.is_none())
+        );
+        app.history(Request::Redo);
+        assert_eq!(app.bpmn_activity, Some(properties));
+    }
+
+    #[test]
     fn expression_text_draft_preserves_metadata_and_history() {
         use processcraft_core::bpmn_model::{
             EventDefinition, Expression, ExpressionData, ExpressionKind, NodeDetails, TimerKind,
@@ -2165,6 +2230,8 @@ mod m2;
 
 #[path = "app_canvas.rs"]
 mod canvas;
+#[path = "app_catalog.rs"]
+mod catalog;
 #[path = "app_inspector.rs"]
 mod inspector;
 #[path = "app_shell.rs"]

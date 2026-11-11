@@ -151,7 +151,7 @@ fn references_use_namespace_identity_and_text_values() {
 #[test]
 fn external_qname_targets_are_preserved_without_resolving_or_aliasing_local_ids() {
     let bytes = br#"<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
-        xmlns:ext="urn:external" targetNamespace="urn:local" id="Defs">
+        xmlns:ext="urn:external" xmlns:local="urn:local" targetNamespace="urn:local" id="Defs">
         <import namespace="urn:external" location="file:///nonexistent/external.bpmn"
             importType="http://www.omg.org/spec/BPMN/20100524/MODEL"/>
         <process id="P"><startEvent id="Start"><messageEventDefinition messageRef="ext:Message"/></startEvent></process>
@@ -177,7 +177,7 @@ fn external_qname_targets_are_preserved_without_resolving_or_aliasing_local_ids(
     assert_eq!(output.bytes, bytes);
     let local_missing = std::str::from_utf8(bytes)
         .unwrap()
-        .replace("ext:Message", "Message");
+        .replace("ext:Message", "local:Message");
     assert_eq!(
         import_bpmn(local_missing.as_bytes()).unwrap_err().kind,
         ImportErrorKind::Reference
@@ -208,6 +208,63 @@ fn link_definition_references_and_compensation_activity_use_expanded_qnames() {
     assert_eq!(
         import_bpmn(external.as_bytes()).unwrap().export_source(),
         external.as_bytes()
+    );
+}
+
+#[test]
+fn catalog_model_references_are_checked_separately_from_service_type_bindings() {
+    let bytes = br#"<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+        xmlns:local="urn:catalog" xmlns:external="urn:external" id="Defs" targetNamespace="urn:catalog">
+        <itemDefinition id="Item" structureRef="local:SchemaType"/>
+        <message id="Input"/><message id="Output"/><error id="Fault"/>
+        <interface name="Service" implementationRef="local:WsdlInterface"><operation name="Run" implementationRef="external:WsdlOperation">
+            <inMessageRef>local:Input</inMessageRef><outMessageRef>local:Output</outMessageRef><errorRef>local:Fault</errorRef>
+        </operation></interface>
+    </definitions>"#;
+    let parsed = import_bpmn(bytes).unwrap();
+    assert!(
+        parsed
+            .report()
+            .qname_values
+            .iter()
+            .any(|q| q.local_name == "SchemaType"
+                && q.namespace_uri.as_deref() == Some("urn:catalog"))
+    );
+    assert!(
+        parsed
+            .report()
+            .qname_values
+            .iter()
+            .any(|q| q.local_name == "WsdlInterface")
+    );
+    let input = std::str::from_utf8(bytes).unwrap();
+    let missing = input.replace("local:Input", "local:Missing");
+    assert_eq!(
+        import_bpmn(missing.as_bytes()).unwrap_err().kind,
+        ImportErrorKind::Reference
+    );
+    let external = input.replace("local:Input", "external:Input");
+    assert_eq!(
+        import_bpmn(external.as_bytes()).unwrap().export_source(),
+        external.as_bytes()
+    );
+    let rebound = input.replace("local:SchemaType", "unbound:SchemaType");
+    assert!(import_bpmn(rebound.as_bytes()).is_err());
+    let no_namespace = br#"<b:definitions xmlns:b="http://www.omg.org/spec/BPMN/20100524/MODEL"
+        id="D" targetNamespace="urn:catalog">
+        <b:interface name="Service"><b:operation name="Run"><b:inMessageRef>ExternalMessage</b:inMessageRef></b:operation></b:interface>
+    </b:definitions>"#;
+    assert_eq!(
+        import_bpmn(no_namespace).unwrap().export_source(),
+        no_namespace
+    );
+    let typed = processcraft_io::interchange::prepare_import(no_namespace, "no namespace").unwrap();
+    assert!(typed.report.editable);
+    let operation = &typed.document.catalog.interfaces[0].operations[0];
+    assert!(operation.in_message_ref.namespace.is_empty());
+    assert_eq!(
+        operation.in_message_ref.local.to_string(),
+        "ExternalMessage"
     );
 }
 
