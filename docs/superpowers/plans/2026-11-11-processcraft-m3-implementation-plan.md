@@ -8,7 +8,7 @@
 
 ## Partial delivery checkpoint
 
-**Status (November 11, 2026): temporary partial close requested by the user.** The original review/export tools and the first BPMN expansion waves are implemented. The complete BPMN modeling/interchange target remains approved and unfinished. Do not mark M3 complete or reopen feature work without the user's continuation.
+**Status (November 11, 2026): in progress.** The user has resumed implementation. The original review/export tools and first BPMN expansion waves are implemented; the complete BPMN modeling/interchange target remains unfinished. Do not mark M3 complete until the gates below are satisfied.
 
 - Delivered: explicit bounded auto-layout preview/cancel/apply, comments with orphan handling, schema-3 named checkpoints/reference/frozen views, paginated detailed comparison and guarded restore, shared-scene outlined PDF export, shared CLI/MCP commands and broader typed BPMN profiles.
 - Qualified: workspace regression, formatting and Clippy, focused official-schema XML round trips, native review/export checks and resource/checkpoint limit experiments; see [evidence](../../implementation/m3-evidence.md) for exact build scope and limitations.
@@ -23,7 +23,23 @@
 5. **M3.4 Complete BPMN modeling/interchange:** the work packages below are required before any 100% claim. They are not collapsed into the presence of element names or preserved XML.
 6. **M3.5 Qualification:** full workspace regression, native GUI/CLI/MCP parity, resource/checkpoint performance, external interchange checks and per-capability acceptance artifacts.
 
-Terra workers run independent auto-layout, core/native review features, and BPMN scope/interchange lanes. Root owns GUI/CLI/MCP integration, shared renderer/PDF, cross-lane compatibility and qualification. Shared model/command/format files have one writer; API contracts are exchanged before integration. Reuse the current checkout without initializing Git. Never launch Narrator.
+Parallel work may cover independent core, interchange, renderer and UI lanes. The coordinator owns integration and qualification. Shared model/command/format files have one writer; API contracts are exchanged before integration. Reuse the current checkout without initializing Git. Never launch Narrator.
+
+## Dependency sequence and slice acceptance
+
+The [crosswalk](../../research/bpmn-2-conformance-gap.md) records the current family-level six-dimension assessment. Its partial cells are bounded profiles, not completion of the family. Update it and the generated inventory when evidence changes; do not treat the declaration inventory as the prose crosswalk.
+
+1. **Definitions, identity and expressions.** Establish typed definitions metadata, namespace-aware references and formal expressions before dependent bindings. Acceptance: new and imported definitions preserve namespace and explicit versus omitted metadata through native save/reopen and BPMN export/reimport; local, external and unresolved QNames retain their namespace identity; expression ID, language, type and XML content survive or are safely preserved/refused. Include positive, negative and no-silent-loss cases and verify existing document identity/migration and undo/redo.
+2. **Activities, control flow and events.** Extend task bindings, resources, scopes, loop characteristics, gateway and event contexts on that foundation. Acceptance: context-specific legal and illegal relationships, boundaries and interrupting flags are tested; arbitrary XML integer lexical values are retained; create/edit/delete, history, rendering/hit testing and round trips cover each implemented property. Apply Analytic restrictions only to that subclass.
+3. **Data, services and collaboration.** Add item-aware and I/O metadata, transformations/assignments, resources, service catalogs, participants, correlations and conversations. Acceptance: identity and references survive scoped native and XML round trips, unknown extensions are preserved or refused without data loss, and each new property has shared commands, UI and CLI/MCP paths with negative reference tests.
+4. **Choreography and DI.** Implement choreography-owned flows, events, gateways, nested/call/global forms, participants and complete diagram metadata. Acceptance: nested and collapsed cases preserve ownership, all participant bands and visibility metadata; geometry changes keep connected routes and labels; prescribed symbols and hit tests are checked in both themes and exported scenes.
+5. **Cross-family qualification.** Complete the clause/table and inheritance mapping and prove all applicable constraints, capabilities and migrations. Acceptance: source and exported fixtures pass pinned XSD checks, semantic positive and negative fixtures pass, native interaction and accessibility checks are recorded, and representative licensed fixtures reopen in two named external tool/version combinations. Record environment-specific gates and results; no absent gate is inferred from a build or test count.
+
+### Next dependency slices: continuation checklist
+
+- [ ] **Formal expressions and context:** map the XSD/CMOF inheritance and applicable prose for expression and formalExpression, including optional ID, language, type, mixed/XML content and namespace context. Choose an explicit lossless typed representation and capability/migration boundary before extending consumers; retain or refuse unrepresentable content without changing its meaning. Test omitted versus explicit defaults, prefixed and default namespaces, XML escaping/content, invalid or unresolved references, native save/reopen, history and checkpoints, and BPMN export/reimport. Cover each existing expression owner before claiming a general expression profile.
+- [ ] **Root catalogs and references:** map item definitions, interfaces, operations, callable/global definitions and event-related roots with their inherited properties and ownership rules. Preserve QName namespace identity for local, imported and unresolved targets; import declarations are inert metadata, not permission to fetch or execute locations. Test duplicate IDs, reference kinds and scope, namespace changes, unresolved external references, ordered import declarations, native capabilities and rollback, then qualify each owner through commands, UI, CLI/MCP, diagnostics and interchange.
+- [ ] Update the declaration inventory and clause-level crosswalk only for evidenced dimensions, and retain explicit unverified cells for external resolution, full UI/native interaction and independent consumers. Do not mark the foundation family or M3 complete on the strength of these slices.
 
 ## M3.4 coverage work packages
 

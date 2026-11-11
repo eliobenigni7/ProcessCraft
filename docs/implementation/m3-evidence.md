@@ -1,6 +1,52 @@
 # M3 partial-delivery evidence
 
-This records the temporary partial close requested by the user on 2026-11-11. M3 and full BPMN 2.0.2 modeling/interchange remain unfinished. Earlier checks were collected while other work was in progress; their exact limits remain relevant.
+M3 work resumed on 2026-11-11 at the user's explicit request. The earlier Windows partial-close evidence below remains historical; it is not a Cloud result. M3 and full BPMN 2.0.2 modeling/interchange remain unfinished.
+
+## Cloud continuation: definitions and import declarations
+
+Starting checkout: clean branch `work`, commit `5a90a7626bfeec0b779e7faa0b537eb1efbc6a15`. The Linux Cloud executor uses the pinned Rust 1.98.1 and existing Craft revisions and lockfile. Load `/workspace/.processcraft-setup/env.sh` before Rust commands. `cargo fetch --locked` succeeded before offline checks. No repository visibility, dependency revision or file-adapter safety policy was changed. Terra workers handled independent core, interchange, native, desktop and crosswalk lanes; the coordinator integrated them.
+
+Implemented a bounded definitions profile: explicit target namespace, optional name/language/exporter attributes, and ordered import declarations containing namespace, location and importType. Optional attributes retain absence versus explicit empty strings. Imports are inert model data: locations are never fetched or executed. The shared `setDefinitionsMetadata` command replaces the metadata and import list atomically; desktop add/edit/remove controls, CLI discovery and MCP all use that command. Undo/Redo, no-op behavior, rollback, checkpoint field comparison and frozen native content are covered by focused tests. The generated target namespace is shared between core and exporter; initializing metadata without changing that namespace remains possible when local call references exist. Namespace retargeting with existing qualified references is refused.
+
+The native schema remains 3. Metadata in either live documents or frozen checkpoints requires `bpmn-definitions-metadata`; unknown-capability readers must refuse it, and archives that omit the capability despite containing metadata are rejected. Absent metadata and empty import lists do not introduce serialized fields into legacy identities. Existing migration checks remain in force.
+
+Limits are explicit: at most 256 imports, at most 16 KiB per metadata string, XML 1.0 characters, and a nonempty target namespace for the qualified editable/export profile. These are implementation bounds, not normative restrictions on BPMN xs:anyURI. Unsupported attributes/content, out-of-profile metadata and import declarations fall back to unchanged source where the existing bounded XML validator accepts the input. External QName references can still be refused by that validator; import declarations do not provide external reference resolution. Old imported native documents without explicit definitions metadata keep the provenance-based exporter fallback; their metadata editor refuses changes until the original namespace can be verified. Definitions without IDs, rich expressions, relationships, extensions and supporting root catalogs are not completed by this slice.
+
+Reproduce the codec evidence with:
+
+```sh
+source /workspace/.processcraft-setup/env.sh
+CARGO_INCREMENTAL=0 cargo run -p processcraft-io --example definitions_qualify --locked --offline
+python scripts/check_bpmn20_xsd.py target/m3-qualification/definitions/input.bpmn target/m3-qualification/definitions/output.bpmn
+```
+
+The example passed native in-memory write/reopen identity and BPMN export/reimport metadata equality, then wrote synthetic artifacts under `target/m3-qualification/definitions`. Both actual input and output passed independent pinned OMG XSD validation. It does not exercise the Windows file-session adapter. Its committed synthetic fixture, license, version and hash are in `tests/fixtures/bpmn/definitions-imports.{bpmn,manifest.json}`. No named external consumer has reopened this fixture; there is no broad compatibility claim.
+
+The first workspace run overlapped worker edits and is retained only as a transitional diagnostic log (`target/cloud-baseline-tests.log`), not as an immutable clean-baseline qualification. The final integrated gates are recorded separately below. Narrow target-gated imports/annotations address pre-existing Linux unused-code warnings without changing the Windows adapter or ignoring tests.
+
+The Cloud desktop control attempt failed before inspection with `the gaas-browser node_repl sandbox cannot be disabled`. New native pointer/keyboard, Light/Dark, DPI and accessibility qualification is therefore not established by this run. Automated egui draft/history tests remain separate evidence. Narrator and other audio assistants were not launched. Windows NTFS save/lock/ACL and named-pipe qualification, independent licensed-fixture reopen in two named tool/version combinations, and full normative coverage remain open.
+
+The continuation order and concrete acceptance tests are in the M3 implementation plan: formal expressions and namespace context, root catalogs and references, then dependent activity/event/data/collaboration/choreography/DI slices. The family crosswalk and 580-declaration inventory remain partial engineering evidence, not a conformance percentage or completion gate.
+
+### Integrated Cloud gates
+
+Final source implementation commit: `7493782`; isolated Linux lint adaptation: `f3764fd`. All commands below used the pinned lockfile and dependencies; `CARGO_INCREMENTAL=0` was set for build, lint and test work.
+
+| Gate | Actual result |
+|---|---|
+| `cargo fmt --all -- --check` | Passed on the final source. |
+| `cargo clippy --workspace --all-targets --all-features --locked --offline -- -D warnings` | Passed; `target/cloud-clippy-final.log`. |
+| `cargo test --workspace --all-targets --all-features --locked --offline --no-fail-fast` | **270 passed, 15 failed, 0 ignored across 32 targets**; exit 101, `target/cloud-tests-final.log`. This is not a passing workspace suite. All failures are in the existing CLI integration target and exercise unavailable Linux file/grant or Windows persistence paths. |
+| `cargo build -p processcraft -p processcraft-cli --release --locked --offline` | Passed; `target/cloud-release-build-final.log`. Both normal release binaries were built; no backend features or dependency revisions changed. |
+| `python scripts/generate_bpmn20_inventory.py --check` | Passed: 580 declarations; not a coverage percentage. |
+| Definitions qualification example and pinned XSD checks | Passed, including actual exported XML; `target/cloud-definitions-qualification.log`. Synthetic fixture hash matches its committed manifest. |
+| New desktop definitions/import draft tests | Both passed; these are automated egui state/history tests, not native pointer/accessibility qualification. |
+| New MCP definitions test without file grants | Passed: real stdio initialization, discovered schema, shared mutation, retry deduplication and exact Undo/Redo content identity. |
+| Windows NTFS, named pipes, new native interaction and independent consumers | Not qualified in this environment. |
+
+The 15 failed CLI tests are `batch_failure_writes_nothing`, `bpmn_limitations_are_reported_without_validation_failure`, `cli_import_and_export_bpmn_svg_png`, `cli_matches_engine_content`, `cli_queries_persisted_comments_and_checkpoint_reference`, `exit_codes_and_nested_schema_are_explicit`, `gui_owned_file_refuses_headless_writer`, `headless_run_creates_no_recovery_or_preferences`, `indeterminate_save_subprocess_emits_reconciliation_and_exit_one`, `layout_file_preview_apply_and_stale_guard`, `mcp_stdio_uses_real_handshake_and_shared_schema`, `oversized_batch_is_rejected_before_output`, `paths_are_explicit_grants`, `query_library_and_dictionary_return_json_without_side_effects`, and `schema_and_validation_exit_codes`. The original NTFS refusal remains unchanged; no test was skipped or rewritten to disguise it.
+
+The Analytic-profile condition concern was also audited: the validator already allows activity conditional flows in the general profile. A new positive/negative regression checks that activity flow conditions remain allowed while event-based gateway conditions receive their existing context-specific diagnostic (§8.4.13 and §10.6.6). No broader semantic-conformance claim follows.
 
 ## PDF export
 

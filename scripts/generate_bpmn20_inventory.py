@@ -70,6 +70,46 @@ for declaration in declarations:
             declaration["evidence"] = profile["evidence"]
             declaration["limitations"] = profile["limit"]
             break
+# These are attributes of tDefinitions, not a claim about definitions as a whole.
+# The optional language defaults are deliberately retained as presence information.
+definitions_attributes = {"name", "targetNamespace", "expressionLanguage", "typeLanguage", "exporter", "exporterVersion"}
+for declaration in declarations:
+    if (declaration["schema"] == "BPMN20.xsd"
+            and declaration["kind"] == "attribute"
+            and "/complexType[@name=tDefinitions]/" in declaration["path"]
+            and declaration["name"] in definitions_attributes):
+        declaration["coverage"].update({"model": "partial", "edit": "partial", "import": "partial", "export": "partial", "validate": "partial"})
+        declaration["evidence"] = [
+            "crates/processcraft-io/tests/interchange.rs:definitions_metadata_roundtrips_with_presence_and_namespace_identity",
+            "crates/processcraft-io/tests/native.rs:definitions_metadata_requires_capability_in_live_and_checkpoint_documents",
+            "crates/processcraft-core/tests/commands.rs:definitions_metadata_is_undoable_and_validated_atomically",
+            "apps/processcraft/src/app.rs:definitions_draft_is_guarded_and_uses_history",
+            "apps/processcraft-cli/tests/definitions_mcp.rs:definitions_metadata_uses_discovered_mcp_command_and_exact_history",
+        ]
+        declaration["limitations"] = (
+            "Bounded typed definitions-attribute profile; optional language omission is retained. "
+            "Shared commands, desktop drafts, history and MCP have focused evidence. "
+            "Full native interaction, semantic validation, external references and definitions children remain unverified."
+        )
+# Bounded declaration support only: import locations are model data and are never loaded.
+for declaration in declarations:
+    is_import = (declaration["schema"] == "BPMN20.xsd" and (
+        (declaration["kind"] == "element" and declaration["name"] == "import") or
+        (declaration["kind"] == "complexType" and declaration["name"] == "tImport") or
+        (declaration["kind"] == "attribute" and "/complexType[@name=tImport]/" in declaration["path"]
+         and declaration["name"] in {"namespace", "location", "importType"})))
+    if is_import:
+        declaration["coverage"].update({"model": "partial", "edit": "partial", "import": "partial", "export": "partial", "validate": "partial"})
+        declaration["evidence"] = [
+            "crates/processcraft-io/tests/interchange.rs:definitions_imports_roundtrip_without_loading_locations",
+            "crates/processcraft-io/tests/interchange.rs:unrepresented_import_content_is_preserved",
+            "crates/processcraft-core/tests/commands.rs:definitions_import_changes_are_undoable",
+            "crates/processcraft-io/tests/native.rs:definitions_metadata_requires_capability_in_live_and_checkpoint_documents",
+        ]
+        declaration["limitations"] = (
+            "Ordered bounded declarations and their three required attributes only; no external resolution or loading. "
+            "Native GUI and CLI/MCP end-to-end qualification and import-dependent reference semantics remain unverified."
+        )
 result = {"profiles": profiles, "cmof_declarations": cmof, "version": "2.0.2", "coverage_policy": "unverified means no construct-level evidence recorded; raw retention is not modeling support", "sources": sources, "declarations": declarations,
           "conformance": {"status": "not_assessed", "note": "OMG PDF conformance classes and semantic constraints require separate clause-by-clause mapping; XSD declarations do not establish conformance."}}
 serialized = json.dumps(result, indent=2, ensure_ascii=False) + "\n"
