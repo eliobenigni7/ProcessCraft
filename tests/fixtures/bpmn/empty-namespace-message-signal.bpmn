@@ -1,0 +1,2 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<b:definitions xmlns:b="http://www.omg.org/spec/BPMN/20100524/MODEL" id="defs" targetNamespace=""><b:signal id="notice" name="Notice"/><b:message id="order" name="Order"/><b:process id="p" isExecutable="false"><b:startEvent id="start"><b:messageEventDefinition id="md" messageRef="order"/></b:startEvent><b:intermediateCatchEvent id="catch"><b:signalEventDefinition id="sd" signalRef="notice"/></b:intermediateCatchEvent><b:sequenceFlow id="flow" sourceRef="start" targetRef="catch"/></b:process></b:definitions>

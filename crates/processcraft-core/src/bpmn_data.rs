@@ -1,14 +1,11 @@
 //! Typed BPMN data declarations and scoped data associations.
-use crate::{
-    bpmn_model::{Expression, QNameRef},
-    ids::XmlId,
-};
+use crate::bpmn_model::{Expression, QNameRef};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DataStore {
-    pub id: Option<XmlId>,
+    pub id: Option<crate::ids::ElementIdentity>,
     pub name: Option<String>,
     pub capacity: Option<String>,
     pub is_unlimited: Option<bool>,
@@ -18,7 +15,7 @@ pub struct DataStore {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DataObject {
-    pub id: Option<XmlId>,
+    pub id: Option<crate::ids::ElementIdentity>,
     pub name: Option<String>,
     pub is_collection: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -33,7 +30,7 @@ pub struct ItemAwareMetadata {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DataState {
-    pub id: Option<XmlId>,
+    pub id: Option<crate::ids::ElementIdentity>,
     pub name: Option<String>,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
@@ -44,11 +41,11 @@ pub enum DataAssociationKind {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DataAssociation {
-    pub id: Option<XmlId>,
-    pub owner: XmlId,
+    pub id: Option<crate::ids::ElementIdentity>,
+    pub owner: crate::ids::ElementSelector,
     pub kind: DataAssociationKind,
-    pub sources: Vec<XmlId>,
-    pub target: XmlId,
+    pub sources: Vec<crate::ids::ElementSelector>,
+    pub target: crate::ids::ElementSelector,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transformation: Option<Expression>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -57,7 +54,7 @@ pub struct DataAssociation {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DataAssignment {
-    pub id: Option<XmlId>,
+    pub id: Option<crate::ids::ElementIdentity>,
     pub from: Expression,
     pub to: Expression,
 }
@@ -66,7 +63,7 @@ pub struct DataAssignment {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DataPort {
-    pub id: Option<XmlId>,
+    pub id: Option<crate::ids::ElementIdentity>,
     pub name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub item_aware: Option<ItemAwareMetadata>,
@@ -77,14 +74,14 @@ pub struct DataPort {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(untagged)]
 pub enum DataStoreRef {
-    Legacy(XmlId),
+    Legacy(crate::ids::ElementSelector),
     Qualified(QNameRef),
 }
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct IoSpecification {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub id: Option<XmlId>,
+    pub id: Option<crate::ids::ElementIdentity>,
     pub inputs: Vec<DataPort>,
     pub outputs: Vec<DataPort>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -96,10 +93,10 @@ pub struct IoSpecification {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct IoSet {
-    pub id: Option<XmlId>,
+    pub id: Option<crate::ids::ElementIdentity>,
     pub name: Option<String>,
-    pub data_refs: Vec<XmlId>,
-    pub optional_refs: Vec<XmlId>,
-    pub while_executing_refs: Vec<XmlId>,
-    pub counterpart_refs: Vec<XmlId>,
+    pub data_refs: Vec<crate::ids::ElementSelector>,
+    pub optional_refs: Vec<crate::ids::ElementSelector>,
+    pub while_executing_refs: Vec<crate::ids::ElementSelector>,
+    pub counterpart_refs: Vec<crate::ids::ElementSelector>,
 }

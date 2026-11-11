@@ -1,12 +1,15 @@
 //! Synthetic checkpoint/native size qualification. `--large` uses up to ~256 MiB of resource data.
 use processcraft_core::{
     commands::{Envelope, Mutation, Request, Session},
-    ids::{CheckpointId, XmlId},
+    ids::CheckpointId,
     model::{ProjectData, Resource},
 };
 use processcraft_io::native::{load_bytes, write_bytes};
 use std::{fs, sync::Arc, time::Instant};
-fn id(s: &str) -> XmlId {
+fn id<T: std::str::FromStr>(s: &str) -> T
+where
+    T::Err: std::fmt::Debug,
+{
     s.parse().expect("valid fixture id")
 }
 fn apply(session: &mut Session, mutation: Mutation) -> Result<(), String> {
@@ -30,10 +33,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let bytes = fs::read(path)?;
         let loaded = load_bytes(&bytes)?;
         let doc = &loaded.project.documents[0];
-        let diagram = &doc.diagrams[0].id;
+        let diagram = doc.diagrams[0].id.selector();
         let result = processcraft_core::layout::propose_layout(
             doc,
-            diagram,
+            &diagram,
             "qualification",
             0,
             &std::sync::atomic::AtomicBool::new(false),

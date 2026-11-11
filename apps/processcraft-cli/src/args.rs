@@ -125,6 +125,14 @@ pub enum ImageFormat {
 
 #[derive(Subcommand)]
 pub enum Query {
+    /// Read persistent semantic/DI selectors and their optional XML IDs.
+    Identities {
+        document_id: String,
+        #[arg(long, default_value_t = 0)]
+        offset: usize,
+        #[arg(long, default_value_t = 50)]
+        limit: usize,
+    },
     /// Read scoped data declarations, ports and associations as bounded field pages.
     Data {
         document_id: String,

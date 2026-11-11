@@ -97,6 +97,12 @@ enum ExportKind {
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
 enum Query {
+    Identities {
+        #[serde(alias = "documentId", alias = "docId")]
+        document_id: processcraft_core::ids::DocumentId,
+        offset: usize,
+        limit: usize,
+    },
     Data {
         document_id: processcraft_core::ids::DocumentId,
         offset: usize,
@@ -129,7 +135,7 @@ enum Query {
         #[serde(rename = "documentId")]
         document_id: processcraft_core::ids::DocumentId,
         #[serde(rename = "diagramId")]
-        diagram_id: processcraft_core::ids::XmlId,
+        diagram_id: processcraft_core::ids::ElementSelector,
     },
     Library {
         text: String,
@@ -147,7 +153,7 @@ enum Query {
     },
     Table {
         document_id: processcraft_core::ids::DocumentId,
-        process_id: processcraft_core::ids::XmlId,
+        process_id: processcraft_core::ids::ElementSelector,
         offset: usize,
         limit: usize,
     },
@@ -491,8 +497,17 @@ impl Attachment {
                     Err(e) => return json!({"ok":false,"error":e.to_string()}),
                 };
                 let snapshot = controller.session.snapshot();
-                let catalog_query = matches!(&q, Query::Catalog { .. } | Query::Data { .. });
+                let catalog_query = matches!(
+                    &q,
+                    Query::Catalog { .. } | Query::Data { .. } | Query::Identities { .. }
+                );
                 let (items, offset, limit): (Vec<Value>, usize, usize) = match q {
+                    Query::Identities { document_id, offset, limit } => {
+                        let Some(rows) = processcraft_core::queries::identified_elements(&snapshot.project, document_id) else {
+                            return json!({"ok":false,"error":"document not found"});
+                        };
+                        (rows.into_iter().map(|row| json!(row)).collect(), offset, limit)
+                    },
                     Query::Data { document_id, offset, limit } => {
                         let Some(rows) = processcraft_core::queries::data_fields(&snapshot.project, document_id) else {
                             return json!({"ok":false,"error":"document not found"});
@@ -619,7 +634,15 @@ impl Attachment {
                             parsed.request,
                         );
                         let value = match result {
-                            Ok(r) => json!({"ok":true,"generation":r.generation}),
+                            Ok(r) => {
+                                let mut value =
+                                    serde_json::to_value(r).expect("change set serializes");
+                                value
+                                    .as_object_mut()
+                                    .expect("change set is an object")
+                                    .insert("ok".into(), json!(true));
+                                value
+                            }
                             Err(e) => json!({"ok":false,"error":format!("{e:?}")}),
                         };
                         self.ledger.complete(&parsed.request_id, value.clone());

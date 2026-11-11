@@ -1,0 +1,2 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<b:definitions xmlns:b="http://www.omg.org/spec/BPMN/20100524/MODEL" id="defs" targetNamespace=""><b:category id="category" name="Stage"><b:categoryValue id="value" value="Review"/></b:category><b:process id="p" isExecutable="false"><b:task id="work"/><b:group id="group" categoryValueRef="value"/></b:process></b:definitions>

@@ -1,6 +1,9 @@
 //! Read-only projections of the current in-memory project.
 use crate::{
-    ids::{CheckpointId, DictionaryEntryId, DocumentId, ElementKey, XmlId},
+    ids::{
+        CheckpointId, DictionaryEntryId, DocumentId, ElementIdentity, ElementKey, ElementSelector,
+        XmlId,
+    },
     model::*,
 };
 
@@ -12,6 +15,32 @@ pub struct ModelField {
     pub value: serde_json::Value,
 }
 pub type CatalogField = ModelField;
+
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ElementIdentityRow {
+    pub selector: ElementSelector,
+    pub xml_id: Option<XmlId>,
+}
+
+/// Existing semantic and DI identities. Legacy null IDs are deliberately not
+/// promoted by this projection; scoped data/catalog queries retain those rows.
+pub fn identified_elements(
+    project: &ProjectData,
+    document_id: DocumentId,
+) -> Option<Vec<ElementIdentityRow>> {
+    let document = project.documents.iter().find(|d| d.id == document_id)?;
+    Some(
+        document
+            .element_identities()
+            .into_iter()
+            .map(|identity| ElementIdentityRow {
+                selector: identity.selector(),
+                xml_id: identity.xml_id().cloned(),
+            })
+            .collect(),
+    )
+}
 
 fn model_fields(value: serde_json::Value) -> Vec<ModelField> {
     fn fields(value: serde_json::Value, path: String, out: &mut Vec<ModelField>) {
@@ -76,7 +105,7 @@ pub fn data_fields(project: &ProjectData, document_id: DocumentId) -> Option<Vec
 /// One semantic scope; subprocess contents remain separate from their parent.
 #[derive(Clone, Copy, Debug)]
 pub struct ScopeRef<'a> {
-    pub id: &'a XmlId,
+    pub id: &'a ElementIdentity,
     pub name: &'a str,
     pub nodes: &'a [Node],
     pub flows: &'a [Flow],
@@ -94,7 +123,7 @@ pub fn scopes(document: &BpmnDocument) -> Vec<ScopeRef<'_>> {
             if let Some(crate::bpmn_model::NodeDetails::SubProcess { content }) = &node.details {
                 out.push(ScopeRef {
                     id: &node.id,
-                    name: &node.name,
+                    name: node.name.as_deref().unwrap_or(""),
                     nodes: &content.nodes,
                     flows: &content.flows,
                     lanes: &content.lanes,
@@ -110,7 +139,7 @@ pub fn scopes(document: &BpmnDocument) -> Vec<ScopeRef<'_>> {
     for process in &document.processes {
         result.push(ScopeRef {
             id: &process.id,
-            name: &process.name,
+            name: process.name.as_deref().unwrap_or(""),
             nodes: &process.nodes,
             flows: &process.flows,
             lanes: &process.lanes,
@@ -122,93 +151,106 @@ pub fn scopes(document: &BpmnDocument) -> Vec<ScopeRef<'_>> {
     }
     result
 }
-pub fn find_node<'a>(document: &'a BpmnDocument, id: &XmlId) -> Option<&'a Node> {
+pub fn find_node<'a>(document: &'a BpmnDocument, id: &ElementSelector) -> Option<&'a Node> {
     scopes(document)
         .into_iter()
-        .find_map(|scope| scope.nodes.iter().find(|node| &node.id == id))
+        .find_map(|scope| scope.nodes.iter().find(|node| &node.id.selector() == id))
 }
-pub fn find_flow<'a>(document: &'a BpmnDocument, id: &XmlId) -> Option<&'a Flow> {
+/// Resolve a persistent semantic or DI selector without converting its native
+/// UUID into an XML identifier or allocating an identity for a legacy null.
+pub fn element_identity<'a>(
+    document: &'a BpmnDocument,
+    selector: &ElementSelector,
+) -> Option<&'a ElementIdentity> {
+    document
+        .element_identities()
+        .into_iter()
+        .find(|identity| identity.selector() == *selector)
+}
+pub fn find_flow<'a>(document: &'a BpmnDocument, id: &ElementSelector) -> Option<&'a Flow> {
     scopes(document)
         .into_iter()
-        .find_map(|scope| scope.flows.iter().find(|flow| &flow.id == id))
+        .find_map(|scope| scope.flows.iter().find(|flow| &flow.id.selector() == id))
         .or_else(|| {
             document
                 .collaboration
                 .as_ref()?
                 .flows
                 .iter()
-                .find(|flow| &flow.id == id)
+                .find(|flow| &flow.id.selector() == id)
         })
 }
-pub fn element_name<'a>(document: &'a BpmnDocument, id: &XmlId) -> Option<&'a str> {
+pub fn element_name<'a>(document: &'a BpmnDocument, id: &ElementSelector) -> Option<&'a str> {
     for scope in scopes(document) {
-        if scope.id == id {
+        if &scope.id.selector() == id {
             return Some(scope.name);
         }
-        if let Some(object) = scope
-            .data_objects
-            .iter()
-            .find(|o| o.id.as_ref() == Some(id))
-        {
+        if let Some(object) = scope.data_objects.iter().find(|o| {
+            o.id.as_ref()
+                .is_some_and(|identity| &identity.selector() == id)
+        }) {
             return Some(object.name.as_deref().unwrap_or(""));
         }
-        if let Some(node) = scope.nodes.iter().find(|n| &n.id == id) {
-            return Some(&node.name);
+        if let Some(node) = scope.nodes.iter().find(|n| &n.id.selector() == id) {
+            return Some(node.name.as_deref().unwrap_or(""));
         }
-        if let Some(lane) = scope.lanes.iter().find(|l| &l.id == id) {
-            return Some(&lane.name);
+        if let Some(lane) = scope.lanes.iter().find(|l| &l.id.selector() == id) {
+            return Some(lane.name.as_deref().unwrap_or(""));
         }
-        if let Some(flow) = scope.flows.iter().find(|f| &f.id == id) {
-            return Some(&flow.name);
+        if let Some(flow) = scope.flows.iter().find(|f| &f.id.selector() == id) {
+            return Some(flow.name.as_deref().unwrap_or(""));
         }
     }
     document.collaboration.as_ref().and_then(|c| {
         c.participants
             .iter()
-            .find(|p| &p.id == id)
-            .map(|p| p.name.as_str())
+            .find(|p| &p.id.selector() == id)
+            .and_then(|p| p.name.as_deref())
             .or_else(|| {
                 c.flows
                     .iter()
-                    .find(|f| &f.id == id)
-                    .map(|f| f.name.as_str())
+                    .find(|f| &f.id.selector() == id)
+                    .and_then(|f| f.name.as_deref())
             })
     })
 }
 /// Resolve conversation elements within this document's collaboration only.
 pub fn find_conversation_node<'a>(
     document: &'a BpmnDocument,
-    id: &XmlId,
+    id: &ElementSelector,
 ) -> Option<&'a crate::bpmn_collaboration::ConversationNode> {
     document
         .collaboration
         .as_ref()?
         .conversation_nodes
         .iter()
-        .find(|node| &node.id == id)
+        .find(|node| &node.id.selector() == id)
 }
 pub fn find_conversation_link<'a>(
     document: &'a BpmnDocument,
-    id: &XmlId,
+    id: &ElementSelector,
 ) -> Option<&'a crate::bpmn_collaboration::ConversationLink> {
     document
         .collaboration
         .as_ref()?
         .conversation_links
         .iter()
-        .find(|link| &link.id == id)
+        .find(|link| &link.id.selector() == id)
 }
 /// Resolve a choreography or task without crossing its owning document/scope.
 pub fn find_choreography<'a>(
     document: &'a BpmnDocument,
-    id: &XmlId,
+    id: &ElementSelector,
 ) -> Option<&'a crate::bpmn_collaboration::Choreography> {
-    document.choreographies.iter().find(|c| &c.id == id)
+    document
+        .choreographies
+        .iter()
+        .find(|c| &c.id.selector() == id)
 }
 pub fn find_choreography_activity<'a>(
     document: &'a BpmnDocument,
-    choreography_id: &XmlId,
-    activity_id: &XmlId,
+    choreography_id: &ElementSelector,
+    activity_id: &ElementSelector,
 ) -> Option<&'a crate::bpmn_collaboration::ChoreographyActivity> {
     find_choreography(document, choreography_id)?
         .activities
@@ -258,29 +300,31 @@ pub fn target_name<'a>(project: &'a ProjectData, target: &'a DictionaryTarget) -
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum RoleLaneChoices {
     CreateLane,
-    Assign(XmlId),
-    Choose(Vec<XmlId>),
+    Assign(ElementSelector),
+    Choose(Vec<ElementSelector>),
 }
 pub fn role_lane_choices(
     project: &ProjectData,
     document_id: DocumentId,
-    process_id: &XmlId,
+    process_id: &ElementSelector,
     role: DictionaryEntryId,
 ) -> Option<RoleLaneChoices> {
     let d = project.documents.iter().find(|d| d.id == document_id)?;
-    let p = scopes(d).into_iter().find(|p| p.id == process_id)?;
+    let p = scopes(d)
+        .into_iter()
+        .find(|p| &p.id.selector() == process_id)?;
     let mut ids: Vec<_> = p
         .lanes
         .iter()
         .filter(|lane| {
             project.dictionary_links.iter().any(|l| {
                 l.source.document_id == document_id
-                    && l.source.xml_id == lane.id
+                    && l.source.xml_id == lane.id.selector()
                     && l.kind == DictionaryKind::Role
                     && l.target == DictionaryTarget::Entry(role)
             })
         })
-        .map(|l| l.id.clone())
+        .map(|l| l.id.selector())
         .collect();
     ids.sort();
     Some(match ids.len() {
@@ -291,15 +335,15 @@ pub fn role_lane_choices(
 }
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct TableFlow {
-    pub id: XmlId,
-    pub target: XmlId,
+    pub id: ElementSelector,
+    pub target: ElementSelector,
     pub condition: Option<crate::bpmn_model::Expression>,
 }
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ActivityRow {
     pub key: ElementKey,
-    pub name: String,
-    pub lane: Option<XmlId>,
+    pub name: Option<String>,
+    pub lane: Option<ElementSelector>,
     pub role: Option<String>,
     pub systems: Vec<String>,
     pub documents: Vec<String>,
@@ -308,10 +352,12 @@ pub struct ActivityRow {
 pub fn activity_table(
     project: &ProjectData,
     document_id: DocumentId,
-    process_id: &XmlId,
+    process_id: &ElementSelector,
 ) -> Option<Vec<ActivityRow>> {
     let d = project.documents.iter().find(|d| d.id == document_id)?;
-    let p = scopes(d).into_iter().find(|p| p.id == process_id)?;
+    let p = scopes(d)
+        .into_iter()
+        .find(|p| &p.id.selector() == process_id)?;
     let mut rows = Vec::new();
     for n in p.nodes {
         if !n.kind.is_activity() {
@@ -319,10 +365,13 @@ pub fn activity_table(
         }
         let key = ElementKey {
             document_id,
-            xml_id: n.id.clone(),
+            xml_id: n.id.selector(),
         };
-        let lane = p.lanes.iter().find(|l| l.members.contains(&n.id));
-        let labels = |source: &XmlId, kind| {
+        let lane = p
+            .lanes
+            .iter()
+            .find(|l| l.members.contains(&n.id.selector()));
+        let labels = |source: &ElementSelector, kind| {
             project
                 .dictionary_links
                 .iter()
@@ -337,9 +386,9 @@ pub fn activity_table(
         let outgoing = p
             .flows
             .iter()
-            .filter(|f| f.kind == FlowKind::Sequence && f.source == n.id)
+            .filter(|f| f.kind == FlowKind::Sequence && f.source == n.id.selector())
             .map(|f| TableFlow {
-                id: f.id.clone(),
+                id: f.id.selector(),
                 target: f.target.clone(),
                 condition: f.condition.clone(),
             })
@@ -347,10 +396,14 @@ pub fn activity_table(
         rows.push(ActivityRow {
             key,
             name: n.name.clone(),
-            lane: lane.map(|l| l.id.clone()),
-            role: lane.and_then(|l| labels(&l.id, DictionaryKind::Role).into_iter().next()),
-            systems: labels(&n.id, DictionaryKind::System),
-            documents: labels(&n.id, DictionaryKind::Document),
+            lane: lane.map(|l| l.id.selector()),
+            role: lane.and_then(|l| {
+                labels(&l.id.selector(), DictionaryKind::Role)
+                    .into_iter()
+                    .next()
+            }),
+            systems: labels(&n.id.selector(), DictionaryKind::System),
+            documents: labels(&n.id.selector(), DictionaryKind::Document),
             outgoing,
         });
     }
@@ -383,15 +436,15 @@ pub struct ElementChange {
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct DiagramChange {
     pub document_id: DocumentId,
-    pub diagram_id: XmlId,
+    pub diagram_id: ElementSelector,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct DiagramElementChange {
     pub document_id: DocumentId,
-    pub diagram_id: XmlId,
-    pub element_id: XmlId,
-    pub representation_id: XmlId,
+    pub diagram_id: ElementSelector,
+    pub element_id: ElementSelector,
+    pub representation_id: ElementSelector,
 }
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct CheckpointComparison {
@@ -466,7 +519,8 @@ pub fn compare_checkpoint(project: &ProjectData, id: CheckpointId) -> Option<Che
         };
         if before.name != document.name
             || before.folder != document.folder
-            || before.definitions_id != document.definitions_id
+            || serde_json::to_value(&before.definitions_id).ok()
+                != serde_json::to_value(&document.definitions_id).ok()
             || before.definitions != document.definitions
         {
             changed_document_properties.push(document.id);
@@ -535,9 +589,9 @@ pub fn compare_checkpoint(project: &ProjectData, id: CheckpointId) -> Option<Che
                     {
                         moved_shapes.push(DiagramElementChange {
                             document_id: document.id,
-                            diagram_id: diagram.id.clone(),
+                            diagram_id: diagram.id.selector(),
                             element_id: shape.element.clone(),
-                            representation_id: shape.id.clone(),
+                            representation_id: shape.id.selector(),
                         });
                     }
                 }
@@ -550,9 +604,9 @@ pub fn compare_checkpoint(project: &ProjectData, id: CheckpointId) -> Option<Che
                     }) {
                         rerouted_edges.push(DiagramElementChange {
                             document_id: document.id,
-                            diagram_id: diagram.id.clone(),
+                            diagram_id: diagram.id.selector(),
                             element_id: edge.element.clone(),
-                            representation_id: edge.id.clone(),
+                            representation_id: edge.id.selector(),
                         });
                     }
                 }
@@ -567,7 +621,7 @@ pub fn compare_checkpoint(project: &ProjectData, id: CheckpointId) -> Option<Che
             {
                 changed_diagrams.push(DiagramChange {
                     document_id: document.id,
-                    diagram_id: diagram.id.clone(),
+                    diagram_id: diagram.id.selector(),
                 });
             }
         }
@@ -578,7 +632,7 @@ pub fn compare_checkpoint(project: &ProjectData, id: CheckpointId) -> Option<Che
         {
             changed_diagrams.push(DiagramChange {
                 document_id: document.id,
-                diagram_id: diagram.id.clone(),
+                diagram_id: diagram.id.selector(),
             });
         }
     }
@@ -660,12 +714,17 @@ pub fn compare_checkpoint(project: &ProjectData, id: CheckpointId) -> Option<Che
 // child's rename is reported on that child, not as a property edit on every ancestor.
 fn semantic_properties(
     document: &BpmnDocument,
-) -> Option<std::collections::BTreeMap<XmlId, serde_json::Value>> {
+) -> Option<std::collections::BTreeMap<ElementSelector, serde_json::Value>> {
     use serde_json::Value;
+    fn selector(value: &Value) -> Option<ElementSelector> {
+        serde_json::from_value::<ElementIdentity>(value.clone())
+            .ok()
+            .map(|identity| identity.selector())
+    }
     fn shallow(value: &Value, root: bool) -> Value {
         match value {
-            Value::Object(object) if !root && object.get("id").is_some_and(Value::is_string) => {
-                serde_json::json!({ "ref": object["id"] })
+            Value::Object(object) if !root && object.get("id").and_then(selector).is_some() => {
+                serde_json::json!({ "ref": selector(&object["id"]) })
             }
             Value::Object(object) => Value::Object(
                 object
@@ -695,15 +754,15 @@ fn semantic_properties(
     }
     let mut result = std::collections::BTreeMap::new();
     result.insert(
-        document.definitions_id.clone(),
-        serde_json::json!({ "definitions": document.definitions }),
+        document.definitions_id.selector(),
+        serde_json::json!({ "id": document.definitions_id, "definitions": document.definitions }),
     );
     let mut pending = vec![&value];
     while let Some(value) = pending.pop() {
         match value {
             Value::Object(object) => {
-                if let Some(id) = object.get("id").and_then(Value::as_str) {
-                    result.insert(id.parse().ok()?, shallow(value, true));
+                if let Some(id) = object.get("id").and_then(selector) {
+                    result.insert(id, shallow(value, true));
                 }
                 pending.extend(object.values());
             }

@@ -1,11 +1,11 @@
-use processcraft_core::{ids::XmlId, model::BpmnDocument};
+use processcraft_core::{ids::ElementSelector, model::BpmnDocument};
 use processcraft_render::{Appearance, BpmnViewport, HitRegion, TextEngine, Viewport};
 use std::sync::{Arc, Condvar, Mutex, mpsc};
 
 pub struct RenderJob {
     pub key: String,
     pub document: Arc<BpmnDocument>,
-    pub diagram: XmlId,
+    pub diagram: ElementSelector,
     pub appearance: Appearance,
     pub view: Viewport,
 }

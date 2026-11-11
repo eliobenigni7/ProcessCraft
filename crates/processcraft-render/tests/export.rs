@@ -5,13 +5,14 @@ use processcraft_render::{Appearance, ExportFormat, ExportOptions, TextEngine, e
 fn document() -> BpmnDocument {
     let mut d = BpmnDocument::new("test".into(), "defs".parse().unwrap());
     d.processes.push(Process {
+        is_executable: Some(false),
         io_specification: None,
         lane_set_id: None,
         groups: vec![],
         data_objects: vec![],
         data_associations: vec![],
         id: "p".parse().unwrap(),
-        name: String::new(),
+        name: Some(String::new()),
         documentation: String::new(),
         nodes: vec![Node {
             item_aware: None,
@@ -20,7 +21,7 @@ fn document() -> BpmnDocument {
             loop_characteristics: None,
             details: None,
             id: "n".parse().unwrap(),
-            name: "A & B".into(),
+            name: Some("A & B".into()),
             documentation: String::new(),
             kind: NodeKind::Task,
             owner: String::new(),
@@ -30,6 +31,7 @@ fn document() -> BpmnDocument {
         flows: vec![],
     });
     d.diagrams.push(Diagram {
+        name: None,
         id: "d".parse().unwrap(),
         plane_id: "plane".parse().unwrap(),
         plane: "p".parse().unwrap(),
@@ -117,7 +119,8 @@ fn rejects_preserved_placeholder_and_oversized() {
 #[test]
 fn diagnostic_requires_acknowledgement() {
     let mut d = document();
-    d.processes[0].nodes[0].name = "A very long label that cannot fit within these bounds".into();
+    d.processes[0].nodes[0].name =
+        Some("A very long label that cannot fit within these bounds".into());
     d.diagrams[0].shapes[0].bounds.width = 35.;
     d.diagrams[0].shapes[0].bounds.height = 20.;
     let options = ExportOptions {
@@ -183,7 +186,8 @@ fn fractional_scale_uses_identical_pixel_canvas_and_transform() {
 #[test]
 fn preflight_returns_acknowledgeable_diagnostics() {
     let mut d = document();
-    d.processes[0].nodes[0].name = "A very long label that cannot fit within these bounds".into();
+    d.processes[0].nodes[0].name =
+        Some("A very long label that cannot fit within these bounds".into());
     d.diagrams[0].shapes[0].bounds.width = 35.;
     d.diagrams[0].shapes[0].bounds.height = 20.;
     let diagnostics = processcraft_render::preflight_diagram(

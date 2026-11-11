@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<b:definitions xmlns:b="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:local="urn:processcraft:interop" xmlns:bd="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions" targetNamespace="urn:processcraft:interop">
+  <b:process id="Process" name="Order review" isExecutable="false">
+    <b:startEvent id="Start" name="Order received"/>
+    <b:task id="Review" name="Review order"/>
+    <b:endEvent id="End" name="Review complete"/>
+    <b:sequenceFlow id="Incoming" sourceRef="Start" targetRef="Review"/>
+    <b:sequenceFlow id="Outgoing" sourceRef="Review" targetRef="End"/>
+  </b:process>
+  <bd:BPMNDiagram id="Diagram" name="Order review"><bd:BPMNPlane id="Plane" bpmnElement="local:Process">
+    <bd:BPMNShape id="StartShape" bpmnElement="local:Start"><dc:Bounds x="100" y="100" width="36" height="36"/></bd:BPMNShape>
+    <bd:BPMNShape id="ReviewShape" bpmnElement="local:Review"><dc:Bounds x="200" y="78" width="120" height="80"/></bd:BPMNShape>
+    <bd:BPMNShape id="EndShape" bpmnElement="local:End"><dc:Bounds x="384" y="100" width="36" height="36"/></bd:BPMNShape>
+    <bd:BPMNEdge id="IncomingEdge" bpmnElement="local:Incoming"><di:waypoint x="136" y="118"/><di:waypoint x="200" y="118"/></bd:BPMNEdge>
+    <bd:BPMNEdge id="OutgoingEdge" bpmnElement="local:Outgoing"><di:waypoint x="320" y="118"/><di:waypoint x="384" y="118"/></bd:BPMNEdge>
+  </bd:BPMNPlane></bd:BPMNDiagram>
+</b:definitions>

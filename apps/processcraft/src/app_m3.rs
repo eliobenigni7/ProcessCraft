@@ -30,7 +30,7 @@ pub(super) struct State {
     reference_view: Option<(CheckpointId, usize)>,
     reference_page: usize,
     comparison_page: usize,
-    reference_diagram: Option<XmlId>,
+    reference_diagram: Option<ElementSelector>,
     reference_key: String,
     reference_error: String,
     reference_image: Option<egui::TextureHandle>,
@@ -180,7 +180,7 @@ impl ProcessCraft {
             .diagrams
             .iter()
             .find(|d| self.diagram_id.as_ref().is_none_or(|id| id == &d.id))
-            .map(|d| d.id.clone())
+            .map(|d| d.id.selector())
         else {
             self.ctl.error = "This model has no diagram to arrange.".into();
             return;
@@ -469,14 +469,14 @@ impl ProcessCraft {
             if let Some(document) = checkpoint.content.documents.get(index) {
                 egui::ComboBox::from_label("Frozen diagram").selected_text(self.m3.reference_diagram.as_ref().map_or("First diagram".into(), ToString::to_string)).show_ui(ui, |ui| {
                     ui.selectable_value(&mut self.m3.reference_diagram, None, "First diagram");
-                    for diagram in &document.diagrams { ui.selectable_value(&mut self.m3.reference_diagram, Some(diagram.id.clone()), diagram.id.to_string()); }
+                    for diagram in &document.diagrams { ui.selectable_value(&mut self.m3.reference_diagram, Some(diagram.id.selector()), diagram.id.to_string()); }
                 });
                 if let Some(diagram) = document.diagrams.iter().find(|d| self.m3.reference_diagram.as_ref().is_none_or(|id| &d.id == id)).or_else(|| document.diagrams.first()) {
                     let key = format!("{id}:{index}:{}:{}", diagram.id, self.theme == Theme::Dark);
                     if self.m3.reference_key != key && self.m3.reference_worker.is_none() {
                         self.m3.reference_key = key.clone(); self.m3.reference_image = None; self.m3.reference_error.clear();
                         let (tx, rx) = mpsc::sync_channel(1); self.m3.reference_worker = Some(rx);
-                        let document = document.clone(); let diagram = diagram.id.clone(); let appearance = if self.theme == Theme::Dark { Appearance::Dark } else { Appearance::Light }; let wake = ctx.clone();
+                        let document = document.clone(); let diagram = diagram.id.selector(); let appearance = if self.theme == Theme::Dark { Appearance::Dark } else { Appearance::Light }; let wake = ctx.clone();
                         let worker_key = key.clone();
                         std::thread::spawn(move || {
                             let selected = document.diagrams.iter().find(|d| d.id == diagram).unwrap();
@@ -496,7 +496,7 @@ impl ProcessCraft {
                     } else if self.m3.reference_key == key && let Some(texture) = &self.m3.reference_image { ui.add(egui::Image::new(texture).max_width(ui.available_width()).maintain_aspect_ratio(true)); } else { ui.spinner(); ctx.request_repaint_after(std::time::Duration::from_millis(50)); }
                 }
                 ui.collapsing("Frozen element properties", |ui| {
-                    for (scope, node) in processcraft_core::queries::scopes(document).into_iter().flat_map(|scope| scope.nodes.iter().map(move |node| (scope.name, node))).skip(self.m3.reference_page*100).take(100) { ui.label(format!("{} / {} · {} · {}",scope,node_kind_label(node.kind),node.name,node.documentation)); }
+                    for (scope, node) in processcraft_core::queries::scopes(document).into_iter().flat_map(|scope| scope.nodes.iter().map(move |node| (scope.name, node))).skip(self.m3.reference_page*100).take(100) { ui.label(format!("{} / {} · {} · {}",scope,node_kind_label(node.kind),node.name.as_deref().unwrap_or(""),node.documentation)); }
                 });
             }
             ui.collapsing(format!("Frozen dictionary · {} entries",checkpoint.content.dictionary_entries.len()), |ui| { for entry in checkpoint.content.dictionary_entries.iter().skip(self.m3.reference_page*100).take(100) { ui.label(format!("{:?} · {} · {}",entry.kind,entry.name,entry.description)); } });
@@ -773,7 +773,7 @@ mod tests {
         let snapshot = app.ctl.session.snapshot();
         let target = ElementKey {
             document_id: snapshot.project.documents[0].id,
-            xml_id: snapshot.project.documents[0].processes[0].id.clone(),
+            xml_id: snapshot.project.documents[0].processes[0].id.selector(),
         };
         assert!(
             app.ctl.mutate(
@@ -854,7 +854,7 @@ mod tests {
             session_id: app.ctl.session.id(),
             generation: snapshot.generation,
             document_id: document.id,
-            diagram_id: document.diagrams[0].id.clone(),
+            diagram_id: document.diagrams[0].id.selector(),
             original: processcraft_core::layout::LayoutGeometry {
                 shapes: vec![],
                 edges: vec![],
@@ -886,7 +886,7 @@ mod tests {
             session_id: app.ctl.session.id(),
             generation: before.generation,
             document_id: doc.id,
-            diagram_id: doc.diagrams[0].id.clone(),
+            diagram_id: doc.diagrams[0].id.selector(),
             original: processcraft_core::layout::LayoutGeometry {
                 shapes: vec![],
                 edges: vec![],

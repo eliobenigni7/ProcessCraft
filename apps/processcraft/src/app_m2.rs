@@ -671,7 +671,7 @@ impl ProcessCraft {
         else {
             return;
         };
-        let Some(rows) = queries::activity_table(project, d.id, p.id) else {
+        let Some(rows) = queries::activity_table(project, d.id, &p.id.selector()) else {
             return;
         };
         ui.add_space(12.0);
@@ -682,7 +682,7 @@ impl ProcessCraft {
                     .lane
                     .as_ref()
                     .and_then(|id| p.lanes.iter().find(|l| &l.id == id))
-                    .map_or("—", |l| l.name.as_str());
+                    .map_or("—", |l| l.name.as_deref().unwrap_or("—"));
                 let systems = if row.systems.is_empty() {
                     "—".into()
                 } else {
@@ -700,10 +700,10 @@ impl ProcessCraft {
                         let target = p.nodes.iter().find(|n| n.id == flow.target).map_or(
                             "Unnamed element",
                             |n| {
-                                if n.name.is_empty() {
+                                if n.name.as_deref().is_none_or(str::is_empty) {
                                     "Unnamed element"
                                 } else {
-                                    &n.name
+                                    n.name.as_deref().unwrap_or("")
                                 }
                             },
                         );
@@ -722,7 +722,7 @@ impl ProcessCraft {
                 TableItem {
                     key: format!("{} / {}", row.key.document_id, row.key.xml_id),
                     cells: vec![
-                        row.name.clone(),
+                        row.name.clone().unwrap_or_default(),
                         row.role.clone().unwrap_or_else(|| "—".into()),
                         lane.into(),
                         systems,
@@ -839,31 +839,32 @@ impl ProcessCraft {
         ui.menu_button("Assign role…", |ui| {
             for role in snap.project.dictionary_entries.iter().filter(|e| e.kind == DictionaryKind::Role) {
                 ui.menu_button(&role.name, |ui| {
-                    match queries::role_lane_choices(&snap.project, d.id, p.id, role.id) {
+                    match queries::role_lane_choices(&snap.project, d.id, &p.id.selector(), role.id) {
                         Some(queries::RoleLaneChoices::CreateLane) => {
                             if ui.button("Create lane and assign").clicked() && self.commit_draft() {
-                                let lane = controller::id("Lane");
+                                let lane_id = controller::id("Lane");
+                                let lane: ElementSelector = lane_id.clone().into();
                                 let lane_bounds = Bounds { x: self.camera.0 + 30.0, y: self.camera.1 + 80.0 + p.lanes.len() as f64 * 160.0, width: 600.0, height: 150.0 };
                                 let Some((bounds, moves)) = self.role_assignment_bounds(d, &element, &lane_bounds) else { return };
-                                let mut mutations = vec![Mutation::CreateLane { document_id: d.id, process_id: p.id.clone(), lane: Lane {
-    child_lane_set_id: None, id: lane.clone(), name: role.name.clone(), parent: None, members: vec![] } }, Mutation::SetDictionaryLinks { source: processcraft_core::ids::ElementKey { document_id: d.id, xml_id: lane.clone() }, kind: DictionaryKind::Role, targets: vec![DictionaryTarget::Entry(role.id)] }];
+                                let mut mutations = vec![Mutation::CreateLane { document_id: d.id, process_id: p.id.selector(), lane: Lane {
+    child_lane_set_id: None, id: lane_id.into(), name: Some(role.name.clone()), parent: None, members: vec![] } }, Mutation::SetDictionaryLinks { source: processcraft_core::ids::ElementKey { document_id: d.id, xml_id: lane.clone() }, kind: DictionaryKind::Role, targets: vec![DictionaryTarget::Entry(role.id)] }];
                                 if let Some(diagram) = d.diagrams.iter().find(|diagram| self.diagram_id.as_ref().is_none_or(|id| &diagram.id == id)) {
-                                    mutations.push(Mutation::CreateShape { document_id: d.id, diagram_id: diagram.id.clone(), shape: Shape {
-    is_expanded: None, id: controller::id("LaneShape"), element: lane.clone(), bounds: lane_bounds, label: None, style: None } });
+                                    mutations.push(Mutation::CreateShape { document_id: d.id, diagram_id: diagram.id.selector(), shape: Shape {
+    is_expanded: None, id: controller::id("LaneShape").into(), element: lane.clone(), bounds: lane_bounds, label: None, style: None } });
                                 }
                                 mutations.extend(moves);
-                                mutations.push(Mutation::AssignLane { document_id: d.id, process_id: p.id.clone(), element_id: element.clone(), lane_id: Some(lane), bounds });
+                                mutations.push(Mutation::AssignLane { document_id: d.id, process_id: p.id.selector(), element_id: element.clone(), lane_id: Some(lane), bounds });
                                 self.ctl.mutate(mutations); ui.close();
                             }
                         }
                         Some(choice) => {
                             let lanes = match choice { queries::RoleLaneChoices::Assign(id) => vec![id], queries::RoleLaneChoices::Choose(ids) => ids, _ => vec![] };
                             for lane in lanes {
-                                let name = p.lanes.iter().find(|l| l.id == lane).map_or_else(|| lane.to_string(), |l| l.name.clone());
+                                let name = p.lanes.iter().find(|l| l.id == lane).map_or_else(|| lane.to_string(), |l| l.name.clone().unwrap_or_default());
                                 if ui.button(name).clicked() && self.commit_draft() {
                                     let Some(lane_bounds) = d.diagrams.first().and_then(|diagram| diagram.shapes.iter().find(|shape| shape.element == lane)).map(|shape| &shape.bounds) else { self.ctl.error = "The lane must have a diagram shape before assigning a role.".into(); return };
                                     let Some((bounds, mut moves)) = self.role_assignment_bounds(d, &element, lane_bounds) else { return };
-                                    moves.push(Mutation::AssignLane { document_id: d.id, process_id: p.id.clone(), element_id: element.clone(), lane_id: Some(lane), bounds });
+                                    moves.push(Mutation::AssignLane { document_id: d.id, process_id: p.id.selector(), element_id: element.clone(), lane_id: Some(lane), bounds });
                                     self.ctl.mutate(moves); ui.close();
                                 }
                             }
@@ -935,7 +936,7 @@ impl ProcessCraft {
         let new_flow_id = controller::id("Flow");
         let mutation = Mutation::SpliceActivity {
             document_id: d.id,
-            process_id: p.id.clone(),
+            process_id: p.id.selector(),
             flow_id,
             node: Node {
                 item_aware: None,
@@ -943,8 +944,8 @@ impl ProcessCraft {
                 io_specification: None,
                 loop_characteristics: None,
                 details: None,
-                id: node_id.clone(),
-                name: "Task".into(),
+                id: node_id.clone().into(),
+                name: Some("Task".into()),
                 documentation: String::new(),
                 kind: NodeKind::Task,
                 owner: String::new(),
@@ -952,19 +953,19 @@ impl ProcessCraft {
             },
             new_flow: Flow {
                 association_direction: None,
-                id: new_flow_id.clone(),
+                id: new_flow_id.clone().into(),
                 kind: FlowKind::Sequence,
-                source: node_id.clone(),
+                source: node_id.clone().into(),
                 target: flow.target.clone(),
-                name: String::new(),
+                name: Some(String::new()),
                 documentation: String::new(),
                 condition: None,
             },
-            diagram_id: diagram.id.clone(),
+            diagram_id: diagram.id.selector(),
             shape: Shape {
                 is_expanded: None,
-                id: controller::id("Shape"),
-                element: node_id.clone(),
+                id: controller::id("Shape").into(),
+                element: node_id.clone().into(),
                 bounds: Bounds {
                     x: x - 50.0,
                     y: y - 35.0,
@@ -976,22 +977,22 @@ impl ProcessCraft {
             },
             old_waypoints: vec![a.clone(), enter],
             new_edge: Edge {
-                id: controller::id("Edge"),
-                element: new_flow_id,
+                id: controller::id("Edge").into(),
+                element: new_flow_id.into(),
                 waypoints: vec![exit, b.clone()],
                 label: None,
                 style: None,
             },
         };
         if self.ctl.mutate(vec![mutation]) {
-            self.select(Some(node_id));
+            self.select(Some(node_id.into()));
         }
     }
 
     fn role_assignment_bounds(
         &mut self,
         d: &BpmnDocument,
-        element: &XmlId,
+        element: &ElementSelector,
         lane: &Bounds,
     ) -> Option<(Vec<processcraft_core::commands::ShapeBounds>, Vec<Mutation>)> {
         if d.diagrams.len() != 1 {
@@ -1019,11 +1020,11 @@ impl ProcessCraft {
         bounds.x = lane.x + 30.0;
         bounds.y = lane.y + 20.0;
         let bounds = vec![processcraft_core::commands::ShapeBounds {
-            diagram_id: diagram.id.clone(),
-            shape_id: shape.id.clone(),
+            diagram_id: diagram.id.selector(),
+            shape_id: shape.id.selector(),
             bounds,
         }];
-        match processcraft_core::geometry::prepare_move(d, &diagram.id, bounds.clone()) {
+        match processcraft_core::geometry::prepare_move(d, &diagram.id.selector(), bounds.clone()) {
             Ok(prepared) => {
                 if !prepared.warnings.is_empty() {
                     self.ctl.error = prepared.warnings.join("; ");
@@ -1291,8 +1292,8 @@ mod tests {
                 io_specification: None,
                 loop_characteristics: None,
                 details: None,
-                id: id.clone(),
-                name: "Task".into(),
+                id: id.clone().into(),
+                name: Some("Task".into()),
                 documentation: String::new(),
                 kind: NodeKind::Task,
                 owner: String::new(),
@@ -1301,18 +1302,18 @@ mod tests {
         }
         p.lanes.push(Lane {
             child_lane_set_id: None,
-            id: lane.clone(),
-            name: "Role".into(),
+            id: lane.clone().into(),
+            name: Some("Role".into()),
             parent: None,
             members: vec![],
         });
         p.flows.push(Flow {
             association_direction: None,
-            id: flow.clone(),
+            id: flow.clone().into(),
             kind: FlowKind::Sequence,
-            source: node.clone(),
-            target: target.clone(),
-            name: String::new(),
+            source: node.clone().into(),
+            target: target.clone().into(),
+            name: Some(String::new()),
             documentation: String::new(),
             condition: None,
         });
@@ -1320,8 +1321,8 @@ mod tests {
         for (id, x) in [(&node, 0.0), (&target, 300.0)] {
             diagram.shapes.push(Shape {
                 is_expanded: None,
-                id: controller::id("Shape"),
-                element: id.clone(),
+                id: controller::id("Shape").into(),
+                element: id.clone().into(),
                 bounds: Bounds {
                     x,
                     y: 0.0,
@@ -1333,21 +1334,21 @@ mod tests {
             });
         }
         diagram.edges.push(Edge {
-            id: controller::id("Edge"),
-            element: flow,
+            id: controller::id("Edge").into(),
+            element: flow.into(),
             waypoints: vec![Point { x: 100.0, y: 35.0 }, Point { x: 300.0, y: 35.0 }],
             label: None,
             style: None,
         });
         let doc_id = d.id;
-        let process_id = d.processes[0].id.clone();
+        let process_id = d.processes[0].id.selector();
         app.ctl.session = processcraft_core::commands::Session::new(project).unwrap();
         let snap = app.ctl.session.snapshot();
         let d = &snap.project.documents[0];
         let (bounds, mut moves) = app
             .role_assignment_bounds(
                 d,
-                &node,
+                &node.clone().into(),
                 &Bounds {
                     x: 0.0,
                     y: 200.0,
@@ -1359,14 +1360,17 @@ mod tests {
         moves.push(Mutation::AssignLane {
             document_id: doc_id,
             process_id,
-            element_id: node.clone(),
-            lane_id: Some(lane),
+            element_id: node.clone().into(),
+            lane_id: Some(lane.into()),
             bounds,
         });
         assert!(app.ctl.mutate(moves));
         let changed = app.ctl.session.snapshot();
         let d = &changed.project.documents[0];
-        assert_eq!(d.processes[0].lanes[0].members, vec![node]);
+        assert_eq!(
+            d.processes[0].lanes[0].members,
+            vec![processcraft_core::ids::ElementSelector::from(node)]
+        );
         assert_eq!(d.diagrams[0].shapes[0].bounds.y, 220.0);
         assert_ne!(d.diagrams[0].edges[0].waypoints[0].y, 35.0);
         assert!(app.ctl.apply(Request::Undo));

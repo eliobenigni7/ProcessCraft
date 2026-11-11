@@ -1,7 +1,7 @@
 //! Bounded, toolkit-independent geometry helpers. Routing is always explicit.
 use crate::{
     commands::{Mutation, Request, ShapeBounds},
-    ids::{DocumentId, XmlId},
+    ids::{DocumentId, ElementSelector},
     model::{Bounds, NodeKind, Point},
 };
 
@@ -309,7 +309,7 @@ pub fn repair_endpoints(
 pub fn move_multiple(
     document_id: DocumentId,
     bounds: Vec<ShapeBounds>,
-    routes: Vec<(XmlId, XmlId, Vec<Point>)>,
+    routes: Vec<(ElementSelector, ElementSelector, Vec<Point>)>,
 ) -> Result<Request, &'static str> {
     if bounds.iter().any(|b| !valid_bounds(&b.bounds))
         || routes
@@ -351,7 +351,7 @@ pub struct PreparedMove {
 /// Shapes in `bounds` must belong to the selected diagram and appear only once.
 pub fn prepare_move(
     document: &crate::model::BpmnDocument,
-    diagram_id: &XmlId,
+    diagram_id: &ElementSelector,
     mut bounds: Vec<ShapeBounds>,
 ) -> Result<PreparedMove, &'static str> {
     let diagram = document
@@ -394,7 +394,7 @@ pub fn prepare_move(
                     } else {
                         bounds.push(ShapeBounds {
                             diagram_id: diagram_id.clone(),
-                            shape_id: shape.id.clone(),
+                            shape_id: shape.id.selector(),
                             bounds: translated,
                         });
                     }
@@ -419,8 +419,8 @@ pub fn prepare_move(
             let ids = scope
                 .nodes
                 .iter()
-                .map(|n| &n.id)
-                .chain(scope.lanes.iter().map(|l| &l.id))
+                .map(|n| n.id.selector())
+                .chain(scope.lanes.iter().map(|l| l.id.selector()))
                 .chain(
                     scope
                         .nodes
@@ -430,11 +430,11 @@ pub fn prepare_move(
                             io.inputs
                                 .iter()
                                 .chain(&io.outputs)
-                                .filter_map(|port| port.id.as_ref())
+                                .filter_map(|port| port.id.as_ref().map(|id| id.selector()))
                         }),
                 );
             for id in ids {
-                for shape in diagram.shapes.iter().filter(|shape| &shape.element == id) {
+                for shape in diagram.shapes.iter().filter(|shape| shape.element == id) {
                     nested_translated.insert(shape.element.clone());
                     let mut translated = shape.bounds.clone();
                     translated.x += dx;
@@ -450,7 +450,7 @@ pub fn prepare_move(
                     } else {
                         bounds.push(ShapeBounds {
                             diagram_id: diagram_id.clone(),
-                            shape_id: shape.id.clone(),
+                            shape_id: shape.id.selector(),
                             bounds: translated,
                         });
                     }
@@ -468,9 +468,9 @@ pub fn prepare_move(
     for b in &bounds {
         if &b.diagram_id != diagram_id
             || !valid_bounds(&b.bounds)
-            || moved
-                .iter()
-                .any(|(id, _, _, _): &(&XmlId, &XmlId, f64, f64)| *id == &b.shape_id)
+            || moved.iter().any(
+                |(id, _, _, _): &(&ElementSelector, &ElementSelector, f64, f64)| *id == &b.shape_id,
+            )
         {
             return Err("invalid or duplicate moved shape");
         }
@@ -491,7 +491,7 @@ pub fn prepare_move(
     }
     let scopes = crate::queries::scopes(document);
     // Normalize the qualified binary edge families to their visible endpoints.
-    let mut connections: Vec<(&XmlId, &XmlId, &XmlId)> = scopes
+    let mut connections: Vec<(ElementSelector, ElementSelector, ElementSelector)> = scopes
         .iter()
         .flat_map(|scope| scope.flows.iter())
         .chain(document.collaboration.iter().flat_map(|c| c.flows.iter()))
@@ -501,7 +501,7 @@ pub fn prepare_move(
                 .iter()
                 .flat_map(|c| c.sequence_flows.iter().chain(c.message_flows.iter())),
         )
-        .map(|flow| (&flow.id, &flow.source, &flow.target))
+        .map(|flow| (flow.id.selector(), flow.source.clone(), flow.target.clone()))
         .collect();
     for scope in &scopes {
         for association in scope.data_associations {
@@ -529,18 +529,21 @@ pub fn prepare_move(
                 }
                 continue;
             }
-            let visible = |id: &XmlId| diagram.shapes.iter().any(|shape| &shape.element == id);
+            let visible =
+                |id: &ElementSelector| diagram.shapes.iter().any(|shape| &shape.element == id);
             let owner_io = crate::queries::find_node(document, &association.owner)
                 .and_then(|node| node.io_specification.as_ref());
             let input_port = owner_io.is_some_and(|io| {
                 io.inputs
                     .iter()
-                    .any(|port| port.id.as_ref() == Some(&association.target))
+                    .any(|port| port.id.as_ref().is_some_and(|id| *id == association.target))
             });
             let output_port = owner_io.is_some_and(|io| {
-                io.outputs
-                    .iter()
-                    .any(|port| port.id.as_ref() == Some(&association.sources[0]))
+                io.outputs.iter().any(|port| {
+                    port.id
+                        .as_ref()
+                        .is_some_and(|id| *id == association.sources[0])
+                })
             });
             if (association.kind == crate::bpmn_data::DataAssociationKind::Input
                 && !visible(&association.target)
@@ -578,7 +581,7 @@ pub fn prepare_move(
                 }
                 continue;
             }
-            connections.push((association_id, source, target));
+            connections.push((association_id.selector(), source.clone(), target.clone()));
         }
     }
     if let Some(collaboration) = &document.collaboration {
@@ -586,36 +589,34 @@ pub fn prepare_move(
             collaboration
                 .conversation_links
                 .iter()
-                .map(|link| (&link.id, &link.source, &link.target)),
+                .map(|link| (link.id.selector(), link.source.clone(), link.target.clone())),
         );
     }
     let mut routes = Vec::new();
     let mut label_moves = Vec::new();
     let mut warnings = Vec::new();
     for edge in &diagram.edges {
-        let Some((_, source, target)) = connections
-            .iter()
-            .find(|(id, _, _)| **id == edge.element)
-            .copied()
+        let Some((_, source, target)) = connections.iter().find(|(id, _, _)| *id == edge.element)
         else {
             continue;
         };
-        let endpoint = |element: &XmlId, point: &Point| -> Result<Option<Point>, &'static str> {
-            let matches: Vec<_> = moved
-                .iter()
-                .filter(|(_, id, _, _)| *id == element)
-                .collect();
-            if matches.len() > 1 {
-                return Err("ambiguous moved endpoint");
-            }
-            Ok(matches.first().and_then(|(_, _, dx, dy)| {
-                if *dx == 0.0 && *dy == 0.0 {
-                    None
-                } else {
-                    Some(p(point.x + dx, point.y + dy))
+        let endpoint =
+            |element: &ElementSelector, point: &Point| -> Result<Option<Point>, &'static str> {
+                let matches: Vec<_> = moved
+                    .iter()
+                    .filter(|(_, id, _, _)| *id == element)
+                    .collect();
+                if matches.len() > 1 {
+                    return Err("ambiguous moved endpoint");
                 }
-            }))
-        };
+                Ok(matches.first().and_then(|(_, _, dx, dy)| {
+                    if *dx == 0.0 && *dy == 0.0 {
+                        None
+                    } else {
+                        Some(p(point.x + dx, point.y + dy))
+                    }
+                }))
+            };
         if edge.waypoints.len() < 2 {
             if moved
                 .iter()
@@ -651,7 +652,7 @@ pub fn prepare_move(
                 label_moves.push(Mutation::SetLabelBounds {
                     document_id: document.id,
                     diagram_id: diagram_id.clone(),
-                    representation_id: edge.id.clone(),
+                    representation_id: edge.id.selector(),
                     bounds,
                 });
             }
@@ -663,7 +664,7 @@ pub fn prepare_move(
             if translated.iter().any(|point| !valid_point(point)) {
                 return Err("translated route exceeds coordinate limit");
             }
-            routes.push((diagram_id.clone(), edge.id.clone(), translated));
+            routes.push((diagram_id.clone(), edge.id.selector(), translated));
             continue;
         }
         if start.is_none() && end.is_none() {
@@ -675,24 +676,24 @@ pub fn prepare_move(
             .filter(|s| s.element != *source && s.element != *target)
             // Ignore only containers of an endpoint; unrelated containers remain obstacles.
             .filter(|s| {
-                let is_scope_ancestor = |element: &XmlId, target: &XmlId| {
-                    let mut current = target;
+                let is_scope_ancestor = |element: &ElementSelector, target: &ElementSelector| {
+                    let mut current = target.clone();
                     for _ in 0..=32 {
                         let Some(scope) = scopes
                             .iter()
-                            .find(|scope| scope.nodes.iter().any(|node| &node.id == current))
+                            .find(|scope| scope.nodes.iter().any(|node| node.id == current))
                         else {
                             break;
                         };
                         if scope.id == element {
                             return true;
                         }
-                        current = scope.id;
+                        current = scope.id.selector();
                     }
                     false
                 };
                 let contains =
-                    |target: &XmlId| {
+                    |target: &ElementSelector| {
                         is_scope_ancestor(&s.element, target)
                             || scopes.iter().any(|scope| {
                                 scope.lanes.iter().any(|lane| {
@@ -708,7 +709,7 @@ pub fn prepare_move(
                                 })
                             })
                     };
-                let owns_port = |target: &XmlId| {
+                let owns_port = |target: &ElementSelector| {
                     scopes
                         .iter()
                         .flat_map(|scope| scope.nodes.iter())
@@ -718,7 +719,7 @@ pub fn prepare_move(
                                     io.inputs
                                         .iter()
                                         .chain(&io.outputs)
-                                        .any(|port| port.id.as_ref() == Some(target))
+                                        .any(|port| port.id.as_ref().is_some_and(|id| id == target))
                                 })
                         })
                 };
@@ -737,7 +738,7 @@ pub fn prepare_move(
         }
         routes.push((
             diagram_id.clone(),
-            edge.id.clone(),
+            edge.id.selector(),
             repaired.waypoints.ok_or("route repair failed")?,
         ));
     }

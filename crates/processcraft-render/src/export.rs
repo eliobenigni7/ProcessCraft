@@ -1,7 +1,7 @@
 //! In-memory full-diagram export. File capabilities remain the caller's responsibility.
 use crate::{Appearance, BpmnScene, RenderError, TextEngine};
 use processcraft_core::{
-    ids::XmlId,
+    ids::ElementSelector,
     model::{BpmnDocument, Capability},
 };
 
@@ -30,7 +30,7 @@ pub struct ExportedDiagram {
 /// Collect the exact diagnostics that export will require the user to acknowledge.
 pub fn preflight_diagram(
     document: &BpmnDocument,
-    diagram_id: &XmlId,
+    diagram_id: &ElementSelector,
     appearance: Appearance,
     fonts: &mut TextEngine,
     family: &str,
@@ -45,7 +45,7 @@ pub fn preflight_diagram(
 /// Build the same complete scene for SVG and PNG, without editor overlays.
 pub fn export_diagram(
     document: &BpmnDocument,
-    diagram_id: &XmlId,
+    diagram_id: &ElementSelector,
     options: ExportOptions,
     fonts: &mut TextEngine,
     family: &str,

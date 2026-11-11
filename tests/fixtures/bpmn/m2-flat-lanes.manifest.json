@@ -1,5 +1,6 @@
 {
   "source": "Synthetic ProcessCraft fixture",
   "license": "CC0-1.0",
-  "sha256": "7bee83c32028026f0412b2bb08e2608a46f71f22f2a96b963c3749f69abbcb08"
+  "sha256": "b0000588be991a8b3505123b79739ac7bc1a6e0876116a3ebe3a9d23ef1cd9fb",
+  "revision_note": "Corrected synthetic sequence-flow xs:IDREF lexical values to unprefixed XML IDs during identity qualification; normative source files unchanged."
 }

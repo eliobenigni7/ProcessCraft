@@ -30,7 +30,9 @@ impl std::error::Error for InvalidId {
 macro_rules! identity {
     ($name:ident, $description:literal) => {
         #[doc = $description]
-        #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, schemars::JsonSchema)]
+        #[derive(
+            Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, schemars::JsonSchema,
+        )]
         #[schemars(with = "String")]
         pub struct $name(Uuid);
 
@@ -70,6 +72,10 @@ identity!(CommentId, "Stable identity of a comment.");
 identity!(CheckpointId, "Stable identity of a checkpoint.");
 identity!(DictionaryEntryId, "Stable identity of a dictionary entry.");
 identity!(ProjectId, "Stable identity of a project.");
+identity!(
+    NativeElementId,
+    "Stable native identity of a BPMN element or representation."
+);
 identity!(
     DocumentId,
     "Stable identity of a document within a project."
@@ -119,6 +125,64 @@ mod tests {
         assert_ne!(document, DocumentId::new());
     }
 }
+
+#[cfg(test)]
+mod element_identity_tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    #[test]
+    fn legacy_json_and_native_identity_are_stable() {
+        let legacy: ElementIdentity = serde_json::from_str("\"Task_1\"").unwrap();
+        assert_eq!(serde_json::to_string(&legacy).unwrap(), "\"Task_1\"");
+        assert_eq!(
+            legacy.selector(),
+            ElementSelector::Xml("Task_1".parse().unwrap())
+        );
+        let native_id = NativeElementId::new();
+        let before = ElementIdentity::Native {
+            native_id,
+            xml_id: None,
+        };
+        let after = ElementIdentity::Native {
+            native_id,
+            xml_id: Some("Task_2".parse().unwrap()),
+        };
+        assert_eq!(before, after);
+        assert_eq!(HashSet::from([before.clone(), after.clone()]).len(), 1);
+        assert_ne!(
+            serde_json::to_string(&before).unwrap(),
+            serde_json::to_string(&after).unwrap()
+        );
+        let roundtrip: ElementIdentity =
+            serde_json::from_str(&serde_json::to_string(&after).unwrap()).unwrap();
+        assert_eq!(roundtrip.xml_id(), after.xml_id());
+        assert_eq!(roundtrip.selector(), after.selector());
+        assert!(
+            serde_json::from_str::<ElementIdentity>(
+                "{\"native_id\":\"00000000-0000-0000-0000-000000000000\",\"xml_id\":null}"
+            )
+            .is_err()
+        );
+        assert!(
+            serde_json::from_str::<ElementSelector>(
+                "{\"native_id\":\"00000000-0000-0000-0000-000000000000\"}"
+            )
+            .is_err()
+        );
+        let selector = after.selector();
+        assert_eq!(
+            selector.to_string().parse::<ElementSelector>().unwrap(),
+            selector
+        );
+        assert!(
+            "native:00000000-0000-0000-0000-000000000000"
+                .parse::<ElementSelector>()
+                .is_err()
+        );
+        assert!("native:not-a-uuid".parse::<ElementSelector>().is_err());
+    }
+}
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 macro_rules! serde_identity {
@@ -139,6 +203,7 @@ macro_rules! serde_identity {
 }
 serde_identity!(CommentId);
 serde_identity!(CheckpointId);
+serde_identity!(NativeElementId);
 impl Serialize for DictionaryEntryId {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         s.serialize_str(&self.to_string())
@@ -208,8 +273,136 @@ impl<'de> Deserialize<'de> for XmlId {
             .map_err(serde::de::Error::custom)
     }
 }
+/// Persistent element identity; legacy XML IDs remain serialized as strings.
+#[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(untagged, deny_unknown_fields)]
+pub enum ElementIdentity {
+    Legacy(XmlId),
+    Native {
+        native_id: NativeElementId,
+        xml_id: Option<XmlId>,
+    },
+}
+/// A native or legacy selector. External XML QNames are separate model values.
+#[derive(
+    Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, schemars::JsonSchema,
+)]
+#[serde(untagged, deny_unknown_fields)]
+pub enum ElementSelector {
+    Xml(XmlId),
+    Native { native_id: NativeElementId },
+}
+impl ElementIdentity {
+    pub fn anonymous() -> Self {
+        Self::Native {
+            native_id: NativeElementId::new(),
+            xml_id: None,
+        }
+    }
+    pub fn xml_id(&self) -> Option<&XmlId> {
+        match self {
+            Self::Legacy(id) => Some(id),
+            Self::Native { xml_id, .. } => xml_id.as_ref(),
+        }
+    }
+    pub fn selector(&self) -> ElementSelector {
+        match self {
+            Self::Legacy(id) => ElementSelector::Xml(id.clone()),
+            Self::Native { native_id, .. } => ElementSelector::Native {
+                native_id: *native_id,
+            },
+        }
+    }
+}
+impl ElementSelector {
+    pub fn is_native(&self) -> bool {
+        matches!(self, Self::Native { .. })
+    }
+}
+impl FromStr for ElementSelector {
+    type Err = String;
+    fn from_str(text: &str) -> Result<Self, Self::Err> {
+        if let Some(native) = text.strip_prefix("native:") {
+            return native
+                .parse()
+                .map(|native_id| Self::Native { native_id })
+                .map_err(|error: InvalidId| error.to_string());
+        }
+        text.parse().map(Self::Xml).map_err(str::to_owned)
+    }
+}
+impl From<XmlId> for ElementIdentity {
+    fn from(id: XmlId) -> Self {
+        Self::Legacy(id)
+    }
+}
+impl From<XmlId> for ElementSelector {
+    fn from(id: XmlId) -> Self {
+        Self::Xml(id)
+    }
+}
+impl FromStr for ElementIdentity {
+    type Err = &'static str;
+    fn from_str(text: &str) -> Result<Self, Self::Err> {
+        text.parse().map(Self::Legacy)
+    }
+}
+impl fmt::Display for ElementIdentity {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.selector().fmt(f)
+    }
+}
+impl PartialEq<ElementSelector> for ElementIdentity {
+    fn eq(&self, other: &ElementSelector) -> bool {
+        self.selector() == *other
+    }
+}
+impl PartialEq<ElementIdentity> for ElementSelector {
+    fn eq(&self, other: &ElementIdentity) -> bool {
+        *self == other.selector()
+    }
+}
+impl PartialEq<XmlId> for ElementSelector {
+    fn eq(&self, other: &XmlId) -> bool {
+        matches!(self, Self::Xml(id) if id == other)
+    }
+}
+impl PartialEq<ElementSelector> for XmlId {
+    fn eq(&self, other: &ElementSelector) -> bool {
+        other == self
+    }
+}
+impl PartialEq<XmlId> for ElementIdentity {
+    fn eq(&self, other: &XmlId) -> bool {
+        matches!(self, Self::Legacy(id) if id == other)
+    }
+}
+impl PartialEq<ElementIdentity> for XmlId {
+    fn eq(&self, other: &ElementIdentity) -> bool {
+        other == self
+    }
+}
+impl fmt::Display for ElementSelector {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Xml(id) => id.fmt(f),
+            Self::Native { native_id } => write!(f, "native:{native_id}"),
+        }
+    }
+}
+impl PartialEq for ElementIdentity {
+    fn eq(&self, other: &Self) -> bool {
+        self.selector() == other.selector()
+    }
+}
+impl Eq for ElementIdentity {}
+impl std::hash::Hash for ElementIdentity {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.selector().hash(state);
+    }
+}
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ElementKey {
     pub document_id: DocumentId,
-    pub xml_id: XmlId,
+    pub xml_id: ElementSelector,
 }

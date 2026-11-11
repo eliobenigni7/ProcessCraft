@@ -115,6 +115,7 @@ struct Frame {
     label: bool,
     text_bytes: usize,
     reference_text: Option<String>,
+    idref_text: bool,
     external_reference_allowed: bool,
     link_definition: bool,
     operation: bool,
@@ -214,6 +215,7 @@ pub fn import_bpmn(bytes: &[u8]) -> Result<PreservedBpmn, ImportError> {
                     report.diagram_count += 1;
                 }
                 let mut frame = Frame {
+                    idref_text: ns == Some(BPMN) && idref_text_reference(local),
                     external_reference_allowed: matches!(
                         local,
                         "incoming"
@@ -229,11 +231,10 @@ pub fn import_bpmn(bytes: &[u8]) -> Result<PreservedBpmn, ImportError> {
                     documentation: ns == Some(BPMN) && local == "documentation",
                     label: ns == Some(BPMN) && local == "text",
                     reference_text: (ns == Some(BPMN)
-                        && (matches!(
-                            local,
-                            "incoming" | "outgoing" | "flowNodeRef" | "sourceRef" | "targetRef"
-                        ) || (matches!(local, "source" | "target")
-                            && stack.last().is_some_and(|parent| parent.link_definition))
+                        && (matches!(local, "incoming" | "outgoing")
+                            || idref_text_reference(local)
+                            || (matches!(local, "source" | "target")
+                                && stack.last().is_some_and(|parent| parent.link_definition))
                             || (matches!(local, "inMessageRef" | "outMessageRef" | "errorRef")
                                 && stack.last().is_some_and(|parent| parent.operation))))
                     .then(String::new),
@@ -306,11 +307,12 @@ pub fn import_bpmn(bytes: &[u8]) -> Result<PreservedBpmn, ImportError> {
                             ));
                         }
                         if known_reference(ns, local, key) {
-                            let resolved = resolve_value(&reader, &value)?;
+                            let idref = idref_reference(ns, local, key);
+                            let resolved = resolve_reference(&reader, &value, idref)?;
                             push_reference(
                                 &mut references,
                                 &resolved,
-                                !idref_reference(ns, local, key),
+                                !idref,
                                 &mut metadata_bytes,
                             )?;
                             report.qname_values.insert(resolved);
@@ -342,7 +344,7 @@ pub fn import_bpmn(bytes: &[u8]) -> Result<PreservedBpmn, ImportError> {
                     .pop()
                     .ok_or_else(|| xml("unexpected closing element"))?;
                 if let Some(value) = frame.reference_text {
-                    let resolved = resolve_value(&reader, value.trim())?;
+                    let resolved = resolve_reference(&reader, &value, frame.idref_text)?;
                     push_reference(
                         &mut references,
                         &resolved,
@@ -508,8 +510,29 @@ fn validate_namespace_name(value: &str) -> Result<(), ImportError> {
 }
 
 fn resolve_value(reader: &NsReader<&[u8]>, value: &str) -> Result<ExpandedName, ImportError> {
+    let value = value.trim();
     validate_qname(value)?;
     expanded(reader.resolver().resolve_element(QName(value)))
+}
+
+/// XML IDREF has NCName lexical space and does not inherit the default namespace.
+/// QName references, in contrast, retain their expanded namespace identity.
+fn resolve_reference(
+    reader: &NsReader<&[u8]>,
+    value: &str,
+    idref: bool,
+) -> Result<ExpandedName, ImportError> {
+    if !idref {
+        return resolve_value(reader, value);
+    }
+    let value = value.trim();
+    if !ncname(value) || value.len() > MAX_LABEL_BYTES {
+        return Err(error(ImportErrorKind::Reference, "invalid XML IDREF"));
+    }
+    Ok(ExpandedName {
+        namespace_uri: None,
+        local_name: value.to_owned(),
+    })
 }
 
 fn push_reference(
@@ -529,8 +552,26 @@ fn idref_reference(ns: Option<&str>, element: &str, attr: &str) -> bool {
     ns == Some(BPMN)
         && (matches!(
             (element, attr),
-            ("sequenceFlow", "sourceRef" | "targetRef") | ("dataObjectReference", "dataObjectRef")
+            ("sequenceFlow", "sourceRef" | "targetRef")
+                | ("dataObjectReference", "dataObjectRef")
+                | ("ioBinding", "inputDataRef" | "outputDataRef")
         ) || attr == "default")
+}
+fn idref_text_reference(element: &str) -> bool {
+    matches!(
+        element,
+        "flowNodeRef"
+            | "sourceRef"
+            | "targetRef"
+            | "dataInputRefs"
+            | "optionalInputRefs"
+            | "whileExecutingInputRefs"
+            | "outputSetRefs"
+            | "dataOutputRefs"
+            | "optionalOutputRefs"
+            | "whileExecutingOutputRefs"
+            | "inputSetRefs"
+    )
 }
 /// Service/type bindings name declarations outside the BPMN ID catalog, even
 /// when a schema or WSDL declaration shares the definitions target namespace.
@@ -573,6 +614,10 @@ fn known_reference(ns: Option<&str>, element: &str, attr: &str) -> bool {
                 | ("boundaryEvent", "attachedToRef")
                 | ("dataObjectReference", "dataObjectRef")
                 | ("dataStoreReference", "dataStoreRef")
+                | (
+                    "ioBinding",
+                    "inputDataRef" | "outputDataRef" | "operationRef"
+                )
                 | (
                     "exclusiveGateway"
                         | "inclusiveGateway"

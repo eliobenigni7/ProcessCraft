@@ -1,5 +1,5 @@
 use processcraft_core::{
-    ids::{DocumentId, XmlId},
+    ids::{DocumentId, ElementSelector},
     model::ProjectData,
 };
 use processcraft_io::{Access, FileGrant, OpenSession, SaveOutcome, WriterSession, interchange};
@@ -113,7 +113,7 @@ impl Effects {
         ctx: egui::Context,
         project: Arc<ProjectData>,
         doc: DocumentId,
-        diagram: Option<XmlId>,
+        diagram: Option<ElementSelector>,
         format: Option<ExportFormat>,
         appearance: Appearance,
     ) {

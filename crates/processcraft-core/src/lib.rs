@@ -1,4 +1,5 @@
 //! Toolkit-independent process identities and persistent model.
+mod element_identity_edit;
 mod identity;
 pub mod ids;
 pub mod model;

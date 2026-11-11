@@ -149,6 +149,114 @@ fn references_use_namespace_identity_and_text_values() {
 }
 
 #[test]
+fn idrefs_ignore_default_namespaces_but_reject_qualified_lexical_values() {
+    let source = br#"<b:definitions xmlns:b="http://www.omg.org/spec/BPMN/20100524/MODEL"
+        xmlns="urn:unrelated" xmlns:p="urn:local" targetNamespace="urn:local">
+        <b:process id="P"><b:laneSet><b:lane><b:flowNodeRef> A </b:flowNodeRef></b:lane></b:laneSet>
+        <b:task id="A" default=" F "/><b:task id="B"/>
+        <b:sequenceFlow id="F" sourceRef=" A " targetRef="B"/>
+        <b:dataObject id="Object"/><b:dataObjectReference dataObjectRef="Object"/>
+        <b:task id="T"><b:dataInputAssociation><b:sourceRef>Object</b:sourceRef><b:targetRef>A</b:targetRef></b:dataInputAssociation></b:task>
+        </b:process></b:definitions>"#;
+    let imported = import_bpmn(source).unwrap();
+    assert!(
+        imported
+            .report()
+            .qname_values
+            .iter()
+            .any(|name| { name.namespace_uri.is_none() && name.local_name == "A" })
+    );
+    let source = std::str::from_utf8(source).unwrap();
+    for (before, after) in [
+        ("sourceRef=\" A \"", "sourceRef=\"p:A\""),
+        ("default=\" F \"", "default=\"p:F\""),
+        ("dataObjectRef=\"Object\"", "dataObjectRef=\"p:Object\""),
+        ("> A </b:flowNodeRef>", ">p:A</b:flowNodeRef>"),
+        (">Object</b:sourceRef>", ">p:Object</b:sourceRef>"),
+    ] {
+        let invalid = source.replace(before, after);
+        assert_eq!(
+            import_bpmn(invalid.as_bytes()).unwrap_err().kind,
+            ImportErrorKind::Reference,
+            "accepted {after}"
+        );
+    }
+}
+
+#[test]
+fn empty_target_namespace_qnames_resolve_by_uri_instead_of_local_part() {
+    let source = br#"<b:definitions xmlns:b="http://www.omg.org/spec/BPMN/20100524/MODEL"
+        xmlns:ext="urn:external" targetNamespace="">
+        <b:itemDefinition id="Item"/><b:message id="Message" itemRef="Item"/>
+        <b:process><b:dataObject itemSubjectRef="Item"/>
+        <b:startEvent><b:messageEventDefinition messageRef="Message"/></b:startEvent>
+        </b:process></b:definitions>"#;
+    assert!(import_bpmn(source).is_ok());
+    let source = std::str::from_utf8(source).unwrap();
+    let missing = source.replace("messageRef=\"Message\"", "messageRef=\"Missing\"");
+    assert_eq!(
+        import_bpmn(missing.as_bytes()).unwrap_err().kind,
+        ImportErrorKind::Reference
+    );
+    let external = source.replace("messageRef=\"Message\"", "messageRef=\"ext:Message\"");
+    let imported = import_bpmn(external.as_bytes()).unwrap();
+    assert!(
+        imported
+            .report()
+            .limitations
+            .iter()
+            .any(|text| text.contains("External QName"))
+    );
+}
+
+#[test]
+fn all_io_set_and_binding_idrefs_use_ncname_lexical_space() {
+    for tag in [
+        "dataInputRefs",
+        "optionalInputRefs",
+        "whileExecutingInputRefs",
+        "outputSetRefs",
+        "dataOutputRefs",
+        "optionalOutputRefs",
+        "whileExecutingOutputRefs",
+        "inputSetRefs",
+    ] {
+        let source = wrap(&format!(
+            "<b:process id='P'><b:task id='Port'/><b:inputSet><b:{tag}>Port</b:{tag}></b:inputSet></b:process>"
+        ));
+        assert!(import_bpmn(&source).is_ok(), "{tag}");
+        for invalid in [
+            "p:Port",
+            "native:0730c00d-df2d-4676-97c9-96033534719e",
+            "Missing",
+        ] {
+            let source = String::from_utf8(source.clone())
+                .unwrap()
+                .replace(">Port<", &format!(">{invalid}<"));
+            assert_eq!(
+                import_bpmn(source.as_bytes()).unwrap_err().kind,
+                ImportErrorKind::Reference,
+                "{tag}: {invalid}"
+            );
+        }
+    }
+    for attribute in ["inputDataRef", "outputDataRef"] {
+        let source = wrap(&format!(
+            "<b:process id='P'><b:task id='Port'/><b:ioBinding {attribute}='Port'/></b:process>"
+        ));
+        assert!(import_bpmn(&source).is_ok());
+        let invalid = String::from_utf8(source).unwrap().replace(
+            &format!("{attribute}='Port'"),
+            &format!("{attribute}='p:Port'"),
+        );
+        assert_eq!(
+            import_bpmn(invalid.as_bytes()).unwrap_err().kind,
+            ImportErrorKind::Reference
+        );
+    }
+}
+
+#[test]
 fn external_qname_targets_are_preserved_without_resolving_or_aliasing_local_ids() {
     let bytes = br#"<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
         xmlns:ext="urn:external" xmlns:local="urn:local" targetNamespace="urn:local" id="Defs">

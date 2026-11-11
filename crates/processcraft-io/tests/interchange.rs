@@ -9,17 +9,20 @@ fn export(
     export_bpmn(&p, b.document.id, false).unwrap()
 }
 use processcraft_io::interchange::{export_bpmn, prepare_import};
-const FLAT: &str = r#"<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:tns="urn:test" id="defs" targetNamespace="urn:test"><process id="p" isExecutable="false"><startEvent id="start"/><task id="task" name="Review"/><endEvent id="end"/><sequenceFlow id="f1" sourceRef="tns:start" targetRef="tns:task"/><sequenceFlow id="f2" sourceRef="tns:task" targetRef="tns:end"/></process><bpmndi:BPMNDiagram id="d"><bpmndi:BPMNPlane id="plane" bpmnElement="tns:p"><bpmndi:BPMNShape id="s" bpmnElement="tns:task"><dc:Bounds x="-10" y="20" width="100" height="80"/></bpmndi:BPMNShape><bpmndi:BPMNEdge id="e" bpmnElement="tns:f1"><di:waypoint x="0" y="1"/><di:waypoint x="10" y="20"/></bpmndi:BPMNEdge></bpmndi:BPMNPlane></bpmndi:BPMNDiagram></definitions>"#;
+const FLAT: &str = r#"<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:tns="urn:test" id="defs" targetNamespace="urn:test"><process id="p" isExecutable="false"><startEvent id="start"/><task id="task" name="Review"/><endEvent id="end"/><sequenceFlow id="f1" sourceRef="start" targetRef="task"/><sequenceFlow id="f2" sourceRef="task" targetRef="end"/></process><bpmndi:BPMNDiagram id="d"><bpmndi:BPMNPlane id="plane" bpmnElement="tns:p"><bpmndi:BPMNShape id="s" bpmnElement="tns:task"><dc:Bounds x="-10" y="20" width="100" height="80"/></bpmndi:BPMNShape><bpmndi:BPMNEdge id="e" bpmnElement="tns:f1"><di:waypoint x="0" y="1"/><di:waypoint x="10" y="20"/></bpmndi:BPMNEdge></bpmndi:BPMNPlane></bpmndi:BPMNDiagram></definitions>"#;
 #[test]
 fn editable_profile_round_trips_and_keeps_source() {
     let mut b = prepare_import(FLAT.as_bytes(), "flat").unwrap();
     assert!(b.report.editable);
     assert_eq!(&*b.resources[0].bytes, FLAT.as_bytes());
-    b.document.processes[0].nodes[1].name = "A & B".into();
+    b.document.processes[0].nodes[1].name = Some("A & B".into());
     let out = export(&b);
     let again = prepare_import(&out.bytes, "again").unwrap();
     assert!(again.report.editable);
-    assert_eq!(again.document.processes[0].nodes[1].name, "A & B");
+    assert_eq!(
+        again.document.processes[0].nodes[1].name.as_deref(),
+        Some("A & B")
+    );
     assert_eq!(again.document.diagrams[0].shapes[0].bounds.x, -10.0);
     assert_eq!(again.document.diagrams[0].edges[0].waypoints.len(), 2);
 }
@@ -99,7 +102,7 @@ fn lane_and_formal_condition_survive_edit_export_reimport() {
         b.document.processes[0].flows[0].condition.as_deref(),
         Some("x > 3")
     );
-    b.document.processes[0].nodes[1].name = "Edited".into();
+    b.document.processes[0].nodes[1].name = Some("Edited".into());
     let out = export(&b);
     let again = prepare_import(&out.bytes, "again").unwrap();
     assert!(again.report.editable);
@@ -108,7 +111,10 @@ fn lane_and_formal_condition_survive_edit_export_reimport() {
         again.document.processes[0].flows[0].condition.as_deref(),
         Some("x > 3")
     );
-    assert_eq!(again.document.processes[0].nodes[1].name, "Edited");
+    assert_eq!(
+        again.document.processes[0].nodes[1].name.as_deref(),
+        Some("Edited")
+    );
     assert!(String::from_utf8(out.bytes).unwrap().contains("laneSet1"));
 }
 #[test]
@@ -500,7 +506,7 @@ fn nested_duplicate_ids_and_cross_scope_edges_are_rejected_by_core() {
     else {
         panic!("nested")
     };
-    content.flows[0].target = outer_id;
+    content.flows[0].target = outer_id.selector();
     let mut project = ProjectData::new("test".into());
     project.documents.push(Arc::new(doc));
     project.resources = parsed.resources;
@@ -530,9 +536,23 @@ fn collaboration_conversation_and_links_round_trip() {
         "<collaboration id=",
         "<collaboration name=\"not yet modeled\" id=",
     );
-    let preserved = prepare_import(named.as_bytes(), "named").unwrap();
-    assert!(!preserved.report.editable);
-    assert_eq!(export(&preserved).bytes, named.as_bytes());
+    let named = prepare_import(named.as_bytes(), "named").unwrap();
+    assert!(named.report.editable);
+    assert_eq!(
+        named
+            .document
+            .collaboration
+            .as_ref()
+            .unwrap()
+            .name
+            .as_deref(),
+        Some("not yet modeled")
+    );
+    let again = prepare_import(&export(&named).bytes, "again").unwrap();
+    assert_eq!(
+        again.document.collaboration.as_ref().unwrap().name,
+        named.document.collaboration.as_ref().unwrap().name
+    );
 }
 
 #[test]
@@ -761,7 +781,7 @@ fn activity_attributes_and_plain_script_round_trip() {
 }
 
 #[test]
-fn generated_lane_set_ids_avoid_collisions_and_preserve_nested_lanes() {
+fn omitted_lane_set_ids_stay_omitted_and_preserve_nested_lanes() {
     let mut parsed = prepare_import(
         include_bytes!("../../../tests/fixtures/bpmn20-schema/advanced-subprocess.bpmn"),
         "nested lane",
@@ -775,11 +795,12 @@ fn generated_lane_set_ids_avoid_collisions_and_preserve_nested_lanes() {
     };
     content.lane_set_id = None;
     let work: processcraft_core::ids::XmlId = "laneSetAuto0".parse().unwrap();
-    content.nodes[0].id = work.clone();
-    content.lanes[0].members[0] = work;
+    content.nodes[0].id = work.clone().into();
+    content.lanes[0].members[0] = work.into();
     let output = export(&parsed);
     let xml = String::from_utf8(output.bytes.clone()).unwrap();
-    assert!(xml.contains("<laneSet id=\"laneSetAuto1\">"));
+    assert!(xml.contains("<laneSet>"));
+    assert!(!xml.contains("id=\"laneSetAuto1\""));
     let again = prepare_import(&output.bytes, "again").unwrap();
     assert!(again.report.editable);
     let Some(processcraft_core::bpmn_model::NodeDetails::SubProcess { content }) =
@@ -792,7 +813,7 @@ fn generated_lane_set_ids_avoid_collisions_and_preserve_nested_lanes() {
 }
 
 #[test]
-fn generated_root_and_child_lane_sets_are_distinct() {
+fn omitted_root_and_child_lane_set_ids_stay_omitted() {
     let mut parsed = prepare_import(
         include_bytes!("../../../tests/fixtures/bpmn20-schema/nested-lanes.bpmn"),
         "lanes",
@@ -804,18 +825,16 @@ fn generated_root_and_child_lane_sets_are_distinct() {
     }
     let output = export(&parsed);
     let xml = String::from_utf8(output.bytes.clone()).unwrap();
-    assert!(xml.contains("<childLaneSet id=\"laneSetAuto"));
+    assert!(xml.contains("<childLaneSet>"));
     let again = prepare_import(&output.bytes, "again").unwrap();
     assert!(again.report.editable);
     assert_eq!(again.document.processes[0].lanes.len(), 2);
-    assert_ne!(
-        again.document.processes[0].lane_set_id,
+    assert!(again.document.processes[0].lane_set_id.is_none());
+    assert!(
         again.document.processes[0]
             .lanes
             .iter()
-            .find(|l| l.id.to_string() == "parent")
-            .unwrap()
-            .child_lane_set_id
+            .all(|lane| lane.child_lane_set_id.is_none())
     );
 }
 
@@ -905,12 +924,9 @@ fn definitions_outside_qualified_metadata_limits_are_preserved() {
         "id=\"defs\"",
         &format!("id=\"defs\" exporter=\"{}\"", "x".repeat(16_385)),
     );
-    let empty_namespace = r#"<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" id="defs" targetNamespace=""/>"#.to_string();
-    for input in [oversized, empty_namespace] {
-        let parsed = prepare_import(input.as_bytes(), "source").unwrap();
-        assert!(!parsed.report.editable);
-        assert_eq!(export(&parsed).bytes, input.as_bytes());
-    }
+    let parsed = prepare_import(oversized.as_bytes(), "source").unwrap();
+    assert!(!parsed.report.editable);
+    assert_eq!(export(&parsed).bytes, oversized.as_bytes());
 }
 
 #[test]
@@ -1413,6 +1429,14 @@ fn item_aware_metadata_transformations_and_assignments_roundtrip() {
             .namespace,
         "urn:data-metadata"
     );
+    let Some(processcraft_core::bpmn_model::NodeDetails::DataStoreReference {
+        data_store_ref: Some(processcraft_core::bpmn_data::DataStoreRef::Qualified(reference)),
+    }) = &process.nodes[1].details
+    else {
+        panic!("local store reference expected")
+    };
+    assert_eq!(reference.namespace, "urn:data-metadata");
+    assert_eq!(reference.local.to_string(), "store");
     assert_eq!(process.data_associations[0].assignments.len(), 1);
     assert!(process.data_associations[0].transformation.is_some());
     let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
@@ -1469,6 +1493,21 @@ fn data_store_qualified_and_no_namespace_references_keep_identity() {
         let input = source.replace("<dataStoreReference name=\"Archive reference\" id=\"storeRef\" dataStoreRef=\"tns:store\" itemSubjectRef=\"ext:RemoteType\"><dataState name=\"ready\"/></dataStoreReference>", replacement);
         let parsed = prepare_import(input.as_bytes(), "store ref").unwrap();
         assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+        let Some(processcraft_core::bpmn_model::NodeDetails::DataStoreReference {
+            data_store_ref: Some(processcraft_core::bpmn_data::DataStoreRef::Qualified(reference)),
+        }) = &parsed.document.processes[0].nodes[1].details
+        else {
+            panic!("qualified store reference expected")
+        };
+        assert_eq!(
+            reference.namespace,
+            if replacement.contains("ext:ExternalStore") {
+                "urn:types"
+            } else {
+                ""
+            }
+        );
+        assert_eq!(reference.local.to_string(), "ExternalStore");
         let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
         assert_eq!(
             parsed.document.processes[0].nodes[1].details,
@@ -1482,12 +1521,14 @@ fn data_store_qualified_and_no_namespace_references_keep_identity() {
 }
 
 #[test]
-fn unnamed_data_reference_stays_preserved_until_shared_name_presence_is_supported() {
+fn unnamed_data_reference_preserves_name_omission() {
     let source = include_str!("../../../tests/fixtures/bpmn/data-metadata.bpmn");
     let input = source.replace(" name=\"Invoice reference\"", "");
     let parsed = prepare_import(input.as_bytes(), "unnamed reference").unwrap();
-    assert!(!parsed.report.editable);
-    assert_eq!(export(&parsed).bytes, input.as_bytes());
+    assert!(parsed.report.editable);
+    assert_eq!(parsed.document.processes[0].nodes[0].name, None);
+    let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+    assert_eq!(again.document.processes[0].nodes[0].name, None);
 }
 
 #[test]
@@ -1545,5 +1586,463 @@ fn definitions_without_process_graph_roundtrip() {
             again.document.event_resources
         );
         assert_eq!(parsed.document.categories, again.document.categories);
+    }
+}
+
+#[test]
+fn empty_target_namespace_keeps_local_qnames_and_di() {
+    let input = include_bytes!("../../../tests/fixtures/bpmn/empty-namespace.bpmn");
+    let parsed = prepare_import(input, "empty namespace").unwrap();
+    assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+    assert_eq!(
+        parsed
+            .document
+            .definitions
+            .as_ref()
+            .unwrap()
+            .target_namespace,
+        ""
+    );
+    let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+    assert!(again.report.editable);
+    assert_eq!(
+        again
+            .document
+            .definitions
+            .as_ref()
+            .unwrap()
+            .target_namespace,
+        ""
+    );
+    assert_eq!(parsed.document.expressions(), again.document.expressions());
+}
+
+#[test]
+fn anonymous_elements_keep_native_identity_without_invented_xml_ids() {
+    use processcraft_core::ids::ElementIdentity;
+    let input = br#"<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" targetNamespace="urn:anonymous"><process isExecutable="false"><task/><task name=""/></process></definitions>"#;
+    let parsed = prepare_import(input, "anonymous").unwrap();
+    assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+    assert!(matches!(
+        parsed.document.definitions_id,
+        ElementIdentity::Native { xml_id: None, .. }
+    ));
+    let process = &parsed.document.processes[0];
+    assert!(matches!(
+        process.id,
+        ElementIdentity::Native { xml_id: None, .. }
+    ));
+    assert!(matches!(
+        process.nodes[0].id,
+        ElementIdentity::Native { xml_id: None, .. }
+    ));
+    assert_eq!(process.nodes[0].name, None);
+    assert_eq!(process.nodes[1].name.as_deref(), Some(""));
+    let output = export(&parsed);
+    let xml = std::str::from_utf8(&output.bytes).unwrap();
+    assert!(!xml.contains(" id="));
+    assert!(!xml.contains("native:"));
+    let again = prepare_import(&output.bytes, "again").unwrap();
+    assert_eq!(again.document.processes[0].nodes[0].name, None);
+    assert_eq!(
+        again.document.processes[0].nodes[1].name.as_deref(),
+        Some("")
+    );
+}
+
+#[test]
+fn anonymous_di_target_requires_explicit_xml_id() {
+    use processcraft_core::ids::ElementIdentity;
+    let input = br#"<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:d="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:t="urn:test" id="defs" targetNamespace="urn:test"><process id="p" isExecutable="false"><task id="task"/></process><d:BPMNDiagram><d:BPMNPlane bpmnElement="t:p"><d:BPMNShape bpmnElement="t:task"><dc:Bounds x="0" y="0" width="100" height="80"/></d:BPMNShape></d:BPMNPlane></d:BPMNDiagram></definitions>"#;
+    let mut parsed = prepare_import(input, "anonymous target").unwrap();
+    assert!(parsed.report.editable);
+    let identity = ElementIdentity::anonymous();
+    parsed.document.processes[0].nodes[0].id = identity.clone();
+    parsed.document.diagrams[0].shapes[0].element = identity.selector();
+    let mut project = ProjectData::new("p".into());
+    project.documents.push(Arc::new(parsed.document.clone()));
+    project.resources = parsed.resources.clone();
+    let failure = export_bpmn(&project, parsed.document.id, false).unwrap_err();
+    assert!(
+        failure
+            .report
+            .blocked
+            .iter()
+            .any(|s| s.contains("Assign an XML ID"))
+    );
+    if let ElementIdentity::Native { xml_id, .. } = &mut parsed.document.processes[0].nodes[0].id {
+        *xml_id = Some("assigned".parse().unwrap());
+    }
+    let output = export(&parsed);
+    let xml = std::str::from_utf8(&output.bytes).unwrap();
+    assert!(xml.contains("id=\"assigned\""));
+    assert!(xml.contains("bpmnElement=\"assigned\""));
+    assert!(!xml.contains("native:"));
+}
+
+#[test]
+fn process_is_executable_omission_and_explicit_values_survive() {
+    for (attribute, expected) in [
+        ("", None),
+        (" isExecutable=\"false\"", Some(false)),
+        (" isExecutable=\"true\"", Some(true)),
+    ] {
+        let input = format!(
+            "<definitions xmlns=\"http://www.omg.org/spec/BPMN/20100524/MODEL\" id=\"defs\" targetNamespace=\"urn:test\"><process id=\"p\"{attribute}/></definitions>"
+        );
+        let parsed = prepare_import(input.as_bytes(), "executable flag").unwrap();
+        assert!(parsed.report.editable);
+        assert_eq!(parsed.document.processes[0].is_executable, expected);
+        let output = export(&parsed);
+        let text = std::str::from_utf8(&output.bytes).unwrap();
+        assert_eq!(text.contains("isExecutable="), expected.is_some());
+        let again = prepare_import(&output.bytes, "again").unwrap();
+        assert_eq!(again.document.processes[0].is_executable, expected);
+    }
+}
+
+#[test]
+fn legacy_annotation_edit_and_undo_export_correct_body() {
+    use processcraft_core::bpmn_model::NodeDetails;
+    use processcraft_core::commands::{Envelope, Mutation, Request, Session};
+    let input = br#"<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" id="defs" targetNamespace="urn:test"><process id="p" isExecutable="false"><textAnnotation id="note" textFormat="text/plain"><text>old body</text></textAnnotation></process></definitions>"#;
+    let mut parsed = prepare_import(input, "annotation").unwrap();
+    let node = &mut parsed.document.processes[0].nodes[0];
+    node.name = Some("old body".into());
+    let Some(NodeDetails::TextAnnotation { text, .. }) = &mut node.details else {
+        panic!("annotation expected")
+    };
+    *text = None;
+    let mut project = ProjectData::new("p".into());
+    project.documents.push(Arc::new(parsed.document.clone()));
+    project.resources = parsed.resources.clone();
+    let mut session = Session::new(project).unwrap();
+    let envelope = |session: &Session| Envelope {
+        request_id: "annotation".into(),
+        session_id: session.id(),
+        expected_generation: None,
+    };
+    session
+        .apply(
+            envelope(&session),
+            Request::Batch {
+                mutations: vec![Mutation::SetTextAnnotation {
+                    document_id: parsed.document.id,
+                    element_id: parsed.document.processes[0].nodes[0].id.selector(),
+                    text: Some("new body".into()),
+                }],
+            },
+        )
+        .unwrap();
+    let output = export_bpmn(&session.snapshot().project, parsed.document.id, false).unwrap();
+    let xml = std::str::from_utf8(&output.bytes).unwrap();
+    assert!(xml.contains("<text>new body</text>"));
+    assert!(!xml.contains("old body"));
+    session.apply(envelope(&session), Request::Undo).unwrap();
+    let output = export_bpmn(&session.snapshot().project, parsed.document.id, false).unwrap();
+    assert!(
+        std::str::from_utf8(&output.bytes)
+            .unwrap()
+            .contains("<text>old body</text>")
+    );
+}
+
+#[test]
+fn empty_target_namespace_event_qnames_keep_local_identity() {
+    let input = include_bytes!("../../../tests/fixtures/bpmn/empty-namespace-events.bpmn");
+    let parsed = prepare_import(input, "empty namespace events").unwrap();
+    assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+    let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+    assert!(again.report.editable);
+    assert_eq!(
+        parsed.document.processes[0]
+            .nodes
+            .iter()
+            .map(|node| &node.details)
+            .collect::<Vec<_>>(),
+        again.document.processes[0]
+            .nodes
+            .iter()
+            .map(|node| &node.details)
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn anonymous_di_representation_ids_are_not_invented() {
+    let input = include_bytes!("../../../tests/fixtures/bpmn/anonymous-identities.bpmn");
+    let parsed = prepare_import(input, "anonymous identity").unwrap();
+    assert!(parsed.report.editable);
+    assert!(parsed.document.definitions_id.xml_id().is_none());
+    assert!(parsed.document.diagrams[0].id.xml_id().is_none());
+    assert!(parsed.document.diagrams[0].plane_id.xml_id().is_none());
+    assert!(parsed.document.diagrams[0].shapes[0].id.xml_id().is_none());
+    let output = export(&parsed);
+    let text = std::str::from_utf8(&output.bytes).unwrap();
+    assert!(!text.contains("native:"));
+    let again = prepare_import(&output.bytes, "again").unwrap();
+    assert!(again.document.definitions_id.xml_id().is_none());
+    assert!(again.document.diagrams[0].plane_id.xml_id().is_none());
+    assert!(again.document.diagrams[0].shapes[0].id.xml_id().is_none());
+    assert_eq!(again.document.processes[0].nodes[1].name, None);
+    assert_eq!(
+        again.document.processes[0].nodes[2].name.as_deref(),
+        Some("")
+    );
+}
+
+#[test]
+fn collaboration_and_diagram_names_preserve_absence_and_explicit_empty() {
+    let source = include_str!("../../../tests/fixtures/bpmn20-schema/conversation.bpmn");
+    for (name_attribute, expected) in [
+        ("", None),
+        (" name=\"\"", Some("")),
+        (" name=\"Collaboration\"", Some("Collaboration")),
+    ] {
+        let input = source.replacen(
+            "<collaboration ",
+            &format!("<collaboration{name_attribute} "),
+            1,
+        );
+        let parsed = prepare_import(input.as_bytes(), "collaboration name").unwrap();
+        assert!(parsed.report.editable);
+        assert_eq!(
+            parsed
+                .document
+                .collaboration
+                .as_ref()
+                .unwrap()
+                .name
+                .as_deref(),
+            expected
+        );
+        let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+        assert_eq!(
+            again
+                .document
+                .collaboration
+                .as_ref()
+                .unwrap()
+                .name
+                .as_deref(),
+            expected
+        );
+    }
+    let source = include_str!("../../../tests/fixtures/bpmn/anonymous-identities.bpmn");
+    for (name_attribute, expected) in [
+        ("", None),
+        (" name=\"\"", Some("")),
+        (" name=\"Diagram\"", Some("Diagram")),
+    ] {
+        let input = source.replacen(
+            "<di:BPMNDiagram",
+            &format!("<di:BPMNDiagram{name_attribute}"),
+            1,
+        );
+        let parsed = prepare_import(input.as_bytes(), "diagram name").unwrap();
+        assert!(parsed.report.editable);
+        assert_eq!(parsed.document.diagrams[0].name.as_deref(), expected);
+        let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+        assert_eq!(again.document.diagrams[0].name.as_deref(), expected);
+    }
+}
+
+#[test]
+fn empty_target_namespace_collaboration_and_choreography_qnames_roundtrip() {
+    for input in [
+        include_bytes!("../../../tests/fixtures/bpmn/empty-namespace-conversation.bpmn").as_slice(),
+        include_bytes!("../../../tests/fixtures/bpmn/empty-namespace-choreography.bpmn").as_slice(),
+    ] {
+        let parsed = prepare_import(input, "empty namespace collaboration").unwrap();
+        assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+        let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+        assert!(again.report.editable);
+        assert_eq!(
+            parsed.document.collaboration.is_some(),
+            again.document.collaboration.is_some()
+        );
+        assert_eq!(
+            parsed.document.choreographies.len(),
+            again.document.choreographies.len()
+        );
+    }
+}
+
+#[test]
+fn annotation_absent_and_empty_body_remain_distinct() {
+    use processcraft_core::bpmn_model::NodeDetails;
+    for (child, expected) in [("", None), ("<text/>", Some(""))] {
+        let input = format!(
+            "<definitions xmlns=\"http://www.omg.org/spec/BPMN/20100524/MODEL\" id=\"defs\" targetNamespace=\"urn:test\"><process id=\"p\" isExecutable=\"false\"><textAnnotation id=\"note\">{child}</textAnnotation></process></definitions>"
+        );
+        let parsed = prepare_import(input.as_bytes(), "annotation presence").unwrap();
+        assert!(parsed.report.editable);
+        let Some(NodeDetails::TextAnnotation { text, .. }) =
+            &parsed.document.processes[0].nodes[0].details
+        else {
+            panic!("annotation expected")
+        };
+        assert_eq!(text.as_deref(), expected);
+        let output = export(&parsed);
+        let xml = std::str::from_utf8(&output.bytes).unwrap();
+        assert_eq!(xml.contains("<text>"), expected.is_some());
+        let again = prepare_import(&output.bytes, "again").unwrap();
+        let Some(NodeDetails::TextAnnotation { text, .. }) =
+            &again.document.processes[0].nodes[0].details
+        else {
+            panic!("annotation expected")
+        };
+        assert_eq!(text.as_deref(), expected);
+    }
+}
+
+#[test]
+fn empty_target_namespace_groups_and_event_resources_roundtrip() {
+    for input in [
+        include_bytes!("../../../tests/fixtures/bpmn/empty-namespace-groups.bpmn").as_slice(),
+        include_bytes!("../../../tests/fixtures/bpmn/empty-namespace-message-signal.bpmn")
+            .as_slice(),
+    ] {
+        let parsed = prepare_import(input, "empty namespace roots").unwrap();
+        assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+        let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+        assert!(again.report.editable);
+        assert_eq!(parsed.document.categories, again.document.categories);
+        assert_eq!(
+            parsed.document.event_resources,
+            again.document.event_resources
+        );
+        assert_eq!(
+            parsed.document.processes[0].groups,
+            again.document.processes[0].groups
+        );
+        assert_eq!(
+            parsed.document.processes[0]
+                .nodes
+                .iter()
+                .map(|n| &n.details)
+                .collect::<Vec<_>>(),
+            again.document.processes[0]
+                .nodes
+                .iter()
+                .map(|n| &n.details)
+                .collect::<Vec<_>>()
+        );
+    }
+}
+
+#[test]
+fn call_activity_resolves_xml_id_of_native_process_identity() {
+    use processcraft_core::ids::ElementIdentity;
+    let mut parsed = prepare_import(
+        include_bytes!("../../../tests/fixtures/bpmn20-schema/nested.bpmn"),
+        "nested",
+    )
+    .unwrap();
+    let called = &mut parsed.document.processes[1];
+    let mut identity = ElementIdentity::anonymous();
+    if let ElementIdentity::Native { xml_id, .. } = &mut identity {
+        *xml_id = Some("called".parse().unwrap());
+    }
+    called.id = identity;
+    let output = export(&parsed);
+    let again = prepare_import(&output.bytes, "again").unwrap();
+    assert!(again.report.editable);
+}
+
+#[test]
+fn activity_port_di_is_preserved_or_refused_while_process_port_di_roundtrips() {
+    use processcraft_core::model::{Bounds, Diagram, Shape};
+    let source = include_str!("../../../tests/fixtures/bpmn/data-metadata.bpmn");
+    let with_activity_port = source.replace("<definitions ", "<definitions xmlns:di=\"http://www.omg.org/spec/BPMN/20100524/DI\" xmlns:dc=\"http://www.omg.org/spec/DD/20100524/DC\" ")
+        .replace("</definitions>", "<di:BPMNDiagram id=\"diagram\"><di:BPMNPlane id=\"plane\" bpmnElement=\"tns:process\"><di:BPMNShape id=\"portShape\" bpmnElement=\"tns:input\"><dc:Bounds x=\"0\" y=\"0\" width=\"50\" height=\"50\"/></di:BPMNShape></di:BPMNPlane></di:BPMNDiagram></definitions>");
+    let preserved = prepare_import(with_activity_port.as_bytes(), "activity port").unwrap();
+    assert!(!preserved.report.editable);
+    assert_eq!(export(&preserved).bytes, with_activity_port.as_bytes());
+
+    let mut parsed = prepare_import(source.as_bytes(), "native activity port").unwrap();
+    parsed.document.diagrams.push(Diagram {
+        id: "diagram".parse().unwrap(),
+        name: None,
+        plane_id: "plane".parse().unwrap(),
+        plane: "process".parse().unwrap(),
+        shapes: vec![Shape {
+            id: "portShape".parse().unwrap(),
+            element: "input".parse().unwrap(),
+            is_expanded: None,
+            bounds: Bounds {
+                x: 0.0,
+                y: 0.0,
+                width: 50.0,
+                height: 50.0,
+            },
+            label: None,
+            style: None,
+        }],
+        edges: vec![],
+    });
+    let mut project = ProjectData::new("test".into());
+    project.documents.push(Arc::new(parsed.document.clone()));
+    project.resources = parsed.resources;
+    let failure = export_bpmn(&project, parsed.document.id, false).unwrap_err();
+    assert!(
+        failure
+            .report
+            .blocked
+            .iter()
+            .any(|message| message.contains("Activity data input/output ports"))
+    );
+
+    let process_port = include_str!("../../../tests/fixtures/bpmn/data-optional.bpmn")
+        .replace("<definitions ", "<definitions xmlns:tns=\"urn:data-optional\" xmlns:di=\"http://www.omg.org/spec/BPMN/20100524/DI\" xmlns:dc=\"http://www.omg.org/spec/DD/20100524/DC\" ")
+        .replacen("<dataInput/>", "<dataInput id=\"processPort\"/>", 1)
+        .replace("</definitions>", "<di:BPMNDiagram id=\"diagram\"><di:BPMNPlane id=\"plane\" bpmnElement=\"tns:process\"><di:BPMNShape id=\"portShape\" bpmnElement=\"tns:processPort\"><dc:Bounds x=\"0\" y=\"0\" width=\"50\" height=\"50\"/></di:BPMNShape></di:BPMNPlane></di:BPMNDiagram></definitions>");
+    let parsed = prepare_import(process_port.as_bytes(), "process port").unwrap();
+    assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+    assert!(
+        prepare_import(&export(&parsed).bytes, "again")
+            .unwrap()
+            .report
+            .editable
+    );
+}
+
+#[test]
+fn diagram_local_qnames_keep_expanded_names_with_unqualified_lexical_values() {
+    use processcraft_io::bpmn::{ExpandedName, import_bpmn};
+    for (input, namespace, names) in [
+        (
+            include_bytes!("../../../tests/fixtures/bpmn/m2-flat-lanes.bpmn").as_slice(),
+            Some("urn:test"),
+            vec!["p", "task", "f1"],
+        ),
+        (
+            include_bytes!("../../../tests/fixtures/bpmn/empty-namespace.bpmn").as_slice(),
+            None,
+            vec!["outer", "task"],
+        ),
+    ] {
+        let original = import_bpmn(input).unwrap();
+        let parsed = prepare_import(input, "diagram namespace").unwrap();
+        assert!(parsed.report.editable);
+        let output = export(&parsed);
+        let reopened = import_bpmn(&output.bytes).unwrap();
+        let xml = std::str::from_utf8(&output.bytes).unwrap();
+        for name in names {
+            let expanded = ExpandedName {
+                namespace_uri: namespace.map(str::to_owned),
+                local_name: name.into(),
+            };
+            assert!(original.report().qname_values.contains(&expanded));
+            assert!(reopened.report().qname_values.contains(&expanded));
+            assert!(xml.contains(&format!("bpmnElement=\"{name}\"")));
+            assert!(!xml.contains(&format!("bpmnElement=\"tns:{name}\"")));
+        }
+        assert!(
+            prepare_import(&output.bytes, "again")
+                .unwrap()
+                .report
+                .editable
+        );
     }
 }

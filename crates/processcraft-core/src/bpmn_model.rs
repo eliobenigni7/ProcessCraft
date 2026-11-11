@@ -13,7 +13,7 @@ pub enum Expression {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ExpressionData {
-    pub id: Option<XmlId>,
+    pub id: Option<crate::ids::ElementIdentity>,
     pub kind: ExpressionKind,
     pub text: String,
     /// Effective namespace bindings; the empty prefix denotes the default namespace.
@@ -70,45 +70,45 @@ impl From<&str> for Expression {
 #[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
 pub enum EventDefinition {
     Message {
-        id: Option<XmlId>,
-        message_ref: Option<XmlId>,
-        operation_ref: Option<XmlId>,
+        id: Option<crate::ids::ElementIdentity>,
+        message_ref: Option<crate::ids::ElementSelector>,
+        operation_ref: Option<crate::ids::ElementSelector>,
     },
     Signal {
-        id: Option<XmlId>,
-        signal_ref: Option<XmlId>,
+        id: Option<crate::ids::ElementIdentity>,
+        signal_ref: Option<crate::ids::ElementSelector>,
     },
     Error {
-        id: Option<XmlId>,
-        error_ref: Option<XmlId>,
+        id: Option<crate::ids::ElementIdentity>,
+        error_ref: Option<crate::ids::ElementSelector>,
     },
     Escalation {
-        id: Option<XmlId>,
-        escalation_ref: Option<XmlId>,
+        id: Option<crate::ids::ElementIdentity>,
+        escalation_ref: Option<crate::ids::ElementSelector>,
     },
     Conditional {
-        id: Option<XmlId>,
+        id: Option<crate::ids::ElementIdentity>,
         expression: Expression,
     },
     Link {
-        id: Option<XmlId>,
+        id: Option<crate::ids::ElementIdentity>,
         name: String,
-        sources: Vec<XmlId>,
-        target: Option<XmlId>,
+        sources: Vec<crate::ids::ElementSelector>,
+        target: Option<crate::ids::ElementSelector>,
     },
     Cancel {
-        id: Option<XmlId>,
+        id: Option<crate::ids::ElementIdentity>,
     },
     Compensate {
-        id: Option<XmlId>,
+        id: Option<crate::ids::ElementIdentity>,
         wait_for_completion: Option<bool>,
-        activity_ref: Option<XmlId>,
+        activity_ref: Option<crate::ids::ElementSelector>,
     },
     Terminate {
-        id: Option<XmlId>,
+        id: Option<crate::ids::ElementIdentity>,
     },
     Timer {
-        id: Option<XmlId>,
+        id: Option<crate::ids::ElementIdentity>,
         kind: TimerKind,
         expression: Expression,
     },
@@ -125,16 +125,18 @@ pub enum TimerKind {
 pub enum NodeDetails {
     TextAnnotation {
         text_format: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        text: Option<String>,
     },
     Gateway {
-        default_flow: Option<XmlId>,
+        default_flow: Option<crate::ids::ElementSelector>,
         direction: Option<GatewayDirection>,
         instantiate: Option<bool>,
         event_gateway_type: Option<EventGatewayType>,
         activation_condition: Option<Expression>,
     },
     DataObjectReference {
-        data_object_ref: Option<XmlId>,
+        data_object_ref: Option<crate::ids::ElementSelector>,
     },
     DataStoreReference {
         data_store_ref: Option<crate::bpmn_data::DataStoreRef>,
@@ -146,12 +148,12 @@ pub enum NodeDetails {
         called_element: QNameRef,
     },
     BoundaryEvent {
-        attached_to: XmlId,
+        attached_to: crate::ids::ElementSelector,
         cancel_activity: bool,
     },
     Event {
         definitions: Vec<EventDefinition>,
-        attached_to: Option<XmlId>,
+        attached_to: Option<crate::ids::ElementSelector>,
         cancel_activity: Option<bool>,
     },
 }
@@ -161,20 +163,20 @@ pub enum NodeDetails {
 #[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
 pub enum EventResource {
     Signal {
-        id: XmlId,
+        id: crate::ids::ElementIdentity,
         name: Option<String>,
     },
     Message {
-        id: XmlId,
+        id: crate::ids::ElementIdentity,
         name: Option<String>,
     },
     Error {
-        id: XmlId,
+        id: crate::ids::ElementIdentity,
         name: Option<String>,
         code: Option<String>,
     },
     Escalation {
-        id: XmlId,
+        id: crate::ids::ElementIdentity,
         name: Option<String>,
         code: Option<String>,
     },
@@ -227,19 +229,19 @@ pub enum AssociationDirection {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Category {
-    pub id: XmlId,
+    pub id: crate::ids::ElementIdentity,
     pub name: Option<String>,
     pub values: Vec<CategoryValue>,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CategoryValue {
-    pub id: XmlId,
+    pub id: crate::ids::ElementIdentity,
     pub value: Option<String>,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Group {
-    pub id: XmlId,
-    pub category_value_ref: Option<XmlId>,
+    pub id: crate::ids::ElementIdentity,
+    pub category_value_ref: Option<crate::ids::ElementSelector>,
 }

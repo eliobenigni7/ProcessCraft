@@ -1,5 +1,5 @@
 //! BPMN supporting root declarations; metadata is never executed or fetched.
-use crate::{bpmn_model::QNameRef, ids::XmlId};
+use crate::bpmn_model::QNameRef;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
@@ -39,7 +39,7 @@ pub enum ItemKind {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ItemDefinition {
-    pub id: Option<XmlId>,
+    pub id: Option<crate::ids::ElementIdentity>,
     pub structure_ref: Option<QNameRef>,
     pub is_collection: Option<bool>,
     pub item_kind: Option<ItemKind>,
@@ -47,7 +47,7 @@ pub struct ItemDefinition {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Interface {
-    pub id: Option<XmlId>,
+    pub id: Option<crate::ids::ElementIdentity>,
     pub name: String,
     pub implementation_ref: Option<QNameRef>,
     pub operations: Vec<Operation>,
@@ -55,7 +55,7 @@ pub struct Interface {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Operation {
-    pub id: Option<XmlId>,
+    pub id: Option<crate::ids::ElementIdentity>,
     pub name: String,
     pub implementation_ref: Option<QNameRef>,
     pub in_message_ref: QNameRef,
@@ -65,14 +65,14 @@ pub struct Operation {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct BpmnResource {
-    pub id: Option<XmlId>,
+    pub id: Option<crate::ids::ElementIdentity>,
     pub name: String,
     pub parameters: Vec<ResourceParameter>,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ResourceParameter {
-    pub id: Option<XmlId>,
+    pub id: Option<crate::ids::ElementIdentity>,
     pub name: Option<String>,
     pub type_ref: Option<QNameRef>,
     pub is_required: Option<bool>,

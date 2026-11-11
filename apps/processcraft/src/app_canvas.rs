@@ -156,7 +156,7 @@ impl ProcessCraft {
                     self.renderer.submit(crate::jobs::RenderJob {
                         key: key.clone(),
                         document: d.clone(),
-                        diagram: diagram.id.clone(),
+                        diagram: diagram.id.selector(),
                         appearance: if self.theme == Theme::Dark {
                             Appearance::Dark
                         } else {
@@ -300,7 +300,7 @@ impl ProcessCraft {
                                         .shapes
                                         .iter()
                                         .filter(|s| self.multi.contains(&s.element))
-                                        .map(|s| (s.id.clone(), s.bounds.clone()))
+                                        .map(|s| (s.id.selector(), s.bounds.clone()))
                                         .collect(),
                                 );
                             }

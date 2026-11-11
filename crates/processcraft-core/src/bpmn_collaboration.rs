@@ -1,5 +1,4 @@
 //! Typed BPMN conversation structures within a collaboration.
-use crate::ids::XmlId;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
@@ -12,29 +11,29 @@ pub enum ConversationKind {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ConversationNode {
-    pub id: XmlId,
-    pub name: String,
+    pub id: crate::ids::ElementIdentity,
+    pub name: Option<String>,
     pub kind: ConversationKind,
-    pub participant_refs: Vec<XmlId>,
-    pub parent: Option<XmlId>,
+    pub participant_refs: Vec<crate::ids::ElementSelector>,
+    pub parent: Option<crate::ids::ElementSelector>,
 }
 
 /// A link joins a conversation node and a participant in the same collaboration.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ConversationLink {
-    pub id: XmlId,
-    pub name: String,
-    pub source: XmlId,
-    pub target: XmlId,
+    pub id: crate::ids::ElementIdentity,
+    pub name: Option<String>,
+    pub source: crate::ids::ElementSelector,
+    pub target: crate::ids::ElementSelector,
 }
 
 /// A choreography owns its participant and message-flow namespace.
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Choreography {
-    pub id: XmlId,
-    pub name: String,
+    pub id: crate::ids::ElementIdentity,
+    pub name: Option<String>,
     pub participants: Vec<crate::model::Participant>,
     pub message_flows: Vec<crate::model::Flow>,
     pub activities: Vec<ChoreographyActivity>,
@@ -44,9 +43,9 @@ pub struct Choreography {
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ChoreographyActivity {
-    pub id: XmlId,
-    pub name: String,
-    pub participant_refs: Vec<XmlId>,
-    pub initiating_participant: XmlId,
-    pub message_flow_refs: Vec<XmlId>,
+    pub id: crate::ids::ElementIdentity,
+    pub name: Option<String>,
+    pub participant_refs: Vec<crate::ids::ElementSelector>,
+    pub initiating_participant: crate::ids::ElementSelector,
+    pub message_flow_refs: Vec<crate::ids::ElementSelector>,
 }

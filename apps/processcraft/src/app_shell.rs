@@ -624,6 +624,11 @@ impl ProcessCraft {
             .is_some_and(|d| d.capability.allows_structural_editing());
         widgets::section_label(ui, "BPMN elements");
         ui.add_enabled_ui(editable, |ui| {
+            ui.checkbox(
+                &mut self.create_anonymous,
+                "New canvas elements without XML ID",
+            )
+            .on_hover_text("Assign an XML ID before exporting referenced elements to BPMN.");
             ui.horizontal(|ui| {
                 if ui.button("Pool").clicked() {
                     self.add_pool();
@@ -683,16 +688,21 @@ impl ProcessCraft {
                 .show(ui, |ui| {
                     if let Some(doc) = snap.project.documents.get(self.doc) {
                         for process in processcraft_core::queries::scopes(doc) {
-                            for (id, name) in process
-                                .lanes
-                                .iter()
-                                .map(|l| (&l.id, l.name.as_str()))
-                                .chain(process.nodes.iter().map(|n| (&n.id, n.name.as_str())))
-                                .chain(process.flows.iter().map(|f| (&f.id, f.name.as_str())))
+                            for (id, name) in
+                                process
+                                    .lanes
+                                    .iter()
+                                    .map(|l| (l.id.selector(), l.name.as_deref().unwrap_or("")))
+                                    .chain(process.nodes.iter().map(|n| {
+                                        (n.id.selector(), n.name.as_deref().unwrap_or(""))
+                                    }))
+                                    .chain(process.flows.iter().map(|f| {
+                                        (f.id.selector(), f.name.as_deref().unwrap_or(""))
+                                    }))
                             {
                                 if ui
                                     .selectable_label(
-                                        self.selected.as_ref() == Some(id),
+                                        self.selected.as_ref() == Some(&id),
                                         if name.is_empty() {
                                             id.to_string()
                                         } else {
@@ -770,15 +780,15 @@ impl ProcessCraft {
                 if ui
                     .selectable_label(
                         self.process_id
-                            .as_ref()
-                            .or_else(|| doc.processes.first().map(|p| &p.id))
-                            == Some(process.id),
+                            .clone()
+                            .or_else(|| doc.processes.first().map(|p| p.id.selector()))
+                            == Some(process.id.selector()),
                         process.name,
                     )
                     .clicked()
                     && self.prepare_navigation()
                 {
-                    self.process_id = Some(process.id.clone());
+                    self.process_id = Some(process.id.selector());
                     self.select(None);
                 }
             }
@@ -788,15 +798,15 @@ impl ProcessCraft {
                 if ui
                     .selectable_label(
                         self.diagram_id
-                            .as_ref()
-                            .or_else(|| doc.diagrams.first().map(|d| &d.id))
-                            == Some(&diagram.id),
+                            .clone()
+                            .or_else(|| doc.diagrams.first().map(|d| d.id.selector()))
+                            == Some(diagram.id.selector()),
                         diagram.id.to_string(),
                     )
                     .clicked()
                     && self.prepare_navigation()
                 {
-                    self.diagram_id = Some(diagram.id.clone());
+                    self.diagram_id = Some(diagram.id.selector());
                     self.select(None);
                 }
             }
@@ -877,7 +887,7 @@ impl ProcessCraft {
                                 .diagrams
                                 .iter()
                                 .find(|d| self.diagram_id.as_ref().is_none_or(|id| &d.id == id))
-                                .map(|d| d.id.clone());
+                                .map(|d| d.id.selector());
                             let appearance = if self.theme == Theme::Dark {
                                 Appearance::Dark
                             } else {

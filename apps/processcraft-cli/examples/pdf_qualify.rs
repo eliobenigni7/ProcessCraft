@@ -1,12 +1,12 @@
 //! Reproducible PDF/PNG scene corpus for independent qualification.
-use processcraft_core::{
-    ids::XmlId,
-    model::{Bounds, BpmnDocument, Diagram, Node, NodeKind, Process, Shape},
-};
+use processcraft_core::model::{Bounds, BpmnDocument, Diagram, Node, NodeKind, Process, Shape};
 use processcraft_render::{Appearance, ExportFormat, ExportOptions, TextEngine, export_diagram};
 use std::{fs, path::Path};
-fn id(s: &str) -> XmlId {
-    s.parse().expect("fixture XML ID")
+fn id<T: std::str::FromStr>(s: &str) -> T
+where
+    T::Err: std::fmt::Debug,
+{
+    s.parse().expect("valid fixture id")
 }
 fn sample(tiled: bool) -> BpmnDocument {
     let mut d = BpmnDocument::new("PDF qualification".into(), id("defs"));
@@ -19,14 +19,14 @@ fn sample(tiled: bool) -> BpmnDocument {
     let mut nodes = Vec::new();
     let mut shapes = Vec::new();
     for (i, name) in labels.iter().enumerate() {
-        let node = id(&format!("node{i}"));
+        let node: processcraft_core::ids::ElementIdentity = id(&format!("node{i}"));
         nodes.push(Node {
             item_aware: None,
             activity: None,
             io_specification: None,
             loop_characteristics: None,
             id: node.clone(),
-            name: (*name).into(),
+            name: Some((*name).into()),
             documentation: String::new(),
             kind: NodeKind::Task,
             details: None,
@@ -36,7 +36,7 @@ fn sample(tiled: bool) -> BpmnDocument {
         shapes.push(Shape {
             is_expanded: None,
             id: id(&format!("shape{i}")),
-            element: node,
+            element: node.selector(),
             bounds: Bounds {
                 x: if tiled {
                     i as f64 * 600.0
@@ -52,19 +52,21 @@ fn sample(tiled: bool) -> BpmnDocument {
         });
     }
     d.processes.push(Process {
+        is_executable: Some(false),
         io_specification: None,
         lane_set_id: None,
         groups: vec![],
         data_objects: vec![],
         data_associations: vec![],
         id: id("process"),
-        name: String::new(),
+        name: Some(String::new()),
         documentation: String::new(),
         nodes,
         lanes: vec![],
         flows: vec![],
     });
     d.diagrams.push(Diagram {
+        name: None,
         id: id("diagram"),
         plane_id: id("plane"),
         plane: id("process"),

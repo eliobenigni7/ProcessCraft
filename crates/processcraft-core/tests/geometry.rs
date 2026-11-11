@@ -116,6 +116,7 @@ fn session_fixture() -> (
         style: None,
     };
     let diagram = Diagram {
+        name: None,
         id: "diagram".parse().unwrap(),
         plane_id: "plane".parse().unwrap(),
         plane: "procurement".parse().unwrap(),
@@ -214,7 +215,7 @@ fn session_rename_preserves_manual_route() {
             mutations: vec![Mutation::Rename {
                 document_id: doc,
                 element_id: "review".parse().unwrap(),
-                name: "Renamed".into(),
+                name: Some("Renamed".into()),
             }],
         },
     );
@@ -243,7 +244,7 @@ fn prepared_move_repairs_connected_edge_in_one_undo() {
     let (mut s, _) = session_fixture();
     let before = s.snapshot();
     let document = &before.project.documents[0];
-    let diagram_id: processcraft_core::ids::XmlId = "diagram".parse().unwrap();
+    let diagram_id: processcraft_core::ids::ElementSelector = "diagram".parse().unwrap();
     let moved = vec![ShapeBounds {
         diagram_id: diagram_id.clone(),
         shape_id: "shape_start".parse().unwrap(),
@@ -281,7 +282,7 @@ fn prepared_group_move_keeps_manual_bends_and_undoes_together() {
     use processcraft_core::commands::{Request, ShapeBounds};
     let (mut s, _) = session_fixture();
     let before = s.snapshot();
-    let diagram_id: processcraft_core::ids::XmlId = "diagram".parse().unwrap();
+    let diagram_id: processcraft_core::ids::ElementSelector = "diagram".parse().unwrap();
     let moved = vec![
         ShapeBounds {
             diagram_id: diagram_id.clone(),
@@ -323,7 +324,7 @@ fn nested_session() -> processcraft_core::commands::Session {
     let mut parent = process.nodes[0].clone();
     parent.id = "subprocess".parse().unwrap();
     parent.kind = NodeKind::SubProcess;
-    parent.name.clear();
+    parent.name = Some(String::new());
     parent.details = Some(NodeDetails::SubProcess {
         content: Box::new(FlowContainer {
             lane_set_id: None,
@@ -365,7 +366,7 @@ fn nested_parent_move_translates_children_internal_route_and_label_in_one_undo()
     let mut session = nested_session();
     let before = session.snapshot();
     let doc = &before.project.documents[0];
-    let diagram_id: processcraft_core::ids::XmlId = "diagram".parse().unwrap();
+    let diagram_id: processcraft_core::ids::ElementSelector = "diagram".parse().unwrap();
     let prepared = prepare_move(
         doc,
         &diagram_id,
@@ -410,7 +411,7 @@ fn conflicting_nested_moves_are_refused_without_mutation() {
     use processcraft_core::commands::ShapeBounds;
     let session = nested_session();
     let before = session.snapshot();
-    let diagram_id: processcraft_core::ids::XmlId = "diagram".parse().unwrap();
+    let diagram_id: processcraft_core::ids::ElementSelector = "diagram".parse().unwrap();
     let moves = vec![
         ShapeBounds {
             diagram_id: diagram_id.clone(),
@@ -431,7 +432,7 @@ fn moving_nested_child_repairs_nested_flow_without_moving_container() {
     use processcraft_core::commands::ShapeBounds;
     let mut session = nested_session();
     let before = session.snapshot();
-    let diagram_id: processcraft_core::ids::XmlId = "diagram".parse().unwrap();
+    let diagram_id: processcraft_core::ids::ElementSelector = "diagram".parse().unwrap();
     let request = prepare_move(
         &before.project.documents[0],
         &diagram_id,
@@ -473,7 +474,7 @@ fn assert_geometry_history(
     let before = session.snapshot();
     before.project.validate().unwrap();
     let document = &before.project.documents[0];
-    let diagram_id = document.diagrams.last().unwrap().id.clone();
+    let diagram_id = document.diagrams.last().unwrap().id.selector();
     let edge = document
         .diagrams
         .last()
@@ -499,7 +500,7 @@ fn assert_geometry_history(
         &diagram_id,
         vec![ShapeBounds {
             diagram_id: diagram_id.clone(),
-            shape_id: shape.id.clone(),
+            shape_id: shape.id.selector(),
             bounds: new_bounds,
         }],
     )
@@ -556,7 +557,7 @@ fn data_geometry_session() -> processcraft_core::commands::Session {
     process.nodes.push(Node {
         item_aware: None,
         id: "data_ref".parse().unwrap(),
-        name: "Order".into(),
+        name: Some("Order".into()),
         documentation: String::new(),
         kind: NodeKind::DataObjectReference,
         details: Some(NodeDetails::DataObjectReference {
@@ -702,23 +703,24 @@ fn conversation_geometry_session() -> processcraft_core::commands::Session {
     let mut project = (*source.snapshot().project).clone();
     let doc = std::sync::Arc::make_mut(&mut project.documents[0]);
     doc.collaboration = Some(Collaboration {
+        name: None,
         id: "collaboration".parse().unwrap(),
         participants: vec![Participant {
             id: "buyer".parse().unwrap(),
-            name: "Buyer".into(),
+            name: Some("Buyer".into()),
             process: None,
         }],
         flows: vec![],
         conversation_nodes: vec![ConversationNode {
             id: "conversation".parse().unwrap(),
-            name: "Order".into(),
+            name: Some("Order".into()),
             kind: ConversationKind::Conversation,
             participant_refs: vec!["buyer".parse().unwrap()],
             parent: None,
         }],
         conversation_links: vec![ConversationLink {
             id: "link".parse().unwrap(),
-            name: String::new(),
+            name: Some(String::new()),
             source: "buyer".parse().unwrap(),
             target: "conversation".parse().unwrap(),
         }],
@@ -732,6 +734,7 @@ fn conversation_geometry_session() -> processcraft_core::commands::Session {
         style: None,
     };
     doc.diagrams.push(Diagram {
+        name: None,
         id: "conversation_diagram".parse().unwrap(),
         plane_id: "conversation_plane".parse().unwrap(),
         plane: "collaboration".parse().unwrap(),
@@ -949,4 +952,109 @@ fn global_data_store_association_moves_and_restores_route() {
         "input_edge",
         true,
     );
+}
+
+#[test]
+fn native_anonymous_shape_moves_connected_route_and_undoes() {
+    use processcraft_core::{
+        commands::{Request, Session, ShapeBounds},
+        ids::{ElementIdentity, ElementSelector, NativeElementId},
+    };
+    let (original, _) = session_fixture();
+    let mut project = (*original.snapshot().project).clone();
+    let doc = std::sync::Arc::make_mut(&mut project.documents[0]);
+    let node_native = NativeElementId::new();
+    let shape_native = NativeElementId::new();
+    let node = ElementSelector::Native {
+        native_id: node_native,
+    };
+    let shape = ElementSelector::Native {
+        native_id: shape_native,
+    };
+    let process = &mut doc.processes[0];
+    process
+        .nodes
+        .iter_mut()
+        .find(|n| n.id.to_string() == "start")
+        .unwrap()
+        .id = ElementIdentity::Native {
+        native_id: node_native,
+        xml_id: None,
+    };
+    for lane in &mut process.lanes {
+        for member in &mut lane.members {
+            if member.to_string() == "start" {
+                *member = node.clone();
+            }
+        }
+    }
+    for flow in &mut process.flows {
+        if flow.source.to_string() == "start" {
+            flow.source = node.clone();
+        }
+        if flow.target.to_string() == "start" {
+            flow.target = node.clone();
+        }
+    }
+    for diagram in &mut doc.diagrams {
+        for di in &mut diagram.shapes {
+            if di.element.to_string() == "start" {
+                di.element = node.clone();
+            }
+        }
+    }
+    let diagram = doc
+        .diagrams
+        .iter_mut()
+        .find(|d| d.id.to_string() == "diagram")
+        .unwrap();
+    let di = diagram
+        .shapes
+        .iter_mut()
+        .find(|s| s.id.to_string() == "shape_start")
+        .unwrap();
+    di.id = ElementIdentity::Native {
+        native_id: shape_native,
+        xml_id: None,
+    };
+    di.element = node;
+    project.validate().unwrap();
+    let mut session = Session::new(project).unwrap();
+    let before = session.snapshot();
+    let diagram_id: ElementSelector = "diagram".parse().unwrap();
+    let prepared = prepare_move(
+        &before.project.documents[0],
+        &diagram_id,
+        vec![ShapeBounds {
+            diagram_id: diagram_id.clone(),
+            shape_id: shape.clone(),
+            bounds: rect(2.0, 3.0, 10.0, 10.0),
+        }],
+    )
+    .unwrap();
+    apply_session(&mut session, prepared.request);
+    let after = session.snapshot();
+    let diagram = after.project.documents[0]
+        .diagrams
+        .iter()
+        .find(|d| d.id == diagram_id)
+        .unwrap();
+    assert_eq!(
+        diagram
+            .shapes
+            .iter()
+            .find(|s| s.id == shape)
+            .unwrap()
+            .bounds
+            .x,
+        2.0
+    );
+    assert_eq!(
+        coords(&diagram.edges[0].waypoints).first(),
+        Some(&(12.0, 8.0))
+    );
+    apply_session(&mut session, Request::Undo);
+    assert_eq!(session.snapshot().content_id, before.content_id);
+    apply_session(&mut session, Request::Redo);
+    assert_eq!(session.snapshot().content_id, after.content_id);
 }

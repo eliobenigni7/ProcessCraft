@@ -1,5 +1,5 @@
 //! Typed BPMN activity attributes. Values are model data, never executed.
-use crate::{bpmn_model::QNameRef, ids::XmlId};
+use crate::bpmn_model::QNameRef;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
@@ -20,7 +20,7 @@ pub struct ActivityProperties {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub completion_quantity: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub default_flow: Option<XmlId>,
+    pub default_flow: Option<crate::ids::ElementSelector>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub triggered_by_event: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

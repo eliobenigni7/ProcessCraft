@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:tns="urn:anonymous" xmlns:di="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" targetNamespace="urn:anonymous">
+  <process id="p" isExecutable="false"><task id="t"/><task/><task name=""/></process>
+  <di:BPMNDiagram><di:BPMNPlane bpmnElement="tns:p"><di:BPMNShape bpmnElement="tns:t"><dc:Bounds x="0" y="0" width="100" height="80"/></di:BPMNShape></di:BPMNPlane></di:BPMNDiagram>
+</definitions>

@@ -7,7 +7,7 @@ use egui::Sense;
 use egui::{Color32, Pos2, Rect, Vec2};
 use processcraft_core::{
     commands::{Mutation, Request},
-    ids::XmlId,
+    ids::{ElementSelector, XmlId},
     model::*,
 };
 use processcraft_render::Appearance;
@@ -93,12 +93,12 @@ fn diagram_extents(diagram: &Diagram) -> Option<(f64, f64, f64, f64)> {
     result
 }
 struct DragGesture {
-    items: Vec<(XmlId, Bounds)>,
+    items: Vec<(ElementSelector, Bounds)>,
     origin: Pos2,
     offset: Vec2,
 }
 impl DragGesture {
-    fn new(items: Vec<(XmlId, Bounds)>, origin: Pos2) -> Self {
+    fn new(items: Vec<(ElementSelector, Bounds)>, origin: Pos2) -> Self {
         Self {
             items,
             origin,
@@ -114,7 +114,7 @@ impl DragGesture {
 fn begin_drag(
     response: &egui::Response,
     ctx: &egui::Context,
-    items: Vec<(XmlId, Bounds)>,
+    items: Vec<(ElementSelector, Bounds)>,
 ) -> Option<DragGesture> {
     if response.drag_started() {
         ctx.input(|i| i.pointer.press_origin())
@@ -150,8 +150,8 @@ pub struct ProcessCraft {
     collaboration: collaboration::State,
     shell: shell::ShellState,
     doc: usize,
-    process_id: Option<XmlId>,
-    diagram_id: Option<XmlId>,
+    process_id: Option<ElementSelector>,
+    diagram_id: Option<ElementSelector>,
     view: u8,
     library_filter: String,
     dictionary_filter: String,
@@ -162,14 +162,18 @@ pub struct ProcessCraft {
     dictionary_name: String,
     dictionary_description: String,
     dictionary_kind: DictionaryKind,
-    selected: Option<XmlId>,
-    multi: Vec<XmlId>,
+    selected: Option<ElementSelector>,
+    multi: Vec<ElementSelector>,
     draft: String,
+    draft_name_present: bool,
     bpmn_details: Option<processcraft_core::bpmn_model::NodeDetails>,
     bpmn_loop: Option<processcraft_core::bpmn_model::LoopCharacteristics>,
     bpmn_activity: Option<processcraft_core::bpmn_activity::ActivityProperties>,
     project_name: String,
     document_name: String,
+    process_name: Option<String>,
+    collaboration_name: Option<String>,
+    diagram_name: Option<String>,
     definitions_draft: processcraft_core::model::DefinitionsMetadata,
     definitions_dirty: bool,
     problem_key: Option<(String, u64)>,
@@ -180,6 +184,8 @@ pub struct ProcessCraft {
     catalog_draft: Option<catalog::CatalogDraft>,
     binding_draft: Option<inspector::BindingDraft>,
     data_draft: Option<data::DataDraft>,
+    xml_id_draft: Option<inspector::XmlIdDraft>,
+    identity_page: usize,
     association_direction: Option<processcraft_core::bpmn_model::AssociationDirection>,
     connection_kind: FlowKind,
     owner: String,
@@ -192,6 +198,7 @@ pub struct ProcessCraft {
     right_width: f32,
     show_left: bool,
     show_right: bool,
+    create_anonymous: bool,
     renderer: crate::jobs::Renderer,
     recovery: crate::jobs::RecoveryWriter,
     recovery_records: Vec<processcraft_io::recovery::RecoveryRecord>,
@@ -227,6 +234,14 @@ impl Default for ProcessCraft {
                     Vec::new()
                 }
             };
+        let initial_process_name = ctl
+            .session
+            .snapshot()
+            .project
+            .documents
+            .first()
+            .and_then(|document| document.processes.first())
+            .and_then(|process| process.name.clone());
         Self {
             ctl,
             #[cfg(windows)]
@@ -255,11 +270,15 @@ impl Default for ProcessCraft {
             selected: None,
             multi: vec![],
             draft: String::new(),
+            draft_name_present: false,
             bpmn_details: None,
             bpmn_loop: None,
             bpmn_activity: None,
             project_name: "Untitled project".into(),
             document_name: "Untitled process".into(),
+            process_name: initial_process_name,
+            collaboration_name: None,
+            diagram_name: None,
             definitions_draft: empty_definitions_metadata(),
             definitions_dirty: false,
             problem_key: None,
@@ -270,6 +289,8 @@ impl Default for ProcessCraft {
             catalog_draft: None,
             binding_draft: None,
             data_draft: None,
+            xml_id_draft: None,
+            identity_page: 0,
             association_direction: None,
             connection_kind: FlowKind::Sequence,
             owner: String::new(),
@@ -282,6 +303,7 @@ impl Default for ProcessCraft {
             right_width: 300.0,
             show_left: true,
             show_right: true,
+            create_anonymous: false,
             renderer: crate::jobs::Renderer::new(),
             recovery: crate::jobs::RecoveryWriter::new(),
             recovery_records,
@@ -321,12 +343,13 @@ impl ProcessCraft {
     pub fn apply_theme(&self, ctx: &egui::Context) {
         self.theme.apply(ctx);
     }
-    fn select(&mut self, id: Option<XmlId>) {
+    fn select(&mut self, id: Option<ElementSelector>) {
         if (self.draft_dirty
             || self.expression_draft.is_some()
             || self.catalog_draft.is_some()
             || self.binding_draft.is_some()
-            || self.data_draft.is_some())
+            || self.data_draft.is_some()
+            || self.xml_id_draft.is_some())
             && !self.commit_draft()
         {
             return;
@@ -334,6 +357,7 @@ impl ProcessCraft {
         self.multi = id.clone().into_iter().collect();
         self.selected = id.clone();
         self.draft.clear();
+        self.draft_name_present = false;
         self.bpmn_details = None;
         self.bpmn_loop = None;
         self.bpmn_activity = None;
@@ -362,6 +386,22 @@ impl ProcessCraft {
             {
                 self.definitions_draft.target_namespace.clear();
             }
+            if let Some(document) = snap.project.documents.get(self.doc) {
+                self.process_name = document
+                    .processes
+                    .iter()
+                    .find(|process| self.process_id.as_ref().is_none_or(|id| process.id == *id))
+                    .and_then(|process| process.name.clone());
+                self.collaboration_name = document
+                    .collaboration
+                    .as_ref()
+                    .and_then(|collaboration| collaboration.name.clone());
+                self.diagram_name = document
+                    .diagrams
+                    .iter()
+                    .find(|diagram| self.diagram_id.as_ref().is_none_or(|id| diagram.id == *id))
+                    .and_then(|diagram| diagram.name.clone());
+            }
             self.document_name = snap
                 .project
                 .documents
@@ -376,7 +416,7 @@ impl ProcessCraft {
                         || p.lanes.iter().any(|l| l.id == *selected_id)
                         || p.flows.iter().any(|f| f.id == *selected_id)
                 }) {
-                    self.process_id = Some(process.id.clone());
+                    self.process_id = Some(process.id.selector());
                 }
                 let current_contains = d
                     .diagrams
@@ -392,13 +432,27 @@ impl ProcessCraft {
                             || diagram.edges.iter().any(|e| e.element == *selected_id)
                     })
                 {
-                    self.diagram_id = Some(diagram.id.clone());
+                    self.diagram_id = Some(diagram.id.selector());
                 }
             }
             for p in processcraft_core::queries::scopes(d) {
                 for n in p.nodes {
-                    if Some(&n.id) == id.as_ref() {
-                        self.draft = n.name.clone();
+                    if id
+                        .as_ref()
+                        .is_some_and(|selected| n.id.selector() == *selected)
+                    {
+                        self.draft_name_present = n.name.is_some();
+                        self.draft = n.name.clone().unwrap_or_default();
+                        if n.kind == NodeKind::TextAnnotation
+                            && let Some(
+                                processcraft_core::bpmn_model::NodeDetails::TextAnnotation {
+                                    text: Some(text),
+                                    ..
+                                },
+                            ) = &n.details
+                        {
+                            self.draft = text.clone();
+                        }
                         self.docs = n.documentation.clone();
                         self.is_node = true;
                         self.bpmn_details = n.details.clone();
@@ -409,13 +463,21 @@ impl ProcessCraft {
                     }
                 }
                 for lane in p.lanes {
-                    if Some(&lane.id) == id.as_ref() {
-                        self.draft = lane.name.clone();
+                    if id
+                        .as_ref()
+                        .is_some_and(|selected| lane.id.selector() == *selected)
+                    {
+                        self.draft_name_present = lane.name.is_some();
+                        self.draft = lane.name.clone().unwrap_or_default();
                     }
                 }
                 for f in p.flows {
-                    if Some(&f.id) == id.as_ref() {
-                        self.draft = f.name.clone();
+                    if id
+                        .as_ref()
+                        .is_some_and(|selected| f.id.selector() == *selected)
+                    {
+                        self.draft_name_present = f.name.is_some();
+                        self.draft = f.name.clone().unwrap_or_default();
                         self.docs = f.documentation.clone();
                         self.condition = f.condition.clone();
                         self.is_flow = true;
@@ -428,8 +490,12 @@ impl ProcessCraft {
             && let Some(c) = &d.collaboration
         {
             for participant in &c.participants {
-                if Some(&participant.id) == id.as_ref() {
-                    self.draft = participant.name.clone();
+                if id
+                    .as_ref()
+                    .is_some_and(|selected| participant.id.selector() == *selected)
+                {
+                    self.draft_name_present = participant.name.is_some();
+                    self.draft = participant.name.clone().unwrap_or_default();
                 }
             }
         }
@@ -443,6 +509,10 @@ impl ProcessCraft {
         );
     }
     fn commit_draft(&mut self) -> bool {
+        if self.xml_id_draft.is_some() {
+            self.ctl.error = "Apply or cancel the XML ID draft first.".into();
+            return false;
+        }
         if self.data_draft.is_some() {
             self.ctl.error = "Apply or cancel the data draft first.".into();
             return false;
@@ -465,11 +535,33 @@ impl ProcessCraft {
         if let Some(id) = self.selected.clone() {
             let snap = self.ctl.session.snapshot();
             if let Some(d) = snap.project.documents.get(self.doc) {
-                let mut mutations = vec![Mutation::Rename {
-                    document_id: d.id,
-                    element_id: id.clone(),
-                    name: self.draft.clone(),
-                }];
+                let annotation = processcraft_core::queries::find_node(d, &id)
+                    .filter(|node| node.kind == NodeKind::TextAnnotation);
+                let mut mutations = Vec::new();
+                if let Some(node) = annotation {
+                    let original = match &node.details {
+                        Some(processcraft_core::bpmn_model::NodeDetails::TextAnnotation {
+                            text,
+                            ..
+                        }) => text.as_deref().or(node.name.as_deref()).unwrap_or(""),
+                        _ => node.name.as_deref().unwrap_or(""),
+                    };
+                    if original != self.draft {
+                        mutations.push(Mutation::SetTextAnnotation {
+                            document_id: d.id,
+                            element_id: id.clone(),
+                            text: Some(self.draft.clone()),
+                        });
+                    }
+                } else if !processcraft_core::queries::find_flow(d, &id)
+                    .is_some_and(|flow| flow.kind == FlowKind::Association)
+                {
+                    mutations.push(Mutation::Rename {
+                        document_id: d.id,
+                        element_id: id.clone(),
+                        name: self.draft_name_present.then(|| self.draft.clone()),
+                    });
+                }
                 if self.is_node || self.is_flow {
                     mutations.push(Mutation::Documentation {
                         document_id: d.id,
@@ -539,6 +631,15 @@ impl ProcessCraft {
                 if !ok {
                     return false;
                 }
+                if self.is_node {
+                    let current = self.ctl.session.snapshot();
+                    self.bpmn_details = current
+                        .project
+                        .documents
+                        .get(self.doc)
+                        .and_then(|document| processcraft_core::queries::find_node(document, &id))
+                        .and_then(|node| node.details.clone());
+                }
             }
         }
         if self.selected.is_none() {
@@ -557,6 +658,38 @@ impl ProcessCraft {
                     folder: d.folder.clone(),
                 },
             ];
+            if let Some(process) = d
+                .processes
+                .iter()
+                .find(|process| self.process_id.as_ref().is_none_or(|id| process.id == *id))
+                && process.name != self.process_name
+            {
+                mutations.push(Mutation::Rename {
+                    document_id: d.id,
+                    element_id: process.id.selector(),
+                    name: self.process_name.clone(),
+                });
+            }
+            if let Some(collaboration) = &d.collaboration
+                && collaboration.name != self.collaboration_name
+            {
+                mutations.push(Mutation::SetCollaborationName {
+                    document_id: d.id,
+                    name: self.collaboration_name.clone(),
+                });
+            }
+            if let Some(diagram) = d
+                .diagrams
+                .iter()
+                .find(|diagram| self.diagram_id.as_ref().is_none_or(|id| diagram.id == *id))
+                && diagram.name != self.diagram_name
+            {
+                mutations.push(Mutation::SetDiagramName {
+                    document_id: d.id,
+                    diagram_id: diagram.id.selector(),
+                    name: self.diagram_name.clone(),
+                });
+            }
             if self.definitions_dirty {
                 if self.definitions_draft.target_namespace.is_empty() {
                     self.ctl.error =
@@ -586,9 +719,43 @@ impl ProcessCraft {
             self.ctl.error = "Post or discard the comment draft before using history.".into();
             return;
         }
-        if self.commit_draft() && self.commit_dictionary_draft() && self.ctl.apply(request) {
+        if self.commit_draft()
+            && self.commit_dictionary_draft()
+            && let Some(changes) = self.ctl.apply_changes(request)
+        {
+            self.remap_context(&changes.selector_mappings);
             self.restore_selection();
             self.refresh_dictionary_editor();
+        }
+    }
+    fn remap_context(&mut self, mappings: &[processcraft_core::commands::SelectorMapping]) {
+        self.collaboration.remap_selectors(mappings);
+        let document_id = self
+            .ctl
+            .session
+            .snapshot()
+            .project
+            .documents
+            .get(self.doc)
+            .map(|document| document.id);
+        for mapping in mappings
+            .iter()
+            .filter(|mapping| Some(mapping.document_id) == document_id)
+        {
+            for value in [
+                &mut self.process_id,
+                &mut self.diagram_id,
+                &mut self.selected,
+            ] {
+                if value.as_ref() == Some(&mapping.from) {
+                    *value = Some(mapping.to.clone());
+                }
+            }
+            for value in &mut self.multi {
+                if *value == mapping.from {
+                    *value = mapping.to.clone();
+                }
+            }
         }
     }
     fn restore_selection(&mut self) {
@@ -616,6 +783,7 @@ impl ProcessCraft {
             || self.catalog_draft.is_some()
             || self.binding_draft.is_some()
             || self.data_draft.is_some()
+            || self.xml_id_draft.is_some()
             || self.m3.has_draft()
             || self.draft_dirty
             || self.dictionary_draft_changed(&self.ctl.session.snapshot().project)
@@ -676,6 +844,7 @@ impl ProcessCraft {
         self.catalog_draft = None;
         self.binding_draft = None;
         self.data_draft = None;
+        self.xml_id_draft = None;
         self.definitions_dirty = false;
         self.draft_dirty = false;
     }
@@ -784,7 +953,11 @@ impl ProcessCraft {
         ) else {
             return;
         };
-        let eid = controller::id("Node");
+        let eid: processcraft_core::ids::ElementIdentity = if self.create_anonymous {
+            processcraft_core::ids::ElementIdentity::anonymous()
+        } else {
+            controller::id("Node").into()
+        };
         let event = matches!(
             kind,
             NodeKind::StartEvent
@@ -816,7 +989,10 @@ impl ProcessCraft {
         };
         let label = node_kind_label(kind);
         let details = if kind == NodeKind::TextAnnotation {
-            Some(processcraft_core::bpmn_model::NodeDetails::TextAnnotation { text_format: None })
+            Some(processcraft_core::bpmn_model::NodeDetails::TextAnnotation {
+                text_format: None,
+                text: Some(String::new()),
+            })
         } else if subprocess {
             Some(processcraft_core::bpmn_model::NodeDetails::SubProcess {
                 content: Box::new(FlowContainer::default()),
@@ -868,8 +1044,8 @@ impl ProcessCraft {
         };
         let shape = Shape {
             is_expanded: subprocess.then_some(true),
-            id: controller::id("Shape"),
-            element: eid.clone(),
+            id: controller::id("Shape").into(),
+            element: eid.selector(),
             bounds: Bounds {
                 x,
                 y,
@@ -894,7 +1070,7 @@ impl ProcessCraft {
         if self.ctl.mutate(vec![
             Mutation::CreateElement {
                 document_id: d.id,
-                process_id: p.id.clone(),
+                process_id: p.id.selector(),
                 element: Node {
                     item_aware: None,
                     activity: None,
@@ -902,7 +1078,7 @@ impl ProcessCraft {
                     loop_characteristics: None,
                     details,
                     id: eid.clone(),
-                    name: label.into(),
+                    name: (kind != NodeKind::TextAnnotation).then(|| label.into()),
                     documentation: String::new(),
                     kind,
                     owner: String::new(),
@@ -911,11 +1087,11 @@ impl ProcessCraft {
             },
             Mutation::CreateShape {
                 document_id: d.id,
-                diagram_id: diagram.id.clone(),
+                diagram_id: diagram.id.selector(),
                 shape,
             },
         ]) {
-            self.select(Some(eid));
+            self.select(Some(eid.selector()));
         }
     }
     fn add_pool(&mut self) {
@@ -938,11 +1114,12 @@ impl ProcessCraft {
         let collaboration_id = d
             .collaboration
             .as_ref()
-            .map_or_else(|| controller::id("Collaboration"), |c| c.id.clone());
+            .map_or_else(|| controller::id("Collaboration").into(), |c| c.id.clone());
         if d.collaboration.is_none() {
             batch.push(Mutation::CreateCollaboration {
                 document_id: d.id,
                 collaboration: Collaboration {
+                    name: None,
                     conversation_nodes: vec![],
                     conversation_links: vec![],
                     id: collaboration_id.clone(),
@@ -953,24 +1130,24 @@ impl ProcessCraft {
         }
         batch.push(Mutation::SetDiagramPlane {
             document_id: d.id,
-            diagram_id: diagram.id.clone(),
-            plane: collaboration_id,
+            diagram_id: diagram.id.selector(),
+            plane: collaboration_id.selector(),
         });
         batch.push(Mutation::CreateParticipant {
             document_id: d.id,
             participant: Participant {
-                id: participant.clone(),
-                name: "Pool".into(),
-                process: Some(p.id.clone()),
+                id: participant.clone().into(),
+                name: Some("Pool".into()),
+                process: Some(p.id.selector()),
             },
         });
         batch.push(Mutation::CreateShape {
             document_id: d.id,
-            diagram_id: diagram.id.clone(),
+            diagram_id: diagram.id.selector(),
             shape: Shape {
                 is_expanded: None,
-                id: controller::id("PoolShape"),
-                element: participant,
+                id: controller::id("PoolShape").into(),
+                element: participant.into(),
                 bounds: Bounds {
                     x: self.camera.0 + 20.0,
                     y: self.camera.1 + 60.0,
@@ -1003,22 +1180,22 @@ impl ProcessCraft {
         self.ctl.mutate(vec![
             Mutation::CreateLane {
                 document_id: d.id,
-                process_id: p.id.clone(),
+                process_id: p.id.selector(),
                 lane: Lane {
                     child_lane_set_id: None,
-                    id: lane.clone(),
-                    name: "Lane".into(),
+                    id: lane.clone().into(),
+                    name: Some("Lane".into()),
                     parent: None,
                     members: vec![],
                 },
             },
             Mutation::CreateShape {
                 document_id: d.id,
-                diagram_id: diagram.id.clone(),
+                diagram_id: diagram.id.selector(),
                 shape: Shape {
                     is_expanded: None,
-                    id: controller::id("LaneShape"),
-                    element: lane,
+                    id: controller::id("LaneShape").into(),
+                    element: lane.into(),
                     bounds: Bounds {
                         x: self.camera.0 + 30.0,
                         y,
@@ -1051,7 +1228,7 @@ impl ProcessCraft {
         let lane_id = if self.lane == 0 {
             None
         } else {
-            p.lanes.get(self.lane - 1).map(|l| l.id.clone())
+            p.lanes.get(self.lane - 1).map(|l| l.id.selector())
         };
         let bounds = d
             .diagrams
@@ -1062,21 +1239,21 @@ impl ProcessCraft {
                     .iter()
                     .filter(|s| s.element == element)
                     .map(move |s| processcraft_core::commands::ShapeBounds {
-                        diagram_id: diagram.id.clone(),
-                        shape_id: s.id.clone(),
+                        diagram_id: diagram.id.selector(),
+                        shape_id: s.id.selector(),
                         bounds: s.bounds.clone(),
                     })
             })
             .collect();
         self.ctl.mutate(vec![Mutation::AssignLane {
             document_id: d.id,
-            process_id: p.id.clone(),
+            process_id: p.id.selector(),
             element_id: element,
             lane_id,
             bounds,
         }]);
     }
-    fn move_shapes(&mut self, items: Vec<(XmlId, Bounds)>, dx: f64, dy: f64) {
+    fn move_shapes(&mut self, items: Vec<(ElementSelector, Bounds)>, dx: f64, dy: f64) {
         let snap = self.ctl.session.snapshot();
         let Some(d) = snap.project.documents.get(self.doc) else {
             return;
@@ -1094,13 +1271,13 @@ impl ProcessCraft {
                 bounds.x += dx;
                 bounds.y += dy;
                 processcraft_core::commands::ShapeBounds {
-                    diagram_id: diagram.id.clone(),
+                    diagram_id: diagram.id.selector(),
                     shape_id,
                     bounds,
                 }
             })
             .collect();
-        match processcraft_core::geometry::prepare_move(d, &diagram.id, bounds) {
+        match processcraft_core::geometry::prepare_move(d, &diagram.id.selector(), bounds) {
             Ok(prepared) => {
                 if self.ctl.apply(prepared.request) && !prepared.warnings.is_empty() {
                     self.ctl.error = prepared.warnings.join("; ");
@@ -1125,7 +1302,7 @@ impl ProcessCraft {
             .shapes
             .iter()
             .filter(|s| self.multi.contains(&s.element))
-            .map(|s| (s.id.clone(), s.bounds.clone()))
+            .map(|s| (s.id.selector(), s.bounds.clone()))
             .collect();
         self.move_shapes(items, dx, dy);
     }
@@ -1144,11 +1321,11 @@ impl ProcessCraft {
         ) else {
             return;
         };
-        let Some(flow) = p
-            .flows
-            .iter()
-            .find(|f| Some(&f.id) == self.selected.as_ref())
-        else {
+        let Some(flow) = p.flows.iter().find(|f| {
+            self.selected
+                .as_ref()
+                .is_some_and(|id| f.id.selector() == *id)
+        }) else {
             return;
         };
         let (Some(a), Some(b), Some(edge)) = (
@@ -1170,8 +1347,8 @@ impl ProcessCraft {
         ];
         self.ctl.mutate(vec![Mutation::Reroute {
             document_id: d.id,
-            diagram_id: diagram.id.clone(),
-            edge_id: edge.id.clone(),
+            diagram_id: diagram.id.selector(),
+            edge_id: edge.id.selector(),
             waypoints,
         }]);
         self.ctl.error = "Direct path applied; check for overlaps.".into();
@@ -1218,24 +1395,24 @@ impl ProcessCraft {
         self.ctl.mutate(vec![
             Mutation::CreateFlow {
                 document_id: d.id,
-                process_id: Some(p.id.clone()),
+                process_id: Some(p.id.selector()),
                 flow: Flow {
                     association_direction: None,
-                    id: eid.clone(),
+                    id: eid.clone().into(),
                     kind: self.connection_kind,
-                    source: a.id.clone(),
-                    target: b.id.clone(),
-                    name: String::new(),
+                    source: a.id.selector(),
+                    target: b.id.selector(),
+                    name: (self.connection_kind != FlowKind::Association).then(String::new),
                     documentation: String::new(),
                     condition: None,
                 },
             },
             Mutation::CreateEdge {
                 document_id: d.id,
-                diagram_id: diagram.id.clone(),
+                diagram_id: diagram.id.selector(),
                 edge: Edge {
-                    id: controller::id("Edge"),
-                    element: eid,
+                    id: controller::id("Edge").into(),
+                    element: eid.into(),
                     waypoints: points,
                     label: None,
                     style: None,
@@ -1685,7 +1862,7 @@ mod tests {
             draft: "Uncommitted".into(),
             draft_dirty: true,
             dictionary_name: "Draft entry".into(),
-            process_id: Some(controller::id("Process")),
+            process_id: Some(controller::id("Process").into()),
             ..Default::default()
         };
         let process = app.process_id.clone();
@@ -1787,8 +1964,8 @@ mod tests {
             io_specification: None,
             loop_characteristics: None,
             details: None,
-            id: node.clone(),
-            name: "Task".into(),
+            id: node.clone().into(),
+            name: Some("Task".into()),
             documentation: String::new(),
             kind: NodeKind::Task,
             owner: String::new(),
@@ -1796,8 +1973,8 @@ mod tests {
         });
         doc.diagrams[0].shapes.push(Shape {
             is_expanded: None,
-            id: shape.clone(),
-            element: node,
+            id: shape.clone().into(),
+            element: node.into(),
             bounds: Bounds {
                 x: 10.0,
                 y: 10.0,
@@ -1833,7 +2010,7 @@ mod tests {
                         let items = diagram
                             .shapes
                             .iter()
-                            .map(|s| (s.id.clone(), s.bounds.clone()))
+                            .map(|s| (s.id.selector(), s.bounds.clone()))
                             .collect();
                         drag = begin_drag(&response, ui.ctx(), items);
                     }
@@ -1848,15 +2025,18 @@ mod tests {
                                 bounds.x += done.offset.x as f64;
                                 bounds.y += done.offset.y as f64;
                                 processcraft_core::commands::ShapeBounds {
-                                    diagram_id: diagram.id.clone(),
+                                    diagram_id: diagram.id.selector(),
                                     shape_id,
                                     bounds,
                                 }
                             })
                             .collect();
-                        let prepared =
-                            processcraft_core::geometry::prepare_move(d, &diagram.id, bounds)
-                                .unwrap();
+                        let prepared = processcraft_core::geometry::prepare_move(
+                            d,
+                            &diagram.id.selector(),
+                            bounds,
+                        )
+                        .unwrap();
                         session
                             .apply(
                                 processcraft_core::commands::Envelope {
@@ -1900,6 +2080,7 @@ mod tests {
     #[test]
     fn fit_extents_include_external_label_and_edge() {
         let diagram = Diagram {
+            name: None,
             id: "Diagram".parse().unwrap(),
             plane_id: "Plane".parse().unwrap(),
             plane: "Process".parse().unwrap(),
@@ -2089,7 +2270,7 @@ mod tests {
         let mut project = crate::controller::blank_project();
         let document = std::sync::Arc::make_mut(&mut project.documents[0]);
         document.event_resources.push(EventResource::Message {
-            id: message.local.clone(),
+            id: message.local.clone().into(),
             name: None,
         });
         document.catalog.interfaces.push(Interface {
@@ -2097,7 +2278,7 @@ mod tests {
             name: "Service".into(),
             implementation_ref: None,
             operations: vec![Operation {
-                id: Some(operation.local.clone()),
+                id: Some(operation.local.clone().into()),
                 name: "Send".into(),
                 implementation_ref: None,
                 in_message_ref: message.clone(),
@@ -2122,6 +2303,214 @@ mod tests {
         );
         app.history(Request::Redo);
         assert_eq!(app.bpmn_activity, Some(properties));
+    }
+
+    #[test]
+    fn process_and_diagram_name_drafts_preserve_absent_and_empty() {
+        let mut app = ProcessCraft::default();
+        app.select(None);
+        app.process_name = None;
+        app.diagram_name = Some(String::new());
+        app.draft_dirty = true;
+        assert!(app.commit_draft(), "{}", app.ctl.error);
+        let snapshot = app.ctl.session.snapshot();
+        let document = &snapshot.project.documents[0];
+        assert!(document.processes[0].name.is_none());
+        assert_eq!(document.diagrams[0].name, Some(String::new()));
+        app.history(Request::Undo);
+        let snapshot = app.ctl.session.snapshot();
+        assert_eq!(
+            snapshot.project.documents[0].processes[0].name.as_deref(),
+            Some("Process")
+        );
+        assert!(snapshot.project.documents[0].diagrams[0].name.is_none());
+        app.history(Request::Redo);
+        let snapshot = app.ctl.session.snapshot();
+        assert!(snapshot.project.documents[0].processes[0].name.is_none());
+        assert_eq!(
+            snapshot.project.documents[0].diagrams[0].name,
+            Some(String::new())
+        );
+    }
+
+    #[test]
+    fn process_and_diagram_context_follow_id_changes_and_history() {
+        let mut app = ProcessCraft::default();
+        let snapshot = app.ctl.session.snapshot();
+        let document = &snapshot.project.documents[0];
+        let document_id = document.id;
+        let process = document.processes[0].id.selector();
+        let diagram = document.diagrams[0].id.selector();
+        app.process_id = Some(process.clone());
+        app.diagram_id = Some(diagram.clone());
+        let changes = app
+            .ctl
+            .mutate_changes(vec![Mutation::SetElementXmlId {
+                document_id,
+                element_id: process.clone(),
+                xml_id: Some("RenamedProcess".parse().unwrap()),
+            }])
+            .expect("process ID change");
+        app.remap_context(&changes.selector_mappings);
+        let renamed = app.process_id.clone().unwrap();
+        assert!(matches!(renamed, ElementSelector::Native { .. }));
+        assert_ne!(renamed, process);
+        assert_eq!(app.diagram_id, Some(diagram));
+        app.history(Request::Undo);
+        assert_eq!(app.process_id, Some(process));
+        app.history(Request::Redo);
+        assert_eq!(app.process_id, Some(renamed));
+    }
+
+    #[test]
+    fn anonymous_node_selection_name_and_xml_id_survive_history() {
+        let mut app = ProcessCraft {
+            create_anonymous: true,
+            ..Default::default()
+        };
+        app.add(NodeKind::Task);
+        let selected = app.selected.clone().expect("anonymous node selected");
+        assert!(matches!(selected, ElementSelector::Native { .. }));
+        let snapshot = app.ctl.session.snapshot();
+        let document = &snapshot.project.documents[0];
+        assert!(
+            processcraft_core::queries::element_identity(document, &selected)
+                .unwrap()
+                .xml_id()
+                .is_none()
+        );
+        app.draft_name_present = false;
+        app.draft_dirty = true;
+        assert!(app.commit_draft(), "{}", app.ctl.error);
+        assert!(
+            processcraft_core::queries::find_node(
+                &app.ctl.session.snapshot().project.documents[0],
+                &selected
+            )
+            .unwrap()
+            .name
+            .is_none()
+        );
+        let document_id = app.ctl.session.snapshot().project.documents[0].id;
+        assert!(
+            app.ctl.mutate(vec![Mutation::SetElementXmlId {
+                document_id,
+                element_id: selected.clone(),
+                xml_id: Some("TaskId".parse().unwrap())
+            }]),
+            "{}",
+            app.ctl.error
+        );
+        app.restore_selection();
+        assert_eq!(app.selected, Some(selected.clone()));
+        app.history(Request::Undo);
+        assert_eq!(app.selected, Some(selected.clone()));
+        assert!(
+            processcraft_core::queries::element_identity(
+                &app.ctl.session.snapshot().project.documents[0],
+                &selected
+            )
+            .unwrap()
+            .xml_id()
+            .is_none()
+        );
+        app.history(Request::Redo);
+        assert_eq!(
+            processcraft_core::queries::element_identity(
+                &app.ctl.session.snapshot().project.documents[0],
+                &selected
+            )
+            .unwrap()
+            .xml_id()
+            .unwrap()
+            .to_string(),
+            "TaskId"
+        );
+    }
+
+    #[test]
+    fn legacy_annotation_fallback_is_preserved_until_body_edit() {
+        use processcraft_core::bpmn_model::NodeDetails;
+        let mut project = controller::blank_project();
+        let document = std::sync::Arc::make_mut(&mut project.documents[0]);
+        document.processes[0].nodes.push(Node {
+            id: "Note".parse().unwrap(),
+            name: Some("Old body".into()),
+            documentation: String::new(),
+            kind: NodeKind::TextAnnotation,
+            item_aware: None,
+            details: Some(NodeDetails::TextAnnotation {
+                text_format: None,
+                text: None,
+            }),
+            loop_characteristics: None,
+            io_specification: None,
+            activity: None,
+            owner: String::new(),
+            contact: String::new(),
+        });
+        let mut app = ProcessCraft::default();
+        app.ctl.session = processcraft_core::commands::Session::new(project).unwrap();
+        let selected: ElementSelector = "Note".parse().unwrap();
+        app.select(Some(selected.clone()));
+        assert_eq!(app.draft, "Old body");
+        app.docs = "Description".into();
+        app.draft_dirty = true;
+        assert!(app.commit_draft(), "{}", app.ctl.error);
+        let snapshot = app.ctl.session.snapshot();
+        let node = processcraft_core::queries::find_node(&snapshot.project.documents[0], &selected)
+            .unwrap();
+        assert_eq!(node.name.as_deref(), Some("Old body"));
+        assert!(matches!(
+            &node.details,
+            Some(NodeDetails::TextAnnotation { text: None, .. })
+        ));
+        app.draft = "New body".into();
+        app.draft_dirty = true;
+        assert!(app.commit_draft(), "{}", app.ctl.error);
+        let snapshot = app.ctl.session.snapshot();
+        let node = processcraft_core::queries::find_node(&snapshot.project.documents[0], &selected)
+            .unwrap();
+        assert!(node.name.is_none());
+        assert!(
+            matches!(&node.details, Some(NodeDetails::TextAnnotation { text: Some(text), .. }) if text == "New body")
+        );
+        app.history(Request::Undo);
+        assert_eq!(app.draft, "Old body");
+    }
+
+    #[test]
+    fn annotation_body_draft_does_not_create_a_name() {
+        use processcraft_core::bpmn_model::NodeDetails;
+        let mut app = ProcessCraft::default();
+        app.add(NodeKind::TextAnnotation);
+        let selected = app.selected.clone().unwrap();
+        app.draft = "A note".into();
+        app.draft_dirty = true;
+        assert!(app.commit_draft(), "{}", app.ctl.error);
+        let snapshot = app.ctl.session.snapshot();
+        let node = processcraft_core::queries::find_node(&snapshot.project.documents[0], &selected)
+            .unwrap();
+        assert!(node.name.is_none());
+        assert!(
+            matches!(&node.details, Some(NodeDetails::TextAnnotation { text: Some(text), .. }) if text == "A note")
+        );
+        app.docs = "Description".into();
+        app.draft_dirty = true;
+        assert!(app.commit_draft(), "{}", app.ctl.error);
+        let snapshot = app.ctl.session.snapshot();
+        assert!(
+            matches!(&processcraft_core::queries::find_node(&snapshot.project.documents[0], &selected).unwrap().details, Some(NodeDetails::TextAnnotation { text: Some(text), .. }) if text == "A note")
+        );
+        app.history(Request::Undo);
+        app.history(Request::Redo);
+        let snapshot = app.ctl.session.snapshot();
+        let node = processcraft_core::queries::find_node(&snapshot.project.documents[0], &selected)
+            .unwrap();
+        assert!(node.name.is_none());
+        assert!(
+            matches!(&node.details, Some(NodeDetails::TextAnnotation { text: Some(text), .. }) if text == "A note")
+        );
     }
 
     #[test]

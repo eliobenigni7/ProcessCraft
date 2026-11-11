@@ -1,14 +1,16 @@
 use processcraft_core::{
     commands::{Envelope, Mutation, Request, Session},
     geometry::hit_shape,
-    ids::XmlId,
     model::*,
 };
 use processcraft_io::{Access, FileGrant, FileSession, ProjectSaveOutcome, native};
 use processcraft_render::{Appearance, BpmnScene, TextEngine};
 use serde_json::{Value, json};
 use std::{error::Error, fs, hint::black_box, path::PathBuf, sync::Arc, time::Instant};
-fn id(s: &str) -> XmlId {
+fn id<T: std::str::FromStr>(s: &str) -> T
+where
+    T::Err: std::fmt::Debug,
+{
     s.parse().unwrap()
 }
 fn fixture(docs: usize, nodes: usize, active: usize, resource: usize) -> ProjectData {
@@ -51,7 +53,7 @@ fn fixture(docs: usize, nodes: usize, active: usize, resource: usize) -> Project
                 loop_characteristics: None,
                 details: None,
                 id: id(&key),
-                name: format!("Task {i}"),
+                name: Some(format!("Task {i}")),
                 documentation: String::new(),
                 kind: NodeKind::Task,
                 owner: String::new(),
@@ -74,19 +76,21 @@ fn fixture(docs: usize, nodes: usize, active: usize, resource: usize) -> Project
             }
         }
         d.processes.push(Process {
+            is_executable: Some(false),
             io_specification: None,
             lane_set_id: None,
             groups: vec![],
             data_objects: vec![],
             data_associations: vec![],
             id: id("process"),
-            name: "Process".into(),
+            name: Some("Process".into()),
             documentation: String::new(),
             nodes: ns,
             lanes: vec![],
             flows: vec![],
         });
         d.diagrams.push(Diagram {
+            name: None,
             id: id("diagram"),
             plane_id: id("plane"),
             plane: id("process"),
@@ -167,7 +171,7 @@ fn run() -> Result<(), Box<dyn Error>> {
                     mutations: vec![Mutation::Rename {
                         document_id: did,
                         element_id: id("node_0"),
-                        name: format!("Renamed {seq}"),
+                        name: Some(format!("Renamed {seq}")),
                     }],
                 },
             )
@@ -190,7 +194,13 @@ fn run() -> Result<(), Box<dyn Error>> {
             .iter()
             .flat_map(|d| d.processes.iter())
             .flat_map(|p| p.nodes.iter())
-            .filter(|n| n.name.to_lowercase().contains("task 2"))
+            .filter(|n| {
+                n.name
+                    .as_deref()
+                    .unwrap_or("")
+                    .to_lowercase()
+                    .contains("task 2")
+            })
             .count();
         black_box(found);
         Ok(())
@@ -242,7 +252,7 @@ fn run() -> Result<(), Box<dyn Error>> {
                     mutations: vec![Mutation::Rename {
                         document_id: did,
                         element_id: id("node_0"),
-                        name: format!("Renamed {seq}"),
+                        name: Some(format!("Renamed {seq}")),
                     }],
                 },
             )

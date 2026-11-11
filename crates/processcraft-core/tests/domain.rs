@@ -3,20 +3,24 @@ use processcraft_core::{
     model::*,
 };
 
-fn id(s: &str) -> XmlId {
+fn id<T: std::str::FromStr>(s: &str) -> T
+where
+    T::Err: std::fmt::Debug,
+{
     s.parse().unwrap()
 }
 fn sample() -> ProjectData {
     let mut p = ProjectData::new("Project".into());
     let mut d = BpmnDocument::new("Document".into(), id("defs"));
     d.processes.push(Process {
+        is_executable: Some(false),
         io_specification: None,
         lane_set_id: None,
         groups: vec![],
         data_objects: vec![],
         data_associations: vec![],
         id: id("process"),
-        name: String::new(),
+        name: Some(String::new()),
         documentation: String::new(),
         nodes: vec![Node {
             item_aware: None,
@@ -25,7 +29,7 @@ fn sample() -> ProjectData {
             loop_characteristics: None,
             details: None,
             id: id("task"),
-            name: "Task".into(),
+            name: Some("Task".into()),
             documentation: String::new(),
             kind: NodeKind::Task,
             owner: String::new(),
@@ -65,7 +69,7 @@ fn lane_membership_is_not_a_duplicate_node() {
         .push(Lane {
             child_lane_set_id: None,
             id: id("lane"),
-            name: String::new(),
+            name: Some(String::new()),
             parent: None,
             members: vec![id("task")],
         });
@@ -90,6 +94,7 @@ fn multiple_diagrams_share_semantics() {
     std::sync::Arc::make_mut(&mut p.documents[0])
         .diagrams
         .push(Diagram {
+            name: None,
             id: id("diagram"),
             plane_id: id("diagram_plane"),
             plane: id("process"),
@@ -101,6 +106,7 @@ fn multiple_diagrams_share_semantics() {
     std::sync::Arc::make_mut(&mut p.documents[0])
         .diagrams
         .push(Diagram {
+            name: None,
             id: id("diagram2"),
             plane_id: id("diagram2_plane"),
             plane: id("process"),
@@ -117,7 +123,7 @@ fn invalid_reference_is_rejected() {
         .push(Lane {
             child_lane_set_id: None,
             id: id("lane"),
-            name: String::new(),
+            name: Some(String::new()),
             parent: None,
             members: vec![id("missing")],
         });
@@ -157,6 +163,7 @@ fn geometry_must_be_finite_and_negative_zero_is_canonical() {
     std::sync::Arc::make_mut(&mut p.documents[0])
         .diagrams
         .push(Diagram {
+            name: None,
             id: id("d"),
             plane_id: id("d_plane"),
             plane: id("process"),
@@ -184,7 +191,7 @@ fn incomplete_process_and_cycles_in_sequence_are_valid() {
             kind: FlowKind::Sequence,
             source: id("task"),
             target: id("task"),
-            name: String::new(),
+            name: Some(String::new()),
             documentation: String::new(),
             condition: None,
         });
@@ -222,7 +229,7 @@ fn endpoint_plane_and_resource_boundaries() {
             kind: FlowKind::Sequence,
             source: id("task"),
             target: id("task"),
-            name: String::new(),
+            name: Some(String::new()),
             documentation: String::new(),
             condition: None,
         });
@@ -237,6 +244,7 @@ fn endpoint_plane_and_resource_boundaries() {
     std::sync::Arc::make_mut(&mut p.documents[0])
         .diagrams
         .push(Diagram {
+            name: None,
             id: id("diagram"),
             plane_id: id("diagram_plane"),
             plane: id("missing"),
@@ -291,6 +299,7 @@ fn identity_changes_for_persistent_categories() {
     std::sync::Arc::make_mut(&mut p.documents[0])
         .diagrams
         .push(Diagram {
+            name: None,
             id: id("diagram"),
             plane_id: id("diagram_plane"),
             plane: id("process"),
@@ -395,6 +404,7 @@ fn plane_identity_is_unique_and_persistent() {
     std::sync::Arc::make_mut(&mut p.documents[0])
         .diagrams
         .push(Diagram {
+            name: None,
             id: id("diagram"),
             plane_id: id("plane"),
             plane: id("process"),
@@ -424,4 +434,50 @@ fn deep_folder_chain_and_cycle_are_checked_iteratively() {
     assert!(p.validate().is_ok());
     p.folders[0].parent = Some(id("f9999"));
     assert!(p.validate().is_err());
+}
+
+#[test]
+fn collaboration_and_diagram_names_preserve_omission_and_empty_values() {
+    let mut project = sample();
+    let doc = std::sync::Arc::make_mut(&mut project.documents[0]);
+    doc.collaboration = Some(Collaboration {
+        name: None,
+        id: id("collaboration"),
+        participants: vec![],
+        flows: vec![],
+        conversation_nodes: vec![],
+        conversation_links: vec![],
+    });
+    doc.diagrams.push(Diagram {
+        name: None,
+        id: id("diagram"),
+        plane_id: id("plane"),
+        plane: id("process"),
+        shapes: vec![],
+        edges: vec![],
+    });
+    let omitted = serde_json::to_value(&project).unwrap();
+    assert!(
+        omitted["documents"][0]["collaboration"]
+            .get("name")
+            .is_none()
+    );
+    assert!(omitted["documents"][0]["diagrams"][0].get("name").is_none());
+    let doc = std::sync::Arc::make_mut(&mut project.documents[0]);
+    doc.collaboration.as_mut().unwrap().name = Some(String::new());
+    doc.diagrams[0].name = Some(String::new());
+    let explicit = serde_json::to_value(&project).unwrap();
+    assert_eq!(explicit["documents"][0]["collaboration"]["name"], "");
+    assert_eq!(explicit["documents"][0]["diagrams"][0]["name"], "");
+    let restored: ProjectData = serde_json::from_value(explicit).unwrap();
+    assert_eq!(
+        restored.documents[0]
+            .collaboration
+            .as_ref()
+            .unwrap()
+            .name
+            .as_deref(),
+        Some("")
+    );
+    assert_eq!(restored.documents[0].diagrams[0].name.as_deref(), Some(""));
 }

@@ -432,12 +432,33 @@ fn bounded_page(
 
 fn query_project(path: &Path, query: Query) -> Result<(), Error> {
     use processcraft_core::{
-        ids::{DictionaryEntryId, DocumentId, XmlId},
+        ids::{DictionaryEntryId, DocumentId, ElementSelector},
         queries,
     };
     let loaded = native::load_bytes(&read(path)?).map_err(|e| error(3, e))?;
     let project = &loaded.project;
     let result = match query {
+        Query::Identities {
+            document_id,
+            offset,
+            limit,
+        } => {
+            let document: DocumentId = document_id.parse().map_err(|e| error(2, e))?;
+            let rows = queries::identified_elements(project, document)
+                .ok_or_else(|| error(3, "document not found"))?;
+            let total = rows.len();
+            let mut page = bounded_page(
+                rows.into_iter()
+                    .skip(offset)
+                    .take(limit)
+                    .map(|row| json!(row)),
+                total,
+                offset,
+                limit,
+            )?;
+            page["contentId"] = json!(project.content_identity().map_err(|e| error(3, e))?);
+            page
+        }
         Query::Data {
             document_id,
             offset,
@@ -510,7 +531,7 @@ fn query_project(path: &Path, query: Query) -> Result<(), Error> {
             process_id,
         } => {
             let document: DocumentId = document_id.parse().map_err(|e| error(2, e))?;
-            let process: XmlId = process_id.parse().map_err(|e| error(2, e))?;
+            let process: ElementSelector = process_id.parse().map_err(|e| error(2, e))?;
             let rows = queries::activity_table(project, document, &process)
                 .ok_or_else(|| error(3, "process not found"))?;
             let rows: Vec<_> = rows.into_iter().map(|row| json!({"key":row.key,"name":row.name,"lane":row.lane,"role":row.role,"systems":row.systems,"documents":row.documents,"outgoing":row.outgoing.into_iter().map(|flow| json!({"id":flow.id,"target":flow.target,"condition":flow.condition})).collect::<Vec<_>>() })).collect();

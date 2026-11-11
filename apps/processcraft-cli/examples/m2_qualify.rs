@@ -1,7 +1,7 @@
 use processcraft_core::{
     commands::{Envelope, Mutation, Request, Session},
     geometry::hit_shape,
-    ids::{ElementKey, XmlId},
+    ids::ElementKey,
     model::*,
     queries,
 };
@@ -10,7 +10,10 @@ use processcraft_render::{Appearance, BpmnScene, TextEngine};
 use serde_json::{Value, json};
 use sha2::Digest;
 use std::{error::Error, fs, hint::black_box, path::PathBuf, sync::Arc, time::Instant};
-fn id(s: &str) -> XmlId {
+fn id<T: std::str::FromStr>(s: &str) -> T
+where
+    T::Err: std::fmt::Debug,
+{
     s.parse().unwrap()
 }
 fn fixture(docs: usize, nodes: usize, active: usize, resource: usize) -> ProjectData {
@@ -53,7 +56,7 @@ fn fixture(docs: usize, nodes: usize, active: usize, resource: usize) -> Project
                 loop_characteristics: None,
                 details: None,
                 id: id(&key),
-                name: format!("Task {i}"),
+                name: Some(format!("Task {i}")),
                 documentation: String::new(),
                 kind: NodeKind::Task,
                 owner: String::new(),
@@ -76,19 +79,21 @@ fn fixture(docs: usize, nodes: usize, active: usize, resource: usize) -> Project
             }
         }
         d.processes.push(Process {
+            is_executable: Some(false),
             io_specification: None,
             lane_set_id: None,
             groups: vec![],
             data_objects: vec![],
             data_associations: vec![],
             id: id("process"),
-            name: "Process".into(),
+            name: Some("Process".into()),
             documentation: String::new(),
             nodes: ns,
             lanes: vec![],
             flows: vec![],
         });
         d.diagrams.push(Diagram {
+            name: None,
             id: id("diagram"),
             plane_id: id("plane"),
             plane: id("process"),
@@ -119,24 +124,24 @@ fn fixture(docs: usize, nodes: usize, active: usize, resource: usize) -> Project
             let d = Arc::make_mut(d);
             let process = &mut d.processes[0];
             for lane in 0..5 {
-                let lane_id = id(&format!("lane_{lane}"));
+                let lane_id: processcraft_core::ids::ElementIdentity = id(&format!("lane_{lane}"));
                 process.lanes.push(Lane {
                     child_lane_set_id: None,
                     id: lane_id.clone(),
-                    name: format!("Lane {lane}"),
+                    name: Some(format!("Lane {lane}")),
                     parent: None,
                     members: process
                         .nodes
                         .iter()
                         .skip(lane)
                         .step_by(5)
-                        .map(|n| n.id.clone())
+                        .map(|n| n.id.selector())
                         .collect(),
                 });
                 p.dictionary_links.push(DictionaryLink {
                     source: ElementKey {
                         document_id: d.id,
-                        xml_id: lane_id,
+                        xml_id: lane_id.selector(),
                     },
                     kind: DictionaryKind::Role,
                     target: DictionaryTarget::Entry(p.dictionary_entries[lane].id),
@@ -147,7 +152,7 @@ fn fixture(docs: usize, nodes: usize, active: usize, resource: usize) -> Project
                     p.dictionary_links.push(DictionaryLink {
                         source: ElementKey {
                             document_id: d.id,
-                            xml_id: n.id.clone(),
+                            xml_id: n.id.selector(),
                         },
                         kind: *kind,
                         target: DictionaryTarget::Entry(p.dictionary_entries[k * 10 + i % 10].id),
@@ -158,9 +163,9 @@ fn fixture(docs: usize, nodes: usize, active: usize, resource: usize) -> Project
                         association_direction: None,
                         id: id(&format!("flow_{i}")),
                         kind: FlowKind::Sequence,
-                        source: n.id.clone(),
-                        target: process.nodes[i + 1].id.clone(),
-                        name: format!("Branch {i}"),
+                        source: n.id.selector(),
+                        target: process.nodes[i + 1].id.selector(),
+                        name: Some(format!("Branch {i}")),
                         documentation: "Qualification flow".into(),
                         condition: Some(format!("amount > {i}").into()),
                     });
@@ -219,7 +224,7 @@ fn run() -> Result<(), Box<dyn Error>> {
                         mutations: vec![Mutation::Rename {
                             document_id: did,
                             element_id: id("node_0"),
-                            name: format!("Renamed {seq}"),
+                            name: Some(format!("Renamed {seq}")),
                         }],
                     },
                 )
@@ -282,7 +287,7 @@ fn run() -> Result<(), Box<dyn Error>> {
                     mutations: vec![Mutation::Rename {
                         document_id: did,
                         element_id: id("node_0"),
-                        name: format!("Renamed {seq}"),
+                        name: Some(format!("Renamed {seq}")),
                     }],
                 },
             )
@@ -332,7 +337,13 @@ fn run() -> Result<(), Box<dyn Error>> {
             .iter()
             .flat_map(|d| d.processes.iter())
             .flat_map(|p| p.nodes.iter())
-            .filter(|n| n.name.to_lowercase().contains("task 2"))
+            .filter(|n| {
+                n.name
+                    .as_deref()
+                    .unwrap_or("")
+                    .to_lowercase()
+                    .contains("task 2")
+            })
             .count();
         black_box(found);
         Ok(())
@@ -384,7 +395,7 @@ fn run() -> Result<(), Box<dyn Error>> {
                     mutations: vec![Mutation::Rename {
                         document_id: did,
                         element_id: id("node_0"),
-                        name: format!("Renamed {seq}"),
+                        name: Some(format!("Renamed {seq}")),
                     }],
                 },
             )

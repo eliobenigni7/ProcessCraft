@@ -259,9 +259,10 @@ fn historical_unresolved_activity_bindings_round_trip_without_new_capabilities()
         })
     };
     doc.processes.push(Process {
+        is_executable: Some(false),
         io_specification: None,
         id: "process".parse().unwrap(),
-        name: String::new(),
+        name: Some(String::new()),
         documentation: String::new(),
         lane_set_id: None,
         groups: vec![],
@@ -270,7 +271,7 @@ fn historical_unresolved_activity_bindings_round_trip_without_new_capabilities()
         nodes: vec![Node {
             item_aware: None,
             id: "task".parse().unwrap(),
-            name: String::new(),
+            name: Some(String::new()),
             documentation: String::new(),
             kind: NodeKind::SendTask,
             details: None,
@@ -597,7 +598,7 @@ fn structured_expression_capability_covers_live_and_checkpoint_documents() {
     let node = |id: &str| Node {
         item_aware: None,
         id: id.parse().unwrap(),
-        name: String::new(),
+        name: Some(String::new()),
         documentation: String::new(),
         kind: NodeKind::Task,
         details: None,
@@ -609,9 +610,10 @@ fn structured_expression_capability_covers_live_and_checkpoint_documents() {
     };
     let mut doc = BpmnDocument::new("document".into(), "defs".parse().unwrap());
     doc.processes.push(Process {
+        is_executable: Some(false),
         io_specification: None,
         id: "process".parse().unwrap(),
-        name: String::new(),
+        name: Some(String::new()),
         documentation: String::new(),
         lane_set_id: None,
         groups: vec![],
@@ -624,7 +626,7 @@ fn structured_expression_capability_covers_live_and_checkpoint_documents() {
             kind: FlowKind::Sequence,
             source: "a".parse().unwrap(),
             target: "b".parse().unwrap(),
-            name: String::new(),
+            name: Some(String::new()),
             documentation: String::new(),
             association_direction: None,
             condition: Some(Expression::Legacy("x".into())),
@@ -760,9 +762,10 @@ fn compensation_event_capability_covers_live_and_checkpoint_documents() {
         cancel_activity: None,
     };
     doc.processes.push(Process {
+        is_executable: Some(false),
         io_specification: None,
         id: "process".parse().unwrap(),
-        name: String::new(),
+        name: Some(String::new()),
         documentation: String::new(),
         lane_set_id: None,
         groups: vec![],
@@ -771,7 +774,7 @@ fn compensation_event_capability_covers_live_and_checkpoint_documents() {
         nodes: vec![Node {
             item_aware: None,
             id: "event".parse().unwrap(),
-            name: String::new(),
+            name: Some(String::new()),
             documentation: String::new(),
             kind: NodeKind::IntermediateThrowEvent,
             details: Some(details.clone()),
@@ -1033,19 +1036,20 @@ fn schema_two_round_trips_dictionary_entries() {
     });
     let mut doc = BpmnDocument::new("document".into(), "defs".parse().unwrap());
     doc.processes.push(Process {
+        is_executable: Some(false),
         io_specification: None,
         lane_set_id: None,
         groups: vec![],
         data_objects: vec![],
         data_associations: vec![],
         id: "process".parse().unwrap(),
-        name: String::new(),
+        name: Some(String::new()),
         documentation: String::new(),
         nodes: vec![],
         lanes: vec![Lane {
             child_lane_set_id: None,
             id: "lane".parse().unwrap(),
-            name: String::new(),
+            name: Some(String::new()),
             parent: None,
             members: vec![],
         }],
@@ -1208,4 +1212,250 @@ fn twenty_checkpoints_share_large_resource_and_round_trip_with_bounded_archive()
     };
     p.checkpoints.push(extra);
     assert!(write_bytes(&p).is_err());
+}
+
+#[test]
+fn native_identity_capability_covers_live_and_checkpoint_documents() {
+    use processcraft_core::{
+        commands::{Envelope, Mutation, Request, Session},
+        ids::ElementSelector,
+        model::FrozenProject,
+    };
+    let bytes =
+        include_bytes!("../../../tests/fixtures/native/identity-baseline-2f0f770.processcraft");
+    let original = load_bytes(bytes).unwrap().project;
+    let mut session = Session::new(original.clone()).unwrap();
+    let document_id = original.documents[0].id;
+    let result = session
+        .apply(
+            Envelope {
+                request_id: "identity".into(),
+                session_id: session.id(),
+                expected_generation: Some(0),
+            },
+            Request::Batch {
+                mutations: vec![Mutation::SetElementXmlId {
+                    document_id,
+                    element_id: "task".parse().unwrap(),
+                    xml_id: None,
+                }],
+            },
+        )
+        .unwrap();
+    assert!(matches!(
+        result.selector_mappings[0].to,
+        ElementSelector::Native { .. }
+    ));
+    let mut project = (*session.snapshot().project).clone();
+    let live = write_bytes(&project).unwrap();
+    let mut archived = entries(&live);
+    let manifest: serde_json::Value = serde_json::from_slice(
+        &archived
+            .iter()
+            .find(|(name, _)| name == "manifest.json")
+            .unwrap()
+            .1,
+    )
+    .unwrap();
+    assert!(
+        manifest["required_capabilities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|value| value == "bpmn-native-element-identity")
+    );
+    assert_eq!(
+        load_bytes(&live)
+            .unwrap()
+            .project
+            .content_identity()
+            .unwrap(),
+        project.content_identity().unwrap()
+    );
+    edit_json(&mut archived, "manifest.json", |value| {
+        value["required_capabilities"] =
+            serde_json::json!(["comments", "checkpoints", "bpmn-supporting-catalog"])
+    });
+    assert!(
+        load_bytes(&archive(&archived))
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("native element identities require capability")
+    );
+    project.checkpoints[0].content = FrozenProject::capture(&project);
+    project.documents = original.documents;
+    project.links = original.links;
+    project.dictionary_links = original.dictionary_links;
+    project.comments = original.comments;
+    let frozen = write_bytes(&project).unwrap();
+    let mut archived = entries(&frozen);
+    assert_eq!(
+        load_bytes(&frozen)
+            .unwrap()
+            .project
+            .content_identity()
+            .unwrap(),
+        project.content_identity().unwrap()
+    );
+    edit_json(&mut archived, "manifest.json", |value| {
+        value["required_capabilities"] =
+            serde_json::json!(["comments", "checkpoints", "bpmn-supporting-catalog"])
+    });
+    assert!(
+        load_bytes(&archive(&archived))
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("native element identities require capability")
+    );
+}
+
+#[test]
+fn identity_capability_covers_independent_new_fields() {
+    use processcraft_core::{
+        bpmn_model::{EventResource, NodeDetails},
+        ids::{CommentId, ElementKey, ElementSelector, NativeElementId},
+        model::{
+            BpmnDocument, Checkpoint, Collaboration, Comment, Diagram, FrozenProject, Node,
+            NodeKind, Process,
+        },
+    };
+    let mut base = ProjectData::new("features".into());
+    let mut doc = BpmnDocument::new("doc".into(), "defs".parse().unwrap());
+    doc.event_resources.push(EventResource::Message {
+        id: "message".parse().unwrap(),
+        name: None,
+    });
+    doc.processes.push(Process {
+        id: "process".parse().unwrap(),
+        name: Some("Process".into()),
+        documentation: String::new(),
+        is_executable: Some(false),
+        io_specification: None,
+        lane_set_id: None,
+        groups: vec![],
+        data_objects: vec![],
+        data_associations: vec![],
+        nodes: vec![],
+        lanes: vec![],
+        flows: vec![],
+    });
+    base.documents.push(Arc::new(doc));
+    let caps = |bytes: &[u8]| -> serde_json::Value {
+        let e = entries(bytes);
+        serde_json::from_slice(&e.iter().find(|(n, _)| n == "manifest.json").unwrap().1).unwrap()
+    };
+    assert!(
+        !caps(&write_bytes(&base).unwrap())["required_capabilities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|v| v == "bpmn-native-element-identity")
+    );
+    for case in 0..6 {
+        let mut p = base.clone();
+        match case {
+            0 => Arc::make_mut(&mut p.documents[0]).processes[0].is_executable = None,
+            1 => Arc::make_mut(&mut p.documents[0]).processes[0].is_executable = Some(true),
+            2 => Arc::make_mut(&mut p.documents[0]).processes[0]
+                .nodes
+                .push(Node {
+                    id: "annotation".parse().unwrap(),
+                    name: Some(String::new()),
+                    documentation: String::new(),
+                    kind: NodeKind::TextAnnotation,
+                    details: Some(NodeDetails::TextAnnotation {
+                        text_format: None,
+                        text: Some("body".into()),
+                    }),
+                    item_aware: None,
+                    loop_characteristics: None,
+                    io_specification: None,
+                    activity: None,
+                    owner: String::new(),
+                    contact: String::new(),
+                }),
+            3 => p.comments.push(Comment {
+                id: CommentId::new(),
+                target: ElementKey {
+                    document_id: p.documents[0].id,
+                    xml_id: ElementSelector::Native {
+                        native_id: NativeElementId::new(),
+                    },
+                },
+                author: String::new(),
+                text: "orphan".into(),
+            }),
+            4 => {
+                Arc::make_mut(&mut p.documents[0]).collaboration = Some(Collaboration {
+                    id: "collaboration".parse().unwrap(),
+                    name: Some(String::new()),
+                    participants: vec![],
+                    flows: vec![],
+                    conversation_nodes: vec![],
+                    conversation_links: vec![],
+                })
+            }
+            _ => Arc::make_mut(&mut p.documents[0]).diagrams.push(Diagram {
+                id: "diagram".parse().unwrap(),
+                name: Some(String::new()),
+                plane_id: "plane".parse().unwrap(),
+                plane: "process".parse().unwrap(),
+                shapes: vec![],
+                edges: vec![],
+            }),
+        }
+        let live = write_bytes(&p).unwrap();
+        assert!(
+            caps(&live)["required_capabilities"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|v| v == "bpmn-native-element-identity"),
+            "case {case}"
+        );
+        let mut archived = entries(&live);
+        edit_json(&mut archived, "manifest.json", |v| {
+            v["required_capabilities"] = serde_json::json!(["comments", "checkpoints"])
+        });
+        assert!(
+            load_bytes(&archive(&archived))
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("native element identities require capability"),
+            "case {case}"
+        );
+        let snapshot = FrozenProject::capture(&p);
+        p.documents = base.documents.clone();
+        p.comments.clear();
+        p.checkpoints.push(Checkpoint {
+            id: processcraft_core::ids::CheckpointId::new(),
+            name: "snapshot".into(),
+            created_unix_ms: 0,
+            content: snapshot,
+        });
+        let frozen = write_bytes(&p).unwrap();
+        assert!(
+            caps(&frozen)["required_capabilities"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|v| v == "bpmn-native-element-identity"),
+            "checkpoint case {case}"
+        );
+        let mut archived = entries(&frozen);
+        edit_json(&mut archived, "manifest.json", |v| {
+            v["required_capabilities"] = serde_json::json!(["comments", "checkpoints"])
+        });
+        assert!(
+            load_bytes(&archive(&archived))
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("native element identities require capability"),
+            "checkpoint case {case}"
+        );
+    }
 }

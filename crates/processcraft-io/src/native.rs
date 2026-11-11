@@ -33,6 +33,19 @@ const EVENT_CAPABILITY: &str = "bpmn-link-cancel-compensation";
 const CATALOG_CAPABILITY: &str = "bpmn-supporting-catalog";
 const EMPTY_ACTIVITY_BINDING_CAPABILITY: &str = "bpmn-empty-namespace-activity-bindings";
 const EXPANDED_DATA_CAPABILITY: &str = "bpmn-expanded-data";
+const NATIVE_IDENTITY_CAPABILITY: &str = "bpmn-native-element-identity";
+
+fn has_native_identity_features(
+    documents: &[Arc<BpmnDocument>],
+    links: &[NavigationLink],
+    dictionary_links: &[DictionaryLink],
+    comments: &[Comment],
+) -> bool {
+    documents.iter().any(|d| d.has_native_identity_features())
+        || links.iter().any(|l| l.source.xml_id.is_native())
+        || dictionary_links.iter().any(|l| l.source.xml_id.is_native())
+        || comments.iter().any(|c| c.target.xml_id.is_native())
+}
 
 fn has_empty_activity_bindings(document: &BpmnDocument) -> bool {
     use processcraft_core::bpmn_model::NodeDetails;
@@ -302,6 +315,21 @@ pub fn write_bytes(project: &ProjectData) -> Result<Vec<u8>, NativeError> {
     {
         required_capabilities.push(EXPANDED_DATA_CAPABILITY.into());
     }
+    if has_native_identity_features(
+        &project.documents,
+        &project.links,
+        &project.dictionary_links,
+        &project.comments,
+    ) || project.checkpoints.iter().any(|c| {
+        has_native_identity_features(
+            &c.content.documents,
+            &c.content.links,
+            &c.content.dictionary_links,
+            &c.content.comments,
+        )
+    }) {
+        required_capabilities.push(NATIVE_IDENTITY_CAPABILITY.into());
+    }
     let manifest = Manifest {
         format: "processcraft".into(),
         schema: 3,
@@ -496,6 +524,7 @@ fn load_with_limits(
                 && cap != CATALOG_CAPABILITY
                 && cap != EMPTY_ACTIVITY_BINDING_CAPABILITY
                 && cap != EXPANDED_DATA_CAPABILITY
+                && cap != NATIVE_IDENTITY_CAPABILITY
         })
         || (manifest.schema < 3 && !manifest.required_capabilities.is_empty())
         || (manifest.schema == 3
@@ -643,6 +672,20 @@ fn load_with_limits(
             .any(|cap| cap == EXPANDED_DATA_CAPABILITY)
     {
         return Err(err("expanded data requires capability"));
+    }
+    if (has_native_identity_features(
+        &dto.documents,
+        &dto.links,
+        &dto.dictionary_links,
+        &dto.comments,
+    ) || frozen.iter().any(|(_, c)| {
+        has_native_identity_features(&c.documents, &c.links, &c.dictionary_links, &c.comments)
+    })) && !manifest
+        .required_capabilities
+        .iter()
+        .any(|cap| cap == NATIVE_IDENTITY_CAPABILITY)
+    {
+        return Err(err("native element identities require capability"));
     }
     for resources in std::iter::once(&dto.resources).chain(frozen.iter().map(|(_, c)| &c.resources))
     {
@@ -841,7 +884,7 @@ mod limit_tests {
         let node = |name: &str, kind, details| Node {
             item_aware: None,
             id: id(name),
-            name: String::new(),
+            name: Some(String::new()),
             documentation: String::new(),
             kind,
             details,
@@ -854,13 +897,14 @@ mod limit_tests {
         let document = || {
             let mut d = BpmnDocument::new("document".into(), id("defs"));
             d.processes.push(Process {
+                is_executable: Some(false),
                 io_specification: None,
                 lane_set_id: None,
                 groups: vec![],
                 data_objects: vec![],
                 data_associations: vec![],
                 id: id("process"),
-                name: String::new(),
+                name: Some(String::new()),
                 documentation: String::new(),
                 nodes: vec![node("task", NodeKind::Task, None)],
                 lanes: vec![],
@@ -876,10 +920,10 @@ mod limit_tests {
         };
         let association = || DataAssociation {
             id: Some(id("association")),
-            owner: id("task"),
+            owner: "task".parse().unwrap(),
             kind: DataAssociationKind::Input,
-            sources: vec![id("source")],
-            target: id("target"),
+            sources: vec!["source".parse().unwrap()],
+            target: "target".parse().unwrap(),
             transformation: None,
             assignments: vec![],
         };
@@ -925,7 +969,7 @@ mod limit_tests {
             Some(NodeDetails::DataStoreReference {
                 data_store_ref: Some(DataStoreRef::Qualified(QNameRef {
                     namespace: "urn:external".into(),
-                    local: id("store"),
+                    local: "store".parse().unwrap(),
                 })),
             }),
         ));
@@ -975,7 +1019,7 @@ mod limit_tests {
         let node = |id: &str, kind, details| Node {
             item_aware: None,
             id: id.parse().unwrap(),
-            name: String::new(),
+            name: Some(String::new()),
             documentation: String::new(),
             kind,
             details: Some(details),
@@ -1020,9 +1064,10 @@ mod limit_tests {
             );
             let mut document = BpmnDocument::new("document".into(), "defs".parse().unwrap());
             document.processes.push(Process {
+                is_executable: Some(false),
                 io_specification: None,
                 id: "process".parse().unwrap(),
-                name: String::new(),
+                name: Some(String::new()),
                 documentation: String::new(),
                 lane_set_id: None,
                 groups: vec![],

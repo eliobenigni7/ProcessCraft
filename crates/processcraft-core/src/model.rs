@@ -6,6 +6,12 @@ use sha2::{Digest, Sha256};
 use std::sync::Arc;
 
 pub const GENERATED_TARGET_NAMESPACE: &str = "urn:processcraft:generated";
+pub fn legacy_is_executable() -> Option<bool> {
+    Some(false)
+}
+fn is_legacy_executable(value: &Option<bool>) -> bool {
+    *value == Some(false)
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -162,7 +168,7 @@ pub struct BpmnDocument {
     pub id: DocumentId,
     pub name: String,
     pub folder: Option<XmlId>,
-    pub definitions_id: XmlId,
+    pub definitions_id: crate::ids::ElementIdentity,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub definitions: Option<DefinitionsMetadata>,
     #[serde(
@@ -185,7 +191,425 @@ pub struct BpmnDocument {
     pub capability: Capability,
 }
 impl BpmnDocument {
-    pub fn new(name: String, definitions_id: XmlId) -> Self {
+    /// All modeled semantic and diagram identities, including optional child IDs.
+    pub fn element_identities(&self) -> Vec<&crate::ids::ElementIdentity> {
+        use crate::bpmn_model::{EventDefinition, EventResource, Expression, NodeDetails};
+        fn io_ids<'a>(
+            io: &'a crate::bpmn_data::IoSpecification,
+            out: &mut Vec<&'a crate::ids::ElementIdentity>,
+        ) {
+            out.extend(io.id.iter());
+            for port in io.inputs.iter().chain(&io.outputs) {
+                out.extend(port.id.iter());
+                if let Some(state) = port.item_aware.as_ref().and_then(|m| m.data_state.as_ref()) {
+                    out.extend(state.id.iter());
+                }
+            }
+            for set in io.input_sets.iter().chain(&io.output_sets) {
+                out.extend(set.id.iter());
+            }
+        }
+        let mut out = vec![&self.definitions_id];
+        for category in &self.categories {
+            out.push(&category.id);
+            for value in &category.values {
+                out.push(&value.id);
+            }
+        }
+        for resource in &self.event_resources {
+            out.push(match resource {
+                EventResource::Signal { id, .. }
+                | EventResource::Message { id, .. }
+                | EventResource::Error { id, .. }
+                | EventResource::Escalation { id, .. } => id,
+            });
+        }
+        for store in &self.data_stores {
+            out.extend(store.id.iter());
+            if let Some(state) = store
+                .item_aware
+                .as_ref()
+                .and_then(|m| m.data_state.as_ref())
+            {
+                out.extend(state.id.iter());
+            }
+        }
+        for item in &self.catalog.item_definitions {
+            out.extend(item.id.iter());
+        }
+        for interface in &self.catalog.interfaces {
+            out.extend(interface.id.iter());
+            for operation in &interface.operations {
+                out.extend(operation.id.iter());
+            }
+        }
+        for resource in &self.catalog.resources {
+            out.extend(resource.id.iter());
+            for parameter in &resource.parameters {
+                out.extend(parameter.id.iter());
+            }
+        }
+        for expression in self.expressions() {
+            if let Expression::Structured(data) = expression {
+                out.extend(data.id.iter());
+            }
+        }
+        let mut pending = Vec::new();
+        for process in &self.processes {
+            out.push(&process.id);
+            out.extend(process.lane_set_id.iter());
+            if let Some(io) = &process.io_specification {
+                io_ids(io, &mut out);
+            }
+            pending.push((
+                &process.nodes[..],
+                &process.lanes[..],
+                &process.flows[..],
+                &process.data_objects[..],
+                &process.data_associations[..],
+                &process.groups[..],
+            ));
+        }
+        while let Some((nodes, lanes, flows, objects, associations, groups)) = pending.pop() {
+            for lane in lanes {
+                out.push(&lane.id);
+                out.extend(lane.child_lane_set_id.iter());
+            }
+            for flow in flows {
+                out.push(&flow.id);
+            }
+            for group in groups {
+                out.push(&group.id);
+            }
+            for object in objects {
+                out.extend(object.id.iter());
+                if let Some(state) = object
+                    .item_aware
+                    .as_ref()
+                    .and_then(|m| m.data_state.as_ref())
+                {
+                    out.extend(state.id.iter());
+                }
+            }
+            for association in associations {
+                out.extend(association.id.iter());
+                for assignment in &association.assignments {
+                    out.extend(assignment.id.iter());
+                }
+            }
+            for node in nodes {
+                out.push(&node.id);
+                if let Some(io) = &node.io_specification {
+                    io_ids(io, &mut out);
+                }
+                if let Some(state) = node.item_aware.as_ref().and_then(|m| m.data_state.as_ref()) {
+                    out.extend(state.id.iter());
+                }
+                match &node.details {
+                    Some(NodeDetails::SubProcess { content }) => {
+                        out.extend(content.lane_set_id.iter());
+                        pending.push((
+                            &content.nodes,
+                            &content.lanes,
+                            &content.flows,
+                            &content.data_objects,
+                            &content.data_associations,
+                            &content.groups,
+                        ));
+                    }
+                    Some(NodeDetails::Event { definitions, .. }) => {
+                        for definition in definitions {
+                            let id = match definition {
+                                EventDefinition::Message { id, .. }
+                                | EventDefinition::Signal { id, .. }
+                                | EventDefinition::Error { id, .. }
+                                | EventDefinition::Escalation { id, .. }
+                                | EventDefinition::Conditional { id, .. }
+                                | EventDefinition::Link { id, .. }
+                                | EventDefinition::Cancel { id }
+                                | EventDefinition::Compensate { id, .. }
+                                | EventDefinition::Terminate { id }
+                                | EventDefinition::Timer { id, .. } => id,
+                            };
+                            out.extend(id.iter());
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        if let Some(collaboration) = &self.collaboration {
+            out.push(&collaboration.id);
+            for p in &collaboration.participants {
+                out.push(&p.id);
+            }
+            for flow in &collaboration.flows {
+                out.push(&flow.id);
+            }
+            for node in &collaboration.conversation_nodes {
+                out.push(&node.id);
+            }
+            for link in &collaboration.conversation_links {
+                out.push(&link.id);
+            }
+        }
+        for choreography in &self.choreographies {
+            out.push(&choreography.id);
+            for p in &choreography.participants {
+                out.push(&p.id);
+            }
+            for f in choreography
+                .message_flows
+                .iter()
+                .chain(&choreography.sequence_flows)
+            {
+                out.push(&f.id);
+            }
+            for activity in &choreography.activities {
+                out.push(&activity.id);
+            }
+        }
+        for diagram in &self.diagrams {
+            out.push(&diagram.id);
+            out.push(&diagram.plane_id);
+            for shape in &diagram.shapes {
+                out.push(&shape.id);
+            }
+            for edge in &diagram.edges {
+                out.push(&edge.id);
+            }
+        }
+        out
+    }
+    pub fn xml_id_for_selector(&self, selector: &crate::ids::ElementSelector) -> Option<&XmlId> {
+        self.element_identities()
+            .into_iter()
+            .find(|id| id.selector() == *selector)
+            .and_then(|id| id.xml_id())
+    }
+    pub fn has_native_identity_features(&self) -> bool {
+        use crate::ids::ElementIdentity;
+        if self
+            .element_identities()
+            .iter()
+            .any(|id| matches!(id, ElementIdentity::Native { .. }))
+        {
+            return true;
+        }
+        if self
+            .processes
+            .iter()
+            .any(|p| p.name.is_none() || p.is_executable != Some(false))
+        {
+            return true;
+        }
+        for scope in crate::queries::scopes(self) {
+            if scope.lanes.iter().any(|l| {
+                l.parent.as_ref().is_some_and(|r| r.is_native())
+                    || l.members.iter().any(|r| r.is_native())
+            }) || scope
+                .flows
+                .iter()
+                .any(|f| f.source.is_native() || f.target.is_native())
+                || scope.data_associations.iter().any(|a| {
+                    a.owner.is_native()
+                        || a.target.is_native()
+                        || a.sources.iter().any(|r| r.is_native())
+                })
+                || scope
+                    .groups
+                    .iter()
+                    .any(|g| g.category_value_ref.as_ref().is_some_and(|r| r.is_native()))
+            {
+                return true;
+            }
+            for node in scope.nodes {
+                if node
+                    .activity
+                    .as_ref()
+                    .and_then(|a| a.default_flow.as_ref())
+                    .is_some_and(|r| r.is_native())
+                {
+                    return true;
+                }
+                if let Some(io) = &node.io_specification
+                    && io.input_sets.iter().chain(&io.output_sets).any(|set| {
+                        set.data_refs
+                            .iter()
+                            .chain(&set.optional_refs)
+                            .chain(&set.while_executing_refs)
+                            .chain(&set.counterpart_refs)
+                            .any(|r| r.is_native())
+                    })
+                {
+                    return true;
+                }
+                use crate::bpmn_model::{EventDefinition, NodeDetails};
+                match &node.details {
+                    Some(NodeDetails::Gateway {
+                        default_flow: Some(r),
+                        ..
+                    })
+                    | Some(NodeDetails::DataObjectReference {
+                        data_object_ref: Some(r),
+                    })
+                    | Some(NodeDetails::BoundaryEvent { attached_to: r, .. })
+                        if r.is_native() =>
+                    {
+                        return true;
+                    }
+                    Some(NodeDetails::DataStoreReference {
+                        data_store_ref: Some(crate::bpmn_data::DataStoreRef::Legacy(r)),
+                    }) if r.is_native() => return true,
+                    Some(NodeDetails::Event {
+                        definitions,
+                        attached_to,
+                        ..
+                    }) => {
+                        if attached_to.as_ref().is_some_and(|r| r.is_native()) {
+                            return true;
+                        }
+                        for definition in definitions {
+                            let native = match definition {
+                                EventDefinition::Message {
+                                    message_ref,
+                                    operation_ref,
+                                    ..
+                                } => {
+                                    message_ref.as_ref().is_some_and(|r| r.is_native())
+                                        || operation_ref.as_ref().is_some_and(|r| r.is_native())
+                                }
+                                EventDefinition::Signal { signal_ref, .. } => {
+                                    signal_ref.as_ref().is_some_and(|r| r.is_native())
+                                }
+                                EventDefinition::Error { error_ref, .. } => {
+                                    error_ref.as_ref().is_some_and(|r| r.is_native())
+                                }
+                                EventDefinition::Escalation { escalation_ref, .. } => {
+                                    escalation_ref.as_ref().is_some_and(|r| r.is_native())
+                                }
+                                EventDefinition::Link {
+                                    sources, target, ..
+                                } => {
+                                    sources.iter().any(|r| r.is_native())
+                                        || target.as_ref().is_some_and(|r| r.is_native())
+                                }
+                                EventDefinition::Compensate { activity_ref, .. } => {
+                                    activity_ref.as_ref().is_some_and(|r| r.is_native())
+                                }
+                                _ => false,
+                            };
+                            if native {
+                                return true;
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        if self
+            .processes
+            .iter()
+            .filter_map(|p| p.io_specification.as_ref())
+            .any(|io| {
+                io.input_sets.iter().chain(&io.output_sets).any(|set| {
+                    set.data_refs
+                        .iter()
+                        .chain(&set.optional_refs)
+                        .chain(&set.while_executing_refs)
+                        .chain(&set.counterpart_refs)
+                        .any(|r| r.is_native())
+                })
+            })
+        {
+            return true;
+        }
+        if self.diagrams.iter().any(|d| {
+            d.plane.is_native()
+                || d.shapes.iter().any(|s| s.element.is_native())
+                || d.edges.iter().any(|e| e.element.is_native())
+        }) {
+            return true;
+        }
+        if let Capability::RetainedExtensions { extensions, .. } = &self.capability
+            && extensions.iter().any(|e| e.owner.is_native())
+        {
+            return true;
+        }
+        if self.collaboration.as_ref().is_some_and(|c| {
+            c.participants
+                .iter()
+                .any(|p| p.process.as_ref().is_some_and(|r| r.is_native()))
+                || c.flows
+                    .iter()
+                    .any(|f| f.source.is_native() || f.target.is_native())
+                || c.conversation_nodes.iter().any(|n| {
+                    n.parent.as_ref().is_some_and(|r| r.is_native())
+                        || n.participant_refs.iter().any(|r| r.is_native())
+                })
+                || c.conversation_links
+                    .iter()
+                    .any(|l| l.source.is_native() || l.target.is_native())
+        }) {
+            return true;
+        }
+        if self.choreographies.iter().any(|c| {
+            c.participants
+                .iter()
+                .any(|p| p.process.as_ref().is_some_and(|r| r.is_native()))
+                || c.message_flows
+                    .iter()
+                    .chain(&c.sequence_flows)
+                    .any(|f| f.source.is_native() || f.target.is_native())
+                || c.activities.iter().any(|a| {
+                    a.initiating_participant.is_native()
+                        || a.participant_refs
+                            .iter()
+                            .chain(&a.message_flow_refs)
+                            .any(|r| r.is_native())
+                })
+        }) {
+            return true;
+        }
+        if crate::queries::scopes(self).iter().any(|s| {
+            s.nodes.iter().any(|n| {
+                n.name.is_none()
+                    || matches!(
+                        &n.details,
+                        Some(crate::bpmn_model::NodeDetails::TextAnnotation { text: Some(_), .. })
+                    )
+            }) || s.lanes.iter().any(|l| l.name.is_none())
+                || s.flows.iter().any(|f| f.name.is_none())
+        }) {
+            return true;
+        }
+        if self.collaboration.as_ref().is_some_and(|c| {
+            c.name.is_some()
+                || c.participants.iter().any(|p| p.name.is_none())
+                || c.flows.iter().any(|f| f.name.is_none())
+                || c.conversation_nodes.iter().any(|n| n.name.is_none())
+                || c.conversation_links.iter().any(|l| l.name.is_none())
+        }) {
+            return true;
+        }
+        if self.choreographies.iter().any(|c| {
+            c.name.is_none()
+                || c.participants.iter().any(|p| p.name.is_none())
+                || c.activities.iter().any(|a| a.name.is_none())
+                || c.message_flows
+                    .iter()
+                    .chain(&c.sequence_flows)
+                    .any(|f| f.name.is_none())
+        }) {
+            return true;
+        }
+        if self.diagrams.iter().any(|diagram| diagram.name.is_some()) {
+            return true;
+        }
+        false
+    }
+    pub fn new(name: String, definitions_id: crate::ids::ElementIdentity) -> Self {
         Self {
             id: DocumentId::new(),
             name,
@@ -391,7 +815,7 @@ pub enum Capability {
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RetainedExtension {
-    pub owner: XmlId,
+    pub owner: crate::ids::ElementSelector,
     pub position: u32,
     pub namespaces: Vec<(String, String)>,
     pub content: String,
@@ -404,18 +828,23 @@ impl Capability {
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Process {
+    #[serde(
+        default = "legacy_is_executable",
+        skip_serializing_if = "is_legacy_executable"
+    )]
+    pub is_executable: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub io_specification: Option<crate::bpmn_data::IoSpecification>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub lane_set_id: Option<XmlId>,
+    pub lane_set_id: Option<crate::ids::ElementIdentity>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub groups: Vec<crate::bpmn_model::Group>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub data_objects: Vec<crate::bpmn_data::DataObject>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub data_associations: Vec<crate::bpmn_data::DataAssociation>,
-    pub id: XmlId,
-    pub name: String,
+    pub id: crate::ids::ElementIdentity,
+    pub name: Option<String>,
     pub documentation: String,
     pub nodes: Vec<Node>,
     pub lanes: Vec<Lane>,
@@ -426,7 +855,7 @@ pub struct Process {
 #[serde(deny_unknown_fields)]
 pub struct FlowContainer {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub lane_set_id: Option<XmlId>,
+    pub lane_set_id: Option<crate::ids::ElementIdentity>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub groups: Vec<crate::bpmn_model::Group>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -442,8 +871,8 @@ pub struct FlowContainer {
 pub struct Node {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub item_aware: Option<crate::bpmn_data::ItemAwareMetadata>,
-    pub id: XmlId,
-    pub name: String,
+    pub id: crate::ids::ElementIdentity,
+    pub name: Option<String>,
     pub documentation: String,
     pub kind: NodeKind,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -509,16 +938,18 @@ impl NodeKind {
 #[serde(deny_unknown_fields)]
 pub struct Lane {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub child_lane_set_id: Option<XmlId>,
-    pub id: XmlId,
-    pub name: String,
-    pub parent: Option<XmlId>,
-    pub members: Vec<XmlId>,
+    pub child_lane_set_id: Option<crate::ids::ElementIdentity>,
+    pub id: crate::ids::ElementIdentity,
+    pub name: Option<String>,
+    pub parent: Option<crate::ids::ElementSelector>,
+    pub members: Vec<crate::ids::ElementSelector>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Collaboration {
-    pub id: XmlId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    pub id: crate::ids::ElementIdentity,
     pub participants: Vec<Participant>,
     pub flows: Vec<Flow>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -529,20 +960,20 @@ pub struct Collaboration {
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Participant {
-    pub id: XmlId,
-    pub name: String,
-    pub process: Option<XmlId>,
+    pub id: crate::ids::ElementIdentity,
+    pub name: Option<String>,
+    pub process: Option<crate::ids::ElementSelector>,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Flow {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub association_direction: Option<crate::bpmn_model::AssociationDirection>,
-    pub id: XmlId,
+    pub id: crate::ids::ElementIdentity,
     pub kind: FlowKind,
-    pub source: XmlId,
-    pub target: XmlId,
-    pub name: String,
+    pub source: crate::ids::ElementSelector,
+    pub target: crate::ids::ElementSelector,
+    pub name: Option<String>,
     pub documentation: String,
     pub condition: Option<crate::bpmn_model::Expression>,
 }
@@ -556,9 +987,11 @@ pub enum FlowKind {
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Diagram {
-    pub id: XmlId,
-    pub plane_id: XmlId,
-    pub plane: XmlId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    pub id: crate::ids::ElementIdentity,
+    pub plane_id: crate::ids::ElementIdentity,
+    pub plane: crate::ids::ElementSelector,
     pub shapes: Vec<Shape>,
     pub edges: Vec<Edge>,
 }
@@ -592,8 +1025,8 @@ pub struct Label {
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Shape {
-    pub id: XmlId,
-    pub element: XmlId,
+    pub id: crate::ids::ElementIdentity,
+    pub element: crate::ids::ElementSelector,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub is_expanded: Option<bool>,
     pub bounds: Bounds,
@@ -603,8 +1036,8 @@ pub struct Shape {
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Edge {
-    pub id: XmlId,
-    pub element: XmlId,
+    pub id: crate::ids::ElementIdentity,
+    pub element: crate::ids::ElementSelector,
     pub waypoints: Vec<Point>,
     pub label: Option<Label>,
     pub style: Option<Style>,

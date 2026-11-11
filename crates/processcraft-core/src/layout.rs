@@ -1,7 +1,7 @@
 //! Deterministic, explicitly requested BPMN geometry proposals.
 use crate::{
     geometry::{valid_bounds, valid_point},
-    ids::{DocumentId, XmlId},
+    ids::{DocumentId, ElementSelector},
     model::{Bounds, BpmnDocument, Capability, Diagram, FlowKind, NodeKind, Point},
 };
 use serde::{Deserialize, Serialize};
@@ -13,14 +13,14 @@ use std::{
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ShapeGeometry {
-    pub id: XmlId,
+    pub id: ElementSelector,
     pub bounds: Bounds,
     pub label_bounds: Option<Bounds>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct EdgeGeometry {
-    pub id: XmlId,
+    pub id: ElementSelector,
     pub waypoints: Vec<Point>,
     pub label_bounds: Option<Bounds>,
 }
@@ -36,7 +36,7 @@ pub struct LayoutProposal {
     pub session_id: String,
     pub generation: u64,
     pub document_id: DocumentId,
-    pub diagram_id: XmlId,
+    pub diagram_id: ElementSelector,
     pub original: LayoutGeometry,
     pub proposed: LayoutGeometry,
 }
@@ -69,7 +69,7 @@ fn geometry(d: &Diagram) -> LayoutGeometry {
         .shapes
         .iter()
         .map(|s| ShapeGeometry {
-            id: s.id.clone(),
+            id: s.id.selector(),
             bounds: s.bounds.clone(),
             label_bounds: s.label.as_ref().map(|l| l.bounds.clone()),
         })
@@ -78,7 +78,7 @@ fn geometry(d: &Diagram) -> LayoutGeometry {
         .edges
         .iter()
         .map(|e| EdgeGeometry {
-            id: e.id.clone(),
+            id: e.id.selector(),
             waypoints: e.waypoints.clone(),
             label_bounds: e.label.as_ref().map(|l| l.bounds.clone()),
         })
@@ -122,7 +122,7 @@ pub fn validate_proposal(
     let diagram = document
         .diagrams
         .iter()
-        .find(|d| d.id == proposal.diagram_id)
+        .find(|d| d.id.selector() == proposal.diagram_id)
         .ok_or_else(|| err("identity", "Diagram not found"))?;
     let base = geometry(diagram);
     if !same(&base, &proposal.original) {
@@ -177,7 +177,7 @@ fn segment_hits(a: &Point, b: &Point, r: &Bounds) -> bool {
 /// Build a deterministic proposal without changing the document. Unsupported diagrams fail closed.
 pub fn propose_layout(
     document: &BpmnDocument,
-    diagram_id: &XmlId,
+    diagram_id: &ElementSelector,
     session_id: &str,
     generation: u64,
     cancel: &AtomicBool,
@@ -230,18 +230,18 @@ pub fn propose_layout(
             || !c.flows.is_empty()
             || !c.conversation_nodes.is_empty()
             || !c.conversation_links.is_empty()
-            || c.participants[0].process.as_ref() != Some(&process.id)
+            || c.participants[0].process.as_ref() != Some(&process.id.selector())
         {
             return Err(err("unsupported", "Multiple pools or collaboration flows"));
         }
-        Some(&c.participants[0].id)
+        Some(c.participants[0].id.selector())
     } else {
         None
     };
     if document
         .diagrams
         .iter()
-        .filter(|d| &d.id == diagram_id)
+        .filter(|d| &d.id.selector() == diagram_id)
         .count()
         != 1
     {
@@ -253,17 +253,17 @@ pub fn propose_layout(
     let d = document
         .diagrams
         .iter()
-        .find(|d| &d.id == diagram_id)
+        .find(|d| &d.id.selector() == diagram_id)
         .ok_or_else(|| err("identity", "Diagram not found"))?;
     if d.shapes.len() > 400 || d.edges.len() > 500 || d.shapes.len() + d.edges.len() > 1000 {
         return Err(err("limit", "Diagram exceeds layout limits"));
     }
-    if d.plane != process.id
-        && pool.is_none_or(|id| d.plane != *id)
+    if d.plane != process.id.selector()
+        && pool.as_ref().is_none_or(|id| &d.plane != id)
         && document
             .collaboration
             .as_ref()
-            .is_none_or(|c| d.plane != c.id)
+            .is_none_or(|c| d.plane != c.id.selector())
     {
         return Err(err(
             "unsupported",
@@ -274,16 +274,16 @@ pub fn propose_layout(
     if !valid_geometry(&original) {
         return Err(err("invalid_geometry", "Malformed shape or edge geometry"));
     }
-    let nodes: BTreeMap<_, _> = process.nodes.iter().map(|n| (n.id.clone(), n)).collect();
-    let flows: BTreeMap<_, _> = process.flows.iter().map(|f| (f.id.clone(), f)).collect();
+    let nodes: BTreeMap<_, _> = process.nodes.iter().map(|n| (n.id.selector(), n)).collect();
+    let flows: BTreeMap<_, _> = process.flows.iter().map(|f| (f.id.selector(), f)).collect();
     if nodes.len() != process.nodes.len() || flows.len() != process.flows.len() {
         return Err(err("invalid_di", "Duplicate semantic IDs"));
     }
     let mut shape_by_element = BTreeMap::new();
     for (index, s) in d.shapes.iter().enumerate() {
         if !nodes.contains_key(&s.element)
-            && !process.lanes.iter().any(|l| l.id == s.element)
-            && pool != Some(&s.element)
+            && !process.lanes.iter().any(|l| l.id.selector() == s.element)
+            && pool.as_ref() != Some(&s.element)
         {
             return Err(err("unsupported", "Unknown diagram shape"));
         }
@@ -295,14 +295,18 @@ pub fn propose_layout(
         || process
             .lanes
             .iter()
-            .any(|l| !shape_by_element.contains_key(&l.id))
-        || pool.is_some_and(|id| !shape_by_element.contains_key(id))
+            .any(|l| !shape_by_element.contains_key(&l.id.selector()))
+        || pool
+            .as_ref()
+            .is_some_and(|id| !shape_by_element.contains_key(id))
     {
         return Err(err("invalid_di", "Missing shape mapping"));
     }
     let mut lane_ids = BTreeSet::new();
     if process.lanes.iter().any(|lane| {
-        !lane_ids.insert(&lane.id) || nodes.contains_key(&lane.id) || pool == Some(&lane.id)
+        !lane_ids.insert(lane.id.selector())
+            || nodes.contains_key(&lane.id.selector())
+            || pool.as_ref() == Some(&lane.id.selector())
     }) {
         return Err(err("invalid_di", "Duplicate semantic lane identity"));
     }
@@ -453,7 +457,7 @@ pub fn propose_layout(
         let mut y = band_y[band] + 60.0;
         for &i in cell {
             let shape = &d.shapes[shape_by_element[&ids[i]]];
-            let out = &mut result.shapes[index[&shape.id]];
+            let out = &mut result.shapes[index[&shape.id.selector()]];
             let x = 80.0 + layer as f64 * (max_width + 160.0);
             let dx = x - out.bounds.x;
             let dy = y - out.bounds.y;
@@ -468,8 +472,8 @@ pub fn propose_layout(
     }
     let width = 160.0 + (rank.iter().copied().max().unwrap_or(0) + 1) as f64 * (max_width + 160.0);
     for (i, lane) in process.lanes.iter().enumerate() {
-        let shape = &d.shapes[shape_by_element[&lane.id]];
-        let out = &mut result.shapes[index[&shape.id]];
+        let shape = &d.shapes[shape_by_element[&lane.id.selector()]];
+        let out = &mut result.shapes[index[&shape.id.selector()]];
         let dx = -out.bounds.x;
         let dy = band_y[i] - out.bounds.y;
         out.bounds = Bounds {
@@ -484,8 +488,8 @@ pub fn propose_layout(
         }
     }
     if let Some(pool) = pool {
-        let shape = &d.shapes[shape_by_element[pool]];
-        let out = &mut result.shapes[index[&shape.id]];
+        let shape = &d.shapes[shape_by_element[&pool]];
+        let out = &mut result.shapes[index[&shape.id.selector()]];
         let dx = -out.bounds.x;
         let dy = -out.bounds.y;
         out.bounds = Bounds {
@@ -506,70 +510,79 @@ pub fn propose_layout(
         .enumerate()
         .map(|(i, e)| (e.id.clone(), i))
         .collect();
-    let mut outgoing = BTreeMap::<XmlId, Vec<XmlId>>::new();
-    let mut incoming = BTreeMap::<XmlId, Vec<XmlId>>::new();
+    let mut outgoing = BTreeMap::<ElementSelector, Vec<ElementSelector>>::new();
+    let mut incoming = BTreeMap::<ElementSelector, Vec<ElementSelector>>::new();
     for flow in flows.values() {
         outgoing
             .entry(flow.source.clone())
             .or_default()
-            .push(flow.id.clone());
+            .push(flow.id.selector());
         incoming
             .entry(flow.target.clone())
             .or_default()
-            .push(flow.id.clone());
+            .push(flow.id.selector());
     }
     let mut route_work = 0usize;
     const ROUTE_WORK_LIMIT: usize = 500_000;
     for (number, flow) in flows.values().enumerate() {
         cancelled(cancel)?;
-        let source = &result.shapes[index[&d.shapes[shape_by_element[&flow.source]].id]].bounds;
-        let target = &result.shapes[index[&d.shapes[shape_by_element[&flow.target]].id]].bounds;
-        let port_y = |id: &XmlId, bounds: &Bounds, list: &[XmlId]| {
+        let source =
+            &result.shapes[index[&d.shapes[shape_by_element[&flow.source]].id.selector()]].bounds;
+        let target =
+            &result.shapes[index[&d.shapes[shape_by_element[&flow.target]].id.selector()]].bounds;
+        let port_y = |id: &ElementSelector, bounds: &Bounds, list: &[ElementSelector]| {
             if matches!(
                 nodes[id].kind,
                 NodeKind::Task | NodeKind::UserTask | NodeKind::ManualTask
             ) {
-                let position = list.iter().position(|edge| edge == &flow.id).unwrap_or(0);
+                let position = list
+                    .iter()
+                    .position(|edge| edge == &flow.id.selector())
+                    .unwrap_or(0);
                 bounds.y + bounds.height * (position + 1) as f64 / (list.len() + 1) as f64
             } else {
                 bounds.y + bounds.height / 2.0
             }
         };
-        let port = |id: &XmlId, bounds: &Bounds, list: &[XmlId], source: bool| {
-            if matches!(
-                nodes[id].kind,
-                NodeKind::Task | NodeKind::UserTask | NodeKind::ManualTask
-            ) {
-                Point {
-                    x: if source {
-                        bounds.x + bounds.width
-                    } else {
-                        bounds.x
-                    },
-                    y: port_y(id, bounds, list),
+        let port =
+            |id: &ElementSelector, bounds: &Bounds, list: &[ElementSelector], source: bool| {
+                if matches!(
+                    nodes[id].kind,
+                    NodeKind::Task | NodeKind::UserTask | NodeKind::ManualTask
+                ) {
+                    Point {
+                        x: if source {
+                            bounds.x + bounds.width
+                        } else {
+                            bounds.x
+                        },
+                        y: port_y(id, bounds, list),
+                    }
+                } else {
+                    let position = list
+                        .iter()
+                        .position(|edge| edge == &flow.id.selector())
+                        .unwrap_or(0);
+                    match (source, position % 4) {
+                        (true, 0) | (false, 3) => Point {
+                            x: bounds.x + bounds.width,
+                            y: bounds.y + bounds.height / 2.0,
+                        },
+                        (false, 0) | (true, 3) => Point {
+                            x: bounds.x,
+                            y: bounds.y + bounds.height / 2.0,
+                        },
+                        (true, 2) | (false, 2) => Point {
+                            x: bounds.x + bounds.width / 2.0,
+                            y: bounds.y + bounds.height,
+                        },
+                        _ => Point {
+                            x: bounds.x + bounds.width / 2.0,
+                            y: bounds.y,
+                        },
+                    }
                 }
-            } else {
-                let position = list.iter().position(|edge| edge == &flow.id).unwrap_or(0);
-                match (source, position % 4) {
-                    (true, 0) | (false, 3) => Point {
-                        x: bounds.x + bounds.width,
-                        y: bounds.y + bounds.height / 2.0,
-                    },
-                    (false, 0) | (true, 3) => Point {
-                        x: bounds.x,
-                        y: bounds.y + bounds.height / 2.0,
-                    },
-                    (true, 2) | (false, 2) => Point {
-                        x: bounds.x + bounds.width / 2.0,
-                        y: bounds.y + bounds.height,
-                    },
-                    _ => Point {
-                        x: bounds.x + bounds.width / 2.0,
-                        y: bounds.y,
-                    },
-                }
-            }
-        };
+            };
         let start = port(&flow.source, source, &outgoing[&flow.source], true);
         let end = port(&flow.target, target, &incoming[&flow.target], false);
         let points = if flow.source == flow.target {
@@ -624,7 +637,7 @@ pub fn propose_layout(
                 .iter()
                 .filter(|id| **id != flow.source && **id != flow.target)
                 .map(|id| {
-                    result.shapes[index[&d.shapes[shape_by_element[id]].id]]
+                    result.shapes[index[&d.shapes[shape_by_element[id]].id.selector()]]
                         .bounds
                         .clone()
                 })
@@ -665,8 +678,8 @@ pub fn propose_layout(
                     .ok_or_else(|| err("routing", "No collision-free route within budget"))?
             }
         };
-        let original_edge = edge_by_element[&flow.id];
-        let out = &mut result.edges[edge_index[&original_edge.id]];
+        let original_edge = edge_by_element[&flow.id.selector()];
+        let out = &mut result.edges[edge_index[&original_edge.id.selector()]];
         out.waypoints = points;
         if let Some(label) = &mut out.label_bounds {
             let segment = out
@@ -703,7 +716,7 @@ pub fn propose_layout(
     }
     let node_shapes: Vec<_> = ids
         .iter()
-        .map(|id| &proposal.proposed.shapes[index[&d.shapes[shape_by_element[id]].id]])
+        .map(|id| &proposal.proposed.shapes[index[&d.shapes[shape_by_element[id]].id.selector()]])
         .collect();
     for (i, shape) in node_shapes.iter().enumerate() {
         if node_shapes
@@ -747,13 +760,14 @@ pub fn propose_layout(
         }
     }
     for flow in flows.values() {
-        let edge = &proposal.proposed.edges[edge_index[&edge_by_element[&flow.id].id]];
+        let edge = &proposal.proposed.edges
+            [edge_index[&edge_by_element[&flow.id.selector()].id.selector()]];
         for (segment_index, segment) in edge.waypoints.windows(2).enumerate() {
             let source = &proposal.proposed.shapes
-                [index[&d.shapes[shape_by_element[&flow.source]].id]]
+                [index[&d.shapes[shape_by_element[&flow.source]].id.selector()]]
                 .bounds;
             let target = &proposal.proposed.shapes
-                [index[&d.shapes[shape_by_element[&flow.target]].id]]
+                [index[&d.shapes[shape_by_element[&flow.target]].id.selector()]]
                 .bounds;
             if (segment_index > 0 && segment_hits(&segment[0], &segment[1], source))
                 || (segment_index + 2 < edge.waypoints.len()
@@ -768,7 +782,9 @@ pub fn propose_layout(
                     segment_hits(
                         &segment[0],
                         &segment[1],
-                        &proposal.proposed.shapes[index[&d.shapes[shape_by_element[id]].id]].bounds,
+                        &proposal.proposed.shapes
+                            [index[&d.shapes[shape_by_element[id]].id.selector()]]
+                            .bounds,
                     )
                 })
             {

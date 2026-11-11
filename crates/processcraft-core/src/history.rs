@@ -1,5 +1,5 @@
 use crate::{
-    ids::{ElementKey, XmlId},
+    ids::{ElementIdentity, ElementKey, ElementSelector, XmlId},
     model::*,
 };
 use std::{collections::HashSet, mem::size_of, sync::Arc};
@@ -10,6 +10,7 @@ pub(crate) const MAX_BYTES: usize = 128 * 1024 * 1024;
 pub(crate) struct HistoryEntry {
     pub project: Arc<ProjectData>,
     pub selection: Vec<ElementKey>,
+    pub selector_mappings: Vec<crate::commands::SelectorMapping>,
 }
 #[derive(Clone, Default)]
 pub(crate) struct History {
@@ -75,6 +76,10 @@ impl History {
         let mut total = vec_cost(&self.undo) + vec_cost(&self.redo);
         for entry in self.undo.iter().chain(&self.redo) {
             total += vec_cost(&entry.selection);
+            total += vec_cost(&entry.selector_mappings);
+            for mapping in &entry.selector_mappings {
+                total += xml(&mapping.from) + xml(&mapping.to);
+            }
             for key in &entry.selection {
                 total += xml(&key.xml_id);
             }
@@ -180,17 +185,51 @@ fn vec_cost<T>(v: &Vec<T>) -> usize {
         64 + v.capacity() * size_of::<T>()
     }
 }
-fn string(s: &String) -> usize {
-    if s.capacity() == 0 {
-        0
-    } else {
-        64 + s.capacity()
+trait StringCost {
+    fn string_cost(&self) -> usize;
+}
+impl StringCost for String {
+    fn string_cost(&self) -> usize {
+        if self.capacity() == 0 {
+            0
+        } else {
+            64 + self.capacity()
+        }
     }
 }
-fn xml(id: &XmlId) -> usize {
-    64 + id.allocated_bytes()
+impl StringCost for Option<String> {
+    fn string_cost(&self) -> usize {
+        self.as_ref().map_or(0, string)
+    }
 }
-fn opt_xml(id: &Option<XmlId>) -> usize {
+fn string(s: &impl StringCost) -> usize {
+    s.string_cost()
+}
+trait IdCost {
+    fn id_cost(&self) -> usize;
+}
+impl IdCost for XmlId {
+    fn id_cost(&self) -> usize {
+        64 + self.allocated_bytes()
+    }
+}
+impl IdCost for ElementSelector {
+    fn id_cost(&self) -> usize {
+        match self {
+            Self::Xml(id) => xml(id),
+            Self::Native { .. } => 0,
+        }
+    }
+}
+impl IdCost for ElementIdentity {
+    fn id_cost(&self) -> usize {
+        self.xml_id().map_or(0, xml)
+    }
+}
+fn xml(id: &impl IdCost) -> usize {
+    id.id_cost()
+}
+fn opt_xml<T: IdCost>(id: &Option<T>) -> usize {
     id.as_ref().map_or(0, xml)
 }
 fn style(s: &Option<Style>) -> usize {
@@ -331,17 +370,20 @@ mod tests {
         history.undo.push(HistoryEntry {
             project: project.clone(),
             selection: vec![],
+            selector_mappings: vec![],
         });
         history.redo.push(HistoryEntry {
             project: project.clone(),
             selection: vec![],
+            selector_mappings: vec![],
         });
         let before_undo = history.undo.len();
         let before_redo = history.redo.len();
         assert!(!History::fits_single_with_budget(
             HistoryEntry {
                 project: project.clone(),
-                selection: vec![]
+                selection: vec![],
+                selector_mappings: vec![]
             },
             200,
             1
@@ -349,7 +391,8 @@ mod tests {
         assert!(!history.push_required_with_budget(
             HistoryEntry {
                 project,
-                selection: vec![]
+                selection: vec![],
+                selector_mappings: vec![]
             },
             200,
             1
@@ -373,6 +416,7 @@ mod tests {
         h.undo.push(HistoryEntry {
             project: first.clone(),
             selection: vec![],
+            selector_mappings: vec![],
         });
         let one = h.estimated_bytes();
         assert!(one >= 16_384);
@@ -380,6 +424,7 @@ mod tests {
             HistoryEntry {
                 project: second.clone(),
                 selection: vec![],
+                selector_mappings: vec![],
             },
             200,
             one + 1024,
@@ -395,12 +440,14 @@ mod tests {
         h.undo.push(HistoryEntry {
             project: small,
             selection: vec![],
+            selector_mappings: vec![],
         });
         let budget = h.estimated_bytes() + 2048;
         h.undo.pop();
         h.redo.push(HistoryEntry {
             project: large,
             selection: vec![],
+            selector_mappings: vec![],
         });
         h.trim_with_budget(200, budget);
         assert!(h.redo.is_empty());
@@ -423,6 +470,7 @@ mod tests {
         h.undo.push(HistoryEntry {
             project: p.clone(),
             selection: vec![],
+            selector_mappings: vec![],
         });
         let one = h.estimated_bytes();
         let mut q = (*p).clone();
@@ -430,6 +478,7 @@ mod tests {
         h.redo.push(HistoryEntry {
             project: Arc::new(q),
             selection: vec![],
+            selector_mappings: vec![],
         });
         let two = h.estimated_bytes();
         assert!(

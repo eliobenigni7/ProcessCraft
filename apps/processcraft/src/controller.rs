@@ -1,5 +1,5 @@
 use processcraft_core::{
-    commands::{Envelope, Mutation, Request, Session},
+    commands::{ChangeSet, Envelope, Mutation, Request, Session},
     ids::XmlId,
     model::*,
 };
@@ -16,24 +16,26 @@ pub fn id(prefix: &str) -> XmlId {
         .unwrap()
 }
 pub fn blank_document() -> BpmnDocument {
-    let mut d = BpmnDocument::new("Untitled process".into(), id("Definitions"));
+    let mut d = BpmnDocument::new("Untitled process".into(), id("Definitions").into());
     let process = Process {
+        is_executable: Some(false),
         io_specification: None,
         lane_set_id: None,
         groups: vec![],
         data_objects: vec![],
         data_associations: vec![],
-        id: id("Process"),
-        name: "Process".into(),
+        id: id("Process").into(),
+        name: Some("Process".into()),
         documentation: String::new(),
         nodes: vec![],
         lanes: vec![],
         flows: vec![],
     };
     d.diagrams.push(Diagram {
-        id: id("Diagram"),
-        plane_id: id("Plane"),
-        plane: process.id.clone(),
+        name: None,
+        id: id("Diagram").into(),
+        plane_id: id("Plane").into(),
+        plane: process.id.selector(),
         shapes: vec![],
         edges: vec![],
     });
@@ -109,20 +111,28 @@ impl Default for Controller {
     }
 }
 impl Controller {
-    pub fn apply(&mut self, request: Request) -> bool {
+    pub fn apply_changes(&mut self, request: Request) -> Option<ChangeSet> {
         let env = Envelope {
             request_id: uuid::Uuid::new_v4().to_string(),
             session_id: self.session.id(),
             expected_generation: Some(self.session.snapshot().generation),
         };
-        if let Err(e) = self.session.apply(env, request) {
-            self.error = format!("Change could not be applied: {e:?}");
-            return false;
+        match self.session.apply(env, request) {
+            Ok(changes) => Some(changes),
+            Err(e) => {
+                self.error = format!("Change could not be applied: {e:?}");
+                None
+            }
         }
-        true
+    }
+    pub fn apply(&mut self, request: Request) -> bool {
+        self.apply_changes(request).is_some()
+    }
+    pub fn mutate_changes(&mut self, mutations: Vec<Mutation>) -> Option<ChangeSet> {
+        self.apply_changes(Request::Batch { mutations })
     }
     pub fn mutate(&mut self, mutations: Vec<Mutation>) -> bool {
-        self.apply(Request::Batch { mutations })
+        self.mutate_changes(mutations).is_some()
     }
     pub fn open(&mut self, path: PathBuf) {
         let grant = match FileGrant::new(&path, Access::Write) {
@@ -466,9 +476,10 @@ mod lifecycle {
             Mutation::CreateCollaboration {
                 document_id: d.id,
                 collaboration: Collaboration {
+                    name: None,
                     conversation_nodes: vec![],
                     conversation_links: vec![],
-                    id: id("Collaboration"),
+                    id: id("Collaboration").into(),
                     participants: vec![],
                     flows: vec![],
                 },
@@ -476,18 +487,18 @@ mod lifecycle {
             Mutation::CreateParticipant {
                 document_id: d.id,
                 participant: Participant {
-                    id: participant.clone(),
-                    name: "Pool".into(),
-                    process: Some(p.id.clone()),
+                    id: participant.clone().into(),
+                    name: Some("Pool".into()),
+                    process: Some(p.id.selector()),
                 },
             },
             Mutation::CreateShape {
                 document_id: d.id,
-                diagram_id: diagram.id.clone(),
+                diagram_id: diagram.id.selector(),
                 shape: Shape {
                     is_expanded: None,
-                    id: id("Shape"),
-                    element: participant,
+                    id: id("Shape").into(),
+                    element: participant.into(),
                     bounds: Bounds {
                         x: 0.0,
                         y: 0.0,

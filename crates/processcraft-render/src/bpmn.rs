@@ -7,7 +7,7 @@ use processcraft_core::{
     bpmn_model::{
         AssociationDirection, EventDefinition, EventGatewayType, LoopCharacteristics, NodeDetails,
     },
-    ids::{ElementKey, XmlId},
+    ids::{ElementKey, ElementSelector},
     model::{Bounds, BpmnDocument, Capability, Flow, FlowKind, Lane, Node, NodeKind, Point, Style},
 };
 use tiny_skia::PathBuilder;
@@ -17,12 +17,13 @@ struct SemanticIndex<'a> {
     nodes: Vec<(&'a Node, usize)>,
     lanes: Vec<(&'a Lane, usize)>,
     flows: Vec<&'a Flow>,
-    parents: std::collections::BTreeMap<XmlId, XmlId>,
+    parents: std::collections::BTreeMap<ElementSelector, ElementSelector>,
     conversations: Vec<&'a ConversationNode>,
     conversation_links: Vec<&'a ConversationLink>,
     data_associations: Vec<&'a DataAssociation>,
     data_objects: Vec<&'a DataObject>,
     ports: Vec<(&'a DataPort, bool)>,
+    activity_ports: std::collections::BTreeSet<ElementSelector>,
     choreographies: Vec<&'a Choreography>,
 }
 impl<'a> SemanticIndex<'a> {
@@ -38,6 +39,7 @@ impl<'a> SemanticIndex<'a> {
             data_associations: Vec::new(),
             data_objects: Vec::new(),
             ports: Vec::new(),
+            activity_ports: std::collections::BTreeSet::new(),
             choreographies: document.choreographies.iter().collect(),
         };
         for process in &document.processes {
@@ -59,7 +61,7 @@ impl<'a> SemanticIndex<'a> {
                     &p.data_associations,
                     &p.data_objects,
                     0usize,
-                    None::<&XmlId>,
+                    None::<ElementSelector>,
                 )
             })
             .collect();
@@ -75,15 +77,19 @@ impl<'a> SemanticIndex<'a> {
             result.data_associations.extend(associations);
             result.data_objects.extend(objects);
             if let Some(parent) = parent {
-                for id in groups.iter().map(|g| &g.id).chain(
+                for id in groups.iter().map(|g| g.id.selector()).chain(
                     nodes
                         .iter()
-                        .map(|n| &n.id)
-                        .chain(lanes.iter().map(|l| &l.id))
-                        .chain(flows.iter().map(|f| &f.id))
-                        .chain(associations.iter().filter_map(|a| a.id.as_ref())),
+                        .map(|n| n.id.selector())
+                        .chain(lanes.iter().map(|l| l.id.selector()))
+                        .chain(flows.iter().map(|f| f.id.selector()))
+                        .chain(
+                            associations
+                                .iter()
+                                .filter_map(|a| a.id.as_ref().map(|id| id.selector())),
+                        ),
                 ) {
-                    result.parents.insert(id.clone(), parent.clone());
+                    result.parents.insert(id, parent.clone());
                 }
             }
             for node in nodes {
@@ -97,7 +103,8 @@ impl<'a> SemanticIndex<'a> {
                     {
                         result.ports.push((port, output));
                         if let Some(id) = &port.id {
-                            result.parents.insert(id.clone(), node.id.clone());
+                            result.activity_ports.insert(id.selector());
+                            result.parents.insert(id.selector(), node.id.selector());
                         }
                     }
                 }
@@ -112,7 +119,7 @@ impl<'a> SemanticIndex<'a> {
                         &content.data_associations,
                         &content.data_objects,
                         depth + 1,
-                        Some(&node.id),
+                        Some(node.id.selector()),
                     ));
                 }
             }
@@ -132,18 +139,18 @@ impl<'a> SemanticIndex<'a> {
                     .find(|node| node.id == link.source || node.id == link.target)
                     .and_then(|node| node.parent.as_ref())
                 {
-                    result.parents.insert(link.id.clone(), parent.clone());
+                    result.parents.insert(link.id.selector(), parent.clone());
                 }
             }
             for node in &c.conversation_nodes {
                 if let Some(parent) = &node.parent {
-                    result.parents.insert(node.id.clone(), parent.clone());
+                    result.parents.insert(node.id.selector(), parent.clone());
                 }
             }
         }
         Ok(result)
     }
-    fn hidden(&self, id: &XmlId, diagram: &processcraft_core::model::Diagram) -> bool {
+    fn hidden(&self, id: &ElementSelector, diagram: &processcraft_core::model::Diagram) -> bool {
         let mut parent = self.parents.get(id);
         for _ in 0..=32 {
             let Some(id) = parent else {
@@ -160,7 +167,10 @@ impl<'a> SemanticIndex<'a> {
         }
         true
     }
-    fn choreography(&self, id: &XmlId) -> Option<(&'a Choreography, &'a ChoreographyActivity)> {
+    fn choreography(
+        &self,
+        id: &ElementSelector,
+    ) -> Option<(&'a Choreography, &'a ChoreographyActivity)> {
         self.choreographies.iter().find_map(|c| {
             c.activities
                 .iter()
@@ -168,7 +178,7 @@ impl<'a> SemanticIndex<'a> {
                 .map(|activity| (*c, activity))
         })
     }
-    fn group_label<'b>(&self, id: &XmlId, document: &'b BpmnDocument) -> Option<&'b str> {
+    fn group_label<'b>(&self, id: &ElementSelector, document: &'b BpmnDocument) -> Option<&'b str> {
         let group = self.groups.iter().find(|g| &g.id == id)?;
         let value_id = group.category_value_ref.as_ref()?;
         document
@@ -179,46 +189,46 @@ impl<'a> SemanticIndex<'a> {
             .value
             .as_deref()
     }
-    fn data_object(&self, id: &XmlId) -> Option<&'a DataObject> {
+    fn data_object(&self, id: &ElementSelector) -> Option<&'a DataObject> {
         self.data_objects
             .iter()
             .copied()
-            .find(|item| item.id.as_ref() == Some(id))
+            .find(|item| item.id.as_ref().is_some_and(|identity| identity == id))
     }
-    fn data_association(&self, id: &XmlId) -> Option<&'a DataAssociation> {
+    fn data_association(&self, id: &ElementSelector) -> Option<&'a DataAssociation> {
         self.data_associations
             .iter()
             .copied()
-            .find(|item| item.id.as_ref() == Some(id))
+            .find(|item| item.id.as_ref().is_some_and(|identity| identity == id))
     }
-    fn port(&self, id: &XmlId) -> Option<(&'a DataPort, bool)> {
+    fn port(&self, id: &ElementSelector) -> Option<(&'a DataPort, bool)> {
         self.ports
             .iter()
             .copied()
-            .find(|(port, _)| port.id.as_ref() == Some(id))
+            .find(|(port, _)| port.id.as_ref().is_some_and(|identity| identity == id))
     }
-    fn conversation(&self, id: &XmlId) -> Option<&'a ConversationNode> {
+    fn conversation(&self, id: &ElementSelector) -> Option<&'a ConversationNode> {
         self.conversations
             .iter()
             .copied()
             .find(|node| &node.id == id)
     }
-    fn conversation_link(&self, id: &XmlId) -> Option<&'a ConversationLink> {
+    fn conversation_link(&self, id: &ElementSelector) -> Option<&'a ConversationLink> {
         self.conversation_links
             .iter()
             .copied()
             .find(|link| &link.id == id)
     }
     fn is_default_flow(&self, flow: &Flow) -> bool {
-        self.node(&flow.source).is_some_and(|(node,_)| matches!(&node.details,Some(NodeDetails::Gateway{default_flow:Some(id),..}) if id==&flow.id) || node.activity.as_ref().and_then(|a| a.default_flow.as_ref()) == Some(&flow.id))
+        self.node(&flow.source).is_some_and(|(node,_)| matches!(&node.details,Some(NodeDetails::Gateway{default_flow:Some(id),..}) if id==&flow.id) || node.activity.as_ref().and_then(|a| a.default_flow.as_ref()).is_some_and(|id| id == &flow.id))
     }
-    fn node(&self, id: &XmlId) -> Option<(&'a Node, usize)> {
+    fn node(&self, id: &ElementSelector) -> Option<(&'a Node, usize)> {
         self.nodes.iter().copied().find(|(n, _)| &n.id == id)
     }
-    fn lane(&self, id: &XmlId) -> Option<(&'a Lane, usize)> {
+    fn lane(&self, id: &ElementSelector) -> Option<(&'a Lane, usize)> {
         self.lanes.iter().copied().find(|(lane, _)| &lane.id == id)
     }
-    fn flow(&self, id: &XmlId) -> Option<&'a Flow> {
+    fn flow(&self, id: &ElementSelector) -> Option<&'a Flow> {
         self.flows.iter().copied().find(|f| &f.id == id)
     }
 }
@@ -242,7 +252,7 @@ pub enum HitGeometry {
 #[derive(Clone, Debug)]
 pub struct HitRegion {
     pub key: ElementKey,
-    pub diagram_element_id: XmlId,
+    pub diagram_element_id: ElementSelector,
     pub geometry: HitGeometry,
 }
 impl HitRegion {
@@ -303,6 +313,17 @@ impl HitRegion {
         }
     }
 }
+fn node_display_name(node: &Node) -> &str {
+    if let Some(NodeDetails::TextAnnotation {
+        text: Some(text), ..
+    }) = &node.details
+    {
+        text
+    } else {
+        node.name.as_deref().unwrap_or("")
+    }
+}
+
 fn data_label(
     node: Option<&processcraft_core::model::Node>,
     name: &str,
@@ -345,7 +366,7 @@ pub struct BpmnScene {
 impl BpmnScene {
     pub fn build(
         document: &BpmnDocument,
-        diagram_id: &XmlId,
+        diagram_id: &ElementSelector,
         appearance: Appearance,
         fonts: &mut TextEngine,
         family: &str,
@@ -354,7 +375,7 @@ impl BpmnScene {
     }
     fn build_internal(
         document: &BpmnDocument,
-        diagram_id: &XmlId,
+        diagram_id: &ElementSelector,
         appearance: Appearance,
         fonts: &mut TextEngine,
         family: &str,
@@ -394,6 +415,9 @@ impl BpmnScene {
             Ok(())
         };
         for shape in &diagram.shapes {
+            if semantics.activity_ports.contains(&shape.element) {
+                continue;
+            }
             if semantics.hidden(&shape.element, diagram) {
                 continue;
             }
@@ -430,10 +454,12 @@ impl BpmnScene {
             {
                 let named = semantics
                     .flow(&edge.element)
-                    .is_some_and(|f| !f.name.is_empty())
+                    .is_some_and(|f| f.name.as_deref().is_some_and(|name| !name.is_empty()))
                     || semantics
                         .conversation_link(&edge.element)
-                        .is_some_and(|link| !link.name.is_empty());
+                        .is_some_and(|link| {
+                            link.name.as_deref().is_some_and(|name| !name.is_empty())
+                        });
                 if named {
                     minx = minx.min(p.x);
                     miny = miny.min(p.y);
@@ -476,6 +502,10 @@ impl BpmnScene {
             }
         });
         for shape in ordered_shapes {
+            if semantics.activity_ports.contains(&shape.element) {
+                diagnostics.push(format!("Activity-local data port {} cannot be depicted as a BPMN shape; only process ports can be shown", shape.element));
+                continue;
+            }
             if semantics.groups.iter().any(|g| g.id == shape.element) {
                 let b = &shape.bounds;
                 let (x, y, w, h) = (
@@ -511,7 +541,7 @@ impl BpmnScene {
                         height: b.height.min(28.0),
                     };
                     let bounds = shape.label.as_ref().map(|l| &l.bounds).unwrap_or(&fallback);
-                    if group_label_collision(bounds, &shape.id, diagram, &semantics) {
+                    if group_label_collision(bounds, &shape.id.selector(), diagram, &semantics) {
                         diagnostics.push(format!(
                             "Group {} label overlaps another shape",
                             shape.element
@@ -538,7 +568,7 @@ impl BpmnScene {
                                 document_id: document.id,
                                 xml_id: shape.element.clone(),
                             },
-                            diagram_element_id: shape.id.clone(),
+                            diagram_element_id: shape.id.selector(),
                             geometry: HitGeometry::Shape(bounds.clone()),
                         });
                     }
@@ -548,17 +578,19 @@ impl BpmnScene {
                         document_id: document.id,
                         xml_id: shape.element.clone(),
                     },
-                    diagram_element_id: shape.id.clone(),
+                    diagram_element_id: shape.id.selector(),
                     geometry: HitGeometry::Shape(b.clone()),
                 });
                 continue;
             }
             let node = semantics.node(&shape.element).map(|(node, _)| node);
             let port = semantics.port(&shape.element);
-            let store = document
-                .data_stores
-                .iter()
-                .find(|store| store.id.as_ref() == Some(&shape.element));
+            let store = document.data_stores.iter().find(|store| {
+                store
+                    .id
+                    .as_ref()
+                    .is_some_and(|identity| identity == &shape.element)
+            });
             let kind = node
                 .map(|node| node.kind)
                 .or(port.map(|_| NodeKind::DataObjectReference))
@@ -567,20 +599,20 @@ impl BpmnScene {
             let choreography = semantics.choreography(&shape.element);
             let details = node.and_then(|node| node.details.as_ref());
             let mut name = choreography
-                .map(|(_, activity)| activity.name.as_str())
-                .or_else(|| conversation.map(|node| node.name.as_str()))
-                .or_else(|| node.map(|node| node.name.as_str()))
+                .map(|(_, activity)| activity.name.as_deref().unwrap_or(""))
+                .or_else(|| conversation.map(|node| node.name.as_deref().unwrap_or("")))
+                .or_else(|| node.map(node_display_name))
                 .or_else(|| port.map(|(port, _)| port.name.as_deref().unwrap_or("")))
                 .or_else(|| store.map(|store| store.name.as_deref().unwrap_or("")))
                 .or_else(|| {
                     semantics
                         .lane(&shape.element)
-                        .map(|(lane, _)| lane.name.as_str())
+                        .map(|(lane, _)| lane.name.as_deref().unwrap_or(""))
                 });
             if let Some(c) = &document.collaboration {
                 for p in &c.participants {
                     if p.id == shape.element {
-                        name = Some(p.name.as_str());
+                        name = Some(p.name.as_deref().unwrap_or(""));
                     }
                 }
             }
@@ -1066,10 +1098,10 @@ impl BpmnScene {
                     .participants
                     .iter()
                     .find(|p| p.id == activity.initiating_participant)
-                    .map(|p| p.name.as_str());
+                    .map(|p| p.name.as_deref().unwrap_or(""));
                 let bottom = other
                     .and_then(|id| scope.participants.iter().find(|p| &p.id == id))
-                    .map(|p| p.name.as_str());
+                    .map(|p| p.name.as_deref().unwrap_or(""));
                 let band_h = (h * 0.22).clamp(12.0, 24.0);
                 lines(
                     &mut scene,
@@ -1314,7 +1346,7 @@ impl BpmnScene {
                     document_id: document.id,
                     xml_id: shape.element.clone(),
                 },
-                diagram_element_id: shape.id.clone(),
+                diagram_element_id: shape.id.selector(),
                 geometry: match kind {
                     Some(
                         NodeKind::StartEvent
@@ -1355,7 +1387,7 @@ impl BpmnScene {
                         document_id: document.id,
                         xml_id: edge.element.clone(),
                     },
-                    diagram_element_id: edge.id.clone(),
+                    diagram_element_id: edge.id.selector(),
                     geometry: HitGeometry::Edge(edge.waypoints.clone()),
                 });
                 continue;
@@ -1368,7 +1400,9 @@ impl BpmnScene {
                     .map(|p| ((p.x - origin.0) as f32, (p.y - origin.1) as f32))
                     .collect();
                 double_link(&mut scene, &points, stroke)?;
-                if !link.name.is_empty() && !edge.waypoints.is_empty() {
+                if link.name.as_deref().is_some_and(|name| !name.is_empty())
+                    && !edge.waypoints.is_empty()
+                {
                     let p = &edge.waypoints[edge.waypoints.len() / 2];
                     let fallback = Bounds {
                         x: p.x,
@@ -1385,7 +1419,7 @@ impl BpmnScene {
                         &mut scene,
                         fonts,
                         family,
-                        &link.name,
+                        link.name.as_deref().unwrap_or(""),
                         bounds,
                         origin,
                         edge.label
@@ -1401,7 +1435,7 @@ impl BpmnScene {
                         document_id: document.id,
                         xml_id: edge.element.clone(),
                     },
-                    diagram_element_id: edge.id.clone(),
+                    diagram_element_id: edge.id.selector(),
                     geometry: HitGeometry::Edge(edge.waypoints.clone()),
                 });
                 continue;
@@ -1463,7 +1497,9 @@ impl BpmnScene {
                 let wing = |v: f32| (b.0 - 9.0 * (angle + v).cos(), b.1 - 9.0 * (angle + v).sin());
                 lines(&mut scene, &[wing(0.5), b, wing(-0.5)], stroke, 1.5)?;
             }
-            if !flow.name.is_empty() && !edge.waypoints.is_empty() {
+            if flow.name.as_deref().is_some_and(|name| !name.is_empty())
+                && !edge.waypoints.is_empty()
+            {
                 let p = &edge.waypoints[edge.waypoints.len() / 2];
                 let fallback = Bounds {
                     x: p.x,
@@ -1476,7 +1512,7 @@ impl BpmnScene {
                     &mut scene,
                     fonts,
                     family,
-                    &flow.name,
+                    flow.name.as_deref().unwrap_or(""),
                     bounds,
                     origin,
                     edge.label
@@ -1492,7 +1528,7 @@ impl BpmnScene {
                     document_id: document.id,
                     xml_id: edge.element.clone(),
                 },
-                diagram_element_id: edge.id.clone(),
+                diagram_element_id: edge.id.selector(),
                 geometry: HitGeometry::Edge(edge.waypoints.clone()),
             });
         }
@@ -1513,7 +1549,7 @@ impl BpmnScene {
 }
 fn group_label_collision(
     bounds: &Bounds,
-    shape_id: &XmlId,
+    shape_id: &ElementSelector,
     diagram: &processcraft_core::model::Diagram,
     semantics: &SemanticIndex<'_>,
 ) -> bool {
@@ -2382,7 +2418,7 @@ pub struct BpmnViewport {
 impl BpmnViewport {
     pub fn build(
         document: &BpmnDocument,
-        diagram_id: &XmlId,
+        diagram_id: &ElementSelector,
         appearance: Appearance,
         fonts: &mut TextEngine,
         family: &str,
@@ -2496,15 +2532,19 @@ impl BpmnViewport {
         let semantics = SemanticIndex::new(document)?;
         // Labels are culled independently of their owning shape.
         for shape in &original.shapes {
-            if semantics.hidden(&shape.element, original) {
+            if semantics.activity_ports.contains(&shape.element)
+                || semantics.hidden(&shape.element, original)
+            {
                 continue;
             }
             let node = semantics.node(&shape.element).map(|(node, _)| node);
             let port = semantics.port(&shape.element);
-            let store = document
-                .data_stores
-                .iter()
-                .find(|store| store.id.as_ref() == Some(&shape.element));
+            let store = document.data_stores.iter().find(|store| {
+                store
+                    .id
+                    .as_ref()
+                    .is_some_and(|identity| identity == &shape.element)
+            });
             let kind = node
                 .map(|node| node.kind)
                 .or(port.map(|_| NodeKind::DataObjectReference))
@@ -2513,20 +2553,22 @@ impl BpmnViewport {
             let choreography = semantics.choreography(&shape.element);
             let mut name = semantics
                 .group_label(&shape.element, document)
-                .or_else(|| choreography.map(|(_, activity)| activity.name.as_str()))
-                .or_else(|| conversation.map(|node| node.name.as_str()))
-                .or_else(|| node.map(|node| node.name.as_str()))
+                .or_else(|| {
+                    choreography.map(|(_, activity)| activity.name.as_deref().unwrap_or(""))
+                })
+                .or_else(|| conversation.map(|node| node.name.as_deref().unwrap_or("")))
+                .or_else(|| node.map(node_display_name))
                 .or_else(|| port.map(|(port, _)| port.name.as_deref().unwrap_or("")))
                 .or_else(|| store.map(|store| store.name.as_deref().unwrap_or("")))
                 .or_else(|| {
                     semantics
                         .lane(&shape.element)
-                        .map(|(lane, _)| lane.name.as_str())
+                        .map(|(lane, _)| lane.name.as_deref().unwrap_or(""))
                 });
             if let Some(c) = &document.collaboration {
                 for p in &c.participants {
                     if p.id == shape.element {
-                        name = Some(p.name.as_str());
+                        name = Some(p.name.as_deref().unwrap_or(""));
                     }
                 }
             }
@@ -2604,7 +2646,7 @@ impl BpmnViewport {
                 continue;
             }
             if semantics.groups.iter().any(|g| g.id == shape.element)
-                && group_label_collision(bounds, &shape.id, original, &semantics)
+                && group_label_collision(bounds, &shape.id.selector(), original, &semantics)
             {
                 built.diagnostics.push(format!(
                     "Group {} label overlaps another shape",
@@ -2634,7 +2676,7 @@ impl BpmnViewport {
                         document_id: document.id,
                         xml_id: shape.element.clone(),
                     },
-                    diagram_element_id: shape.id.clone(),
+                    diagram_element_id: shape.id.selector(),
                     geometry: HitGeometry::Shape(local),
                 });
             }
@@ -2686,7 +2728,7 @@ impl BpmnViewport {
                             document_id: document.id,
                             xml_id: edge.element.clone(),
                         },
-                        diagram_element_id: edge.id.clone(),
+                        diagram_element_id: edge.id.selector(),
                         geometry: HitGeometry::Edge(edge.waypoints.clone()),
                     });
                 }
@@ -2711,7 +2753,9 @@ impl BpmnViewport {
                         visible = true;
                     }
                 }
-                if !link.name.is_empty() && !edge.waypoints.is_empty() {
+                if link.name.as_deref().is_some_and(|name| !name.is_empty())
+                    && !edge.waypoints.is_empty()
+                {
                     let p = &edge.waypoints[edge.waypoints.len() / 2];
                     let fallback = Bounds {
                         x: p.x,
@@ -2725,7 +2769,7 @@ impl BpmnViewport {
                             &mut built.scene,
                             fonts,
                             family,
-                            &link.name,
+                            link.name.as_deref().unwrap_or(""),
                             bounds,
                             (view.x + built.origin.0, view.y + built.origin.1),
                             edge.label
@@ -2743,7 +2787,7 @@ impl BpmnViewport {
                             document_id: document.id,
                             xml_id: edge.element.clone(),
                         },
-                        diagram_element_id: edge.id.clone(),
+                        diagram_element_id: edge.id.selector(),
                         geometry: HitGeometry::Edge(edge.waypoints.clone()),
                     });
                 }
@@ -2883,7 +2927,9 @@ impl BpmnViewport {
                     lines(&mut built.scene, &[wing(0.5), end, wing(-0.5)], stroke, 1.5)?;
                 }
             }
-            if !flow.name.is_empty() && !edge.waypoints.is_empty() {
+            if flow.name.as_deref().is_some_and(|name| !name.is_empty())
+                && !edge.waypoints.is_empty()
+            {
                 let p = &edge.waypoints[edge.waypoints.len() / 2];
                 let fallback = Bounds {
                     x: p.x,
@@ -2900,14 +2946,14 @@ impl BpmnViewport {
                             document_id: document.id,
                             xml_id: edge.element.clone(),
                         },
-                        diagram_element_id: edge.id.clone(),
+                        diagram_element_id: edge.id.selector(),
                         geometry: HitGeometry::Shape(local),
                     });
                     label(
                         &mut built.scene,
                         fonts,
                         family,
-                        &flow.name,
+                        flow.name.as_deref().unwrap_or(""),
                         bounds,
                         (view.x + built.origin.0, view.y + built.origin.1),
                         edge.label
@@ -2927,7 +2973,7 @@ impl BpmnViewport {
                     document_id: document.id,
                     xml_id: edge.element.clone(),
                 },
-                diagram_element_id: edge.id.clone(),
+                diagram_element_id: edge.id.selector(),
                 geometry: HitGeometry::Edge(edge.waypoints.clone()),
             });
         }

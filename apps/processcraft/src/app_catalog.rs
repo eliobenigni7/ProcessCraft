@@ -29,30 +29,61 @@ impl QNameDraft {
         })
     }
 }
-pub(super) fn id_string(id: &Option<XmlId>) -> Option<String> {
-    id.as_ref().map(ToString::to_string)
+#[derive(Clone, Default)]
+pub(super) struct IdentityDraft {
+    pub(super) value: Option<String>,
+    pub(super) original: Option<processcraft_core::ids::ElementIdentity>,
+    pub(super) existing: bool,
 }
-pub(super) fn id_build(id: &Option<String>) -> Result<Option<XmlId>, String> {
-    id.as_ref()
+pub(super) fn id_string(id: &Option<processcraft_core::ids::ElementIdentity>) -> IdentityDraft {
+    IdentityDraft {
+        value: id
+            .as_ref()
+            .and_then(|id| id.xml_id())
+            .map(ToString::to_string),
+        original: id.clone(),
+        existing: true,
+    }
+}
+pub(super) fn id_build(
+    id: &IdentityDraft,
+) -> Result<Option<processcraft_core::ids::ElementIdentity>, String> {
+    let parsed: Option<XmlId> = id
+        .value
+        .as_ref()
         .map(|s| {
             s.parse()
                 .map_err(|_| "ID must be a valid XML ID.".to_owned())
         })
-        .transpose()
+        .transpose()?;
+    if id.existing {
+        if id.original.as_ref().and_then(|identity| identity.xml_id()) != parsed.as_ref() {
+            return Err("Use the XML ID action to change an existing identity.".into());
+        }
+        Ok(id.original.clone())
+    } else {
+        Ok(parsed.map(Into::into))
+    }
+}
+pub(super) fn id_selector(id: &IdentityDraft) -> Option<ElementSelector> {
+    id_build(id)
+        .ok()
+        .flatten()
+        .map(|identity| identity.selector())
 }
 pub(super) fn q_build(q: &Option<QNameDraft>) -> Result<Option<QNameRef>, String> {
     q.as_ref().map(QNameDraft::build).transpose()
 }
 #[derive(Clone, Default)]
 struct ItemDraft {
-    id: Option<String>,
+    id: IdentityDraft,
     structure_ref: Option<QNameDraft>,
     is_collection: Option<bool>,
     item_kind: Option<ItemKind>,
 }
 #[derive(Clone, Default)]
 struct OperationDraft {
-    id: Option<String>,
+    id: IdentityDraft,
     name: String,
     implementation_ref: Option<QNameDraft>,
     in_message_ref: QNameDraft,
@@ -61,21 +92,21 @@ struct OperationDraft {
 }
 #[derive(Clone, Default)]
 struct InterfaceDraft {
-    id: Option<String>,
+    id: IdentityDraft,
     name: String,
     implementation_ref: Option<QNameDraft>,
     operations: Vec<OperationDraft>,
 }
 #[derive(Clone, Default)]
 struct ParameterDraft {
-    id: Option<String>,
+    id: IdentityDraft,
     name: Option<String>,
     type_ref: Option<QNameDraft>,
     is_required: Option<bool>,
 }
 #[derive(Clone, Default)]
 struct ResourceDraft {
-    id: Option<String>,
+    id: IdentityDraft,
     name: String,
     parameters: Vec<ParameterDraft>,
 }
@@ -257,7 +288,7 @@ impl CatalogDraft {
                 ui.push_id(("item", i), |ui| {
                     ui.separator();
                     ui.label(format!("Item definition {}", i + 1));
-                    optional_text(ui, "ID", &mut item.id);
+                    optional_text(ui, "ID", &mut item.id.value);
                     optional_qname(ui, "Structure reference", &mut item.structure_ref);
                     optional_bool(ui, "Collection", &mut item.is_collection);
                     egui::ComboBox::from_label("Item kind")
@@ -303,7 +334,7 @@ impl CatalogDraft {
                 ui.push_id(("interface", i), |ui| {
                     ui.separator();
                     ui.label(format!("Interface {}", i + 1));
-                    optional_text(ui, "ID", &mut interface.id);
+                    optional_text(ui, "ID", &mut interface.id.value);
                     text(ui, "Name", &mut interface.name);
                     optional_qname(
                         ui,
@@ -316,7 +347,7 @@ impl CatalogDraft {
                         ui.push_id(("operation", j), |ui| {
                             ui.separator();
                             ui.label(format!("Operation {}", j + 1));
-                            optional_text(ui, "ID", &mut operation.id);
+                            optional_text(ui, "ID", &mut operation.id.value);
                             text(ui, "Name", &mut operation.name);
                             optional_qname(
                                 ui,
@@ -395,14 +426,14 @@ impl CatalogDraft {
                 ui.push_id(("resource", i), |ui| {
                     ui.separator();
                     ui.label(format!("Resource {}", i + 1));
-                    optional_text(ui, "ID", &mut resource.id);
+                    optional_text(ui, "ID", &mut resource.id.value);
                     text(ui, "Name", &mut resource.name);
                     let mut remove_parameter = None;
                     for (j, parameter) in resource.parameters.iter_mut().enumerate() {
                         ui.push_id(("parameter", j), |ui| {
                             ui.separator();
                             ui.label(format!("Parameter {}", j + 1));
-                            optional_text(ui, "ID", &mut parameter.id);
+                            optional_text(ui, "ID", &mut parameter.id.value);
                             optional_text(ui, "Name", &mut parameter.name);
                             optional_qname(ui, "Type reference", &mut parameter.type_ref);
                             optional_bool(ui, "Required", &mut parameter.is_required);
@@ -499,6 +530,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn identity_draft_keeps_native_handle_and_refuses_unmapped_id_changes() {
+        let identity = processcraft_core::ids::ElementIdentity::anonymous();
+        let mut draft = id_string(&Some(identity.clone()));
+        assert_eq!(id_build(&draft).unwrap(), Some(identity));
+        draft.value = Some("NewId".into());
+        assert!(id_build(&draft).is_err());
+        let mut legacy_none = id_string(&None);
+        legacy_none.value = Some("NewId".into());
+        assert!(id_build(&legacy_none).is_err());
+    }
+
+    #[test]
     fn catalog_draft_round_trips_and_keeps_invalid_reference() {
         let catalog = SupportingCatalog {
             item_definitions: vec![ItemDefinition {
@@ -552,7 +595,10 @@ mod tests {
         app.select(None);
         let mut draft = CatalogDraft::new(&SupportingCatalog::default());
         draft.items.push(ItemDraft {
-            id: Some("Item".into()),
+            id: IdentityDraft {
+                value: Some("Item".into()),
+                ..Default::default()
+            },
             ..Default::default()
         });
         app.catalog_draft = Some(draft);

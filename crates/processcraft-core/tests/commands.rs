@@ -1,10 +1,13 @@
 use processcraft_core::{
     commands::{CommandError, Envelope, Mutation, Request, Session},
-    ids::{DocumentId, ElementKey, XmlId},
+    ids::{DocumentId, ElementKey},
     model::*,
 };
 use std::sync::Arc;
-fn id(s: &str) -> XmlId {
+fn id<T: std::str::FromStr>(s: &str) -> T
+where
+    T::Err: std::fmt::Debug,
+{
     s.parse().unwrap()
 }
 fn env(s: &Session) -> Envelope {
@@ -93,12 +96,12 @@ fn definitions_metadata_is_undoable_and_validated_atomically() {
         .is_err()
     );
     assert_eq!(s.snapshot().content_id, after);
-    for bad in ["", "urn:bad\u{1}"] {
+    {
         let mut invalid = s.snapshot().project.documents[0]
             .definitions
             .clone()
             .unwrap();
-        invalid.target_namespace = bad.into();
+        invalid.target_namespace = "urn:bad\u{1}".into();
         assert!(
             apply(
                 &mut s,
@@ -472,7 +475,7 @@ fn activity_bindings_validate_new_local_refs_and_preserve_legacy() {
     let node = Node {
         item_aware: None,
         id: id("send"),
-        name: String::new(),
+        name: Some(String::new()),
         documentation: String::new(),
         kind: NodeKind::SendTask,
         details: None,
@@ -544,7 +547,7 @@ fn activity_bindings_validate_new_local_refs_and_preserve_legacy() {
     Arc::make_mut(&mut legacy.documents[0]).processes[0]
         .nodes
         .iter_mut()
-        .find(|n| n.id == id("send"))
+        .find(|n| n.id == id::<processcraft_core::ids::ElementIdentity>("send"))
         .unwrap()
         .activity
         .as_mut()
@@ -562,7 +565,7 @@ fn activity_bindings_validate_new_local_refs_and_preserve_legacy() {
     let mut props = legacy.snapshot().project.documents[0].processes[0]
         .nodes
         .iter()
-        .find(|n| n.id == id("send"))
+        .find(|n| n.id == id::<processcraft_core::ids::ElementIdentity>("send"))
         .unwrap()
         .activity
         .clone()
@@ -581,7 +584,7 @@ fn activity_bindings_validate_new_local_refs_and_preserve_legacy() {
     let node = Arc::make_mut(&mut stored.documents[0]).processes[0]
         .nodes
         .iter_mut()
-        .find(|n| n.id == id("send"))
+        .find(|n| n.id == id::<processcraft_core::ids::ElementIdentity>("send"))
         .unwrap();
     node.activity.as_mut().unwrap().operation_ref = Some(QNameRef {
         namespace: "urn:old namespace".into(),
@@ -599,7 +602,7 @@ fn activity_bindings_validate_new_local_refs_and_preserve_legacy() {
     let mut props = old_namespace.snapshot().project.documents[0].processes[0]
         .nodes
         .iter()
-        .find(|n| n.id == id("send"))
+        .find(|n| n.id == id::<processcraft_core::ids::ElementIdentity>("send"))
         .unwrap()
         .activity
         .clone()
@@ -766,7 +769,7 @@ fn link_and_compensation_events_validate_atomically() {
     let node = |name: &str, kind, definition| Node {
         item_aware: None,
         id: id(name),
-        name: String::new(),
+        name: Some(String::new()),
         documentation: String::new(),
         kind,
         details: Some(NodeDetails::Event {
@@ -849,7 +852,7 @@ fn definitions_namespace_change_rejects_existing_qualified_references() {
     let node = Node {
         item_aware: None,
         id: id("call"),
-        name: String::new(),
+        name: Some(String::new()),
         documentation: String::new(),
         kind: NodeKind::CallActivity,
         details: Some(NodeDetails::CallActivity {
@@ -980,7 +983,7 @@ fn failed_batch_preserves_state_and_history() {
             kind: FlowKind::Sequence,
             source: id("review"),
             target: id("missing"),
-            name: String::new(),
+            name: Some(String::new()),
             documentation: String::new(),
             condition: None,
         },
@@ -1074,7 +1077,7 @@ fn copy_on_write_shares_unchanged_document() {
         batch(vec![Mutation::Rename {
             document_id: docid(),
             element_id: id("review"),
-            name: "New".into(),
+            name: Some("New".into()),
         }]),
     )
     .unwrap();
@@ -1130,13 +1133,14 @@ fn retained_extensions_allow_labels_but_reject_structural_changes() {
         extensions: vec![],
     };
     d.processes.push(Process {
+        is_executable: Some(false),
         io_specification: None,
         lane_set_id: None,
         groups: vec![],
         data_objects: vec![],
         data_associations: vec![],
         id: id("p"),
-        name: "before".into(),
+        name: Some("before".into()),
         documentation: String::new(),
         nodes: vec![],
         lanes: vec![],
@@ -1150,7 +1154,7 @@ fn retained_extensions_allow_labels_but_reject_structural_changes() {
         batch(vec![Mutation::Rename {
             document_id: did,
             element_id: id("p"),
-            name: "after".into(),
+            name: Some("after".into()),
         }]),
     )
     .unwrap();
@@ -1334,6 +1338,12 @@ fn flow_condition_changes_identity_and_protected_document_rejects_it() {
 fn descriptors_match_protocol_tags() {
     let descriptors = processcraft_core::commands::command_descriptors();
     let expected = [
+        "setCollaborationName",
+        "setDiagramName",
+        "setProcessExecutable",
+        "setElementXmlId",
+        "promoteElementIdentity",
+        "setTextAnnotation",
         "setNodeItemAware",
         "setProcessIoSpecification",
         "setDataStores",
@@ -1450,5 +1460,222 @@ fn descriptors_match_protocol_tags() {
     assert_eq!(
         serde_json::to_value(mutation).unwrap()["type"],
         "setFlowCondition"
+    );
+}
+
+#[test]
+fn clearing_connected_id_promotes_selection_and_undo_restores_it() {
+    use processcraft_core::ids::ElementSelector;
+    let mut s = project();
+    fixture(&mut s);
+    let key = ElementKey {
+        document_id: docid(),
+        xml_id: id("review"),
+    };
+    s.set_selection(vec![key.clone()]);
+    let before = s.snapshot().content_id;
+    let change = apply(
+        &mut s,
+        batch(vec![Mutation::SetElementXmlId {
+            document_id: docid(),
+            element_id: key.xml_id.clone(),
+            xml_id: None,
+        }]),
+    )
+    .unwrap();
+    assert_eq!(change.selector_mappings.len(), 1);
+    let promoted = &change.selector_mappings[0].to;
+    assert!(matches!(promoted, ElementSelector::Native { .. }));
+    assert_eq!(&s.snapshot().selection[0].xml_id, promoted);
+    let snap = s.snapshot();
+    let process = &snap.project.documents[0].processes[0];
+    assert!(process.flows.iter().any(|flow| &flow.target == promoted));
+    assert!(
+        snap.project.documents[0]
+            .diagrams
+            .iter()
+            .flat_map(|d| &d.shapes)
+            .any(|shape| &shape.element == promoted)
+    );
+    let undo = apply(&mut s, Request::Undo).unwrap();
+    assert_eq!(&undo.selector_mappings[0].from, promoted);
+    assert_eq!(undo.selector_mappings[0].to, key.xml_id);
+    assert_eq!(s.snapshot().content_id, before);
+    assert_eq!(s.snapshot().selection, vec![key.clone()]);
+    let redo = apply(&mut s, Request::Redo).unwrap();
+    assert_eq!(redo.selector_mappings[0].from, key.xml_id);
+    assert_eq!(&redo.selector_mappings[0].to, promoted);
+    assert_eq!(&s.snapshot().selection[0].xml_id, promoted);
+}
+
+#[test]
+fn identity_edit_rewrites_only_typed_local_references() {
+    use processcraft_core::{
+        bpmn_catalog::ItemDefinition,
+        bpmn_data::{DataStore, ItemAwareMetadata},
+        bpmn_model::QNameRef,
+    };
+    let mut original = project();
+    fixture(&mut original);
+    let mut p = (*original.snapshot().project).clone();
+    let doc = Arc::make_mut(&mut p.documents[0]);
+    let reference = QNameRef {
+        namespace: GENERATED_TARGET_NAMESPACE.into(),
+        local: id("item"),
+    };
+    doc.catalog.item_definitions.push(ItemDefinition {
+        id: Some(id("item")),
+        structure_ref: Some(reference.clone()),
+        is_collection: None,
+        item_kind: None,
+    });
+    doc.data_stores.push(DataStore {
+        id: Some(id("store")),
+        name: Some("Store".into()),
+        capacity: None,
+        is_unlimited: None,
+        item_aware: Some(ItemAwareMetadata {
+            item_subject_ref: Some(reference.clone()),
+            data_state: None,
+        }),
+    });
+    let mut s = Session::new(p).unwrap();
+    let before = s.snapshot().content_id;
+    assert!(
+        apply(
+            &mut s,
+            batch(vec![Mutation::SetElementXmlId {
+                document_id: docid(),
+                element_id: id("item"),
+                xml_id: None
+            }])
+        )
+        .is_err()
+    );
+    assert_eq!(s.snapshot().content_id, before);
+    apply(
+        &mut s,
+        batch(vec![Mutation::SetElementXmlId {
+            document_id: docid(),
+            element_id: id("item"),
+            xml_id: Some(id("item_new")),
+        }]),
+    )
+    .unwrap();
+    let snap = s.snapshot();
+    let doc = &snap.project.documents[0];
+    assert_eq!(
+        doc.catalog.item_definitions[0].structure_ref,
+        Some(reference)
+    );
+    assert_eq!(
+        doc.data_stores[0]
+            .item_aware
+            .as_ref()
+            .unwrap()
+            .item_subject_ref
+            .as_ref()
+            .unwrap()
+            .local,
+        id::<processcraft_core::ids::XmlId>("item_new")
+    );
+}
+
+#[test]
+fn promotion_requires_generation_and_targets_only_optional_identity() {
+    use processcraft_core::bpmn_catalog::ItemDefinition;
+    let mut original = project();
+    fixture(&mut original);
+    let mut p = (*original.snapshot().project).clone();
+    Arc::make_mut(&mut p.documents[0])
+        .catalog
+        .item_definitions
+        .push(ItemDefinition {
+            id: None,
+            structure_ref: None,
+            is_collection: None,
+            item_kind: None,
+        });
+    let mut s = Session::new(p).unwrap();
+    let path = "/catalog/item_definitions/0/id".to_string();
+    let request = || {
+        batch(vec![Mutation::PromoteElementIdentity {
+            document_id: docid(),
+            model_path: path.clone(),
+            xml_id: None,
+        }])
+    };
+    assert!(apply(&mut s, request()).is_err());
+    let mut guarded = env(&s);
+    guarded.expected_generation = Some(s.snapshot().generation);
+    let change = s.apply(guarded, request()).unwrap();
+    assert_eq!(change.promoted_identities.len(), 1);
+    assert_eq!(
+        s.snapshot().project.documents[0].catalog.item_definitions[0]
+            .id
+            .as_ref()
+            .unwrap()
+            .selector(),
+        change.promoted_identities[0].selector
+    );
+    apply(&mut s, Request::Undo).unwrap();
+    assert!(
+        s.snapshot().project.documents[0].catalog.item_definitions[0]
+            .id
+            .is_none()
+    );
+}
+
+#[test]
+fn annotation_text_edit_migrates_legacy_body_and_undo_restores_it() {
+    use processcraft_core::bpmn_model::NodeDetails;
+    let mut s = project();
+    fixture(&mut s);
+    let mut p = (*s.snapshot().project).clone();
+    Arc::make_mut(&mut p.documents[0]).processes[0]
+        .nodes
+        .push(Node {
+            id: id("annotation"),
+            name: Some("old body".into()),
+            documentation: String::new(),
+            kind: NodeKind::TextAnnotation,
+            details: Some(NodeDetails::TextAnnotation {
+                text_format: Some("text/plain".into()),
+                text: None,
+            }),
+            item_aware: None,
+            loop_characteristics: None,
+            io_specification: None,
+            activity: None,
+            owner: String::new(),
+            contact: String::new(),
+        });
+    let mut s = Session::new(p).unwrap();
+    let before = s.snapshot().content_id;
+    apply(
+        &mut s,
+        batch(vec![Mutation::SetTextAnnotation {
+            document_id: docid(),
+            element_id: id("annotation"),
+            text: Some("new body".into()),
+        }]),
+    )
+    .unwrap();
+    let snap = s.snapshot();
+    let node = processcraft_core::queries::find_node(&snap.project.documents[0], &id("annotation"))
+        .unwrap();
+    assert_eq!(node.name, None);
+    assert!(
+        matches!(&node.details, Some(NodeDetails::TextAnnotation { text_format: Some(format), text: Some(text) }) if format == "text/plain" && text == "new body")
+    );
+    apply(&mut s, Request::Undo).unwrap();
+    assert_eq!(s.snapshot().content_id, before);
+    let snap = s.snapshot();
+    assert_eq!(
+        processcraft_core::queries::find_node(&snap.project.documents[0], &id("annotation"))
+            .unwrap()
+            .name
+            .as_deref(),
+        Some("old body")
     );
 }

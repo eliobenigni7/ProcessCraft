@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<b:definitions xmlns:b="http://www.omg.org/spec/BPMN/20100524/MODEL" id="definitions" targetNamespace="">
+  <b:process id="process" isExecutable="false">
+    <b:task id="activity"/>
+    <b:intermediateThrowEvent id="throw"><b:linkEventDefinition id="throwLink" name="Jump"><b:target>catchLink</b:target></b:linkEventDefinition></b:intermediateThrowEvent>
+    <b:intermediateCatchEvent id="catch"><b:linkEventDefinition id="catchLink" name="Jump"><b:source>throwLink</b:source></b:linkEventDefinition></b:intermediateCatchEvent>
+    <b:boundaryEvent id="compensateBoundary" attachedToRef="activity"><b:compensateEventDefinition id="compensateBoundaryDef"/></b:boundaryEvent>
+    <b:intermediateThrowEvent id="compensate"><b:compensateEventDefinition id="compensation" waitForCompletion="false" activityRef="activity"/></b:intermediateThrowEvent>
+    <b:transaction id="transaction"><b:endEvent id="cancelEnd"><b:cancelEventDefinition id="cancelEndDef"/></b:endEvent></b:transaction>
+    <b:boundaryEvent id="cancelBoundary" attachedToRef="transaction"><b:cancelEventDefinition id="cancelBoundaryDef"/></b:boundaryEvent>
+  </b:process>
+</b:definitions>

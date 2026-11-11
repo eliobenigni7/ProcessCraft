@@ -2,6 +2,69 @@ use processcraft_core::{ids::CheckpointId, model::*, queries};
 use std::sync::Arc;
 
 #[test]
+fn comparison_keeps_native_element_identity_while_reporting_xml_id_changes() {
+    use processcraft_core::ids::{ElementIdentity, ElementSelector, NativeElementId};
+    let native_id = NativeElementId::new();
+    let mut project = ProjectData::new("Identity comparison".into());
+    let mut document = BpmnDocument::new(
+        "Anonymous definitions".into(),
+        ElementIdentity::Native {
+            native_id,
+            xml_id: None,
+        },
+    );
+    document.definitions = Some(DefinitionsMetadata {
+        target_namespace: String::new(),
+        imports: vec![],
+        name: None,
+        expression_language: None,
+        type_language: None,
+        exporter: None,
+        exporter_version: None,
+    });
+    let document_id = document.id;
+    project.documents.push(Arc::new(document));
+    let checkpoint_id = CheckpointId::new();
+    project.checkpoints.push(Checkpoint {
+        id: checkpoint_id,
+        name: "Before assignment".into(),
+        created_unix_ms: 1,
+        content: FrozenProject::capture(&project),
+    });
+    let before = project.content_identity().unwrap();
+    Arc::make_mut(&mut project.documents[0]).definitions_id = ElementIdentity::Native {
+        native_id,
+        xml_id: Some("AssignedDefinitions".parse().unwrap()),
+    };
+    assert_ne!(project.content_identity().unwrap(), before);
+    let comparison = queries::compare_checkpoint(&project, checkpoint_id).unwrap();
+    assert!(comparison.added_elements.is_empty());
+    assert!(comparison.removed_elements.is_empty());
+    assert_eq!(comparison.changed_document_properties, vec![document_id]);
+    assert_eq!(comparison.changed_properties.len(), 1);
+    assert_eq!(
+        comparison.changed_properties[0].key.xml_id,
+        ElementSelector::Native { native_id }
+    );
+    assert!(
+        comparison.changed_properties[0]
+            .properties
+            .iter()
+            .any(|difference| {
+                difference.property == "id.xml_id"
+                    && difference.before.is_null()
+                    && difference.after == "AssignedDefinitions"
+            })
+    );
+    assert!(
+        project.checkpoints[0].content.documents[0]
+            .definitions_id
+            .xml_id()
+            .is_none()
+    );
+}
+
+#[test]
 fn comparison_reports_definitions_values_without_inventing_semantic_elements() {
     let mut project = ProjectData::new("Metadata".into());
     let mut document = BpmnDocument::new("Model".into(), "Definitions".parse().unwrap());
@@ -69,11 +132,12 @@ fn comparison_separates_rename_properties_geometry_and_frozen_context() {
     let mut project = ProjectData::new("Analysis".into());
     let mut document = BpmnDocument::new("Model".into(), "Definitions".parse().unwrap());
     document.processes.push(Process {
+        is_executable: Some(false),
         io_specification: None,
         lane_set_id: None,
         groups: vec![],
         id: "Process".parse().unwrap(),
-        name: "Process".into(),
+        name: Some("Process".into()),
         documentation: String::new(),
         data_objects: vec![],
         data_associations: vec![],
@@ -81,7 +145,7 @@ fn comparison_separates_rename_properties_geometry_and_frozen_context() {
             item_aware: None,
             activity: None,
             id: "Task".parse().unwrap(),
-            name: "Before".into(),
+            name: Some("Before".into()),
             documentation: String::new(),
             kind: NodeKind::Task,
             details: None,
@@ -94,6 +158,7 @@ fn comparison_separates_rename_properties_geometry_and_frozen_context() {
         flows: vec![],
     });
     document.diagrams.push(Diagram {
+        name: None,
         id: "Diagram".parse().unwrap(),
         plane_id: "Plane".parse().unwrap(),
         plane: "Process".parse().unwrap(),
@@ -123,7 +188,7 @@ fn comparison_separates_rename_properties_geometry_and_frozen_context() {
     let initial = queries::compare_checkpoint(&project, id).unwrap();
     assert!(initial.changed_documents.is_empty());
     let document = Arc::make_mut(&mut project.documents[0]);
-    document.processes[0].nodes[0].name = "After".into();
+    document.processes[0].nodes[0].name = Some("After".into());
     let renamed = queries::compare_checkpoint(&project, id).unwrap();
     assert_eq!(renamed.renamed_elements.len(), 1);
     assert_eq!(renamed.renamed_elements[0].key.xml_id.to_string(), "Task");
@@ -174,7 +239,9 @@ fn comparison_separates_rename_properties_geometry_and_frozen_context() {
     assert_eq!(linked.added_dictionary_links.len(), 1);
     assert!(linked.removed_dictionary_links.is_empty());
     assert_eq!(
-        project.checkpoints[0].content.documents[0].processes[0].nodes[0].name,
-        "Before"
+        project.checkpoints[0].content.documents[0].processes[0].nodes[0]
+            .name
+            .as_deref(),
+        Some("Before")
     );
 }

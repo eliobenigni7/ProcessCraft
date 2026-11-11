@@ -1,11 +1,14 @@
 use processcraft_core::{
     commands::{DictionaryDeleteResolution, Envelope, Mutation, Request, Session},
-    ids::{DictionaryEntryId, ElementKey, XmlId},
+    ids::{DictionaryEntryId, ElementKey},
     model::*,
     queries::*,
 };
 use std::sync::Arc;
-fn id(s: &str) -> XmlId {
+fn id<T: std::str::FromStr>(s: &str) -> T
+where
+    T::Err: std::fmt::Debug,
+{
     s.parse().unwrap()
 }
 fn apply(
@@ -26,13 +29,14 @@ fn fixture() -> (Session, ElementKey) {
     let mut p = ProjectData::new("p".into());
     let mut d = BpmnDocument::new("doc".into(), id("defs"));
     d.processes.push(Process {
+        is_executable: Some(false),
         io_specification: None,
         lane_set_id: None,
         groups: vec![],
         data_objects: vec![],
         data_associations: vec![],
         id: id("process"),
-        name: String::new(),
+        name: Some(String::new()),
         documentation: String::new(),
         nodes: vec![Node {
             item_aware: None,
@@ -41,7 +45,7 @@ fn fixture() -> (Session, ElementKey) {
             io_specification: None,
             activity: None,
             id: id("activity"),
-            name: "A".into(),
+            name: Some("A".into()),
             documentation: String::new(),
             kind: NodeKind::Task,
             owner: String::new(),
@@ -50,7 +54,7 @@ fn fixture() -> (Session, ElementKey) {
         lanes: vec![Lane {
             child_lane_set_id: None,
             id: id("lane"),
-            name: "L".into(),
+            name: Some("L".into()),
             parent: None,
             members: vec![id("activity")],
         }],
@@ -206,7 +210,7 @@ fn role_choices_require_explicit_selection_when_ambiguous() {
                 lane: Lane {
                     child_lane_set_id: None,
                     id: id("lane2"),
-                    name: "L2".into(),
+                    name: Some("L2".into()),
                     parent: None,
                     members: vec![],
                 },
@@ -276,7 +280,7 @@ fn splice_is_one_undo_and_rejects_branches() {
         io_specification: None,
         activity: None,
         id: id(name),
-        name: name.into(),
+        name: Some(name.into()),
         documentation: String::new(),
         kind: NodeKind::Task,
         owner: String::new(),
@@ -289,13 +293,14 @@ fn splice_is_one_undo_and_rejects_branches() {
         kind: FlowKind::Sequence,
         source: id(source),
         target: id(target),
-        name: String::new(),
+        name: Some(String::new()),
         documentation: String::new(),
         condition: None,
     };
     pr.flows.push(flow("old", "activity", "target"));
     let pt = |x: f64| Point { x, y: 0. };
     d.diagrams.push(Diagram {
+        name: None,
         id: id("diagram"),
         plane_id: id("plane"),
         plane: id("process"),
@@ -569,7 +574,7 @@ fn checkpoint_restore_is_atomic_undoable_and_reference_is_guarded() {
         vec![Mutation::Rename {
             document_id: key.document_id,
             element_id: key.xml_id,
-            name: "Changed".into(),
+            name: Some("Changed".into()),
         }],
     )
     .unwrap();
@@ -644,7 +649,7 @@ fn nested_scope_edits_and_cross_scope_flows_are_atomic() {
     doc.processes[0].nodes.push(Node {
         item_aware: None,
         id: id("sub"),
-        name: "Sub".into(),
+        name: Some("Sub".into()),
         documentation: String::new(),
         kind: NodeKind::SubProcess,
         details: Some(NodeDetails::SubProcess {
@@ -656,7 +661,7 @@ fn nested_scope_edits_and_cross_scope_flows_are_atomic() {
                 nodes: vec![Node {
                     item_aware: None,
                     id: id("inner"),
-                    name: "Inside".into(),
+                    name: Some("Inside".into()),
                     documentation: String::new(),
                     kind: NodeKind::Task,
                     details: None,
@@ -683,19 +688,22 @@ fn nested_scope_edits_and_cross_scope_flows_are_atomic() {
         vec![Mutation::Rename {
             document_id: key.document_id,
             element_id: id("inner"),
-            name: "Renamed".into(),
+            name: Some("Renamed".into()),
         }],
     )
     .unwrap();
     assert_eq!(
         find_node(&session.snapshot().project.documents[0], &id("inner"))
             .unwrap()
-            .name,
-        "Renamed"
+            .name
+            .as_deref(),
+        Some("Renamed")
     );
     assert_eq!(
-        activity_table(&session.snapshot().project, key.document_id, &id("sub")).unwrap()[0].name,
-        "Renamed"
+        activity_table(&session.snapshot().project, key.document_id, &id("sub")).unwrap()[0]
+            .name
+            .as_deref(),
+        Some("Renamed")
     );
     let before = session.snapshot().content_id;
     let cross = Flow {
@@ -704,7 +712,7 @@ fn nested_scope_edits_and_cross_scope_flows_are_atomic() {
         kind: FlowKind::Sequence,
         source: id("inner"),
         target: id("activity"),
-        name: String::new(),
+        name: Some(String::new()),
         documentation: String::new(),
         condition: None,
     };
@@ -738,8 +746,9 @@ fn nested_scope_edits_and_cross_scope_flows_are_atomic() {
     assert_eq!(
         find_node(&session.snapshot().project.documents[0], &id("inner"))
             .unwrap()
-            .name,
-        "Inside"
+            .name
+            .as_deref(),
+        Some("Inside")
     );
     let comment_id = processcraft_core::ids::CommentId::new();
     apply(
@@ -857,10 +866,11 @@ fn conversation_crud_checks_references_and_undoes_atomically() {
     let (initial, key) = fixture();
     let mut project = (*initial.snapshot().project).clone();
     Arc::make_mut(&mut project.documents[0]).collaboration = Some(Collaboration {
+        name: None,
         id: id("collaboration"),
         participants: vec![Participant {
             id: id("participant"),
-            name: "Buyer".into(),
+            name: Some("Buyer".into()),
             process: None,
         }],
         flows: vec![],
@@ -870,14 +880,14 @@ fn conversation_crud_checks_references_and_undoes_atomically() {
     let mut session = Session::new(project).unwrap();
     let node = ConversationNode {
         id: id("conversation"),
-        name: "Order".into(),
+        name: Some("Order".into()),
         kind: ConversationKind::Conversation,
         participant_refs: vec![id("participant")],
         parent: None,
     };
     let link = ConversationLink {
         id: id("conversation_link"),
-        name: String::new(),
+        name: Some(String::new()),
         source: id("participant"),
         target: id("conversation"),
     };
@@ -901,13 +911,14 @@ fn conversation_crud_checks_references_and_undoes_atomically() {
             &id("conversation")
         )
         .unwrap()
-        .name,
-        "Order"
+        .name
+        .as_deref(),
+        Some("Order")
     );
     let before = session.snapshot().content_id;
     let bad = ConversationLink {
         id: id("bad_link"),
-        name: String::new(),
+        name: Some(String::new()),
         source: id("missing"),
         target: id("conversation"),
     };
@@ -962,23 +973,23 @@ fn choreography_crud_rejects_cross_scope_references_and_undoes() {
     let (mut session, key) = fixture();
     let choreography = Choreography {
         id: id("choreography"),
-        name: "Exchange".into(),
+        name: Some("Exchange".into()),
         participants: vec![
             Participant {
                 id: id("buyer"),
-                name: "Buyer".into(),
+                name: Some("Buyer".into()),
                 process: None,
             },
             Participant {
                 id: id("seller"),
-                name: "Seller".into(),
+                name: Some("Seller".into()),
                 process: None,
             },
         ],
         message_flows: vec![],
         activities: vec![ChoreographyActivity {
             id: id("task_exchange"),
-            name: "Exchange".into(),
+            name: Some("Exchange".into()),
             participant_refs: vec![id("buyer"), id("seller")],
             initiating_participant: id("buyer"),
             message_flow_refs: vec![],
@@ -996,7 +1007,7 @@ fn choreography_crud_rejects_cross_scope_references_and_undoes() {
     let before = session.snapshot().content_id;
     let invalid = ChoreographyActivity {
         id: id("outside"),
-        name: "Invalid".into(),
+        name: Some("Invalid".into()),
         participant_refs: vec![id("buyer"), id("missing")],
         initiating_participant: id("buyer"),
         message_flow_refs: vec![],
@@ -1045,7 +1056,7 @@ fn typed_data_association_is_scoped_to_owner_ports_and_undoable() {
     let reference = Node {
         item_aware: None,
         id: id("data_ref"),
-        name: "Order".into(),
+        name: Some("Order".into()),
         documentation: String::new(),
         kind: NodeKind::DataObjectReference,
         details: Some(NodeDetails::DataObjectReference {
@@ -1163,6 +1174,7 @@ fn nested_data_associations_resolve_ancestor_and_global_endpoints() {
         item_aware: None,
     });
     doc.diagrams.push(Diagram {
+        name: None,
         id: id("diagram"),
         plane_id: id("plane"),
         plane: id("process"),
@@ -1203,7 +1215,7 @@ fn nested_data_associations_resolve_ancestor_and_global_endpoints() {
     });
     let reference = Node {
         id: id("outer_reference"),
-        name: String::new(),
+        name: Some(String::new()),
         documentation: String::new(),
         kind: NodeKind::DataObjectReference,
         details: Some(NodeDetails::DataObjectReference {
@@ -1219,7 +1231,7 @@ fn nested_data_associations_resolve_ancestor_and_global_endpoints() {
     process.nodes.push(reference);
     let task = Node {
         id: id("nested_task"),
-        name: String::new(),
+        name: Some(String::new()),
         documentation: String::new(),
         kind: NodeKind::Task,
         details: None,
@@ -1247,7 +1259,7 @@ fn nested_data_associations_resolve_ancestor_and_global_endpoints() {
     };
     let sub = |name: &str, content| Node {
         id: id(name),
-        name: String::new(),
+        name: Some(String::new()),
         documentation: String::new(),
         kind: NodeKind::SubProcess,
         details: Some(NodeDetails::SubProcess {
@@ -1322,7 +1334,7 @@ fn nested_data_associations_resolve_ancestor_and_global_endpoints() {
     let Some(NodeDetails::SubProcess { content }) = &mut doc.processes[0]
         .nodes
         .iter_mut()
-        .find(|n| n.id == id("sub_a"))
+        .find(|n| n.id.selector() == id::<processcraft_core::ids::ElementSelector>("sub_a"))
         .unwrap()
         .details
     else {
@@ -1335,7 +1347,7 @@ fn nested_data_associations_resolve_ancestor_and_global_endpoints() {
     let Some(NodeDetails::SubProcess { content }) = &mut doc.processes[0]
         .nodes
         .iter_mut()
-        .find(|n| n.id == id("sub_a"))
+        .find(|n| n.id.selector() == id::<processcraft_core::ids::ElementSelector>("sub_a"))
         .unwrap()
         .details
     else {
@@ -1387,28 +1399,30 @@ fn conversation_delete_removes_di_and_undo_restores_it() {
     let mut project = (*initial.snapshot().project).clone();
     let doc = Arc::make_mut(&mut project.documents[0]);
     doc.collaboration = Some(Collaboration {
+        name: None,
         id: id("collaboration"),
         participants: vec![Participant {
             id: id("buyer"),
-            name: "Buyer".into(),
+            name: Some("Buyer".into()),
             process: None,
         }],
         flows: vec![],
         conversation_nodes: vec![ConversationNode {
             id: id("conversation"),
-            name: "Order".into(),
+            name: Some("Order".into()),
             kind: ConversationKind::Conversation,
             participant_refs: vec![id("buyer")],
             parent: None,
         }],
         conversation_links: vec![ConversationLink {
             id: id("link"),
-            name: String::new(),
+            name: Some(String::new()),
             source: id("buyer"),
             target: id("conversation"),
         }],
     });
     doc.diagrams.push(Diagram {
+        name: None,
         id: id("diagram"),
         plane_id: id("plane"),
         plane: id("collaboration"),
@@ -1498,6 +1512,7 @@ fn label_bounds_update_preserves_style_and_undo() {
     let mut project = (*initial.snapshot().project).clone();
     let doc = Arc::make_mut(&mut project.documents[0]);
     doc.diagrams.push(Diagram {
+        name: None,
         id: id("diagram_label"),
         plane_id: id("plane_label"),
         plane: id("process"),
@@ -1582,10 +1597,11 @@ fn descriptive_commands_validate_references_and_undo_atomically() {
     let annotation = Node {
         item_aware: None,
         id: id("note"),
-        name: "Review note".into(),
+        name: Some("Review note".into()),
         documentation: String::new(),
         kind: NodeKind::TextAnnotation,
         details: Some(NodeDetails::TextAnnotation {
+            text: None,
             text_format: Some("text/plain".into()),
         }),
         loop_characteristics: None,
@@ -1599,7 +1615,7 @@ fn descriptive_commands_validate_references_and_undo_atomically() {
         kind: FlowKind::Association,
         source: key.xml_id.clone(),
         target: id("note"),
-        name: String::new(),
+        name: Some(String::new()),
         documentation: String::new(),
         condition: None,
         association_direction: None,
@@ -1709,6 +1725,7 @@ fn deleting_group_removes_di_and_undo_restores_both() {
             Mutation::CreateDiagram {
                 document_id: key.document_id,
                 diagram: Diagram {
+                    name: None,
                     id: id("group_diagram"),
                     plane_id: id("group_plane"),
                     plane: id("process"),
@@ -1765,7 +1782,7 @@ fn activity_properties_validate_scope_and_kind_and_undo() {
     let target = Node {
         item_aware: None,
         id: id("activity_target"),
-        name: "Target".into(),
+        name: Some("Target".into()),
         documentation: String::new(),
         kind: NodeKind::Task,
         details: None,
@@ -1780,7 +1797,7 @@ fn activity_properties_validate_scope_and_kind_and_undo() {
         kind: FlowKind::Sequence,
         source: key.xml_id.clone(),
         target: id("activity_target"),
-        name: String::new(),
+        name: Some(String::new()),
         documentation: String::new(),
         condition: None,
         association_direction: None,

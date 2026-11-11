@@ -1,5 +1,6 @@
 use super::catalog::{
-    QNameDraft, id_build, id_string, optional_bool, optional_qname, optional_text, q_build, text,
+    IdentityDraft, QNameDraft, id_build, id_selector, id_string, optional_bool, optional_qname,
+    optional_text, q_build, text,
 };
 use super::inspector::{ExpressionDefault, expression_ui, optional_expression_ui_with_default};
 use super::*;
@@ -15,7 +16,7 @@ struct ItemDraft {
 }
 #[derive(Clone, Default)]
 struct StateDraft {
-    id: Option<String>,
+    id: IdentityDraft,
     name: Option<String>,
 }
 impl ItemDraft {
@@ -54,7 +55,7 @@ fn item_ui(ui: &mut egui::Ui, item: &mut Option<ItemDraft>) {
         ui.checkbox(&mut state_present, "Data state");
         if state_present {
             let state = item.state.get_or_insert_with(StateDraft::default);
-            optional_text(ui, "State ID", &mut state.id);
+            optional_text(ui, "State ID", &mut state.id.value);
             optional_text(ui, "State name", &mut state.name);
         } else {
             item.state = None;
@@ -69,37 +70,37 @@ fn build_item(item: &Option<ItemDraft>) -> Result<Option<ItemAwareMetadata>, Str
 #[derive(Clone)]
 struct StoreDraft {
     value: DataStore,
-    id: Option<String>,
+    id: IdentityDraft,
     item: Option<ItemDraft>,
 }
 #[derive(Clone)]
 struct ObjectDraft {
     value: DataObject,
-    id: Option<String>,
+    id: IdentityDraft,
     item: Option<ItemDraft>,
 }
 #[derive(Clone)]
 struct AssignmentDraft {
-    id: Option<String>,
+    id: IdentityDraft,
     from: processcraft_core::bpmn_model::Expression,
     to: processcraft_core::bpmn_model::Expression,
 }
 #[derive(Clone)]
 struct AssociationDraft {
     value: DataAssociation,
-    id: Option<String>,
+    id: IdentityDraft,
     assignments: Vec<AssignmentDraft>,
 }
 #[derive(Clone)]
 struct PortDraft {
     value: processcraft_core::bpmn_data::DataPort,
-    id: Option<String>,
+    id: IdentityDraft,
     item: Option<ItemDraft>,
 }
 #[derive(Clone)]
 struct SetDraft {
     value: processcraft_core::bpmn_data::IoSet,
-    id: Option<String>,
+    id: IdentityDraft,
 }
 fn set_drafts(sets: &[processcraft_core::bpmn_data::IoSet]) -> Vec<SetDraft> {
     sets.iter()
@@ -121,8 +122,8 @@ fn build_sets(sets: &[SetDraft]) -> Result<Vec<processcraft_core::bpmn_data::IoS
 fn reference_checkboxes(
     ui: &mut egui::Ui,
     label: &str,
-    values: &mut Vec<XmlId>,
-    candidates: &[XmlId],
+    values: &mut Vec<ElementSelector>,
+    candidates: &[ElementSelector],
 ) {
     ui.label(label);
     let mut all = candidates.to_vec();
@@ -146,8 +147,8 @@ fn sets_ui(
     ui: &mut egui::Ui,
     title: &str,
     sets: &mut Vec<SetDraft>,
-    ports: &[XmlId],
-    counterparts: &[XmlId],
+    ports: &[ElementSelector],
+    counterparts: &[ElementSelector],
 ) {
     ui.push_id(title, |ui| {
         ui.label(title);
@@ -155,7 +156,7 @@ fn sets_ui(
         for (i, set) in sets.iter_mut().enumerate() {
             ui.push_id(i, |ui| {
                 ui.label(format!("Set {}", i + 1));
-                optional_text(ui, "ID", &mut set.id);
+                optional_text(ui, "ID", &mut set.id.value);
                 optional_text(ui, "Name", &mut set.value.name);
                 reference_checkboxes(ui, "Ports", &mut set.value.data_refs, ports);
                 reference_checkboxes(
@@ -190,27 +191,27 @@ fn sets_ui(
         {
             sets.push(SetDraft {
                 value: Default::default(),
-                id: None,
+                id: IdentityDraft::default(),
             });
         }
     });
 }
 #[derive(Clone)]
 struct IoDraft {
-    owner: XmlId,
+    owner: ElementSelector,
     name: String,
     process: bool,
     original: Option<processcraft_core::bpmn_data::IoSpecification>,
     inputs: Vec<PortDraft>,
     outputs: Vec<PortDraft>,
-    id: Option<String>,
+    id: IdentityDraft,
     input_sets: Vec<SetDraft>,
     output_sets: Vec<SetDraft>,
     initialized: bool,
 }
 impl IoDraft {
     fn new(
-        owner: XmlId,
+        owner: ElementSelector,
         name: String,
         process: bool,
         io: Option<processcraft_core::bpmn_data::IoSpecification>,
@@ -227,7 +228,9 @@ impl IoDraft {
         };
         let inputs = io.as_ref().map_or_else(Vec::new, |io| convert(&io.inputs));
         let outputs = io.as_ref().map_or_else(Vec::new, |io| convert(&io.outputs));
-        let id = io.as_ref().and_then(|io| id_string(&io.id));
+        let id = io
+            .as_ref()
+            .map_or_else(IdentityDraft::default, |io| id_string(&io.id));
         let input_sets = io
             .as_ref()
             .map_or_else(Vec::new, |io| set_drafts(&io.input_sets));
@@ -254,7 +257,7 @@ impl IoDraft {
             && self.outputs.is_empty()
             && self.input_sets.is_empty()
             && self.output_sets.is_empty()
-            && self.id.is_none()
+            && self.id.value.is_none()
         {
             return Ok(None);
         }
@@ -280,17 +283,17 @@ impl IoDraft {
 }
 #[derive(Clone)]
 enum StoreReferenceDraft {
-    Legacy(String),
+    Legacy(Option<ElementSelector>),
     Qualified(QNameDraft),
 }
 #[derive(Clone)]
 enum ReferenceTargetDraft {
-    Object(Option<XmlId>),
+    Object(Option<ElementSelector>),
     Store(Option<StoreReferenceDraft>),
 }
 #[derive(Clone)]
 struct ReferenceDraft {
-    id: XmlId,
+    id: ElementSelector,
     name: String,
     item: Option<ItemDraft>,
     original: Option<processcraft_core::bpmn_model::NodeDetails>,
@@ -298,8 +301,12 @@ struct ReferenceDraft {
 }
 pub(super) fn ancestor_data_candidates(
     document: &BpmnDocument,
-    scope_id: &XmlId,
-) -> (Vec<XmlId>, Vec<XmlId>, Vec<XmlId>) {
+    scope_id: &ElementSelector,
+) -> (
+    Vec<ElementSelector>,
+    Vec<ElementSelector>,
+    Vec<ElementSelector>,
+) {
     let scopes = processcraft_core::queries::scopes(document);
     let mut current = scope_id.clone();
     let mut inputs = Vec::new();
@@ -318,12 +325,12 @@ pub(super) fn ancestor_data_candidates(
             parent
                 .data_objects
                 .iter()
-                .filter_map(|object| object.id.clone()),
+                .filter_map(|object| object.id.as_ref().map(|id| id.selector())),
         );
         let shared = parent
             .data_objects
             .iter()
-            .filter_map(|object| object.id.clone())
+            .filter_map(|object| object.id.as_ref().map(|id| id.selector()))
             .chain(
                 parent
                     .nodes
@@ -334,7 +341,7 @@ pub(super) fn ancestor_data_candidates(
                             NodeKind::DataObjectReference | NodeKind::DataStoreReference
                         )
                     })
-                    .map(|node| node.id.clone()),
+                    .map(|node| node.id.selector()),
             )
             .collect::<Vec<_>>();
         inputs.extend(shared.iter().cloned());
@@ -345,25 +352,33 @@ pub(super) fn ancestor_data_candidates(
             .find(|process| &process.id == parent.id)
             .and_then(|process| process.io_specification.as_ref())
         {
-            inputs.extend(io.inputs.iter().filter_map(|port| port.id.clone()));
-            outputs.extend(io.outputs.iter().filter_map(|port| port.id.clone()));
+            inputs.extend(
+                io.inputs
+                    .iter()
+                    .filter_map(|port| port.id.as_ref().map(|id| id.selector())),
+            );
+            outputs.extend(
+                io.outputs
+                    .iter()
+                    .filter_map(|port| port.id.as_ref().map(|id| id.selector())),
+            );
         }
-        current = parent.id.clone();
+        current = parent.id.selector();
     }
     (inputs, outputs, objects)
 }
 pub(super) struct DataDraft {
-    scope: XmlId,
+    scope: ElementSelector,
     stores: Vec<StoreDraft>,
     objects: Vec<ObjectDraft>,
     associations: Vec<AssociationDraft>,
-    ancestor_inputs: Vec<XmlId>,
-    ancestor_outputs: Vec<XmlId>,
-    ancestor_objects: Vec<XmlId>,
-    new_owner: Option<XmlId>,
+    ancestor_inputs: Vec<ElementSelector>,
+    ancestor_outputs: Vec<ElementSelector>,
+    ancestor_objects: Vec<ElementSelector>,
+    new_owner: Option<ElementSelector>,
     new_input: bool,
-    new_sources: Vec<XmlId>,
-    new_target: Option<XmlId>,
+    new_sources: Vec<ElementSelector>,
+    new_target: Option<ElementSelector>,
     ios: Vec<IoDraft>,
     references: Vec<ReferenceDraft>,
     error: String,
@@ -371,9 +386,9 @@ pub(super) struct DataDraft {
 impl DataDraft {
     fn new(document: &BpmnDocument, scope: processcraft_core::queries::ScopeRef<'_>) -> Self {
         let (ancestor_inputs, ancestor_outputs, ancestor_objects) =
-            ancestor_data_candidates(document, scope.id);
+            ancestor_data_candidates(document, &scope.id.selector());
         Self {
-            scope: scope.id.clone(),
+            scope: scope.id.selector(),
             stores: document
                 .data_stores
                 .iter()
@@ -422,8 +437,8 @@ impl DataDraft {
                 .filter(|process| &process.id == scope.id)
                 .map(|process| {
                     IoDraft::new(
-                        process.id.clone(),
-                        process.name.clone(),
+                        process.id.selector(),
+                        process.name.clone().unwrap_or_default(),
                         true,
                         process.io_specification.clone(),
                     )
@@ -435,8 +450,8 @@ impl DataDraft {
                         .filter(|node| node.kind.is_activity())
                         .map(|node| {
                             IoDraft::new(
-                                node.id.clone(),
-                                node.name.clone(),
+                                node.id.selector(),
+                                node.name.clone().unwrap_or_default(),
                                 false,
                                 node.io_specification.clone(),
                             )
@@ -453,8 +468,8 @@ impl DataDraft {
                     )
                 })
                 .map(|node| ReferenceDraft {
-                    id: node.id.clone(),
-                    name: node.name.clone(),
+                    id: node.id.selector(),
+                    name: node.name.clone().unwrap_or_default(),
                     item: node.item_aware.as_ref().map(ItemDraft::from_item),
                     original: node.details.clone(),
                     target: match &node.details {
@@ -467,7 +482,7 @@ impl DataDraft {
                             ReferenceTargetDraft::Store(data_store_ref.as_ref().map(|reference| {
                                 match reference {
                                     processcraft_core::bpmn_data::DataStoreRef::Legacy(id) => {
-                                        StoreReferenceDraft::Legacy(id.to_string())
+                                        StoreReferenceDraft::Legacy(Some(id.clone()))
                                     }
                                     processcraft_core::bpmn_data::DataStoreRef::Qualified(
                                         qname,
@@ -544,7 +559,7 @@ impl DataDraft {
                 ui.push_id(("store", i), |ui| {
                     ui.separator();
                     ui.label(format!("Store {}", i + 1));
-                    optional_text(ui, "ID", &mut draft.id);
+                    optional_text(ui, "ID", &mut draft.id.value);
                     optional_text(ui, "Name", &mut draft.value.name);
                     optional_text(ui, "Capacity", &mut draft.value.capacity);
                     optional_bool(ui, "Unlimited", &mut draft.value.is_unlimited);
@@ -569,7 +584,7 @@ impl DataDraft {
                         is_unlimited: None,
                         item_aware: None,
                     },
-                    id: None,
+                    id: IdentityDraft::default(),
                     item: None,
                 });
             }
@@ -580,7 +595,7 @@ impl DataDraft {
                 ui.push_id(("object", i), |ui| {
                     ui.separator();
                     ui.label(format!("Object {}", i + 1));
-                    optional_text(ui, "ID", &mut draft.id);
+                    optional_text(ui, "ID", &mut draft.id.value);
                     optional_text(ui, "Name", &mut draft.value.name);
                     optional_bool(ui, "Collection", &mut draft.value.is_collection);
                     item_ui(ui, &mut draft.item);
@@ -603,7 +618,7 @@ impl DataDraft {
                         is_collection: None,
                         item_aware: None,
                     },
-                    id: None,
+                    id: IdentityDraft::default(),
                     item: None,
                 });
             }
@@ -611,12 +626,12 @@ impl DataDraft {
         let store_targets: Vec<_> = self
             .stores
             .iter()
-            .filter_map(|store| id_build(&store.id).ok().flatten())
+            .filter_map(|store| id_selector(&store.id))
             .collect();
         let object_targets: Vec<_> = self
             .objects
             .iter()
-            .filter_map(|object| id_build(&object.id).ok().flatten())
+            .filter_map(|object| id_selector(&object.id))
             .chain(self.ancestor_objects.iter().cloned())
             .collect();
         ui.collapsing("Data reference metadata", |ui| {
@@ -645,47 +660,36 @@ impl DataDraft {
                             let mut present = target.is_some();
                             ui.checkbox(&mut present, "Store reference");
                             if present {
-                                let value = target.get_or_insert_with(|| {
-                                    StoreReferenceDraft::Legacy(String::new())
-                                });
+                                let value =
+                                    target.get_or_insert_with(|| StoreReferenceDraft::Legacy(None));
                                 let mut qualified =
                                     matches!(value, StoreReferenceDraft::Qualified(_));
                                 if ui
                                     .checkbox(&mut qualified, "Qualified store reference")
                                     .changed()
                                 {
-                                    *value = match &*value {
-                                        StoreReferenceDraft::Legacy(local) => {
-                                            StoreReferenceDraft::Qualified(QNameDraft {
-                                                namespace: String::new(),
-                                                local: local.clone(),
-                                            })
-                                        }
-                                        StoreReferenceDraft::Qualified(qname) => {
-                                            StoreReferenceDraft::Legacy(qname.local.clone())
-                                        }
+                                    *value = if qualified {
+                                        StoreReferenceDraft::Qualified(QNameDraft::default())
+                                    } else {
+                                        StoreReferenceDraft::Legacy(None)
                                     };
                                 }
                                 match value {
                                     StoreReferenceDraft::Legacy(local) => {
-                                        text(ui, "Local store ID", local);
                                         egui::ComboBox::from_label("Choose local store")
-                                            .selected_text(if local.is_empty() {
-                                                "Select store"
-                                            } else {
-                                                local.as_str()
-                                            })
+                                            .selected_text(
+                                                local.as_ref().map_or(
+                                                    "Select store".into(),
+                                                    ToString::to_string,
+                                                ),
+                                            )
                                             .show_ui(ui, |ui| {
                                                 for id in &store_targets {
-                                                    if ui
-                                                        .selectable_label(
-                                                            local == &id.to_string(),
-                                                            id.to_string(),
-                                                        )
-                                                        .clicked()
-                                                    {
-                                                        *local = id.to_string();
-                                                    }
+                                                    ui.selectable_value(
+                                                        local,
+                                                        Some(id.clone()),
+                                                        id.to_string(),
+                                                    );
                                                 }
                                             });
                                     }
@@ -708,7 +712,7 @@ impl DataDraft {
                 ui.push_id(("io", i), |ui| {
                     ui.separator();
                     ui.label(format!("{} · {}", io.name, io.owner));
-                    optional_text(ui, "I/O specification ID", &mut io.id);
+                    optional_text(ui, "I/O specification ID", &mut io.id.value);
                     for (title, ports) in [("Inputs", &mut io.inputs), ("Outputs", &mut io.outputs)]
                     {
                         ui.push_id(title, |ui| {
@@ -717,7 +721,7 @@ impl DataDraft {
                             for (j, port) in ports.iter_mut().enumerate() {
                                 ui.push_id(j, |ui| {
                                     ui.label(format!("Port {}", j + 1));
-                                    optional_text(ui, "ID", &mut port.id);
+                                    optional_text(ui, "ID", &mut port.id.value);
                                     optional_text(ui, "Name", &mut port.value.name);
                                     optional_bool(ui, "Collection", &mut port.value.is_collection);
                                     item_ui(ui, &mut port.item);
@@ -736,12 +740,15 @@ impl DataDraft {
                                 let id = crate::controller::id("DataPort");
                                 ports.push(PortDraft {
                                     value: processcraft_core::bpmn_data::DataPort {
-                                        id: Some(id.clone()),
+                                        id: Some(id.clone().into()),
                                         name: None,
                                         item_aware: None,
                                         is_collection: None,
                                     },
-                                    id: Some(id.to_string()),
+                                    id: IdentityDraft {
+                                        value: Some(id.to_string()),
+                                        ..Default::default()
+                                    },
                                     item: None,
                                 });
                             }
@@ -751,13 +758,13 @@ impl DataDraft {
                         if io.input_sets.is_empty() {
                             io.input_sets.push(SetDraft {
                                 value: Default::default(),
-                                id: None,
+                                id: IdentityDraft::default(),
                             });
                         }
                         if io.output_sets.is_empty() {
                             io.output_sets.push(SetDraft {
                                 value: Default::default(),
-                                id: None,
+                                id: IdentityDraft::default(),
                             });
                         }
                         io.initialized = true;
@@ -765,22 +772,22 @@ impl DataDraft {
                     let input_ports = io
                         .inputs
                         .iter()
-                        .filter_map(|port| id_build(&port.id).ok().flatten())
+                        .filter_map(|port| id_selector(&port.id))
                         .collect::<Vec<_>>();
                     let output_ports = io
                         .outputs
                         .iter()
-                        .filter_map(|port| id_build(&port.id).ok().flatten())
+                        .filter_map(|port| id_selector(&port.id))
                         .collect::<Vec<_>>();
                     let input_ids = io
                         .input_sets
                         .iter()
-                        .filter_map(|set| id_build(&set.id).ok().flatten())
+                        .filter_map(|set| id_selector(&set.id))
                         .collect::<Vec<_>>();
                     let output_ids = io
                         .output_sets
                         .iter()
-                        .filter_map(|set| id_build(&set.id).ok().flatten())
+                        .filter_map(|set| id_selector(&set.id))
                         .collect::<Vec<_>>();
                     sets_ui(
                         ui,
@@ -799,15 +806,15 @@ impl DataDraft {
                 });
             }
         });
-        let base_candidates: Vec<XmlId> = self
+        let base_candidates: Vec<ElementSelector> = self
             .objects
             .iter()
-            .filter_map(|object| id_build(&object.id).ok().flatten())
+            .filter_map(|object| id_selector(&object.id))
             .chain(self.references.iter().map(|reference| reference.id.clone()))
             .chain(
                 self.stores
                     .iter()
-                    .filter_map(|store| id_build(&store.id).ok().flatten()),
+                    .filter_map(|store| id_selector(&store.id)),
             )
             .collect();
         let mut input_sources = base_candidates.clone();
@@ -815,16 +822,8 @@ impl DataDraft {
         let mut output_targets = base_candidates;
         output_targets.extend(self.ancestor_outputs.iter().cloned());
         for io in self.ios.iter().filter(|io| io.process) {
-            input_sources.extend(
-                io.inputs
-                    .iter()
-                    .filter_map(|port| id_build(&port.id).ok().flatten()),
-            );
-            output_targets.extend(
-                io.outputs
-                    .iter()
-                    .filter_map(|port| id_build(&port.id).ok().flatten()),
-            );
+            input_sources.extend(io.inputs.iter().filter_map(|port| id_selector(&port.id)));
+            output_targets.extend(io.outputs.iter().filter_map(|port| id_selector(&port.id)));
         }
         let no_ports = Vec::new();
         let owner_choices: Vec<_> = self
@@ -837,11 +836,11 @@ impl DataDraft {
                     io.name.clone(),
                     io.inputs
                         .iter()
-                        .filter_map(|port| id_build(&port.id).ok().flatten())
+                        .filter_map(|port| id_selector(&port.id))
                         .collect::<Vec<_>>(),
                     io.outputs
                         .iter()
-                        .filter_map(|port| id_build(&port.id).ok().flatten())
+                        .filter_map(|port| id_selector(&port.id))
                         .collect::<Vec<_>>(),
                 )
             })
@@ -852,7 +851,7 @@ impl DataDraft {
                 ui.push_id(("association", i), |ui| {
                     ui.separator();
                     ui.label(format!("Association {}", i + 1));
-                    optional_text(ui, "ID", &mut draft.id);
+                    optional_text(ui, "ID", &mut draft.id.value);
                     use processcraft_core::bpmn_data::DataAssociationKind;
                     egui::ComboBox::from_label("Activity owner")
                         .selected_text(draft.value.owner.to_string())
@@ -940,7 +939,7 @@ impl DataDraft {
                         ui.push_id(("assignment", j), |ui| {
                             ui.separator();
                             ui.label(format!("Assignment {}", j + 1));
-                            optional_text(ui, "Assignment ID", &mut assignment.id);
+                            optional_text(ui, "Assignment ID", &mut assignment.id.value);
                             expression_ui(
                                 ui,
                                 &format!("From {i} {j}"),
@@ -979,7 +978,7 @@ impl DataDraft {
                         .clicked()
                     {
                         draft.assignments.push(AssignmentDraft {
-                            id: None,
+                            id: IdentityDraft::default(),
                             from: String::new().into(),
                             to: String::new().into(),
                         });
@@ -1086,7 +1085,7 @@ impl DataDraft {
                 };
                 self.associations.push(AssociationDraft {
                     value,
-                    id: None,
+                    id: IdentityDraft::default(),
                     assignments: Vec::new(),
                 });
                 self.new_sources.clear();
@@ -1115,12 +1114,15 @@ impl ProcessCraft {
                     .iter()
                     .filter(|process| &process.id == scope.id)
                     .filter_map(|process| process.io_specification.as_ref());
-                let activity_ports = scope
+                if scope
                     .nodes
                     .iter()
-                    .filter_map(|node| node.io_specification.as_ref());
+                    .filter_map(|node| node.io_specification.as_ref())
+                    .any(|io| !io.inputs.is_empty() || !io.outputs.is_empty())
+                {
+                    ui.label("BPMN diagrams can show process ports; activity ports are not shown.");
+                }
                 for (index, port) in process_ports
-                    .chain(activity_ports)
                     .flat_map(|io| io.inputs.iter().chain(&io.outputs))
                     .enumerate()
                 {
@@ -1149,8 +1151,8 @@ impl ProcessCraft {
                             {
                                 let diagram = diagram.expect("enabled only with matching diagram");
                                 let shape = Shape {
-                                    id: crate::controller::id("DataPortShape"),
-                                    element: id.clone(),
+                                    id: crate::controller::id("DataPortShape").into(),
+                                    element: id.selector(),
                                     is_expanded: None,
                                     bounds: Bounds {
                                         x: self.camera.0 + 120.0,
@@ -1164,7 +1166,7 @@ impl ProcessCraft {
                                 if self.commit_draft() {
                                     self.ctl.mutate(vec![Mutation::CreateShape {
                                         document_id: document.id,
-                                        diagram_id: diagram.id.clone(),
+                                        diagram_id: diagram.id.selector(),
                                         shape,
                                     }]);
                                 }
@@ -1208,8 +1210,8 @@ impl ProcessCraft {
                             {
                                 let diagram = diagram.expect("enabled only with matching diagram");
                                 let shape = Shape {
-                                    id: crate::controller::id("DataStoreShape"),
-                                    element: id.clone(),
+                                    id: crate::controller::id("DataStoreShape").into(),
+                                    element: id.selector(),
                                     is_expanded: None,
                                     bounds: Bounds {
                                         x: self.camera.0 + 180.0,
@@ -1223,7 +1225,7 @@ impl ProcessCraft {
                                 if self.commit_draft() {
                                     self.ctl.mutate(vec![Mutation::CreateShape {
                                         document_id: document.id,
-                                        diagram_id: diagram.id.clone(),
+                                        diagram_id: diagram.id.selector(),
                                         shape,
                                     }]);
                                 }
@@ -1309,7 +1311,7 @@ impl ProcessCraft {
                             let details = match &reference.target {
                                 ReferenceTargetDraft::Object(data_object_ref) => processcraft_core::bpmn_model::NodeDetails::DataObjectReference { data_object_ref: data_object_ref.clone() },
                                 ReferenceTargetDraft::Store(target) => processcraft_core::bpmn_model::NodeDetails::DataStoreReference { data_store_ref: target.as_ref().map(|target| -> Result<_, String> { match target {
-                                    StoreReferenceDraft::Legacy(local) => Ok(processcraft_core::bpmn_data::DataStoreRef::Legacy(local.parse().map_err(|_| "Store ID must be a valid XML ID.".to_owned())?)),
+                                    StoreReferenceDraft::Legacy(local) => Ok(processcraft_core::bpmn_data::DataStoreRef::Legacy(local.clone().ok_or_else(|| "Select a local store.".to_owned())?)),
                                     StoreReferenceDraft::Qualified(qname) => Ok(processcraft_core::bpmn_data::DataStoreRef::Qualified(q_build(&Some(qname.clone()))?.expect("reference is present"))),
                                 }}).transpose()? },
                             };
@@ -1359,14 +1361,14 @@ mod tests {
         let root_object: XmlId = "RootObject".parse().unwrap();
         let sibling_object: XmlId = "SiblingObject".parse().unwrap();
         document.processes[0].data_objects.push(DataObject {
-            id: Some(root_object.clone()),
+            id: Some(root_object.clone().into()),
             name: None,
             is_collection: None,
             item_aware: None,
         });
         let make_subprocess = |id: &str, objects: Vec<DataObject>| Node {
             id: id.parse().unwrap(),
-            name: String::new(),
+            name: None,
             documentation: String::new(),
             kind: NodeKind::SubProcess,
             item_aware: None,
@@ -1388,7 +1390,7 @@ mod tests {
         document.processes[0].nodes.push(make_subprocess(
             "Sibling",
             vec![DataObject {
-                id: Some(sibling_object.clone()),
+                id: Some(sibling_object.clone().into()),
                 name: None,
                 is_collection: None,
                 item_aware: None,
@@ -1397,14 +1399,14 @@ mod tests {
         let (inputs, outputs, objects) =
             ancestor_data_candidates(&document, &"Child".parse().unwrap());
         assert!(
-            inputs.contains(&root_object)
-                && outputs.contains(&root_object)
-                && objects.contains(&root_object)
+            inputs.contains(&root_object.clone().into())
+                && outputs.contains(&root_object.clone().into())
+                && objects.contains(&root_object.clone().into())
         );
         assert!(
-            !inputs.contains(&sibling_object)
-                && !outputs.contains(&sibling_object)
-                && !objects.contains(&sibling_object)
+            !inputs.contains(&sibling_object.clone().into())
+                && !outputs.contains(&sibling_object.clone().into())
+                && !objects.contains(&sibling_object.clone().into())
         );
     }
 
@@ -1452,7 +1454,10 @@ mod tests {
         draft.objects[0].item = Some(ItemDraft {
             subject: None,
             state: Some(StateDraft {
-                id: Some("invalid id".into()),
+                id: IdentityDraft {
+                    value: Some("invalid id".into()),
+                    ..Default::default()
+                },
                 name: Some(String::new()),
             }),
         });
@@ -1466,6 +1471,7 @@ mod tests {
                 .as_ref()
                 .unwrap()
                 .id
+                .value
                 .as_deref(),
             Some("invalid id")
         );
@@ -1520,7 +1526,7 @@ mod tests {
                 is_collection: None,
                 item_aware: None,
             },
-            id: None,
+            id: IdentityDraft::default(),
             item: None,
         });
         app.data_draft = Some(draft);

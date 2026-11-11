@@ -7,7 +7,7 @@ use std::collections::{HashMap, HashSet};
 fn fail<T>(message: &str) -> Result<T, String> {
     Err(message.into())
 }
-fn add<'a>(set: &mut HashSet<&'a XmlId>, id: &'a XmlId) -> Result<(), String> {
+fn add<'a, T: Eq + std::hash::Hash>(set: &mut HashSet<&'a T>, id: &'a T) -> Result<(), String> {
     if set.insert(id) {
         Ok(())
     } else {
@@ -69,10 +69,10 @@ fn definitions_text(s: &str) -> Result<(), String> {
 }
 fn validate_io<'a>(
     io: &'a crate::bpmn_data::IoSpecification,
-    ids: &mut HashSet<&'a XmlId>,
-    shape_ids: &mut HashSet<&'a XmlId>,
-    element_scope: &mut HashMap<&'a XmlId, &'a XmlId>,
-    scope_id: &'a XmlId,
+    ids: &mut HashSet<&'a crate::ids::ElementIdentity>,
+    shape_ids: &mut HashSet<crate::ids::ElementSelector>,
+    element_scope: &mut HashMap<crate::ids::ElementSelector, crate::ids::ElementSelector>,
+    scope_id: &crate::ids::ElementSelector,
 ) -> Result<(), String> {
     if let Some(id) = &io.id {
         add(ids, id)?;
@@ -80,8 +80,8 @@ fn validate_io<'a>(
     for port in io.inputs.iter().chain(&io.outputs) {
         if let Some(id) = &port.id {
             add(ids, id)?;
-            shape_ids.insert(id);
-            element_scope.insert(id, scope_id);
+            shape_ids.insert(id.selector());
+            element_scope.insert(id.selector(), scope_id.clone());
         }
         if let Some(name) = &port.name {
             short(name)?;
@@ -105,17 +105,21 @@ fn validate_io<'a>(
             ] {
                 let mut unique = HashSet::new();
                 if refs.iter().any(|id| {
-                    !unique.insert(id) || !ports.iter().any(|p| p.id.as_ref() == Some(id))
+                    !unique.insert(id)
+                        || !ports
+                            .iter()
+                            .any(|p| p.id.as_ref().is_some_and(|identity| identity == id))
                 }) {
                     return fail("invalid I/O set port reference");
                 }
             }
             let mut unique = HashSet::new();
-            if set
-                .counterpart_refs
-                .iter()
-                .any(|id| !unique.insert(id) || !other.iter().any(|s| s.id.as_ref() == Some(id)))
-            {
+            if set.counterpart_refs.iter().any(|id| {
+                !unique.insert(id)
+                    || !other
+                        .iter()
+                        .any(|s| s.id.as_ref().is_some_and(|identity| identity == id))
+            }) {
                 return fail("invalid I/O set reference");
             }
         }
@@ -279,11 +283,11 @@ impl ProjectData {
                 .collect();
             while let Some((nodes, lanes)) = pending.pop() {
                 for lane in lanes {
-                    role_sources_index.insert((document.id, &lane.id));
+                    role_sources_index.insert((document.id, lane.id.selector()));
                 }
                 for node in nodes {
                     if node.kind.is_activity() {
-                        activity_sources_index.insert((document.id, &node.id));
+                        activity_sources_index.insert((document.id, node.id.selector()));
                     }
                     if let Some(crate::bpmn_model::NodeDetails::SubProcess { content }) =
                         &node.details
@@ -312,7 +316,7 @@ impl ProjectData {
             if !docs.contains(&link.source.document_id) {
                 return fail("missing dictionary source document");
             }
-            let source = (link.source.document_id, &link.source.xml_id);
+            let source = (link.source.document_id, link.source.xml_id.clone());
             let valid = match link.kind {
                 DictionaryKind::Role => role_sources_index.contains(&source),
                 DictionaryKind::System | DictionaryKind::Document => {
@@ -400,242 +404,42 @@ fn normalize(v: &mut Value) {
         _ => {}
     }
 }
-pub(crate) fn semantic_ids(d: &BpmnDocument) -> HashSet<&XmlId> {
-    let mut s = HashSet::new();
-    s.insert(&d.definitions_id);
-    let mut metadata = Vec::new();
-    for store in &d.data_stores {
-        metadata.extend(store.item_aware.iter());
-    }
-    for process in &d.processes {
-        if let Some(io) = &process.io_specification {
-            if let Some(id) = &io.id {
-                s.insert(id);
-            }
-            for set in io.input_sets.iter().chain(&io.output_sets) {
-                if let Some(id) = &set.id {
-                    s.insert(id);
-                }
-            }
-            for port in io.inputs.iter().chain(&io.outputs) {
-                if let Some(id) = &port.id {
-                    s.insert(id);
-                }
-                metadata.extend(port.item_aware.iter());
-            }
-        }
-    }
-    for scope in crate::queries::scopes(d) {
-        for object in scope.data_objects {
-            metadata.extend(object.item_aware.iter());
-        }
-        for association in scope.data_associations {
-            for assignment in &association.assignments {
-                if let Some(id) = &assignment.id {
-                    s.insert(id);
-                }
-            }
-        }
-        for node in scope.nodes {
-            metadata.extend(node.item_aware.iter());
-            if let Some(io) = &node.io_specification {
-                for port in io.inputs.iter().chain(&io.outputs) {
-                    metadata.extend(port.item_aware.iter());
-                }
-            }
-        }
-    }
-    for item in metadata {
-        if let Some(id) = item.data_state.as_ref().and_then(|state| state.id.as_ref()) {
-            s.insert(id);
-        }
-    }
-    for item in &d.catalog.item_definitions {
-        if let Some(id) = &item.id {
-            s.insert(id);
-        }
-    }
-    for interface in &d.catalog.interfaces {
-        if let Some(id) = &interface.id {
-            s.insert(id);
-        }
-        for operation in &interface.operations {
-            if let Some(id) = &operation.id {
-                s.insert(id);
-            }
-        }
-    }
-    for resource in &d.catalog.resources {
-        if let Some(id) = &resource.id {
-            s.insert(id);
-        }
-        for parameter in &resource.parameters {
-            if let Some(id) = &parameter.id {
-                s.insert(id);
-            }
-        }
-    }
-    for expression in d.expressions() {
-        if let crate::bpmn_model::Expression::Structured(data) = expression
-            && let Some(id) = &data.id
-        {
-            s.insert(id);
-        }
-    }
-    for category in &d.categories {
-        s.insert(&category.id);
-        for value in &category.values {
-            s.insert(&value.id);
-        }
-    }
-    for store in &d.data_stores {
-        if let Some(id) = &store.id {
-            s.insert(id);
-        }
-    }
-    let mut pending: Vec<(&[Node], &[Lane], &[Flow])> = Vec::new();
-    for p in &d.processes {
-        s.insert(&p.id);
-        if let Some(id) = &p.lane_set_id {
-            s.insert(id);
-        }
-        for group in &p.groups {
-            s.insert(&group.id);
-        }
-        pending.push((&p.nodes, &p.lanes, &p.flows));
-    }
-    while let Some((nodes, lanes, flows)) = pending.pop() {
-        for n in nodes {
-            s.insert(&n.id);
-            if let Some(crate::bpmn_model::NodeDetails::Event { definitions, .. }) = &n.details {
-                use crate::bpmn_model::EventDefinition;
-                for definition in definitions {
-                    let id = match definition {
-                        EventDefinition::Message { id, .. }
-                        | EventDefinition::Signal { id, .. }
-                        | EventDefinition::Error { id, .. }
-                        | EventDefinition::Escalation { id, .. }
-                        | EventDefinition::Conditional { id, .. }
-                        | EventDefinition::Link { id, .. }
-                        | EventDefinition::Cancel { id }
-                        | EventDefinition::Compensate { id, .. }
-                        | EventDefinition::Terminate { id }
-                        | EventDefinition::Timer { id, .. } => id,
-                    };
-                    if let Some(id) = id {
-                        s.insert(id);
-                    }
-                }
-            }
-            if let Some(crate::bpmn_model::NodeDetails::SubProcess { content }) = &n.details {
-                if let Some(id) = &content.lane_set_id {
-                    s.insert(id);
-                }
-                for group in &content.groups {
-                    s.insert(&group.id);
-                }
-                pending.push((&content.nodes, &content.lanes, &content.flows));
-            }
-        }
-        for l in lanes {
-            s.insert(&l.id);
-            if let Some(id) = &l.child_lane_set_id {
-                s.insert(id);
-            }
-        }
-        for f in flows {
-            s.insert(&f.id);
-        }
-    }
-    for choreography in &d.choreographies {
-        s.insert(&choreography.id);
-        for participant in &choreography.participants {
-            s.insert(&participant.id);
-        }
-        for flow in &choreography.message_flows {
-            s.insert(&flow.id);
-        }
-        for activity in &choreography.activities {
-            s.insert(&activity.id);
-        }
-        for flow in &choreography.sequence_flows {
-            s.insert(&flow.id);
-        }
-    }
-    let mut data_pending: Vec<(
-        &[Node],
-        &[crate::bpmn_data::DataObject],
-        &[crate::bpmn_data::DataAssociation],
-    )> = d
-        .processes
-        .iter()
-        .map(|p| {
-            (
-                p.nodes.as_slice(),
-                p.data_objects.as_slice(),
-                p.data_associations.as_slice(),
-            )
-        })
+pub(crate) fn semantic_ids(d: &BpmnDocument) -> HashSet<crate::ids::ElementSelector> {
+    let mut ids: HashSet<_> = d
+        .element_identities()
+        .into_iter()
+        .map(|id| id.selector())
         .collect();
-    while let Some((nodes, objects, associations)) = data_pending.pop() {
-        for o in objects {
-            if let Some(id) = &o.id {
-                s.insert(id);
-            }
+    for diagram in &d.diagrams {
+        ids.remove(&diagram.id.selector());
+        ids.remove(&diagram.plane_id.selector());
+        for shape in &diagram.shapes {
+            ids.remove(&shape.id.selector());
         }
-        for a in associations {
-            if let Some(id) = &a.id {
-                s.insert(id);
-            }
-        }
-        for node in nodes {
-            if let Some(io) = &node.io_specification {
-                if let Some(id) = &io.id {
-                    s.insert(id);
-                }
-                for set in io.input_sets.iter().chain(&io.output_sets) {
-                    if let Some(id) = &set.id {
-                        s.insert(id);
-                    }
-                }
-                for port in io.inputs.iter().chain(&io.outputs) {
-                    if let Some(id) = &port.id {
-                        s.insert(id);
-                    }
-                }
-            }
-            if let Some(crate::bpmn_model::NodeDetails::SubProcess { content }) = &node.details {
-                data_pending.push((
-                    &content.nodes,
-                    &content.data_objects,
-                    &content.data_associations,
-                ));
-            }
+        for edge in &diagram.edges {
+            ids.remove(&edge.id.selector());
         }
     }
-    if let Some(c) = &d.collaboration {
-        s.insert(&c.id);
-        for p in &c.participants {
-            s.insert(&p.id);
-        }
-        for f in &c.flows {
-            s.insert(&f.id);
-        }
-        for n in &c.conversation_nodes {
-            s.insert(&n.id);
-        }
-        for link in &c.conversation_links {
-            s.insert(&link.id);
-        }
-    }
-    s
+    ids
 }
+
 fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<usize, String> {
     short(&d.name)?;
-    if let Some(metadata) = &d.definitions {
-        if metadata.target_namespace.is_empty() {
-            return fail("Empty target namespace is outside the qualified editable profile");
+    let mut native_ids = HashSet::new();
+    let mut xml_ids = HashSet::new();
+    for identity in d.element_identities() {
+        if let crate::ids::ElementIdentity::Native { native_id, .. } = identity
+            && !native_ids.insert(native_id)
+        {
+            return fail("duplicate native element ID");
         }
+        if let Some(xml_id) = identity.xml_id()
+            && !xml_ids.insert(xml_id)
+        {
+            return fail("duplicate XML ID");
+        }
+    }
+    if let Some(metadata) = &d.definitions {
         definitions_text(&metadata.target_namespace)?;
         if metadata.imports.len() > 256 {
             return fail("Definitions import limit exceeded");
@@ -719,13 +523,13 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                 std::iter::once(&operation.in_message_ref).chain(operation.out_message_ref.iter())
             {
                 check_qname(reference)?;
-                if local(reference) && !d.event_resources.iter().any(|e| matches!(e, crate::bpmn_model::EventResource::Message { id, .. } if id == &reference.local)) {
+                if local(reference) && !d.event_resources.iter().any(|e| matches!(e, crate::bpmn_model::EventResource::Message { id, .. } if id.xml_id() == Some(&reference.local))) {
                     return fail("Operation references a missing local message");
                 }
             }
             for reference in &operation.error_refs {
                 check_qname(reference)?;
-                if local(reference) && !d.event_resources.iter().any(|e| matches!(e, crate::bpmn_model::EventResource::Error { id, .. } if id == &reference.local)) {
+                if local(reference) && !d.event_resources.iter().any(|e| matches!(e, crate::bpmn_model::EventResource::Error { id, .. } if id.xml_id() == Some(&reference.local))) {
                     return fail("Operation references a missing local error");
                 }
             }
@@ -749,10 +553,9 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             if let Some(reference) = &parameter.type_ref {
                 check_qname(reference)?;
                 if local(reference)
-                    && !catalog
-                        .item_definitions
-                        .iter()
-                        .any(|item| item.id.as_ref() == Some(&reference.local))
+                    && !catalog.item_definitions.iter().any(|item| {
+                        item.id.as_ref().and_then(|id| id.xml_id()) == Some(&reference.local)
+                    })
                 {
                     return fail("Resource parameter references a missing local item definition");
                 }
@@ -821,11 +624,9 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
         if let Some(reference) = &metadata.item_subject_ref {
             check_qname(reference)?;
             if local(reference) {
-                let Some(item) = catalog
-                    .item_definitions
-                    .iter()
-                    .find(|item| item.id.as_ref() == Some(&reference.local))
-                else {
+                let Some(item) = catalog.item_definitions.iter().find(|item| {
+                    item.id.as_ref().and_then(|id| id.xml_id()) == Some(&reference.local)
+                }) else {
                     return fail("Missing local item definition");
                 };
                 if let Some(value) = collection
@@ -919,10 +720,9 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                 if let Some(name) = evaluates_to_type_ref {
                     definitions_text(&name.namespace)?;
                     if local(name)
-                        && !catalog
-                            .item_definitions
-                            .iter()
-                            .any(|item| item.id.as_ref() == Some(&name.local))
+                        && !catalog.item_definitions.iter().any(|item| {
+                            item.id.as_ref().and_then(|id| id.xml_id()) == Some(&name.local)
+                        })
                     {
                         return fail("Expression references a missing local item definition");
                     }
@@ -1016,14 +816,14 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
     }
     // Each subprocess node owns a distinct flow scope. Iterative traversal bounds depth.
     struct Scope<'a> {
-        id: &'a XmlId,
-        parent: Option<&'a XmlId>,
+        id: crate::ids::ElementSelector,
+        parent: Option<crate::ids::ElementSelector>,
         nodes: &'a [Node],
         lanes: &'a [Lane],
         flows: &'a [Flow],
         objects: &'a [crate::bpmn_data::DataObject],
         associations: &'a [crate::bpmn_data::DataAssociation],
-        lane_set_id: Option<&'a XmlId>,
+        lane_set_id: Option<&'a crate::ids::ElementIdentity>,
         groups: &'a [crate::bpmn_model::Group],
     }
     let mut scopes: Vec<Scope<'_>> = Vec::new();
@@ -1033,7 +833,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
         .map(|p| {
             (
                 Scope {
-                    id: &p.id,
+                    id: p.id.selector(),
                     parent: None,
                     nodes: &p.nodes,
                     lanes: &p.lanes,
@@ -1075,8 +875,8 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                     Some(crate::bpmn_model::NodeDetails::SubProcess { content }),
                 ) => pending.push((
                     Scope {
-                        id: &n.id,
-                        parent: Some(scope.id),
+                        id: n.id.selector(),
+                        parent: Some(scope.id.clone()),
                         nodes: &content.nodes,
                         lanes: &content.lanes,
                         flows: &content.flows,
@@ -1090,7 +890,11 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                 (
                     NodeKind::CallActivity,
                     Some(crate::bpmn_model::NodeDetails::CallActivity { called_element }),
-                ) if !called_element.namespace.is_empty() => (),
+                ) => {
+                    if called_element.namespace.len() > 16_384 {
+                        return fail("invalid call namespace");
+                    }
+                }
                 (
                     NodeKind::SubProcess
                     | NodeKind::AdHocSubProcess
@@ -1102,20 +906,28 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                     NodeKind::DataObjectReference,
                     Some(crate::bpmn_model::NodeDetails::DataObjectReference { data_object_ref }),
                 ) if data_object_ref.as_ref().is_none_or(|id| {
-                    if scope.objects.iter().any(|o| o.id.as_ref() == Some(id)) {
+                    if scope
+                        .objects
+                        .iter()
+                        .any(|o| o.id.as_ref().is_some_and(|identity| identity == id))
+                    {
                         return true;
                     }
-                    let mut parent = scope.parent;
+                    let mut parent = scope.parent.clone();
                     while let Some(scope_id) = parent {
                         let Some(ancestor) =
                             scopes.iter().find(|candidate| candidate.id == scope_id)
                         else {
                             break;
                         };
-                        if ancestor.objects.iter().any(|o| o.id.as_ref() == Some(id)) {
+                        if ancestor
+                            .objects
+                            .iter()
+                            .any(|o| o.id.as_ref().is_some_and(|identity| identity == id))
+                        {
                             return true;
                         }
-                        parent = ancestor.parent;
+                        parent = ancestor.parent.clone();
                     }
                     false
                 }) => {}
@@ -1125,14 +937,16 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                 ) if data_store_ref
                     .as_ref()
                     .is_none_or(|reference| match reference {
-                        crate::bpmn_data::DataStoreRef::Legacy(id) => {
-                            d.data_stores.iter().any(|o| o.id.as_ref() == Some(id))
-                        }
+                        crate::bpmn_data::DataStoreRef::Legacy(id) => d
+                            .data_stores
+                            .iter()
+                            .any(|o| o.id.as_ref().is_some_and(|identity| identity == id)),
                         crate::bpmn_data::DataStoreRef::Qualified(name) => {
                             !local(name)
-                                || d.data_stores
-                                    .iter()
-                                    .any(|o| o.id.as_ref() == Some(&name.local))
+                                || d.data_stores.iter().any(|o| {
+                                    o.id.as_ref().and_then(|identity| identity.xml_id())
+                                        == Some(&name.local)
+                                })
                         }
                     }) => {}
                 (
@@ -1182,14 +996,15 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                 }
                 (
                     NodeKind::TextAnnotation,
-                    Some(crate::bpmn_model::NodeDetails::TextAnnotation {
-                        text_format: Some(format),
-                    }),
-                ) => short(format)?,
-                (
-                    NodeKind::TextAnnotation,
-                    Some(crate::bpmn_model::NodeDetails::TextAnnotation { text_format: None }),
-                ) => {}
+                    Some(crate::bpmn_model::NodeDetails::TextAnnotation { text_format, text }),
+                ) => {
+                    if let Some(format) = text_format {
+                        short(format)?;
+                    }
+                    if let Some(text) = text {
+                        definitions_text(text)?;
+                    }
+                }
                 (_, Some(crate::bpmn_model::NodeDetails::TextAnnotation { .. })) => {
                     return fail("annotation details require text annotation");
                 }
@@ -1218,33 +1033,38 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
     let mut element_scope = HashMap::new();
     for store in &d.data_stores {
         if let Some(id) = &store.id {
-            shape_ids.insert(id);
+            shape_ids.insert(id.selector());
         }
     }
     for process in &d.processes {
         add(&mut ids, &process.id)?;
-        short(&process.name)?;
+        if let Some(name) = &process.name {
+            short(name)?;
+        }
         if let Some(io) = &process.io_specification {
             validate_io(
                 io,
                 &mut ids,
                 &mut shape_ids,
                 &mut element_scope,
-                &process.id,
+                &process.id.selector(),
             )?;
         }
     }
-    let scopes_by_id: HashMap<_, _> = scopes.iter().map(|scope| (scope.id, scope)).collect();
+    let scopes_by_id: HashMap<_, _> = scopes
+        .iter()
+        .map(|scope| (scope.id.clone(), scope))
+        .collect();
     for p in &scopes {
         if let Some(id) = p.lane_set_id {
             add(&mut ids, id)?;
         }
         for group in p.groups {
             add(&mut ids, &group.id)?;
-            shape_ids.insert(&group.id);
-            group_ids.insert(&group.id);
-            node_process.insert(&group.id, p.id);
-            element_scope.insert(&group.id, p.id);
+            shape_ids.insert(group.id.selector());
+            group_ids.insert(group.id.selector());
+            node_process.insert(group.id.selector(), p.id.clone());
+            element_scope.insert(group.id.selector(), p.id.clone());
             if group.category_value_ref.as_ref().is_some_and(|id| {
                 !d.categories
                     .iter()
@@ -1256,8 +1076,8 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
         for object in p.objects {
             if let Some(id) = &object.id {
                 add(&mut ids, id)?;
-                shape_ids.insert(id);
-                element_scope.insert(id, p.id);
+                shape_ids.insert(id.selector());
+                element_scope.insert(id.selector(), p.id.clone());
             }
             if let Some(name) = &object.name {
                 short(name)?;
@@ -1268,8 +1088,8 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                 add(&mut ids, id)?;
             }
             if let Some(id) = &association.id {
-                flow_ids.insert(id);
-                element_scope.insert(id, p.id);
+                flow_ids.insert(id.selector());
+                element_scope.insert(id.selector(), p.id.clone());
             }
         }
         for n in p.nodes {
@@ -1278,9 +1098,11 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                 if !n.kind.is_activity() {
                     return fail("I/O specification requires activity");
                 }
-                validate_io(io, &mut ids, &mut shape_ids, &mut element_scope, p.id)?;
+                validate_io(io, &mut ids, &mut shape_ids, &mut element_scope, &p.id)?;
             }
-            short(&n.name)?;
+            if let Some(name) = &n.name {
+                short(name)?;
+            }
             if let Some(activity) = &n.activity {
                 if !n.kind.is_activity() {
                     return fail("activity properties require activity");
@@ -1625,7 +1447,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                                             })
                                         })
                                 }
-                                NodeKind::EndEvent => crate::queries::find_node(d, p.id)
+                                NodeKind::EndEvent => crate::queries::find_node(d, &p.id)
                                     .is_some_and(|owner| owner.kind == NodeKind::Transaction),
                                 _ => false,
                             };
@@ -1647,7 +1469,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                                     | NodeKind::IntermediateThrowEvent
                                     | NodeKind::EndEvent
                             ) || (n.kind == NodeKind::StartEvent
-                                && crate::queries::find_node(d, p.id).is_some_and(|owner| {
+                                && crate::queries::find_node(d, &p.id).is_some_and(|owner| {
                                     owner
                                         .activity
                                         .as_ref()
@@ -1681,38 +1503,46 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             } else if matches!(n.kind, NodeKind::BoundaryEvent) {
                 return fail("boundary event requires attachment");
             }
-            shape_ids.insert(&n.id);
-            element_scope.insert(&n.id, p.id);
-            node_process.insert(&n.id, p.id);
-            kinds.insert(&n.id, n.kind);
+            shape_ids.insert(n.id.selector());
+            element_scope.insert(n.id.selector(), p.id.clone());
+            node_process.insert(n.id.selector(), p.id.clone());
+            kinds.insert(n.id.selector(), n.kind);
         }
         for l in p.lanes {
             add(&mut ids, &l.id)?;
             if let Some(id) = &l.child_lane_set_id {
                 add(&mut ids, id)?;
             }
-            short(&l.name)?;
-            shape_ids.insert(&l.id);
-            element_scope.insert(&l.id, p.id);
+            if let Some(name) = &l.name {
+                short(name)?;
+            }
+            shape_ids.insert(l.id.selector());
+            element_scope.insert(l.id.selector(), p.id.clone());
         }
         for f in p.flows {
             if f.association_direction.is_some() && f.kind != FlowKind::Association {
                 return fail("association direction requires association");
             }
             add(&mut ids, &f.id)?;
-            flow_ids.insert(&f.id);
-            element_scope.insert(&f.id, p.id);
-            short(&f.name)?;
+            flow_ids.insert(f.id.selector());
+            element_scope.insert(f.id.selector(), p.id.clone());
+            if let Some(name) = &f.name {
+                short(name)?;
+            }
         }
     }
     for choreography in &d.choreographies {
         add(&mut ids, &choreography.id)?;
-        short(&choreography.name)?;
+        if let Some(name) = &choreography.name {
+            short(name)?;
+        }
         for participant in &choreography.participants {
             add(&mut ids, &participant.id)?;
-            short(&participant.name)?;
-            shape_ids.insert(&participant.id);
-            element_scope.insert(&participant.id, &choreography.id);
+            if let Some(name) = &participant.name {
+                short(name)?;
+            }
+            shape_ids.insert(participant.id.selector());
+            element_scope.insert(participant.id.selector(), choreography.id.selector());
             if participant
                 .process
                 .as_ref()
@@ -1723,9 +1553,11 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
         }
         for flow in &choreography.message_flows {
             add(&mut ids, &flow.id)?;
-            short(&flow.name)?;
-            flow_ids.insert(&flow.id);
-            element_scope.insert(&flow.id, &choreography.id);
+            if let Some(name) = &flow.name {
+                short(name)?;
+            }
+            flow_ids.insert(flow.id.selector());
+            element_scope.insert(flow.id.selector(), choreography.id.selector());
             if flow.kind != FlowKind::Message
                 || flow.condition.is_some()
                 || flow.source == flow.target
@@ -1743,9 +1575,11 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
         }
         for activity in &choreography.activities {
             add(&mut ids, &activity.id)?;
-            short(&activity.name)?;
-            shape_ids.insert(&activity.id);
-            element_scope.insert(&activity.id, &choreography.id);
+            if let Some(name) = &activity.name {
+                short(name)?;
+            }
+            shape_ids.insert(activity.id.selector());
+            element_scope.insert(activity.id.selector(), choreography.id.selector());
             let mut unique = HashSet::new();
             for participant in &activity.participant_refs {
                 if !unique.insert(participant)
@@ -1771,9 +1605,11 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
         }
         for flow in &choreography.sequence_flows {
             add(&mut ids, &flow.id)?;
-            short(&flow.name)?;
-            flow_ids.insert(&flow.id);
-            element_scope.insert(&flow.id, &choreography.id);
+            if let Some(name) = &flow.name {
+                short(name)?;
+            }
+            flow_ids.insert(flow.id.selector());
+            element_scope.insert(flow.id.selector(), choreography.id.selector());
             if flow.kind != FlowKind::Sequence
                 || !choreography.activities.iter().any(|a| a.id == flow.source)
                 || !choreography.activities.iter().any(|a| a.id == flow.target)
@@ -1784,16 +1620,21 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
     }
     if let Some(c) = &d.collaboration {
         add(&mut ids, &c.id)?;
+        if let Some(name) = &c.name {
+            definitions_text(name)?;
+        }
 
         for p in &c.participants {
             add(&mut ids, &p.id)?;
-            shape_ids.insert(&p.id);
+            shape_ids.insert(p.id.selector());
             // Older native projects placed their own participant on a process plane.
             // Retain those projects without accepting participants from other processes.
             if let Some(process) = &p.process {
-                element_scope.insert(&p.id, process);
+                element_scope.insert(p.id.selector(), process.clone());
             }
-            short(&p.name)?;
+            if let Some(name) = &p.name {
+                short(name)?;
+            }
 
             if p.process
                 .as_ref()
@@ -1804,19 +1645,23 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
         }
         for f in &c.flows {
             add(&mut ids, &f.id)?;
-            flow_ids.insert(&f.id);
-            short(&f.name)?;
+            flow_ids.insert(f.id.selector());
+            if let Some(name) = &f.name {
+                short(name)?;
+            }
         }
         let parents: HashMap<_, _> = c
             .conversation_nodes
             .iter()
-            .map(|n| (&n.id, n.parent.as_ref()))
+            .map(|n| (n.id.selector(), n.parent.clone()))
             .collect();
-        acyclic(&parents, "conversation")?;
+        acyclic_selectors(&parents, "conversation")?;
         for node in &c.conversation_nodes {
             add(&mut ids, &node.id)?;
-            short(&node.name)?;
-            shape_ids.insert(&node.id);
+            if let Some(name) = &node.name {
+                short(name)?;
+            }
+            shape_ids.insert(node.id.selector());
             if node.parent.as_ref().is_some_and(|parent| {
                 !c.conversation_nodes.iter().any(|n| {
                     &n.id == parent
@@ -1839,10 +1684,14 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
         }
         for link in &c.conversation_links {
             add(&mut ids, &link.id)?;
-            short(&link.name)?;
-            flow_ids.insert(&link.id);
-            let participant = |id: &XmlId| c.participants.iter().any(|p| &p.id == id);
-            let conversation = |id: &XmlId| c.conversation_nodes.iter().any(|n| &n.id == id);
+            if let Some(name) = &link.name {
+                short(name)?;
+            }
+            flow_ids.insert(link.id.selector());
+            let participant =
+                |id: &crate::ids::ElementSelector| c.participants.iter().any(|p| &p.id == id);
+            let conversation =
+                |id: &crate::ids::ElementSelector| c.conversation_nodes.iter().any(|n| &n.id == id);
             if !((participant(&link.source) && conversation(&link.target))
                 || (conversation(&link.source) && participant(&link.target)))
             {
@@ -1851,8 +1700,12 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
         }
     }
     for p in &scopes {
-        let lanes: HashMap<_, _> = p.lanes.iter().map(|l| (&l.id, l.parent.as_ref())).collect();
-        acyclic(&lanes, "lane")?;
+        let lanes: HashMap<_, _> = p
+            .lanes
+            .iter()
+            .map(|l| (l.id.selector(), l.parent.clone()))
+            .collect();
+        acyclic_selectors(&lanes, "lane")?;
         let mut members = HashSet::new();
         for l in p.lanes {
             for m in &l.members {
@@ -1873,21 +1726,24 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             let Some(io) = &owner.io_specification else {
                 return fail("data association requires activity ports");
             };
-            let local = |id: &XmlId, input_source: bool| {
+            let local = |id: &crate::ids::ElementSelector, input_source: bool| {
                 if d.data_stores
                     .iter()
-                    .any(|store| store.id.as_ref() == Some(id))
+                    .any(|store| store.id.as_ref().is_some_and(|identity| identity == id))
                 {
                     return true;
                 }
-                let mut current = Some(p.id);
+                let mut current = Some(p.id.clone());
                 while let Some(scope_id) = current {
-                    let Some(scope) = scopes_by_id.get(scope_id) else {
+                    let Some(scope) = scopes_by_id.get(&scope_id) else {
                         break;
                     };
-                    if scope.objects.iter().any(|o| o.id.as_ref() == Some(id))
+                    if scope
+                        .objects
+                        .iter()
+                        .any(|o| o.id.as_ref().is_some_and(|identity| identity == id))
                         || scope.nodes.iter().any(|n| {
-                            &n.id == id
+                            n.id == *id
                                 && matches!(
                                     n.kind,
                                     NodeKind::DataObjectReference | NodeKind::DataStoreReference
@@ -1895,7 +1751,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                         })
                         || d.processes
                             .iter()
-                            .find(|process| &process.id == scope_id)
+                            .find(|process| process.id == scope_id)
                             .and_then(|process| process.io_specification.as_ref())
                             .is_some_and(|io| {
                                 let ports = if input_source {
@@ -1903,12 +1759,14 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                                 } else {
                                     &io.outputs
                                 };
-                                ports.iter().any(|port| port.id.as_ref() == Some(id))
+                                ports.iter().any(|port| {
+                                    port.id.as_ref().is_some_and(|identity| identity == id)
+                                })
                             })
                     {
                         return true;
                     }
-                    current = scope.parent;
+                    current = scope.parent.clone();
                 }
                 false
             };
@@ -1918,17 +1776,19 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             }
             let valid = match association.kind {
                 DataAssociationKind::Input => {
-                    io.inputs
-                        .iter()
-                        .any(|port| port.id.as_ref() == Some(&association.target))
-                        && association.sources.iter().all(|id| local(id, true))
+                    io.inputs.iter().any(|port| {
+                        port.id
+                            .as_ref()
+                            .is_some_and(|identity| identity == &association.target)
+                    }) && association.sources.iter().all(|id| local(id, true))
                 }
                 DataAssociationKind::Output => {
                     local(&association.target, false)
-                        && association
-                            .sources
-                            .iter()
-                            .all(|id| io.outputs.iter().any(|port| port.id.as_ref() == Some(id)))
+                        && association.sources.iter().all(|id| {
+                            io.outputs
+                                .iter()
+                                .any(|port| port.id.as_ref().is_some_and(|identity| identity == id))
+                        })
                 }
             };
             if !valid {
@@ -1972,25 +1832,26 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
         }
     }
     if let Some(c) = &d.collaboration {
-        let participant_for = |id: &XmlId| -> Option<&XmlId> {
-            if let Some(p) = c.participants.iter().find(|p| &p.id == id) {
-                return Some(&p.id);
-            }
-            if !kinds.get(id).is_some_and(|kind| kind.is_activity()) {
-                return None;
-            }
-            let process = node_process.get(id)?;
-            let mut ps = c
-                .participants
-                .iter()
-                .filter(|p| p.process.as_ref() == Some(*process));
-            let first = ps.next()?;
-            if ps.next().is_some() {
-                None
-            } else {
-                Some(&first.id)
-            }
-        };
+        let participant_for =
+            |id: &crate::ids::ElementSelector| -> Option<crate::ids::ElementSelector> {
+                if let Some(p) = c.participants.iter().find(|p| &p.id == id) {
+                    return Some(p.id.selector());
+                }
+                if !kinds.get(id).is_some_and(|kind| kind.is_activity()) {
+                    return None;
+                }
+                let process = node_process.get(id)?;
+                let mut ps = c
+                    .participants
+                    .iter()
+                    .filter(|p| p.process.as_ref() == Some(process));
+                let first = ps.next()?;
+                if ps.next().is_some() {
+                    None
+                } else {
+                    Some(first.id.selector())
+                }
+            };
         for f in &c.flows {
             if f.condition.is_some()
                 || f.kind != FlowKind::Message
@@ -2004,8 +1865,11 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
     }
     for diagram in &d.diagrams {
         add(&mut ids, &diagram.id)?;
+        if let Some(name) = &diagram.name {
+            definitions_text(name)?;
+        }
         add(&mut ids, &diagram.plane_id)?;
-        if !scopes.iter().any(|p| *p.id == diagram.plane)
+        if !scopes.iter().any(|p| p.id == diagram.plane)
             && !d.choreographies.iter().any(|c| c.id == diagram.plane)
             && !d
                 .collaboration
@@ -2016,17 +1880,17 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
         }
         let mut contained = HashSet::new();
         if let Some(choreography) = d.choreographies.iter().find(|c| c.id == diagram.plane) {
-            contained.insert(&choreography.id);
+            contained.insert(choreography.id.selector());
         }
-        if let Some(start) = scopes.iter().find(|p| *p.id == diagram.plane) {
+        if let Some(start) = scopes.iter().find(|p| p.id == diagram.plane) {
             let mut pending = vec![start];
             while let Some(scope) = pending.pop() {
-                contained.insert(scope.id);
+                contained.insert(scope.id.clone());
                 for node in scope.nodes {
                     if matches!(
                         node.details,
                         Some(crate::bpmn_model::NodeDetails::SubProcess { .. })
-                    ) && let Some(child) = scopes.iter().find(|s| *s.id == node.id)
+                    ) && let Some(child) = scopes.iter().find(|s| s.id == node.id.selector())
                     {
                         pending.push(child);
                     }
@@ -2038,14 +1902,14 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             let global_store = d
                 .data_stores
                 .iter()
-                .any(|store| store.id.as_ref() == Some(&s.element));
+                .any(|store| store.id.as_ref().is_some_and(|id| id == &s.element));
             if !global_store
                 && !contained.is_empty()
                 && !element_scope
                     .get(&s.element)
                     .is_some_and(|scope| contained.contains(scope))
             {
-                return fail("shape outside diagram scope");
+                return Err(format!("shape {} is outside diagram scope", s.element));
             }
             if !shape_ids.contains(&s.element) {
                 return fail("invalid shape reference");
@@ -2080,7 +1944,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
     if let Capability::RetainedExtensions { extensions, .. } = &d.capability {
         let semantics = semantic_ids(d);
         for e in extensions {
-            if !semantics.contains(&e.owner) && !ids.contains(&e.owner) {
+            if !semantics.contains(&e.owner) && !ids.iter().any(|id| id.selector() == e.owner) {
                 return fail("missing extension owner");
             }
         }
@@ -2089,6 +1953,30 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
         return fail("document element limit exceeded");
     }
     Ok(ids.len())
+}
+fn acyclic_selectors(
+    parents: &HashMap<crate::ids::ElementSelector, Option<crate::ids::ElementSelector>>,
+    kind: &str,
+) -> Result<(), String> {
+    let mut completed = HashSet::new();
+    for start in parents.keys() {
+        let mut visiting = HashSet::new();
+        let mut current = Some(start);
+        while let Some(id) = current {
+            if completed.contains(id) {
+                break;
+            }
+            if !visiting.insert(id.clone()) {
+                return Err(format!("{kind} cycle"));
+            }
+            current = parents
+                .get(id)
+                .ok_or_else(|| format!("missing parent {kind}"))?
+                .as_ref();
+        }
+        completed.extend(visiting);
+    }
+    Ok(())
 }
 fn is_flow_node(k: NodeKind) -> bool {
     !matches!(

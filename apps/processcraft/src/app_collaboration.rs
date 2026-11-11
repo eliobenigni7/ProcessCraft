@@ -6,31 +6,32 @@ pub(super) struct State {
     session: String,
     open: bool,
     document: Option<processcraft_core::ids::DocumentId>,
-    node_id: Option<XmlId>,
+    node_id: Option<ElementSelector>,
     name: String,
+    name_present: bool,
     is_subconversation: bool,
-    parent: Option<XmlId>,
-    participants: Vec<XmlId>,
-    link_participant: Option<XmlId>,
-    link_conversation: Option<XmlId>,
+    parent: Option<ElementSelector>,
+    participants: Vec<ElementSelector>,
+    link_participant: Option<ElementSelector>,
+    link_conversation: Option<ElementSelector>,
     dirty: bool,
     link_dirty: bool,
     data_name: String,
     data_store: bool,
     data_dirty: bool,
     reference_name: String,
-    reference_target: Option<XmlId>,
+    reference_target: Option<ElementSelector>,
     reference_store: bool,
     reference_dirty: bool,
     io_name: String,
-    io_activity: Option<XmlId>,
-    io_reference: Option<XmlId>,
+    io_activity: Option<ElementSelector>,
+    io_reference: Option<ElementSelector>,
     io_output: bool,
     io_dirty: bool,
-    choreography_id: Option<XmlId>,
+    choreography_id: Option<ElementSelector>,
     choreography_name: String,
-    choreography_first: Option<XmlId>,
-    choreography_second: Option<XmlId>,
+    choreography_first: Option<ElementSelector>,
+    choreography_second: Option<ElementSelector>,
     choreography_dirty: bool,
     root_name: String,
     root_first: String,
@@ -43,6 +44,37 @@ pub(super) struct State {
     draw: bool,
 }
 impl State {
+    pub(super) fn remap_selectors(
+        &mut self,
+        mappings: &[processcraft_core::commands::SelectorMapping],
+    ) {
+        for mapping in mappings
+            .iter()
+            .filter(|mapping| Some(mapping.document_id) == self.document)
+        {
+            for selector in [
+                &mut self.node_id,
+                &mut self.parent,
+                &mut self.link_participant,
+                &mut self.link_conversation,
+                &mut self.reference_target,
+                &mut self.io_activity,
+                &mut self.io_reference,
+                &mut self.choreography_id,
+                &mut self.choreography_first,
+                &mut self.choreography_second,
+            ] {
+                if selector.as_ref() == Some(&mapping.from) {
+                    *selector = Some(mapping.to.clone());
+                }
+            }
+            for participant in &mut self.participants {
+                if *participant == mapping.from {
+                    *participant = mapping.to.clone();
+                }
+            }
+        }
+    }
     pub(super) fn has_draft(&self) -> bool {
         self.dirty
             || self.link_dirty
@@ -56,6 +88,7 @@ impl State {
     fn clear_node(&mut self) {
         self.node_id = None;
         self.name.clear();
+        self.name_present = false;
         self.is_subconversation = false;
         self.parent = None;
         self.participants.clear();
@@ -153,7 +186,8 @@ impl ProcessCraft {
                 self.ctl.mutate(vec![Mutation::CreateCollaboration {
                     document_id: id,
                     collaboration: Collaboration {
-                        id: controller::id("Collaboration"),
+                        name: None,
+                        id: controller::id("Collaboration").into(),
                         participants: vec![],
                         flows: vec![],
                         conversation_nodes: vec![],
@@ -172,14 +206,14 @@ impl ProcessCraft {
             .max_height(130.0)
             .show(ui, |ui| {
                 for node in &collaboration.conversation_nodes {
-                    let label = if node.name.is_empty() {
-                        "Unnamed conversation"
-                    } else {
-                        &node.name
-                    };
+                    let label = node
+                        .name
+                        .as_deref()
+                        .filter(|name| !name.is_empty())
+                        .unwrap_or("Unnamed conversation");
                     if ui
                         .selectable_label(
-                            self.collaboration.node_id.as_ref() == Some(&node.id),
+                            self.collaboration.node_id.as_ref() == Some(&node.id.selector()),
                             label,
                         )
                         .on_hover_text(node.id.to_string())
@@ -187,8 +221,9 @@ impl ProcessCraft {
                         && !self.collaboration.dirty
                     {
                         self.collaboration.document = Some(id);
-                        self.collaboration.node_id = Some(node.id.clone());
-                        self.collaboration.name = node.name.clone();
+                        self.collaboration.node_id = Some(node.id.selector());
+                        self.collaboration.name_present = node.name.is_some();
+                        self.collaboration.name = node.name.clone().unwrap_or_default();
                         self.collaboration.is_subconversation =
                             matches!(node.kind, ConversationKind::SubConversation);
                         self.collaboration.parent = node.parent.clone();
@@ -206,12 +241,14 @@ impl ProcessCraft {
             }
         });
         ui.separator();
-        let label = ui.label("Name");
-        if ui
-            .text_edit_singleline(&mut self.collaboration.name)
-            .labelled_by(label.id)
-            .changed()
-        {
+        let label = ui.checkbox(&mut self.collaboration.name_present, "Name");
+        let changed = label.changed()
+            || (self.collaboration.name_present
+                && ui
+                    .text_edit_singleline(&mut self.collaboration.name)
+                    .labelled_by(label.id)
+                    .changed());
+        if changed {
             self.collaboration.dirty = true;
             self.collaboration.document = Some(id);
         }
@@ -235,7 +272,7 @@ impl ProcessCraft {
                     .iter()
                     .find(|n| &n.id == id)
             })
-            .map_or("None", |n| n.name.as_str());
+            .map_or("None", |n| n.name.as_deref().unwrap_or("Unnamed"));
         egui::ComboBox::from_id_salt("conversation_parent")
             .selected_text(current_parent)
             .show_ui(ui, |ui| {
@@ -248,13 +285,13 @@ impl ProcessCraft {
                 }
                 for parent in collaboration.conversation_nodes.iter().filter(|n| {
                     matches!(n.kind, ConversationKind::SubConversation)
-                        && self.collaboration.node_id.as_ref() != Some(&n.id)
+                        && self.collaboration.node_id.as_ref() != Some(&n.id.selector())
                 }) {
                     if ui
                         .selectable_value(
                             &mut self.collaboration.parent,
-                            Some(parent.id.clone()),
-                            &parent.name,
+                            Some(parent.id.selector()),
+                            parent.name.as_deref().unwrap_or("Unnamed"),
                         )
                         .changed()
                     {
@@ -265,10 +302,21 @@ impl ProcessCraft {
             });
         ui.label("Participants");
         for participant in &collaboration.participants {
-            let mut selected = self.collaboration.participants.contains(&participant.id);
-            if ui.checkbox(&mut selected, &participant.name).changed() {
+            let mut selected = self
+                .collaboration
+                .participants
+                .contains(&participant.id.selector());
+            if ui
+                .checkbox(
+                    &mut selected,
+                    participant.name.as_deref().unwrap_or("Unnamed"),
+                )
+                .changed()
+            {
                 if selected {
-                    self.collaboration.participants.push(participant.id.clone());
+                    self.collaboration
+                        .participants
+                        .push(participant.id.selector());
                 } else {
                     self.collaboration
                         .participants
@@ -287,10 +335,31 @@ impl ProcessCraft {
                     .collaboration
                     .node_id
                     .clone()
-                    .unwrap_or_else(|| controller::id("Conversation"));
+                    .unwrap_or_else(|| controller::id("Conversation").into());
+                let identity = if let Some(node) = collaboration
+                    .conversation_nodes
+                    .iter()
+                    .find(|node| node.id.selector() == node_id)
+                {
+                    node.id.clone()
+                } else if self.collaboration.node_id.is_none() {
+                    match &node_id {
+                        ElementSelector::Xml(id) => id.clone().into(),
+                        ElementSelector::Native { .. } => {
+                            self.ctl.error = "The conversation identity is unavailable.".into();
+                            return;
+                        }
+                    }
+                } else {
+                    self.ctl.error = "The conversation no longer exists.".into();
+                    return;
+                };
                 let node = ConversationNode {
-                    id: node_id.clone(),
-                    name: self.collaboration.name.clone(),
+                    id: identity,
+                    name: self
+                        .collaboration
+                        .name_present
+                        .then(|| self.collaboration.name.clone()),
                     kind: if self.collaboration.is_subconversation {
                         ConversationKind::SubConversation
                     } else {
@@ -322,16 +391,16 @@ impl ProcessCraft {
                     if diagram.plane != collaboration.id {
                         mutations.push(Mutation::SetDiagramPlane {
                             document_id: id,
-                            diagram_id: diagram.id.clone(),
-                            plane: collaboration.id.clone(),
+                            diagram_id: diagram.id.selector(),
+                            plane: collaboration.id.selector(),
                         });
                     }
                     let count = collaboration.conversation_nodes.len() as f64;
                     mutations.push(Mutation::CreateShape {
                         document_id: id,
-                        diagram_id: diagram.id.clone(),
+                        diagram_id: diagram.id.selector(),
                         shape: Shape {
-                            id: controller::id("ConversationShape"),
+                            id: controller::id("ConversationShape").into(),
                             element: node_id.clone(),
                             is_expanded: None,
                             bounds: Bounds {
@@ -374,18 +443,22 @@ impl ProcessCraft {
                 .participants
                 .iter()
                 .find(|p| p.id == link.source || p.id == link.target)
-                .map_or("Unknown participant", |p| p.name.as_str());
+                .map_or("Unknown participant", |p| {
+                    p.name.as_deref().unwrap_or("Unnamed")
+                });
             let node = collaboration
                 .conversation_nodes
                 .iter()
                 .find(|n| n.id == link.source || n.id == link.target)
-                .map_or("Unknown conversation", |n| n.name.as_str());
+                .map_or("Unknown conversation", |n| {
+                    n.name.as_deref().unwrap_or("Unnamed")
+                });
             ui.horizontal(|ui| {
                 ui.label(format!("{participant} / {node}"));
                 if !self.collaboration.has_draft() && ui.button("Delete link").clicked() {
                     self.ctl.mutate(vec![Mutation::DeleteConversationLink {
                         document_id: id,
-                        link_id: link.id.clone(),
+                        link_id: link.id.selector(),
                     }]);
                 }
             });
@@ -396,15 +469,17 @@ impl ProcessCraft {
                     .link_participant
                     .as_ref()
                     .and_then(|id| collaboration.participants.iter().find(|p| &p.id == id))
-                    .map_or("Select participant", |p| p.name.as_str()),
+                    .map_or("Select participant", |p| {
+                        p.name.as_deref().unwrap_or("Unnamed")
+                    }),
             )
             .show_ui(ui, |ui| {
                 for participant in &collaboration.participants {
                     if ui
                         .selectable_value(
                             &mut self.collaboration.link_participant,
-                            Some(participant.id.clone()),
-                            &participant.name,
+                            Some(participant.id.selector()),
+                            participant.name.as_deref().unwrap_or("Unnamed"),
                         )
                         .changed()
                     {
@@ -424,15 +499,17 @@ impl ProcessCraft {
                             .iter()
                             .find(|n| &n.id == id)
                     })
-                    .map_or("Select conversation", |n| n.name.as_str()),
+                    .map_or("Select conversation", |n| {
+                        n.name.as_deref().unwrap_or("Unnamed")
+                    }),
             )
             .show_ui(ui, |ui| {
                 for node in &collaboration.conversation_nodes {
                     if ui
                         .selectable_value(
                             &mut self.collaboration.link_conversation,
-                            Some(node.id.clone()),
-                            &node.name,
+                            Some(node.id.selector()),
+                            node.name.as_deref().unwrap_or("Unnamed"),
                         )
                         .changed()
                     {
@@ -458,8 +535,8 @@ impl ProcessCraft {
             let mut mutations = vec![Mutation::CreateConversationLink {
                 document_id: id,
                 link: ConversationLink {
-                    id: link_id.clone(),
-                    name: String::new(),
+                    id: link_id.clone().into(),
+                    name: Some(String::new()),
                     source: participant.clone(),
                     target: node.clone(),
                 },
@@ -485,16 +562,16 @@ impl ProcessCraft {
                 if diagram.plane != collaboration.id {
                     mutations.push(Mutation::SetDiagramPlane {
                         document_id: id,
-                        diagram_id: diagram.id.clone(),
-                        plane: collaboration.id.clone(),
+                        diagram_id: diagram.id.selector(),
+                        plane: collaboration.id.selector(),
                     });
                 }
                 mutations.push(Mutation::CreateEdge {
                     document_id: id,
-                    diagram_id: diagram.id.clone(),
+                    diagram_id: diagram.id.selector(),
                     edge: Edge {
-                        id: controller::id("ConversationEdge"),
-                        element: link_id,
+                        id: controller::id("ConversationEdge").into(),
+                        element: link_id.into(),
                         waypoints: vec![
                             Point {
                                 x: a.bounds.x + a.bounds.width / 2.0,
@@ -559,7 +636,7 @@ impl ProcessCraft {
                             document_id: doc.id,
                             data_store: processcraft_core::bpmn_data::DataStore {
                                 item_aware: None,
-                                id: Some(controller::id("DataStore")),
+                                id: Some(controller::id("DataStore").into()),
                                 name: Some(self.collaboration.data_name.clone()),
                                 capacity: None,
                                 is_unlimited: None,
@@ -572,10 +649,10 @@ impl ProcessCraft {
                         };
                         Mutation::CreateDataObject {
                             document_id: doc.id,
-                            scope_id: scope.id.clone(),
+                            scope_id: scope.id.selector(),
                             data_object: processcraft_core::bpmn_data::DataObject {
                                 item_aware: None,
-                                id: Some(controller::id("DataObject")),
+                                id: Some(controller::id("DataObject").into()),
                                 name: Some(self.collaboration.data_name.clone()),
                                 is_collection: None,
                             },
@@ -605,13 +682,13 @@ impl ProcessCraft {
             let targets: Vec<_> = if self.collaboration.reference_store {
                 doc.data_stores
                     .iter()
-                    .filter_map(|v| v.id.as_ref().map(|id| (id, v.name.as_deref().unwrap_or("Unnamed"))))
+                    .filter_map(|v| v.id.as_ref().map(|id| (id.selector(), v.name.as_deref().unwrap_or("Unnamed"))))
                     .collect()
             } else {
                 scope.map(|s| {
-                    let ancestors = super::data::ancestor_data_candidates(doc, s.id).2;
+                    let ancestors = super::data::ancestor_data_candidates(doc, &s.id.selector()).2;
                     processcraft_core::queries::scopes(doc).into_iter().flat_map(|candidate| candidate.data_objects.iter()).filter_map(|value| {
-                        value.id.as_ref().filter(|id| s.data_objects.iter().any(|object| object.id.as_ref() == Some(*id)) || ancestors.contains(*id)).map(|id| (id, value.name.as_deref().unwrap_or("Unnamed")))
+                        value.id.as_ref().filter(|id| s.data_objects.iter().any(|object| object.id.as_ref() == Some(*id)) || ancestors.contains(&id.selector())).map(|id| (id.selector(), value.name.as_deref().unwrap_or("Unnamed")))
                     }).collect()
                 }).unwrap_or_default()
             };
@@ -620,7 +697,7 @@ impl ProcessCraft {
                     self.collaboration
                         .reference_target
                         .as_ref()
-                        .and_then(|id| targets.iter().find(|(v, _)| *v == id))
+                        .and_then(|id| targets.iter().find(|(v, _)| v == id))
                         .map_or("Select definition", |(_, name)| *name),
                 )
                 .show_ui(ui, |ui| {
@@ -628,7 +705,7 @@ impl ProcessCraft {
                         if ui
                             .selectable_value(
                                 &mut self.collaboration.reference_target,
-                                Some((*id).clone()),
+                                Some(id.clone()),
                                 *name,
                             )
                             .changed()
@@ -673,11 +750,11 @@ impl ProcessCraft {
                     };
                     let mut mutations = vec![Mutation::CreateElement {
                         document_id: doc.id,
-                        process_id: scope.id.clone(),
+                        process_id: scope.id.selector(),
                         element: Node {
                             item_aware: None,
-                            id: node_id.clone(),
-                            name: self.collaboration.reference_name.clone(),
+                            id: node_id.clone().into(),
+                            name: Some(self.collaboration.reference_name.clone()),
                             documentation: String::new(),
                             kind,
                             details: Some(details),
@@ -694,10 +771,10 @@ impl ProcessCraft {
                     }) {
                         mutations.push(Mutation::CreateShape {
                             document_id: doc.id,
-                            diagram_id: diagram.id.clone(),
+                            diagram_id: diagram.id.selector(),
                             shape: Shape {
-                                id: controller::id("DataShape"),
-                                element: node_id,
+                                id: controller::id("DataShape").into(),
+                                element: node_id.into(),
                                 is_expanded: None,
                                 bounds: Bounds {
                                     x: self.camera.0 + 100.0,
@@ -735,21 +812,21 @@ impl ProcessCraft {
                             .io_activity
                             .as_ref()
                             .and_then(|id| scope.nodes.iter().find(|n| &n.id == id))
-                            .map_or("Select activity", |n| n.name.as_str()),
+                            .map_or("Select activity", |n| n.name.as_deref().unwrap_or("Unnamed")),
                     )
                     .show_ui(ui, |ui| {
                         for node in scope.nodes.iter().filter(|n| n.kind.is_activity()) {
                             let selected =
-                                self.collaboration.io_activity.as_ref() == Some(&node.id);
+                                self.collaboration.io_activity.as_ref() == Some(&node.id.selector());
                             if ui
                                 .add_enabled(
                                     !self.collaboration.io_dirty || selected,
-                                    egui::Button::selectable(selected, &node.name),
+                                    egui::Button::selectable(selected, node.name.as_deref().unwrap_or("Unnamed")),
                                 )
                                 .clicked()
                                 && !selected
                             {
-                                self.collaboration.io_activity = Some(node.id.clone());
+                                self.collaboration.io_activity = Some(node.id.selector());
                                 self.collaboration.io_dirty = true;
                                 self.collaboration.document = Some(doc.id);
                             }
@@ -774,21 +851,21 @@ impl ProcessCraft {
                     self.collaboration.io_dirty = true;
                     self.collaboration.document = Some(doc.id);
                 }
-                let (ancestor_inputs, ancestor_outputs, _) = super::data::ancestor_data_candidates(doc, scope.id);
+                let (ancestor_inputs, ancestor_outputs, _) = super::data::ancestor_data_candidates(doc, &scope.id.selector());
                 let ancestor_ids = if self.collaboration.io_output { &ancestor_outputs } else { &ancestor_inputs };
-                let mut candidates: Vec<(XmlId, String)> = doc.data_stores.iter().filter_map(|store| store.id.as_ref().map(|id| (id.clone(), format!("Store · {} · {id}", store.name.as_deref().unwrap_or("Unnamed"))))).collect();
+                let mut candidates: Vec<(ElementSelector, String)> = doc.data_stores.iter().filter_map(|store| store.id.as_ref().map(|id| (id.selector(), format!("Store · {} · {id}", store.name.as_deref().unwrap_or("Unnamed"))))).collect();
                 for candidate in processcraft_core::queries::scopes(doc) {
                     for object in candidate.data_objects {
-                        if let Some(id) = &object.id && (candidate.id == scope.id || ancestor_ids.contains(id)) { candidates.push((id.clone(), format!("Object · {} · {id}", object.name.as_deref().unwrap_or("Unnamed")))); }
+                        if let Some(id) = &object.id && (candidate.id == scope.id || ancestor_ids.contains(&id.selector())) { candidates.push((id.selector(), format!("Object · {} · {id}", object.name.as_deref().unwrap_or("Unnamed")))); }
                     }
-                    for node in candidate.nodes.iter().filter(|node| matches!(node.kind, NodeKind::DataObjectReference | NodeKind::DataStoreReference) && (candidate.id == scope.id || ancestor_ids.contains(&node.id))) {
-                        candidates.push((node.id.clone(), format!("Reference · {} · {}", node.name, node.id)));
+                    for node in candidate.nodes.iter().filter(|node| matches!(node.kind, NodeKind::DataObjectReference | NodeKind::DataStoreReference) && (candidate.id == scope.id || ancestor_ids.contains(&node.id.selector()))) {
+                        candidates.push((node.id.selector(), format!("Reference · {} · {}", node.name.as_deref().unwrap_or("Unnamed"), node.id)));
                     }
                 }
                 for process in &doc.processes {
                     if let Some(io) = &process.io_specification {
                         let ports = if self.collaboration.io_output { &io.outputs } else { &io.inputs };
-                        for port in ports { if let Some(id) = &port.id && (&process.id == scope.id || ancestor_ids.contains(id)) { candidates.push((id.clone(), format!("Process port · {} · {id}", port.name.as_deref().unwrap_or("Unnamed")))); } }
+                        for port in ports { if let Some(id) = &port.id && (&process.id == scope.id || ancestor_ids.contains(&id.selector())) { candidates.push((id.selector(), format!("Process port · {} · {id}", port.name.as_deref().unwrap_or("Unnamed")))); } }
                     }
                 }
                 egui::ComboBox::from_id_salt("io_reference")
@@ -822,19 +899,19 @@ impl ProcessCraft {
                         let port = processcraft_core::bpmn_data::DataPort {
                             item_aware: None,
                             is_collection: None,
-                            id: Some(port_id.clone()),
+                            id: Some(port_id.clone().into()),
                             name: Some(self.collaboration.io_name.clone()),
                         };
                         if self.collaboration.io_output {
-                            io.output_sets[0].data_refs.push(port_id.clone());
+                            io.output_sets[0].data_refs.push(port_id.clone().into());
                             io.outputs.push(port);
                         } else {
-                            io.input_sets[0].data_refs.push(port_id.clone());
+                            io.input_sets[0].data_refs.push(port_id.clone().into());
                             io.inputs.push(port);
                         }
                         let mut mutations = vec![Mutation::SetNodeIoSpecification {
                             document_id: doc.id,
-                            element_id: node.id.clone(),
+                            element_id: node.id.selector(),
                             io_specification: Some(io),
                         }];
                         if let Some(reference) = &self.collaboration.io_reference {
@@ -842,24 +919,24 @@ impl ProcessCraft {
                             let (kind, sources, target) = if self.collaboration.io_output {
                                 (
                                     processcraft_core::bpmn_data::DataAssociationKind::Output,
-                                    vec![port_id],
+                                    vec![port_id.clone().into()],
                                     reference.clone(),
                                 )
                             } else {
                                 (
                                     processcraft_core::bpmn_data::DataAssociationKind::Input,
                                     vec![reference.clone()],
-                                    port_id,
+                                    port_id.clone().into(),
                                 )
                             };
                             mutations.push(Mutation::CreateDataAssociation {
                                 document_id: doc.id,
-                                scope_id: scope.id.clone(),
+                                scope_id: scope.id.selector(),
                                 association: processcraft_core::bpmn_data::DataAssociation {
                                     transformation: None,
                                     assignments: Vec::new(),
-                                    id: Some(assoc_id.clone()),
-                                    owner: node.id.clone(),
+                                    id: Some(assoc_id.clone().into()),
+                                    owner: node.id.selector(),
                                     kind,
                                     sources,
                                     target,
@@ -883,10 +960,10 @@ impl ProcessCraft {
                                 };
                                 mutations.push(Mutation::CreateEdge {
                                     document_id: doc.id,
-                                    diagram_id: diagram.id.clone(),
+                                    diagram_id: diagram.id.selector(),
                                     edge: Edge {
-                                        id: controller::id("DataAssociationEdge"),
-                                        element: assoc_id,
+                                        id: controller::id("DataAssociationEdge").into(),
+                                        element: assoc_id.into(),
                                         waypoints,
                                         label: None,
                                         style: None,
@@ -942,8 +1019,8 @@ impl ProcessCraft {
                         if !self.collaboration.has_draft() && ui.button("Delete group").clicked() {
                             self.ctl.mutate(vec![Mutation::DeleteGroup {
                                 document_id: doc.id,
-                                scope_id: scope.id.clone(),
-                                group_id: group.id.clone(),
+                                scope_id: scope.id.selector(),
+                                group_id: group.id.selector(),
                             }]);
                         }
                     });
@@ -973,10 +1050,10 @@ impl ProcessCraft {
                         let value_id = controller::id("CategoryValue");
                         let group_id = controller::id("Group");
                         let category = processcraft_core::bpmn_model::Category {
-                            id: category_id,
+                            id: category_id.into(),
                             name: Some(self.collaboration.category_name.clone()),
                             values: vec![processcraft_core::bpmn_model::CategoryValue {
-                                id: value_id.clone(),
+                                id: value_id.clone().into(),
                                 value: Some(self.collaboration.category_value.clone()),
                             }],
                         };
@@ -987,10 +1064,10 @@ impl ProcessCraft {
                             },
                             Mutation::CreateGroup {
                                 document_id: doc.id,
-                                scope_id: scope.id.clone(),
+                                scope_id: scope.id.selector(),
                                 group: processcraft_core::bpmn_model::Group {
-                                    id: group_id.clone(),
-                                    category_value_ref: Some(value_id),
+                                    id: group_id.clone().into(),
+                                    category_value_ref: Some(value_id.into()),
                                 },
                             },
                         ];
@@ -1000,10 +1077,10 @@ impl ProcessCraft {
                         }) {
                             mutations.push(Mutation::CreateShape {
                                 document_id: doc.id,
-                                diagram_id: diagram.id.clone(),
+                                diagram_id: diagram.id.selector(),
                                 shape: Shape {
-                                    id: controller::id("GroupShape"),
-                                    element: group_id,
+                                    id: controller::id("GroupShape").into(),
+                                    element: group_id.into(),
                                     is_expanded: None,
                                     bounds: Bounds {
                                         x: self.camera.0 + 80.0,
@@ -1046,35 +1123,35 @@ impl ProcessCraft {
                     if ui.button("Create choreography and diagram").clicked() {
                         if self.collaboration.root_name.trim().is_empty() || self.collaboration.root_first.trim().is_empty() || self.collaboration.root_second.trim().is_empty() || self.collaboration.root_task.trim().is_empty() { self.ctl.error = "Enter a choreography, two participants, and a first task.".into(); return; }
                         let root = controller::id("Choreography"); let diagram = controller::id("ChoreographyDiagram"); let task = controller::id("ChoreographyTask"); let first = controller::id("Participant"); let second = controller::id("Participant");
-                        let choreography = processcraft_core::bpmn_collaboration::Choreography { id:root.clone(), name:self.collaboration.root_name.clone(), participants:vec![Participant {id:first.clone(),name:self.collaboration.root_first.clone(),process:None},Participant {id:second.clone(),name:self.collaboration.root_second.clone(),process:None}],message_flows:vec![],activities:vec![processcraft_core::bpmn_collaboration::ChoreographyActivity{id:task.clone(),name:self.collaboration.root_task.clone(),participant_refs:vec![first.clone(),second],initiating_participant:first,message_flow_refs:vec![]}],sequence_flows:vec![] };
-                        let diagram_value = Diagram { id:diagram.clone(),plane_id:controller::id("ChoreographyPlane"),plane:root.clone(),shapes:vec![Shape{id:controller::id("ChoreographyShape"),element:task,is_expanded:None,bounds:Bounds{x:80.0,y:80.0,width:180.0,height:100.0},label:None,style:None}],edges:vec![] };
+                        let choreography = processcraft_core::bpmn_collaboration::Choreography { id:root.clone().into(), name:Some(self.collaboration.root_name.clone()), participants:vec![Participant {id:first.clone().into(),name:Some(self.collaboration.root_first.clone()),process:None},Participant {id:second.clone().into(),name:Some(self.collaboration.root_second.clone()),process:None}],message_flows:vec![],activities:vec![processcraft_core::bpmn_collaboration::ChoreographyActivity{id:task.clone().into(),name:Some(self.collaboration.root_task.clone()),participant_refs:vec![first.clone().into(),second.into()],initiating_participant:first.into(),message_flow_refs:vec![]}],sequence_flows:vec![] };
+                        let diagram_value = Diagram { name:None, id:diagram.clone().into(),plane_id:controller::id("ChoreographyPlane").into(),plane:root.clone().into(),shapes:vec![Shape{id:controller::id("ChoreographyShape").into(),element:task.into(),is_expanded:None,bounds:Bounds{x:80.0,y:80.0,width:180.0,height:100.0},label:None,style:None}],edges:vec![] };
                         if self.commit_draft() && self.ctl.mutate(vec![Mutation::CreateChoreography {document_id:doc.id,choreography},Mutation::CreateDiagram {document_id:doc.id,diagram:diagram_value}]) {
-                            self.diagram_id = Some(diagram); self.process_id = None;
+                            self.diagram_id = Some(diagram.into()); self.process_id = None;
                             self.collaboration.root_name.clear(); self.collaboration.root_first.clear(); self.collaboration.root_second.clear(); self.collaboration.root_task.clear(); self.collaboration.root_dirty = false;
-                            self.collaboration.choreography_id = Some(root);
+                            self.collaboration.choreography_id = Some(root.into());
                         }
                     }
                     if self.collaboration.root_dirty && ui.button("Discard choreography draft").clicked() { self.collaboration.root_name.clear(); self.collaboration.root_first.clear(); self.collaboration.root_second.clear(); self.collaboration.root_task.clear(); self.collaboration.root_dirty = false; }
                 });
             });
             if doc.choreographies.is_empty() { ui.label("No choreography in this model."); return; }
-            egui::ComboBox::from_id_salt("choreography_choice").selected_text(self.collaboration.choreography_id.as_ref().and_then(|id| doc.choreographies.iter().find(|c| &c.id == id)).map_or("Select choreography", |c| c.name.as_str())).show_ui(ui, |ui| {
+            egui::ComboBox::from_id_salt("choreography_choice").selected_text(self.collaboration.choreography_id.as_ref().and_then(|id| doc.choreographies.iter().find(|c| &c.id == id)).map_or("Select choreography", |c| c.name.as_deref().unwrap_or("Unnamed"))).show_ui(ui, |ui| {
                 for c in &doc.choreographies {
-                    let selected = self.collaboration.choreography_id.as_ref() == Some(&c.id);
-                    if ui.add_enabled(!self.collaboration.choreography_dirty || selected, egui::Button::selectable(selected, &c.name)).clicked() && !selected {
-                        self.collaboration.choreography_id = Some(c.id.clone()); self.collaboration.choreography_first = None; self.collaboration.choreography_second = None; self.collaboration.choreography_dirty = true; self.collaboration.document = Some(doc.id);
+                    let selected = self.collaboration.choreography_id.as_ref() == Some(&c.id.selector());
+                    if ui.add_enabled(!self.collaboration.choreography_dirty || selected, egui::Button::selectable(selected, c.name.as_deref().unwrap_or("Unnamed"))).clicked() && !selected {
+                        self.collaboration.choreography_id = Some(c.id.selector()); self.collaboration.choreography_first = None; self.collaboration.choreography_second = None; self.collaboration.choreography_dirty = true; self.collaboration.document = Some(doc.id);
                     }
                 }
             });
             let Some(choreo) = self.collaboration.choreography_id.as_ref().and_then(|id| doc.choreographies.iter().find(|c| &c.id == id)) else { return; };
-            for activity in &choreo.activities { ui.label(&activity.name).on_hover_text(activity.id.to_string()); }
+            for activity in &choreo.activities { ui.label(activity.name.as_deref().unwrap_or("Unnamed")).on_hover_text(activity.id.to_string()); }
             let name_label = ui.label("Task name");
             if ui.text_edit_singleline(&mut self.collaboration.choreography_name).labelled_by(name_label.id).changed() { self.collaboration.choreography_dirty = true; self.collaboration.document = Some(doc.id); }
-            egui::ComboBox::from_id_salt("choreography_first").selected_text(self.collaboration.choreography_first.as_ref().and_then(|id| choreo.participants.iter().find(|p| &p.id == id)).map_or("Initiating participant", |p| p.name.as_str())).show_ui(ui, |ui| {
-                for participant in &choreo.participants { if ui.selectable_value(&mut self.collaboration.choreography_first, Some(participant.id.clone()), &participant.name).changed() { self.collaboration.choreography_dirty = true; self.collaboration.document = Some(doc.id); } }
+            egui::ComboBox::from_id_salt("choreography_first").selected_text(self.collaboration.choreography_first.as_ref().and_then(|id| choreo.participants.iter().find(|p| &p.id == id)).map_or("Initiating participant", |p| p.name.as_deref().unwrap_or("Unnamed"))).show_ui(ui, |ui| {
+                for participant in &choreo.participants { if ui.selectable_value(&mut self.collaboration.choreography_first, Some(participant.id.selector()), participant.name.as_deref().unwrap_or("Unnamed")).changed() { self.collaboration.choreography_dirty = true; self.collaboration.document = Some(doc.id); } }
             });
-            egui::ComboBox::from_id_salt("choreography_second").selected_text(self.collaboration.choreography_second.as_ref().and_then(|id| choreo.participants.iter().find(|p| &p.id == id)).map_or("Other participant", |p| p.name.as_str())).show_ui(ui, |ui| {
-                for participant in &choreo.participants { if ui.selectable_value(&mut self.collaboration.choreography_second, Some(participant.id.clone()), &participant.name).changed() { self.collaboration.choreography_dirty = true; self.collaboration.document = Some(doc.id); } }
+            egui::ComboBox::from_id_salt("choreography_second").selected_text(self.collaboration.choreography_second.as_ref().and_then(|id| choreo.participants.iter().find(|p| &p.id == id)).map_or("Other participant", |p| p.name.as_deref().unwrap_or("Unnamed"))).show_ui(ui, |ui| {
+                for participant in &choreo.participants { if ui.selectable_value(&mut self.collaboration.choreography_second, Some(participant.id.selector()), participant.name.as_deref().unwrap_or("Unnamed")).changed() { self.collaboration.choreography_dirty = true; self.collaboration.document = Some(doc.id); } }
             });
             ui.label("The task is added to the model; a shape is added when the current diagram shows this choreography.");
             ui.horizontal(|ui| {
@@ -1082,9 +1159,9 @@ impl ProcessCraft {
                     let (Some(first),Some(second)) = (self.collaboration.choreography_first.clone(),self.collaboration.choreography_second.clone()) else { self.ctl.error = "Select two participants.".into(); return; };
                     if first == second { self.ctl.error = "Select two different participants.".into(); return; }
                     let node_id = controller::id("ChoreographyTask");
-                    let mut mutations = vec![Mutation::CreateChoreographyActivity {document_id:doc.id,choreography_id:choreo.id.clone(),activity:processcraft_core::bpmn_collaboration::ChoreographyActivity {id:node_id.clone(),name:self.collaboration.choreography_name.clone(),participant_refs:vec![first.clone(),second],initiating_participant:first,message_flow_refs:vec![]}}];
+                    let mut mutations = vec![Mutation::CreateChoreographyActivity {document_id:doc.id,choreography_id:choreo.id.selector(),activity:processcraft_core::bpmn_collaboration::ChoreographyActivity {id:node_id.clone().into(),name:Some(self.collaboration.choreography_name.clone()),participant_refs:vec![first.clone(),second],initiating_participant:first,message_flow_refs:vec![]}}];
                     if let Some(diagram) = doc.diagrams.iter().find(|d| self.diagram_id.as_ref().is_none_or(|id| &d.id == id) && d.plane == choreo.id) {
-                        mutations.push(Mutation::CreateShape {document_id:doc.id,diagram_id:diagram.id.clone(),shape:Shape{id:controller::id("ChoreographyShape"),element:node_id,is_expanded:None,bounds:Bounds{x:self.camera.0+120.0,y:self.camera.1+80.0+choreo.activities.len() as f64*90.0,width:160.0,height:100.0},label:None,style:None}});
+                        mutations.push(Mutation::CreateShape {document_id:doc.id,diagram_id:diagram.id.selector(),shape:Shape{id:controller::id("ChoreographyShape").into(),element:node_id.into(),is_expanded:None,bounds:Bounds{x:self.camera.0+120.0,y:self.camera.1+80.0+choreo.activities.len() as f64*90.0,width:160.0,height:100.0},label:None,style:None}});
                     }
                     if self.commit_draft() && self.ctl.mutate(mutations) { self.collaboration.choreography_name.clear(); self.collaboration.choreography_first = None; self.collaboration.choreography_second = None; self.collaboration.choreography_dirty = false; }
                 }

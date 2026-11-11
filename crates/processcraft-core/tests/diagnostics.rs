@@ -1,6 +1,9 @@
-use processcraft_core::{DiagnosticSeverity, ids::XmlId, model::*};
+use processcraft_core::{DiagnosticSeverity, model::*};
 use std::sync::Arc;
-fn id(s: &str) -> XmlId {
+fn id<T: std::str::FromStr>(s: &str) -> T
+where
+    T::Err: std::fmt::Debug,
+{
     s.parse().unwrap()
 }
 fn node(name: &str, kind: NodeKind, label: &str) -> Node {
@@ -11,7 +14,7 @@ fn node(name: &str, kind: NodeKind, label: &str) -> Node {
         loop_characteristics: None,
         details: None,
         id: id(name),
-        name: label.into(),
+        name: Some(label.into()),
         documentation: String::new(),
         kind,
         owner: String::new(),
@@ -23,13 +26,14 @@ fn incomplete_process_is_valid_but_diagnostics_are_anchored() {
     let mut p = ProjectData::new("p".into());
     let mut d = BpmnDocument::new("d".into(), id("defs"));
     d.processes.push(Process {
+        is_executable: Some(false),
         io_specification: None,
         lane_set_id: None,
         groups: vec![],
         data_objects: vec![],
         data_associations: vec![],
         id: id("process"),
-        name: "p".into(),
+        name: Some("p".into()),
         documentation: String::new(),
         nodes: vec![node("gateway", NodeKind::ExclusiveGateway, "")],
         lanes: vec![],
@@ -62,18 +66,19 @@ fn complete_connected_process_has_no_incomplete_warnings() {
         kind: FlowKind::Sequence,
         source: id(source),
         target: id(target),
-        name: String::new(),
+        name: Some(String::new()),
         documentation: String::new(),
         condition: None,
     };
     d.processes.push(Process {
+        is_executable: Some(false),
         io_specification: None,
         lane_set_id: None,
         groups: vec![],
         data_objects: vec![],
         data_associations: vec![],
         id: id("process"),
-        name: "p".into(),
+        name: Some("p".into()),
         documentation: String::new(),
         nodes: vec![
             node("start", NodeKind::StartEvent, "Start"),
@@ -114,7 +119,7 @@ fn nested_gateway_diagnostics_are_advisory_and_anchored() {
                 kind: FlowKind::Sequence,
                 source: id("nested_gateway"),
                 target: id("nested_task"),
-                name: String::new(),
+                name: Some(String::new()),
                 documentation: String::new(),
                 condition: Some("true".into()),
             }],
@@ -122,13 +127,14 @@ fn nested_gateway_diagnostics_are_advisory_and_anchored() {
     });
     let mut doc = BpmnDocument::new("d".into(), id("defs"));
     doc.processes.push(Process {
+        is_executable: Some(false),
         io_specification: None,
         lane_set_id: None,
         groups: vec![],
         data_objects: vec![],
         data_associations: vec![],
         id: id("process"),
-        name: "p".into(),
+        name: Some("p".into()),
         documentation: String::new(),
         nodes: vec![subprocess],
         lanes: vec![],
@@ -158,19 +164,20 @@ fn activity_conditions_are_allowed_but_event_gateway_conditions_are_diagnosed() 
         kind: FlowKind::Sequence,
         source: id(source),
         target: id(target),
-        name: String::new(),
+        name: Some(String::new()),
         documentation: String::new(),
         condition: condition.map(Into::into),
     };
     let mut doc = BpmnDocument::new("d".into(), id("defs"));
     doc.processes.push(Process {
+        is_executable: Some(false),
         io_specification: None,
         lane_set_id: None,
         groups: vec![],
         data_objects: vec![],
         data_associations: vec![],
         id: id("process"),
-        name: "p".into(),
+        name: Some("p".into()),
         documentation: String::new(),
         nodes: vec![
             node("task", NodeKind::Task, "Task"),
@@ -202,4 +209,38 @@ fn activity_conditions_are_allowed_but_event_gateway_conditions_are_diagnosed() 
             .any(|d| d.code == "eventGatewayConditionalFlow"
                 && d.element_id == Some(id("gateway_condition")))
     );
+}
+
+#[test]
+fn diagnostics_anchor_anonymous_native_elements_without_xml_fallback() {
+    use processcraft_core::ids::{ElementIdentity, NativeElementId};
+    let mut doc = BpmnDocument::new("d".into(), id("defs"));
+    let mut anonymous = node("temporary", NodeKind::Task, "");
+    anonymous.id = ElementIdentity::Native {
+        native_id: NativeElementId::new(),
+        xml_id: None,
+    };
+    let selector = anonymous.id.selector();
+    doc.processes.push(Process {
+        is_executable: Some(false),
+        io_specification: None,
+        lane_set_id: None,
+        groups: vec![],
+        data_objects: vec![],
+        data_associations: vec![],
+        id: id("process"),
+        name: None,
+        documentation: String::new(),
+        nodes: vec![anonymous],
+        lanes: vec![],
+        flows: vec![],
+    });
+    let mut project = ProjectData::new("p".into());
+    project.documents.push(Arc::new(doc));
+    let diagnostic = project
+        .diagnostics()
+        .into_iter()
+        .find(|d| d.code == "unconnectedNode")
+        .unwrap();
+    assert_eq!(diagnostic.element_id, Some(selector));
 }

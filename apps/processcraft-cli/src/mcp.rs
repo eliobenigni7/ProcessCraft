@@ -128,7 +128,7 @@ struct Export {
     #[serde(default)]
     format: ExportKind,
     #[serde(default)]
-    diagram_id: Option<processcraft_core::ids::XmlId>,
+    diagram_id: Option<processcraft_core::ids::ElementSelector>,
     #[serde(default)]
     scale: Option<f32>,
     #[serde(default)]
@@ -148,6 +148,11 @@ enum ExportKind {
 #[derive(Deserialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
 enum Query {
+    Identities {
+        document_id: processcraft_core::ids::DocumentId,
+        offset: usize,
+        limit: usize,
+    },
     Data {
         document_id: processcraft_core::ids::DocumentId,
         offset: usize,
@@ -180,7 +185,7 @@ enum Query {
         #[serde(rename = "documentId")]
         document_id: processcraft_core::ids::DocumentId,
         #[serde(rename = "diagramId")]
-        diagram_id: processcraft_core::ids::XmlId,
+        diagram_id: processcraft_core::ids::ElementSelector,
     },
     Library {
         text: String,
@@ -198,7 +203,7 @@ enum Query {
     },
     Table {
         document_id: processcraft_core::ids::DocumentId,
-        process_id: processcraft_core::ids::XmlId,
+        process_id: processcraft_core::ids::ElementSelector,
         offset: usize,
         limit: usize,
     },
@@ -300,8 +305,15 @@ impl ServerHandler for Server {
                 let query: Query = serde_json::from_value(args)
                     .map_err(|e| ErrorData::invalid_params(e.to_string(), None))?;
                 let snapshot = state.session.snapshot();
-                let catalog_query = matches!(&query, Query::Catalog { .. } | Query::Data { .. });
+                let catalog_query = matches!(
+                    &query,
+                    Query::Catalog { .. } | Query::Data { .. } | Query::Identities { .. }
+                );
                 let (items, offset, limit) = match query {
+                    Query::Identities { document_id, offset, limit } => (
+                        processcraft_core::queries::identified_elements(&snapshot.project, document_id)
+                            .ok_or_else(|| ErrorData::invalid_params("document not found", None))?
+                            .into_iter().map(|row| json!(row)).collect(), offset, limit),
                     Query::Data { document_id, offset, limit } => (
                         processcraft_core::queries::data_fields(&snapshot.project, document_id)
                             .ok_or_else(|| ErrorData::invalid_params("document not found", None))?
@@ -399,7 +411,12 @@ impl ServerHandler for Server {
                             parsed.request,
                         );
                         let value = match result {
-                            Ok(r) => json!({"ok":true,"generation":r.generation}),
+                            Ok(r) => {
+                                let mut value =
+                                    serde_json::to_value(r).expect("core change set serializes");
+                                value["ok"] = json!(true);
+                                value
+                            }
                             Err(e) => json!({"ok":false,"error":format!("{e:?}")}),
                         };
                         state.ledger.complete(&parsed.request_id, value.clone());

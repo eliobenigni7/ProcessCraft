@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<b:definitions xmlns:b="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bd="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" id="defs" targetNamespace="">
+  <b:process id="outer" name="Outer" isExecutable="false"><b:task id="task" name="Work"/><b:callActivity id="call" name="Call" calledElement="called"/><b:boundaryEvent id="boundary" name="Timer" attachedToRef="task"><b:timerEventDefinition><b:timeDuration>PT1M</b:timeDuration></b:timerEventDefinition></b:boundaryEvent><b:sequenceFlow id="flow" sourceRef="task" targetRef="call"/></b:process>
+  <b:process id="called" name="Called" isExecutable="false"><b:task id="child" name="Child"/></b:process>
+  <bd:BPMNDiagram id="diagram"><bd:BPMNPlane id="plane" bpmnElement="outer"><bd:BPMNShape id="shape" bpmnElement="task"><dc:Bounds x="0" y="0" width="100" height="80"/></bd:BPMNShape></bd:BPMNPlane></bd:BPMNDiagram>
+</b:definitions>

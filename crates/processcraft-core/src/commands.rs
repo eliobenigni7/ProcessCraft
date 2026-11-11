@@ -1,7 +1,9 @@
 //! Atomic, toolkit-independent project mutations and session history.
 use crate::{
     history::{History, HistoryEntry},
-    ids::{CheckpointId, CommentId, DictionaryEntryId, DocumentId, ElementKey, XmlId},
+    ids::{
+        CheckpointId, CommentId, DictionaryEntryId, DocumentId, ElementKey, ElementSelector, XmlId,
+    },
     model::*,
 };
 use serde::{Deserialize, Serialize};
@@ -19,14 +21,43 @@ pub struct Envelope {
 #[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
 #[allow(clippy::large_enum_variant)]
 pub enum Mutation {
+    SetElementXmlId {
+        document_id: DocumentId,
+        element_id: ElementSelector,
+        xml_id: Option<XmlId>,
+    },
+    PromoteElementIdentity {
+        document_id: DocumentId,
+        model_path: String,
+        xml_id: Option<XmlId>,
+    },
+    SetTextAnnotation {
+        document_id: DocumentId,
+        element_id: ElementSelector,
+        text: Option<String>,
+    },
+    SetProcessExecutable {
+        document_id: DocumentId,
+        process_id: ElementSelector,
+        is_executable: Option<bool>,
+    },
+    SetCollaborationName {
+        document_id: DocumentId,
+        name: Option<String>,
+    },
+    SetDiagramName {
+        document_id: DocumentId,
+        diagram_id: ElementSelector,
+        name: Option<String>,
+    },
     SetNodeItemAware {
         document_id: DocumentId,
-        element_id: XmlId,
+        element_id: ElementSelector,
         item_aware: Option<crate::bpmn_data::ItemAwareMetadata>,
     },
     SetProcessIoSpecification {
         document_id: DocumentId,
-        process_id: XmlId,
+        process_id: ElementSelector,
         io_specification: Option<crate::bpmn_data::IoSpecification>,
     },
     SetDataStores {
@@ -35,12 +66,12 @@ pub enum Mutation {
     },
     SetScopeDataObjects {
         document_id: DocumentId,
-        scope_id: XmlId,
+        scope_id: ElementSelector,
         data_objects: Vec<crate::bpmn_data::DataObject>,
     },
     SetScopeDataAssociations {
         document_id: DocumentId,
-        scope_id: XmlId,
+        scope_id: ElementSelector,
         data_associations: Vec<crate::bpmn_data::DataAssociation>,
     },
     SetSupportingCatalog {
@@ -53,7 +84,7 @@ pub enum Mutation {
     },
     SetActivityProperties {
         document_id: DocumentId,
-        element_id: XmlId,
+        element_id: ElementSelector,
         activity: Option<crate::bpmn_activity::ActivityProperties>,
     },
     CreateCategory {
@@ -66,48 +97,48 @@ pub enum Mutation {
     },
     DeleteCategory {
         document_id: DocumentId,
-        category_id: XmlId,
+        category_id: ElementSelector,
     },
     CreateGroup {
         document_id: DocumentId,
-        scope_id: XmlId,
+        scope_id: ElementSelector,
         group: crate::bpmn_model::Group,
     },
     UpdateGroup {
         document_id: DocumentId,
-        scope_id: XmlId,
+        scope_id: ElementSelector,
         group: crate::bpmn_model::Group,
     },
     DeleteGroup {
         document_id: DocumentId,
-        scope_id: XmlId,
-        group_id: XmlId,
+        scope_id: ElementSelector,
+        group_id: ElementSelector,
     },
     SetAssociationDirection {
         document_id: DocumentId,
-        flow_id: XmlId,
+        flow_id: ElementSelector,
         direction: Option<crate::bpmn_model::AssociationDirection>,
     },
     SetLaneSetId {
         document_id: DocumentId,
-        scope_id: XmlId,
-        lane_set_id: Option<XmlId>,
+        scope_id: ElementSelector,
+        lane_set_id: Option<crate::ids::ElementIdentity>,
     },
     SetChildLaneSetId {
         document_id: DocumentId,
-        scope_id: XmlId,
-        lane_id: XmlId,
-        child_lane_set_id: Option<XmlId>,
+        scope_id: ElementSelector,
+        lane_id: ElementSelector,
+        child_lane_set_id: Option<crate::ids::ElementIdentity>,
     },
     SetLabelBounds {
         document_id: DocumentId,
-        diagram_id: XmlId,
-        representation_id: XmlId,
+        diagram_id: ElementSelector,
+        representation_id: ElementSelector,
         bounds: Bounds,
     },
     SetNodeIoSpecification {
         document_id: DocumentId,
-        element_id: XmlId,
+        element_id: ElementSelector,
         io_specification: Option<crate::bpmn_data::IoSpecification>,
     },
     CreateDataStore {
@@ -120,42 +151,42 @@ pub enum Mutation {
     },
     DeleteDataStore {
         document_id: DocumentId,
-        data_store_id: XmlId,
+        data_store_id: ElementSelector,
     },
     CreateDataObject {
         document_id: DocumentId,
-        scope_id: XmlId,
+        scope_id: ElementSelector,
         data_object: crate::bpmn_data::DataObject,
     },
     UpdateDataObject {
         document_id: DocumentId,
-        scope_id: XmlId,
+        scope_id: ElementSelector,
         data_object: crate::bpmn_data::DataObject,
     },
     DeleteDataObject {
         document_id: DocumentId,
-        scope_id: XmlId,
-        data_object_id: XmlId,
+        scope_id: ElementSelector,
+        data_object_id: ElementSelector,
     },
     CreateDataAssociation {
         document_id: DocumentId,
-        scope_id: XmlId,
+        scope_id: ElementSelector,
         association: crate::bpmn_data::DataAssociation,
     },
     UpdateDataAssociation {
         document_id: DocumentId,
-        scope_id: XmlId,
+        scope_id: ElementSelector,
         association: crate::bpmn_data::DataAssociation,
     },
     DeleteDataAssociation {
         document_id: DocumentId,
-        scope_id: XmlId,
-        association_id: XmlId,
+        scope_id: ElementSelector,
+        association_id: ElementSelector,
     },
     SetDiagramPlane {
         document_id: DocumentId,
-        diagram_id: XmlId,
-        plane: XmlId,
+        diagram_id: ElementSelector,
+        plane: ElementSelector,
     },
     CreateChoreography {
         document_id: DocumentId,
@@ -167,22 +198,22 @@ pub enum Mutation {
     },
     DeleteChoreography {
         document_id: DocumentId,
-        choreography_id: XmlId,
+        choreography_id: ElementSelector,
     },
     CreateChoreographyActivity {
         document_id: DocumentId,
-        choreography_id: XmlId,
+        choreography_id: ElementSelector,
         activity: crate::bpmn_collaboration::ChoreographyActivity,
     },
     UpdateChoreographyActivity {
         document_id: DocumentId,
-        choreography_id: XmlId,
+        choreography_id: ElementSelector,
         activity: crate::bpmn_collaboration::ChoreographyActivity,
     },
     DeleteChoreographyActivity {
         document_id: DocumentId,
-        choreography_id: XmlId,
-        activity_id: XmlId,
+        choreography_id: ElementSelector,
+        activity_id: ElementSelector,
     },
     CreateConversationNode {
         document_id: DocumentId,
@@ -194,7 +225,7 @@ pub enum Mutation {
     },
     DeleteConversationNode {
         document_id: DocumentId,
-        node_id: XmlId,
+        node_id: ElementSelector,
     },
     CreateConversationLink {
         document_id: DocumentId,
@@ -206,16 +237,16 @@ pub enum Mutation {
     },
     DeleteConversationLink {
         document_id: DocumentId,
-        link_id: XmlId,
+        link_id: ElementSelector,
     },
     SetNodeLoop {
         document_id: DocumentId,
-        element_id: XmlId,
+        element_id: ElementSelector,
         loop_characteristics: Option<crate::bpmn_model::LoopCharacteristics>,
     },
     SetNodeDetails {
         document_id: DocumentId,
-        element_id: XmlId,
+        element_id: ElementSelector,
         details: Option<crate::bpmn_model::NodeDetails>,
     },
     CreateCheckpoint {
@@ -255,11 +286,11 @@ pub enum Mutation {
     },
     SpliceActivity {
         document_id: DocumentId,
-        process_id: XmlId,
-        flow_id: XmlId,
+        process_id: ElementSelector,
+        flow_id: ElementSelector,
         node: Node,
         new_flow: Flow,
-        diagram_id: XmlId,
+        diagram_id: ElementSelector,
         shape: Shape,
         old_waypoints: Vec<Point>,
         new_edge: Edge,
@@ -311,17 +342,17 @@ pub enum Mutation {
     },
     CreateLane {
         document_id: DocumentId,
-        process_id: XmlId,
+        process_id: ElementSelector,
         lane: Lane,
     },
     CreateElement {
         document_id: DocumentId,
-        process_id: XmlId,
+        process_id: ElementSelector,
         element: Node,
     },
     CreateFlow {
         document_id: DocumentId,
-        process_id: Option<XmlId>,
+        process_id: Option<ElementSelector>,
         flow: Flow,
     },
     CreateDiagram {
@@ -330,12 +361,12 @@ pub enum Mutation {
     },
     CreateShape {
         document_id: DocumentId,
-        diagram_id: XmlId,
+        diagram_id: ElementSelector,
         shape: Shape,
     },
     CreateEdge {
         document_id: DocumentId,
-        diagram_id: XmlId,
+        diagram_id: ElementSelector,
         edge: Edge,
     },
     DeleteDocument {
@@ -347,12 +378,12 @@ pub enum Mutation {
     },
     SetFlowCondition {
         document_id: DocumentId,
-        flow_id: XmlId,
+        flow_id: ElementSelector,
         condition: Option<crate::bpmn_model::Expression>,
     },
     SetNodeOwnerContact {
         document_id: DocumentId,
-        element_id: XmlId,
+        element_id: ElementSelector,
         owner: String,
         contact: String,
     },
@@ -366,35 +397,35 @@ pub enum Mutation {
     },
     Rename {
         document_id: DocumentId,
-        element_id: XmlId,
-        name: String,
+        element_id: ElementSelector,
+        name: Option<String>,
     },
     Documentation {
         document_id: DocumentId,
-        element_id: XmlId,
+        element_id: ElementSelector,
         documentation: String,
     },
     Delete {
         document_id: DocumentId,
-        element_id: XmlId,
+        element_id: ElementSelector,
     },
     MoveShape {
         document_id: DocumentId,
-        diagram_id: XmlId,
-        shape_id: XmlId,
+        diagram_id: ElementSelector,
+        shape_id: ElementSelector,
         bounds: Bounds,
     },
     Reroute {
         document_id: DocumentId,
-        diagram_id: XmlId,
-        edge_id: XmlId,
+        diagram_id: ElementSelector,
+        edge_id: ElementSelector,
         waypoints: Vec<Point>,
     },
     AssignLane {
         document_id: DocumentId,
-        process_id: XmlId,
-        element_id: XmlId,
-        lane_id: Option<XmlId>,
+        process_id: ElementSelector,
+        element_id: ElementSelector,
+        lane_id: Option<ElementSelector>,
         bounds: Vec<ShapeBounds>,
     },
 }
@@ -413,8 +444,8 @@ pub enum DictionaryDeleteResolution {
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ShapeBounds {
-    pub diagram_id: XmlId,
-    pub shape_id: XmlId,
+    pub diagram_id: ElementSelector,
+    pub shape_id: ElementSelector,
     pub bounds: Bounds,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
@@ -442,6 +473,24 @@ pub struct ChangeSet {
     pub content_id: [u8; 32],
     pub changed: bool,
     pub dirty: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub selector_mappings: Vec<SelectorMapping>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub promoted_identities: Vec<PromotedIdentity>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct PromotedIdentity {
+    pub document_id: DocumentId,
+    pub model_path: String,
+    pub selector: ElementSelector,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SelectorMapping {
+    pub document_id: DocumentId,
+    pub from: ElementSelector,
+    pub to: ElementSelector,
 }
 #[derive(Clone)]
 pub struct Snapshot {
@@ -515,8 +564,19 @@ impl Session {
             return Err(CommandError::GenerationConflict);
         }
         let mut changed = true;
+        let mut selector_mappings = Vec::new();
+        let mut promoted_identities = Vec::new();
         match request {
             Request::Batch { mutations } => {
+                if envelope.expected_generation.is_none()
+                    && mutations
+                        .iter()
+                        .any(|m| matches!(m, Mutation::PromoteElementIdentity { .. }))
+                {
+                    return Err(CommandError::InvalidParams(
+                        "identity promotion requires an expected generation".into(),
+                    ));
+                }
                 if mutations.len() > 1000 {
                     return Err(CommandError::InvalidParams(
                         "batch exceeds 1000 mutations".into(),
@@ -538,7 +598,47 @@ impl Session {
                             return Err(CommandError::GenerationConflict);
                         }
                     }
-                    mutate(&mut candidate, mutation)?;
+                    match mutation {
+                        Mutation::SetElementXmlId {
+                            document_id,
+                            element_id,
+                            xml_id,
+                        } => {
+                            if let Some((from, to)) = crate::element_identity_edit::set_xml_id(
+                                &mut candidate,
+                                document_id,
+                                &element_id,
+                                xml_id,
+                            )
+                            .map_err(CommandError::InvalidParams)?
+                            {
+                                selector_mappings.push(SelectorMapping {
+                                    document_id,
+                                    from,
+                                    to,
+                                });
+                            }
+                        }
+                        Mutation::PromoteElementIdentity {
+                            document_id,
+                            model_path,
+                            xml_id,
+                        } => {
+                            let selector = crate::element_identity_edit::promote_null_identity(
+                                &mut candidate,
+                                document_id,
+                                &model_path,
+                                xml_id,
+                            )
+                            .map_err(CommandError::InvalidParams)?;
+                            promoted_identities.push(PromotedIdentity {
+                                document_id,
+                                model_path,
+                                selector,
+                            });
+                        }
+                        other => mutate(&mut candidate, other)?,
+                    }
                 }
                 let id = candidate
                     .content_identity()
@@ -549,11 +649,13 @@ impl Session {
                     let entry = HistoryEntry {
                         project: self.project.clone(),
                         selection: self.selection.clone(),
+                        selector_mappings: selector_mappings.clone(),
                     };
                     if requires_undo {
                         let redo = HistoryEntry {
                             project: Arc::new(candidate.clone()),
                             selection: self.selection.clone(),
+                            selector_mappings: selector_mappings.clone(),
                         };
                         if !History::fits_single(redo) || !self.history.push_required(entry) {
                             return Err(CommandError::InvalidParams(
@@ -564,6 +666,14 @@ impl Session {
                         self.history.push(entry);
                     }
                     self.project = Arc::new(candidate);
+                    for mapping in &selector_mappings {
+                        for key in &mut self.selection {
+                            if key.document_id == mapping.document_id && key.xml_id == mapping.from
+                            {
+                                key.xml_id = mapping.to.clone();
+                            }
+                        }
+                    }
                     self.selection
                         .retain(|key| selection_exists(&self.project, key));
                     self.content_id = id;
@@ -571,9 +681,20 @@ impl Session {
             }
             Request::Undo => {
                 let old = self.history.undo.pop().ok_or(CommandError::NothingToUndo)?;
+                selector_mappings = old
+                    .selector_mappings
+                    .iter()
+                    .rev()
+                    .map(|mapping| SelectorMapping {
+                        document_id: mapping.document_id,
+                        from: mapping.to.clone(),
+                        to: mapping.from.clone(),
+                    })
+                    .collect();
                 self.history.redo.push(HistoryEntry {
                     project: self.project.clone(),
                     selection: self.selection.clone(),
+                    selector_mappings: old.selector_mappings.clone(),
                 });
                 self.project = old.project;
                 self.selection = old.selection;
@@ -584,9 +705,11 @@ impl Session {
             }
             Request::Redo => {
                 let old = self.history.redo.pop().ok_or(CommandError::NothingToRedo)?;
+                selector_mappings = old.selector_mappings.clone();
                 self.history.undo.push(HistoryEntry {
                     project: self.project.clone(),
                     selection: self.selection.clone(),
+                    selector_mappings: old.selector_mappings.clone(),
                 });
                 self.project = old.project;
                 self.selection = old.selection;
@@ -606,6 +729,8 @@ impl Session {
             content_id: self.content_id,
             changed,
             dirty: self.saved != Some(self.content_id),
+            selector_mappings,
+            promoted_identities,
         })
     }
 }
@@ -655,7 +780,10 @@ fn local_operation_exists(
             .interfaces
             .iter()
             .flat_map(|i| &i.operations)
-            .any(|o| o.id.as_ref() == Some(&reference.local))
+            .any(|o| {
+                o.id.as_ref()
+                    .is_some_and(|id| id.xml_id() == Some(&reference.local))
+            })
 }
 fn check_activity_references(
     d: &BpmnDocument,
@@ -713,7 +841,7 @@ fn doc(
 }
 fn nested_scope_mut<'a>(
     nodes: &'a mut [Node],
-    id: &XmlId,
+    id: &ElementSelector,
     depth: usize,
 ) -> Option<&'a mut FlowContainer> {
     if depth >= 32 {
@@ -734,7 +862,7 @@ fn nested_scope_mut<'a>(
 type ScopePartsMut<'a> = (&'a mut Vec<Node>, &'a mut Vec<Lane>, &'a mut Vec<Flow>);
 fn scope_parts_mut<'a>(
     document: &'a mut BpmnDocument,
-    id: &XmlId,
+    id: &ElementSelector,
 ) -> Result<ScopePartsMut<'a>, CommandError> {
     if let Some(index) = document.processes.iter().position(|p| &p.id == id) {
         let p = &mut document.processes[index];
@@ -747,7 +875,11 @@ fn scope_parts_mut<'a>(
     }
     Err(invalid("process or subprocess not found"))
 }
-fn nested_node_mut<'a>(nodes: &'a mut [Node], id: &XmlId, depth: usize) -> Option<&'a mut Node> {
+fn nested_node_mut<'a>(
+    nodes: &'a mut [Node],
+    id: &ElementSelector,
+    depth: usize,
+) -> Option<&'a mut Node> {
     if depth > 32 {
         return None;
     }
@@ -763,7 +895,10 @@ fn nested_node_mut<'a>(nodes: &'a mut [Node], id: &XmlId, depth: usize) -> Optio
     }
     None
 }
-fn node_mut<'a>(document: &'a mut BpmnDocument, id: &XmlId) -> Result<&'a mut Node, CommandError> {
+fn node_mut<'a>(
+    document: &'a mut BpmnDocument,
+    id: &ElementSelector,
+) -> Result<&'a mut Node, CommandError> {
     for process in &mut document.processes {
         if let Some(node) = nested_node_mut(&mut process.nodes, id, 0) {
             return Ok(node);
@@ -773,8 +908,8 @@ fn node_mut<'a>(document: &'a mut BpmnDocument, id: &XmlId) -> Result<&'a mut No
 }
 fn edit_nested(
     nodes: &mut [Node],
-    id: &XmlId,
-    text: &str,
+    id: &ElementSelector,
+    text: Option<&str>,
     documentation: bool,
     depth: usize,
 ) -> bool {
@@ -786,9 +921,9 @@ fn edit_nested(
             for child in &mut content.nodes {
                 if &child.id == id {
                     if documentation {
-                        child.documentation = text.into();
+                        child.documentation = text.unwrap_or_default().into();
                     } else {
-                        child.name = text.into();
+                        child.name = text.map(str::to_owned);
                     }
                     return true;
                 }
@@ -796,7 +931,7 @@ fn edit_nested(
             if !documentation {
                 for lane in &mut content.lanes {
                     if &lane.id == id {
-                        lane.name = text.into();
+                        lane.name = text.map(str::to_owned);
                         return true;
                     }
                 }
@@ -804,9 +939,9 @@ fn edit_nested(
             for flow in &mut content.flows {
                 if &flow.id == id {
                     if documentation {
-                        flow.documentation = text.into();
+                        flow.documentation = text.unwrap_or_default().into();
                     } else {
-                        flow.name = text.into();
+                        flow.name = text.map(str::to_owned);
                     }
                     return true;
                 }
@@ -818,7 +953,11 @@ fn edit_nested(
     }
     false
 }
-fn nested_flow_mut<'a>(nodes: &'a mut [Node], id: &XmlId, depth: usize) -> Option<&'a mut Flow> {
+fn nested_flow_mut<'a>(
+    nodes: &'a mut [Node],
+    id: &ElementSelector,
+    depth: usize,
+) -> Option<&'a mut Flow> {
     if depth >= 32 {
         return None;
     }
@@ -834,14 +973,18 @@ fn nested_flow_mut<'a>(nodes: &'a mut [Node], id: &XmlId, depth: usize) -> Optio
     }
     None
 }
-fn collect_node_ids(node: &Node, ids: &mut std::collections::HashSet<XmlId>, depth: usize) {
-    ids.insert(node.id.clone());
+fn collect_node_ids(
+    node: &Node,
+    ids: &mut std::collections::HashSet<ElementSelector>,
+    depth: usize,
+) {
+    ids.insert(node.id.selector());
     if let Some(io) = &node.io_specification {
         ids.extend(
             io.inputs
                 .iter()
                 .chain(&io.outputs)
-                .filter_map(|p| p.id.clone()),
+                .filter_map(|p| p.id.as_ref().map(|id| id.selector())),
         );
     }
     if depth >= 32 {
@@ -851,24 +994,29 @@ fn collect_node_ids(node: &Node, ids: &mut std::collections::HashSet<XmlId>, dep
         for child in &content.nodes {
             collect_node_ids(child, ids, depth + 1);
         }
-        ids.extend(content.lanes.iter().map(|l| l.id.clone()));
-        ids.extend(content.flows.iter().map(|f| f.id.clone()));
-        ids.extend(content.groups.iter().map(|g| g.id.clone()));
+        ids.extend(content.lanes.iter().map(|l| l.id.selector()));
+        ids.extend(content.flows.iter().map(|f| f.id.selector()));
+        ids.extend(content.groups.iter().map(|g| g.id.selector()));
         if let Some(id) = &content.lane_set_id {
-            ids.insert(id.clone());
+            ids.insert(id.selector());
         }
         ids.extend(
             content
                 .lanes
                 .iter()
-                .filter_map(|lane| lane.child_lane_set_id.clone()),
+                .filter_map(|lane| lane.child_lane_set_id.as_ref().map(|id| id.selector())),
         );
-        ids.extend(content.data_objects.iter().filter_map(|o| o.id.clone()));
+        ids.extend(
+            content
+                .data_objects
+                .iter()
+                .filter_map(|o| o.id.as_ref().map(|id| id.selector())),
+        );
         ids.extend(
             content
                 .data_associations
                 .iter()
-                .filter_map(|a| a.id.clone()),
+                .filter_map(|a| a.id.as_ref().map(|id| id.selector())),
         );
     }
 }
@@ -876,8 +1024,8 @@ fn delete_nested(
     nodes: &mut Vec<Node>,
     lanes: &mut Vec<Lane>,
     flows: &mut Vec<Flow>,
-    id: &XmlId,
-    removed: &mut std::collections::HashSet<XmlId>,
+    id: &ElementSelector,
+    removed: &mut std::collections::HashSet<ElementSelector>,
     depth: usize,
 ) -> bool {
     if depth > 32 {
@@ -919,7 +1067,7 @@ fn delete_nested(
 }
 fn choreography_mut<'a>(
     document: &'a mut BpmnDocument,
-    id: &XmlId,
+    id: &ElementSelector,
 ) -> Result<&'a mut crate::bpmn_collaboration::Choreography, CommandError> {
     document
         .choreographies
@@ -939,7 +1087,7 @@ type DataPartsMut<'a> = (
 );
 fn data_parts_mut<'a>(
     document: &'a mut BpmnDocument,
-    id: &XmlId,
+    id: &ElementSelector,
 ) -> Result<DataPartsMut<'a>, CommandError> {
     if let Some(index) = document.processes.iter().position(|p| &p.id == id) {
         let p = &mut document.processes[index];
@@ -954,7 +1102,7 @@ fn data_parts_mut<'a>(
 }
 fn groups_mut<'a>(
     document: &'a mut BpmnDocument,
-    id: &XmlId,
+    id: &ElementSelector,
 ) -> Result<&'a mut Vec<crate::bpmn_model::Group>, CommandError> {
     if let Some(index) = document.processes.iter().position(|p| &p.id == id) {
         return Ok(&mut document.processes[index].groups);
@@ -968,8 +1116,8 @@ fn groups_mut<'a>(
 }
 fn lane_set_mut<'a>(
     document: &'a mut BpmnDocument,
-    id: &XmlId,
-) -> Result<&'a mut Option<XmlId>, CommandError> {
+    id: &ElementSelector,
+) -> Result<&'a mut Option<crate::ids::ElementIdentity>, CommandError> {
     if let Some(index) = document.processes.iter().position(|p| &p.id == id) {
         return Ok(&mut document.processes[index].lane_set_id);
     }
@@ -980,7 +1128,10 @@ fn lane_set_mut<'a>(
     }
     Err(invalid("process or subprocess not found"))
 }
-fn flow_mut<'a>(d: &'a mut BpmnDocument, id: &XmlId) -> Result<&'a mut Flow, CommandError> {
+fn flow_mut<'a>(
+    d: &'a mut BpmnDocument,
+    id: &ElementSelector,
+) -> Result<&'a mut Flow, CommandError> {
     for process in &mut d.processes {
         if let Some(flow) = process.flows.iter_mut().find(|f| &f.id == id) {
             return Ok(flow);
@@ -994,7 +1145,10 @@ fn flow_mut<'a>(d: &'a mut BpmnDocument, id: &XmlId) -> Result<&'a mut Flow, Com
         .and_then(|c| c.flows.iter_mut().find(|f| &f.id == id))
         .ok_or_else(|| invalid("flow not found"))
 }
-fn diagram<'a>(d: &'a mut BpmnDocument, id: &XmlId) -> Result<&'a mut Diagram, CommandError> {
+fn diagram<'a>(
+    d: &'a mut BpmnDocument,
+    id: &ElementSelector,
+) -> Result<&'a mut Diagram, CommandError> {
     d.diagrams
         .iter_mut()
         .find(|p| &p.id == id)
@@ -1002,6 +1156,65 @@ fn diagram<'a>(d: &'a mut BpmnDocument, id: &XmlId) -> Result<&'a mut Diagram, C
 }
 fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
     match m {
+        Mutation::SetElementXmlId { .. } => {
+            return Err(invalid(
+                "XML ID changes are unavailable until reference rewriting is supported",
+            ));
+        }
+        Mutation::PromoteElementIdentity { .. } => {
+            return Err(invalid(
+                "identity promotion must be applied through a session",
+            ));
+        }
+        Mutation::SetTextAnnotation {
+            document_id,
+            element_id,
+            text,
+        } => {
+            let node = node_mut(doc(p, document_id, true)?, &element_id)?;
+            if node.kind != NodeKind::TextAnnotation {
+                return Err(invalid("element is not a text annotation"));
+            }
+            match &mut node.details {
+                Some(crate::bpmn_model::NodeDetails::TextAnnotation { text: value, .. }) => {
+                    if value.is_none() {
+                        node.name = None;
+                    }
+                    *value = text
+                }
+                None => {
+                    node.name = None;
+                    node.details = Some(crate::bpmn_model::NodeDetails::TextAnnotation {
+                        text_format: None,
+                        text,
+                    })
+                }
+                _ => return Err(invalid("invalid text annotation details")),
+            }
+        }
+        Mutation::SetProcessExecutable {
+            document_id,
+            process_id,
+            is_executable,
+        } => {
+            let document = doc(p, document_id, true)?;
+            let process = document
+                .processes
+                .iter_mut()
+                .find(|process| process.id == process_id)
+                .ok_or_else(|| invalid("process not found"))?;
+            process.is_executable = is_executable;
+        }
+        Mutation::SetCollaborationName { document_id, name } => {
+            collaboration_mut(doc(p, document_id, false)?)?.name = name;
+        }
+        Mutation::SetDiagramName {
+            document_id,
+            diagram_id,
+            name,
+        } => {
+            diagram(doc(p, document_id, false)?, &diagram_id)?.name = name;
+        }
         Mutation::SetNodeItemAware {
             document_id,
             element_id,
@@ -1223,7 +1436,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             let index = d
                 .data_stores
                 .iter()
-                .position(|v| v.id.as_ref() == Some(&data_store_id))
+                .position(|v| v.id.as_ref().is_some_and(|id| id == &data_store_id))
                 .ok_or_else(|| invalid("data store not found"))?;
             d.data_stores.remove(index);
         }
@@ -1259,7 +1472,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             let items = data_parts_mut(doc(p, document_id, true)?, &scope_id)?.0;
             let index = items
                 .iter()
-                .position(|v| v.id.as_ref() == Some(&data_object_id))
+                .position(|v| v.id.as_ref().is_some_and(|id| id == &data_object_id))
                 .ok_or_else(|| invalid("data object not found"))?;
             items.remove(index);
         }
@@ -1295,7 +1508,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             let items = data_parts_mut(doc(p, document_id, true)?, &scope_id)?.1;
             let index = items
                 .iter()
-                .position(|v| v.id.as_ref() == Some(&association_id))
+                .position(|v| v.id.as_ref().is_some_and(|id| id == &association_id))
                 .ok_or_else(|| invalid("data association not found"))?;
             items.remove(index);
         }
@@ -1395,14 +1608,15 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                 let old_len = removed.len();
                 for node in &c.conversation_nodes {
                     if node.parent.as_ref().is_some_and(|id| removed.contains(id)) {
-                        removed.insert(node.id.clone());
+                        removed.insert(node.id.selector());
                     }
                 }
                 if removed.len() == old_len {
                     break;
                 }
             }
-            c.conversation_nodes.retain(|n| !removed.contains(&n.id));
+            c.conversation_nodes
+                .retain(|n| !removed.contains(&n.id.selector()));
             for diagram in &mut d.diagrams {
                 diagram
                     .shapes
@@ -1622,7 +1836,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             {
                 return Err(invalid("invalid splice elements"));
             }
-            flows.iter_mut().find(|f| f.id == flow_id).unwrap().target = node.id.clone();
+            flows.iter_mut().find(|f| f.id == flow_id).unwrap().target = node.id.selector();
             nodes.push(node);
             flows.push(new_flow);
             let dg = diagram(d, &diagram_id)?;
@@ -1890,11 +2104,6 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             metadata,
         } => {
             let d = doc(p, document_id, true)?;
-            if metadata.target_namespace.is_empty() {
-                return Err(invalid(
-                    "Empty target namespace is outside the qualified editable profile",
-                ));
-            }
             if d.definitions.is_none() && d.provenance.is_some() {
                 return Err(invalid(
                     "Original target namespace must be recovered before editing definitions metadata",
@@ -1939,13 +2148,28 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             name,
         } => {
             let d = doc(p, document_id, false)?;
+            if crate::queries::find_node(d, &element_id)
+                .is_some_and(|node| node.kind == NodeKind::TextAnnotation)
+            {
+                return Err(invalid("use SetTextAnnotation to edit annotation text"));
+            }
+            if crate::queries::scopes(d)
+                .iter()
+                .flat_map(|scope| scope.flows)
+                .chain(d.collaboration.iter().flat_map(|c| &c.flows))
+                .any(|flow| flow.id == element_id && flow.kind == FlowKind::Association)
+            {
+                return Err(invalid(
+                    "association has no BPMN name; use its native label where available",
+                ));
+            }
             let mut found = false;
             for pr in &mut d.processes {
                 if pr.id == element_id {
                     pr.name = name.clone();
                     found = true;
                 }
-                found |= edit_nested(&mut pr.nodes, &element_id, &name, false, 0);
+                found |= edit_nested(&mut pr.nodes, &element_id, name.as_deref(), false, 0);
                 for n in &mut pr.nodes {
                     if n.id == element_id {
                         n.name = name.clone();
@@ -1995,7 +2219,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                     pr.documentation = documentation.clone();
                     found = true;
                 }
-                found |= edit_nested(&mut pr.nodes, &element_id, &documentation, true, 0);
+                found |= edit_nested(&mut pr.nodes, &element_id, Some(&documentation), true, 0);
                 for n in &mut pr.nodes {
                     if n.id == element_id {
                         n.documentation = documentation.clone();
@@ -2068,11 +2292,11 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             let current = lanes
                 .iter()
                 .find(|l| l.members.contains(&element_id))
-                .map(|l| &l.id);
-            if current != lane_id.as_ref() {
+                .map(|l| l.id.selector());
+            if current.as_ref() != lane_id.as_ref() {
                 for l in lanes {
                     l.members.retain(|id| id != &element_id);
-                    if Some(&l.id) == lane_id.as_ref() {
+                    if Some(l.id.selector()).as_ref() == lane_id.as_ref() {
                         l.members.push(element_id.clone());
                     }
                 }
@@ -2157,47 +2381,53 @@ pub struct CommandParam {
 }
 macro_rules! descriptor { ($id:literal,$label:literal $(,$name:literal:$ty:literal)* $(,)?) => { CommandDescriptor { id: $id, serde_tag: $id, label: $label, params: &[$(CommandParam {name:$name,value_type:$ty,required:true}),*] } }; }
 static COMMAND_DESCRIPTORS: &[CommandDescriptor] = &[
-    descriptor!("setNodeItemAware", "Set data reference metadata", "document_id":"DocumentId", "element_id":"XmlId", "item_aware":"ItemAwareMetadata|null"),
-    descriptor!("setProcessIoSpecification", "Set process I/O specification", "document_id":"DocumentId", "process_id":"XmlId", "io_specification":"IoSpecification|null"),
+    descriptor!("setCollaborationName", "Set collaboration name", "document_id":"DocumentId", "name":"String|null"),
+    descriptor!("setDiagramName", "Set diagram name", "document_id":"DocumentId", "diagram_id":"ElementSelector", "name":"String|null"),
+    descriptor!("setProcessExecutable", "Set process executable attribute", "document_id":"DocumentId", "process_id":"ElementSelector", "is_executable":"bool|null"),
+    descriptor!("setElementXmlId", "Set element XML ID", "document_id":"DocumentId", "element_id":"ElementSelector", "xml_id":"XmlId|null"),
+    descriptor!("promoteElementIdentity", "Promote anonymous identity", "document_id":"DocumentId", "model_path":"String", "xml_id":"XmlId|null"),
+    descriptor!("setTextAnnotation", "Set annotation text", "document_id":"DocumentId", "element_id":"ElementSelector", "text":"String|null"),
+    descriptor!("setNodeItemAware", "Set data reference metadata", "document_id":"DocumentId", "element_id":"ElementSelector", "item_aware":"ItemAwareMetadata|null"),
+    descriptor!("setProcessIoSpecification", "Set process I/O specification", "document_id":"DocumentId", "process_id":"ElementSelector", "io_specification":"IoSpecification|null"),
     descriptor!("setDataStores", "Set data stores", "document_id":"DocumentId", "data_stores":"DataStore[]"),
-    descriptor!("setScopeDataObjects", "Set scope data objects", "document_id":"DocumentId", "scope_id":"XmlId", "data_objects":"DataObject[]"),
-    descriptor!("setScopeDataAssociations", "Set scope data associations", "document_id":"DocumentId", "scope_id":"XmlId", "data_associations":"DataAssociation[]"),
+    descriptor!("setScopeDataObjects", "Set scope data objects", "document_id":"DocumentId", "scope_id":"ElementSelector", "data_objects":"DataObject[]"),
+    descriptor!("setScopeDataAssociations", "Set scope data associations", "document_id":"DocumentId", "scope_id":"ElementSelector", "data_associations":"DataAssociation[]"),
     descriptor!("setSupportingCatalog", "Set supporting BPMN catalog", "document_id":"DocumentId", "catalog":"SupportingCatalog"),
     descriptor!("setDefinitionsMetadata", "Set definitions metadata", "document_id":"DocumentId", "metadata":"DefinitionsMetadata"),
-    descriptor!("setActivityProperties", "Set activity properties", "document_id":"DocumentId", "element_id":"XmlId", "activity":"ActivityProperties|null"),
+    descriptor!("setActivityProperties", "Set activity properties", "document_id":"DocumentId", "element_id":"ElementSelector", "activity":"ActivityProperties|null"),
     descriptor!("createCategory","Create category","document_id":"DocumentId","category":"Category"),
     descriptor!("updateCategory","Update category","document_id":"DocumentId","category":"Category"),
-    descriptor!("deleteCategory","Delete category","document_id":"DocumentId","category_id":"XmlId"),
-    descriptor!("createGroup","Create group","document_id":"DocumentId","scope_id":"XmlId","group":"Group"),
-    descriptor!("updateGroup","Update group","document_id":"DocumentId","scope_id":"XmlId","group":"Group"),
-    descriptor!("deleteGroup","Delete group","document_id":"DocumentId","scope_id":"XmlId","group_id":"XmlId"),
-    descriptor!("setAssociationDirection","Set association direction","document_id":"DocumentId","flow_id":"XmlId","direction":"AssociationDirection|null"),
-    descriptor!("setLaneSetId","Set lane set ID","document_id":"DocumentId","scope_id":"XmlId","lane_set_id":"XmlId|null"),
-    descriptor!("setChildLaneSetId","Set child lane set ID","document_id":"DocumentId","scope_id":"XmlId","lane_id":"XmlId","child_lane_set_id":"XmlId|null"),
-    descriptor!("setLabelBounds", "Set label bounds", "document_id":"DocumentId", "diagram_id":"XmlId", "representation_id":"XmlId", "bounds":"Bounds"),
-    descriptor!("setNodeIoSpecification", "Set activity input/output", "document_id":"DocumentId", "element_id":"XmlId", "io_specification":"IoSpecification|null"),
+    descriptor!("deleteCategory","Delete category","document_id":"DocumentId","category_id":"ElementSelector"),
+    descriptor!("createGroup","Create group","document_id":"DocumentId","scope_id":"ElementSelector","group":"Group"),
+    descriptor!("updateGroup","Update group","document_id":"DocumentId","scope_id":"ElementSelector","group":"Group"),
+    descriptor!("deleteGroup","Delete group","document_id":"DocumentId","scope_id":"ElementSelector","group_id":"ElementSelector"),
+    descriptor!("setAssociationDirection","Set association direction","document_id":"DocumentId","flow_id":"ElementSelector","direction":"AssociationDirection|null"),
+    descriptor!("setLaneSetId","Set lane set ID","document_id":"DocumentId","scope_id":"ElementSelector","lane_set_id":"XmlId|null"),
+    descriptor!("setChildLaneSetId","Set child lane set ID","document_id":"DocumentId","scope_id":"ElementSelector","lane_id":"ElementSelector","child_lane_set_id":"XmlId|null"),
+    descriptor!("setLabelBounds", "Set label bounds", "document_id":"DocumentId", "diagram_id":"ElementSelector", "representation_id":"ElementSelector", "bounds":"Bounds"),
+    descriptor!("setNodeIoSpecification", "Set activity input/output", "document_id":"DocumentId", "element_id":"ElementSelector", "io_specification":"IoSpecification|null"),
     descriptor!("createDataStore","Create data store","document_id":"DocumentId","data_store":"DataStore"),
     descriptor!("updateDataStore","Update data store","document_id":"DocumentId","data_store":"DataStore"),
-    descriptor!("deleteDataStore","Delete data store","document_id":"DocumentId","data_store_id":"XmlId"),
-    descriptor!("createDataObject","Create data object","document_id":"DocumentId","scope_id":"XmlId","data_object":"DataObject"),
-    descriptor!("updateDataObject","Update data object","document_id":"DocumentId","scope_id":"XmlId","data_object":"DataObject"),
-    descriptor!("deleteDataObject","Delete data object","document_id":"DocumentId","scope_id":"XmlId","data_object_id":"XmlId"),
-    descriptor!("createDataAssociation","Create data association","document_id":"DocumentId","scope_id":"XmlId","association":"DataAssociation"),
-    descriptor!("updateDataAssociation","Update data association","document_id":"DocumentId","scope_id":"XmlId","association":"DataAssociation"),
-    descriptor!("deleteDataAssociation","Delete data association","document_id":"DocumentId","scope_id":"XmlId","association_id":"XmlId"),
-    descriptor!("setDiagramPlane", "Set diagram plane", "document_id":"DocumentId", "diagram_id":"XmlId", "plane":"XmlId"),
+    descriptor!("deleteDataStore","Delete data store","document_id":"DocumentId","data_store_id":"ElementSelector"),
+    descriptor!("createDataObject","Create data object","document_id":"DocumentId","scope_id":"ElementSelector","data_object":"DataObject"),
+    descriptor!("updateDataObject","Update data object","document_id":"DocumentId","scope_id":"ElementSelector","data_object":"DataObject"),
+    descriptor!("deleteDataObject","Delete data object","document_id":"DocumentId","scope_id":"ElementSelector","data_object_id":"ElementSelector"),
+    descriptor!("createDataAssociation","Create data association","document_id":"DocumentId","scope_id":"ElementSelector","association":"DataAssociation"),
+    descriptor!("updateDataAssociation","Update data association","document_id":"DocumentId","scope_id":"ElementSelector","association":"DataAssociation"),
+    descriptor!("deleteDataAssociation","Delete data association","document_id":"DocumentId","scope_id":"ElementSelector","association_id":"ElementSelector"),
+    descriptor!("setDiagramPlane", "Set diagram plane", "document_id":"DocumentId", "diagram_id":"ElementSelector", "plane":"ElementSelector"),
     descriptor!("createChoreography", "Create choreography", "document_id":"DocumentId", "choreography":"Choreography"),
     descriptor!("updateChoreography", "Update choreography", "document_id":"DocumentId", "choreography":"Choreography"),
-    descriptor!("deleteChoreography", "Delete choreography", "document_id":"DocumentId", "choreography_id":"XmlId"),
-    descriptor!("createChoreographyActivity", "Create choreography task", "document_id":"DocumentId", "choreography_id":"XmlId", "activity":"ChoreographyActivity"),
-    descriptor!("updateChoreographyActivity", "Update choreography task", "document_id":"DocumentId", "choreography_id":"XmlId", "activity":"ChoreographyActivity"),
-    descriptor!("deleteChoreographyActivity", "Delete choreography task", "document_id":"DocumentId", "choreography_id":"XmlId", "activity_id":"XmlId"),
+    descriptor!("deleteChoreography", "Delete choreography", "document_id":"DocumentId", "choreography_id":"ElementSelector"),
+    descriptor!("createChoreographyActivity", "Create choreography task", "document_id":"DocumentId", "choreography_id":"ElementSelector", "activity":"ChoreographyActivity"),
+    descriptor!("updateChoreographyActivity", "Update choreography task", "document_id":"DocumentId", "choreography_id":"ElementSelector", "activity":"ChoreographyActivity"),
+    descriptor!("deleteChoreographyActivity", "Delete choreography task", "document_id":"DocumentId", "choreography_id":"ElementSelector", "activity_id":"ElementSelector"),
     descriptor!("createConversationNode", "Create conversation", "document_id":"DocumentId", "node":"ConversationNode"),
     descriptor!("updateConversationNode", "Update conversation", "document_id":"DocumentId", "node":"ConversationNode"),
-    descriptor!("deleteConversationNode", "Delete conversation", "document_id":"DocumentId", "node_id":"XmlId"),
+    descriptor!("deleteConversationNode", "Delete conversation", "document_id":"DocumentId", "node_id":"ElementSelector"),
     descriptor!("createConversationLink", "Create conversation link", "document_id":"DocumentId", "link":"ConversationLink"),
     descriptor!("updateConversationLink", "Update conversation link", "document_id":"DocumentId", "link":"ConversationLink"),
-    descriptor!("deleteConversationLink", "Delete conversation link", "document_id":"DocumentId", "link_id":"XmlId"),
+    descriptor!("deleteConversationLink", "Delete conversation link", "document_id":"DocumentId", "link_id":"ElementSelector"),
     descriptor!("applyLayout", "Apply layout", "proposal":"LayoutProposal"),
     descriptor!("createComment", "Create comment", "comment":"Comment"),
     descriptor!("updateComment", "Update comment", "comment_id":"CommentId", "author":"string", "text":"string"),
@@ -2207,10 +2437,10 @@ static COMMAND_DESCRIPTORS: &[CommandDescriptor] = &[
     descriptor!("deleteCheckpoint", "Delete checkpoint", "id":"CheckpointId"),
     descriptor!("setReferenceCheckpoint", "Set reference checkpoint", "id":"CheckpointId|null"),
     descriptor!("restoreCheckpoint", "Restore checkpoint", "id":"CheckpointId"),
-    descriptor!("setNodeLoop", "Set node loop characteristics", "document_id":"DocumentId", "element_id":"XmlId", "loop_characteristics":"LoopCharacteristics|null"),
-    descriptor!("setNodeDetails", "Set node details", "document_id":"DocumentId", "element_id":"XmlId", "details":"NodeDetails|null"),
+    descriptor!("setNodeLoop", "Set node loop characteristics", "document_id":"DocumentId", "element_id":"ElementSelector", "loop_characteristics":"LoopCharacteristics|null"),
+    descriptor!("setNodeDetails", "Set node details", "document_id":"DocumentId", "element_id":"ElementSelector", "details":"NodeDetails|null"),
     descriptor!("addResource","Add resource","resource":"Resource"),
-    descriptor!("spliceActivity","Splice activity","document_id":"DocumentId","process_id":"XmlId","flow_id":"XmlId","node":"Node","new_flow":"Flow","diagram_id":"XmlId","shape":"Shape","old_waypoints":"Point[]","new_edge":"Edge"),
+    descriptor!("spliceActivity","Splice activity","document_id":"DocumentId","process_id":"ElementSelector","flow_id":"ElementSelector","node":"Node","new_flow":"Flow","diagram_id":"ElementSelector","shape":"Shape","old_waypoints":"Point[]","new_edge":"Edge"),
     descriptor!("createFolder","Create folder","folder":"Folder"),
     descriptor!("renameFolder","Rename folder","folder_id":"XmlId","name":"string"),
     descriptor!("moveFolder","Move folder","folder_id":"XmlId","parent":"XmlId|null"),
@@ -2226,24 +2456,24 @@ static COMMAND_DESCRIPTORS: &[CommandDescriptor] = &[
     descriptor!("createProcess","Create process","document_id":"DocumentId","process":"Process"),
     descriptor!("createCollaboration","Create collaboration","document_id":"DocumentId","collaboration":"Collaboration"),
     descriptor!("createParticipant","Create participant","document_id":"DocumentId","participant":"Participant"),
-    descriptor!("createLane","Create lane","document_id":"DocumentId","process_id":"XmlId","lane":"Lane"),
-    descriptor!("createElement","Create element","document_id":"DocumentId","process_id":"XmlId","element":"Node"),
-    descriptor!("createFlow","Create flow","document_id":"DocumentId","process_id":"XmlId|null","flow":"Flow"),
+    descriptor!("createLane","Create lane","document_id":"DocumentId","process_id":"ElementSelector","lane":"Lane"),
+    descriptor!("createElement","Create element","document_id":"DocumentId","process_id":"ElementSelector","element":"Node"),
+    descriptor!("createFlow","Create flow","document_id":"DocumentId","process_id":"ElementSelector|null","flow":"Flow"),
     descriptor!("createDiagram","Create diagram","document_id":"DocumentId","diagram":"Diagram"),
-    descriptor!("createShape","Create shape","document_id":"DocumentId","diagram_id":"XmlId","shape":"Shape"),
-    descriptor!("createEdge","Create edge","document_id":"DocumentId","diagram_id":"XmlId","edge":"Edge"),
+    descriptor!("createShape","Create shape","document_id":"DocumentId","diagram_id":"ElementSelector","shape":"Shape"),
+    descriptor!("createEdge","Create edge","document_id":"DocumentId","diagram_id":"ElementSelector","edge":"Edge"),
     descriptor!("deleteDocument","Delete document","document_id":"DocumentId"),
     descriptor!("projectProperties","Project properties","name":"string","description":"string"),
     descriptor!("renameProject","Rename project","name":"string"),
     descriptor!("documentProperties","Document properties","document_id":"DocumentId","name":"string","folder":"XmlId|null"),
-    descriptor!("rename","Rename","document_id":"DocumentId","element_id":"XmlId","name":"string"),
-    descriptor!("documentation","Set documentation","document_id":"DocumentId","element_id":"XmlId","documentation":"string"),
-    descriptor!("delete","Delete element","document_id":"DocumentId","element_id":"XmlId"),
-    descriptor!("moveShape","Move shape","document_id":"DocumentId","diagram_id":"XmlId","shape_id":"XmlId","bounds":"Bounds"),
-    descriptor!("reroute","Reroute edge","document_id":"DocumentId","diagram_id":"XmlId","edge_id":"XmlId","waypoints":"Point[]"),
-    descriptor!("assignLane","Assign lane","document_id":"DocumentId","process_id":"XmlId","element_id":"XmlId","lane_id":"XmlId|null","bounds":"ShapeBounds[]"),
-    descriptor!("setFlowCondition","Set flow condition","document_id":"DocumentId","flow_id":"XmlId","condition":"string|null"),
-    descriptor!("setNodeOwnerContact","Set node owner and contact","document_id":"DocumentId","element_id":"XmlId","owner":"string","contact":"string"),
+    descriptor!("rename","Rename","document_id":"DocumentId","element_id":"ElementSelector","name":"string"),
+    descriptor!("documentation","Set documentation","document_id":"DocumentId","element_id":"ElementSelector","documentation":"string"),
+    descriptor!("delete","Delete element","document_id":"DocumentId","element_id":"ElementSelector"),
+    descriptor!("moveShape","Move shape","document_id":"DocumentId","diagram_id":"ElementSelector","shape_id":"ElementSelector","bounds":"Bounds"),
+    descriptor!("reroute","Reroute edge","document_id":"DocumentId","diagram_id":"ElementSelector","edge_id":"ElementSelector","waypoints":"Point[]"),
+    descriptor!("assignLane","Assign lane","document_id":"DocumentId","process_id":"ElementSelector","element_id":"ElementSelector","lane_id":"ElementSelector|null","bounds":"ShapeBounds[]"),
+    descriptor!("setFlowCondition","Set flow condition","document_id":"DocumentId","flow_id":"ElementSelector","condition":"string|null"),
+    descriptor!("setNodeOwnerContact","Set node owner and contact","document_id":"DocumentId","element_id":"ElementSelector","owner":"string","contact":"string"),
 ];
 pub fn command_descriptors() -> &'static [CommandDescriptor] {
     COMMAND_DESCRIPTORS

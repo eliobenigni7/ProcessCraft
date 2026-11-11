@@ -1,12 +1,12 @@
-use processcraft_core::{
-    ids::XmlId,
-    model::{
-        Bounds, BpmnDocument, Diagram, Edge, Flow, FlowKind, Node, NodeKind, Point, Process, Shape,
-    },
+use processcraft_core::model::{
+    Bounds, BpmnDocument, Diagram, Edge, Flow, FlowKind, Node, NodeKind, Point, Process, Shape,
 };
 use processcraft_render::{Appearance, BpmnScene, TextEngine};
 use std::{error::Error, fs, path::Path};
-fn id(s: &str) -> XmlId {
+fn id<T: std::str::FromStr>(s: &str) -> T
+where
+    T::Err: std::fmt::Debug,
+{
     s.parse().unwrap()
 }
 fn main() -> Result<(), Box<dyn Error>> {
@@ -82,7 +82,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             loop_characteristics: None,
             details: None,
             id: id(key),
-            name: name.into(),
+            name: Some(name.into()),
             documentation: String::new(),
             kind,
             owner: String::new(),
@@ -155,7 +155,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             kind,
             source: id(source),
             target: id(target),
-            name: String::new(),
+            name: Some(String::new()),
             documentation: String::new(),
             condition: None,
         });
@@ -168,19 +168,21 @@ fn main() -> Result<(), Box<dyn Error>> {
         });
     }
     d.processes.push(Process {
+        is_executable: Some(false),
         io_specification: None,
         lane_set_id: None,
         groups: vec![],
         data_objects: vec![],
         data_associations: vec![],
         id: id("process"),
-        name: "Order".into(),
+        name: Some("Order".into()),
         documentation: String::new(),
         nodes,
         lanes: vec![],
         flows,
     });
     d.diagrams.push(Diagram {
+        name: None,
         id: id("diagram"),
         plane_id: id("plane"),
         plane: id("process"),

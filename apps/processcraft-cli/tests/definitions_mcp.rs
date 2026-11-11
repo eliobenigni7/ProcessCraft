@@ -229,4 +229,117 @@ fn definitions_metadata_uses_discovered_mcp_command_and_exact_history() {
                 .any(|row| row["path"] == path && row["value"] == value)
         );
     }
+    let promoted = call(
+        json!({"jsonrpc":"2.0","id":102,"method":"tools/call","params":{"name":"apply","arguments":{
+            "sessionId":session,"requestId":"promote-store","expectedGeneration":8,
+            "request":{"type":"batch","mutations":[{"type":"promoteElementIdentity","document_id":document_id,
+                "model_path":"/data_stores/0/id","xml_id":null}]}
+        }}}),
+    );
+    let promoted = promoted["result"]["structuredContent"].clone();
+    assert_eq!(promoted["ok"], true, "{promoted}");
+    assert_eq!(promoted["generation"], 9);
+    let store_selector = promoted["promotedIdentities"][0]["selector"].clone();
+    assert!(store_selector["native_id"].is_string());
+    let arguments = json!({"sessionId":session,"requestId":"assign-store","expectedGeneration":9,
+        "request":{"type":"batch","mutations":[{"type":"setElementXmlId","document_id":document_id,
+            "element_id":store_selector,"xml_id":"AssignedStore"}]}});
+    let assigned = call(
+        json!({"jsonrpc":"2.0","id":103,"method":"tools/call","params":{"name":"apply","arguments":arguments}}),
+    );
+    let assigned = assigned["result"]["structuredContent"].clone();
+    assert_eq!(assigned["ok"], true, "{assigned}");
+    assert_eq!(assigned["generation"], 10);
+    let retry = call(
+        json!({"jsonrpc":"2.0","id":104,"method":"tools/call","params":{"name":"apply","arguments":arguments}}),
+    );
+    assert_eq!(retry["result"]["structuredContent"], assigned);
+    let refused = call(
+        json!({"jsonrpc":"2.0","id":105,"method":"tools/call","params":{"name":"apply","arguments":{
+            "sessionId":session,"requestId":"store-collision","expectedGeneration":10,
+            "request":{"type":"batch","mutations":[{"type":"setElementXmlId","document_id":document_id,
+                "element_id":store_selector,"xml_id":"Definitions"}]}
+        }}}),
+    );
+    assert_eq!(refused["result"]["structuredContent"]["ok"], false);
+    for (id, generation, kind, expected) in
+        [(106, 10, "undo", &promoted), (107, 11, "redo", &assigned)]
+    {
+        let result = call(
+            json!({"jsonrpc":"2.0","id":id,"method":"tools/call","params":{"name":"apply","arguments":{
+                "sessionId":session,"requestId":format!("store-{kind}"),"expectedGeneration":generation,"request":{"type":kind}
+            }}}),
+        );
+        let result = &result["result"]["structuredContent"];
+        assert_eq!(result["ok"], true, "{result}");
+        assert_eq!(result["contentId"], expected["contentId"]);
+    }
+    let changed = call(
+        json!({"jsonrpc":"2.0","id":108,"method":"tools/call","params":{"name":"apply","arguments":{
+            "sessionId":session,"requestId":"rename-review-id","expectedGeneration":12,
+            "request":{"type":"batch","mutations":[{"type":"setElementXmlId",
+                "document_id":"11111111-1111-4111-8111-111111111111","element_id":"review","xml_id":"ReviewRenamed"}]}
+        }}}),
+    );
+    let changed = &changed["result"]["structuredContent"];
+    assert_eq!(changed["ok"], true, "{changed}");
+    let mapping = &changed["selectorMappings"][0];
+    assert_eq!(mapping["from"], "review");
+    assert!(mapping["to"]["native_id"].is_string());
+    let table = call(
+        json!({"jsonrpc":"2.0","id":109,"method":"tools/call","params":{"name":"query","arguments":{
+            "kind":"table","document_id":"11111111-1111-4111-8111-111111111111","process_id":"procurement","offset":0,"limit":100
+        }}}),
+    );
+    assert!(
+        table["result"]["structuredContent"]["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|row| row["key"]["xml_id"] == mapping["to"])
+    );
+    for (id, generation, kind, from, to, expected_content) in [
+        (
+            110,
+            13,
+            "undo",
+            &mapping["to"],
+            &mapping["from"],
+            &assigned["contentId"],
+        ),
+        (
+            111,
+            14,
+            "redo",
+            &mapping["from"],
+            &mapping["to"],
+            &changed["contentId"],
+        ),
+    ] {
+        let result = call(
+            json!({"jsonrpc":"2.0","id":id,"method":"tools/call","params":{"name":"apply","arguments":{
+                "sessionId":session,"requestId":format!("review-{kind}"),"expectedGeneration":generation,"request":{"type":kind}
+            }}}),
+        );
+        let result = &result["result"]["structuredContent"];
+        assert_eq!(result["ok"], true, "{result}");
+        assert_eq!(&result["contentId"], expected_content);
+        assert_eq!(&result["selectorMappings"][0]["from"], from);
+        assert_eq!(&result["selectorMappings"][0]["to"], to);
+    }
+    let identities = call(
+        json!({"jsonrpc":"2.0","id":112,"method":"tools/call","params":{"name":"query","arguments":{
+            "kind":"identities","document_id":"11111111-1111-4111-8111-111111111111","offset":0,"limit":100
+        }}}),
+    );
+    let identities = &identities["result"]["structuredContent"];
+    assert_eq!(identities["generation"], 15);
+    assert_eq!(identities["contentId"], changed["contentId"]);
+    assert!(
+        identities["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|row| row["selector"] == mapping["to"] && row["xmlId"] == "ReviewRenamed")
+    );
 }

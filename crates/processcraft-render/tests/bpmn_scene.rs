@@ -1,21 +1,24 @@
-use processcraft_core::{
-    ids::XmlId,
-    model::{Bounds, BpmnDocument, Capability, Diagram, Node, NodeKind, Process, Shape, Style},
+use processcraft_core::model::{
+    Bounds, BpmnDocument, Capability, Diagram, Node, NodeKind, Process, Shape, Style,
 };
 use processcraft_render::{Appearance, BpmnScene, TextEngine};
-fn id(s: &str) -> XmlId {
+fn id<T: std::str::FromStr>(s: &str) -> T
+where
+    T::Err: std::fmt::Debug,
+{
     s.parse().unwrap()
 }
 fn fixture() -> BpmnDocument {
     let mut d = BpmnDocument::new("Example".into(), id("defs"));
     d.processes.push(Process {
+        is_executable: Some(false),
         io_specification: None,
         lane_set_id: None,
         groups: vec![],
         data_objects: vec![],
         data_associations: vec![],
         id: id("process"),
-        name: String::new(),
+        name: Some(String::new()),
         documentation: String::new(),
         nodes: vec![Node {
             item_aware: None,
@@ -24,7 +27,7 @@ fn fixture() -> BpmnDocument {
             loop_characteristics: None,
             io_specification: None,
             id: id("task"),
-            name: "Review".into(),
+            name: Some("Review".into()),
             documentation: String::new(),
             kind: NodeKind::UserTask,
             owner: String::new(),
@@ -34,6 +37,7 @@ fn fixture() -> BpmnDocument {
         flows: vec![],
     });
     d.diagrams.push(Diagram {
+        name: None,
         id: id("diagram"),
         plane_id: id("plane"),
         plane: id("process"),
@@ -67,8 +71,14 @@ fn scene_uses_semantic_element_keys() {
     let s = build(&d, Appearance::Light);
     let hit = s.hit_test(0.0, 20.0, 2.0).unwrap();
     assert_eq!(hit.key.document_id, d.id);
-    assert_eq!(hit.key.xml_id, id("task"));
-    assert_eq!(hit.diagram_element_id, id("shape"));
+    assert_eq!(
+        hit.key.xml_id,
+        id::<processcraft_core::ids::ElementSelector>("task")
+    );
+    assert_eq!(
+        hit.diagram_element_id,
+        id::<processcraft_core::ids::ElementSelector>("shape")
+    );
     assert_eq!(s.origin, (-41.0, -6.0));
 }
 #[test]
@@ -169,7 +179,7 @@ fn named_flow_without_di_label_is_visible() {
         kind: processcraft_core::model::FlowKind::Sequence,
         source: id("task"),
         target: id("task"),
-        name: "Approved".into(),
+        name: Some("Approved".into()),
         documentation: String::new(),
         condition: None,
     });
@@ -222,20 +232,20 @@ fn small_label_bounds_report_omission() {
 fn many_dashed_edges_fit_path_budget() {
     let mut d = fixture();
     for i in 0..250 {
-        let key = id(&format!("flow{i}"));
+        let key: processcraft_core::ids::ElementIdentity = id(&format!("flow{i}"));
         d.processes[0].flows.push(processcraft_core::model::Flow {
             association_direction: None,
             id: key.clone(),
             kind: processcraft_core::model::FlowKind::Association,
             source: id("task"),
             target: id("task"),
-            name: String::new(),
+            name: Some(String::new()),
             documentation: String::new(),
             condition: None,
         });
         d.diagrams[0].edges.push(processcraft_core::model::Edge {
             id: id(&format!("edge{i}")),
-            element: key,
+            element: key.selector(),
             waypoints: vec![
                 processcraft_core::model::Point { x: 0., y: i as f64 },
                 processcraft_core::model::Point {
@@ -276,7 +286,10 @@ fn viewport_rebases_far_coordinates_before_float_conversion() {
     .unwrap();
     assert_eq!((scene.pixels.width(), scene.pixels.height()), (150, 120));
     let hit = scene.hit_test(999_999_005., 999_999_005., 0.).unwrap();
-    assert_eq!(hit.diagram_element_id, id("far"));
+    assert_eq!(
+        hit.diagram_element_id,
+        id::<processcraft_core::ids::ElementSelector>("far")
+    );
     assert!(
         scene
             .pixels
@@ -304,7 +317,7 @@ fn viewport_clips_polyline_without_intermediate_arrows_or_duplicate_label() {
         kind: FlowKind::Sequence,
         source: id("task"),
         target: id("task"),
-        name: "A very long label".into(),
+        name: Some("A very long label".into()),
         documentation: String::new(),
         condition: None,
     });
@@ -383,7 +396,7 @@ fn viewport_omits_giant_shape_but_keeps_local_node() {
         },
     )
     .unwrap();
-    assert!(s.hits.iter().all(|h| h.diagram_element_id != id("giant")));
+    assert!(s.hits.iter().all(|h| h.diagram_element_id != id::<processcraft_core::ids::ElementSelector>("giant")));
     assert!(
         s.diagnostics
             .iter()
@@ -421,7 +434,10 @@ fn viewport_displays_explicit_shape_label_when_shape_is_offscreen() {
     )
     .unwrap();
     assert!(s.diagnostics.iter().any(|d| d.contains("Missing font")));
-    assert_eq!(s.hit_test(15., 15., 0.).unwrap().key.xml_id, id("task"));
+    assert_eq!(
+        s.hit_test(15., 15., 0.).unwrap().key.xml_id,
+        id::<processcraft_core::ids::ElementSelector>("task")
+    );
 }
 #[test]
 fn viewport_does_not_fallback_when_explicit_shape_label_is_offscreen() {
@@ -466,7 +482,7 @@ fn viewport_displays_explicit_edge_label_when_edge_is_offscreen() {
         kind: FlowKind::Sequence,
         source: id("task"),
         target: id("task"),
-        name: "Visible".into(),
+        name: Some("Visible".into()),
         documentation: String::new(),
         condition: None,
     });
@@ -501,7 +517,10 @@ fn viewport_displays_explicit_edge_label_when_edge_is_offscreen() {
     )
     .unwrap();
     assert!(s.diagnostics.iter().any(|d| d.contains("Missing font")));
-    assert_eq!(s.hit_test(15., 15., 0.).unwrap().key.xml_id, id("f"));
+    assert_eq!(
+        s.hit_test(15., 15., 0.).unwrap().key.xml_id,
+        id::<processcraft_core::ids::ElementSelector>("f")
+    );
 }
 #[test]
 fn viewport_clicks_external_label_of_visible_shape() {
@@ -532,7 +551,10 @@ fn viewport_clicks_external_label_of_visible_shape() {
         },
     )
     .unwrap();
-    assert_eq!(s.hit_test(120., 120., 0.).unwrap().key.xml_id, id("task"));
+    assert_eq!(
+        s.hit_test(120., 120., 0.).unwrap().key.xml_id,
+        id::<processcraft_core::ids::ElementSelector>("task")
+    );
 }
 #[test]
 fn typed_timer_event_has_circle_hits_and_shared_vector_marker() {
@@ -548,7 +570,7 @@ fn typed_timer_event_has_circle_hits_and_shared_vector_marker() {
         attached_to: None,
         cancel_activity: None,
     });
-    d.processes[0].nodes[0].name.clear();
+    d.processes[0].nodes[0].name = Some(String::new());
     let timer = build(&d, Appearance::Light);
     let bounds = &d.diagrams[0].shapes[0].bounds;
     assert!(
@@ -591,7 +613,7 @@ fn unsupported_event_definition_produces_export_diagnostic() {
 #[test]
 fn gateway_hit_is_diamond_and_task_markers_differ() {
     let mut d = fixture();
-    d.processes[0].nodes[0].name.clear();
+    d.processes[0].nodes[0].name = Some(String::new());
     d.processes[0].nodes[0].kind = NodeKind::InclusiveGateway;
     let b = &d.diagrams[0].shapes[0].bounds;
     let scene = build(&d, Appearance::Light);
@@ -614,10 +636,10 @@ fn non_interrupting_boundary_and_compensation_have_distinct_shared_vectors() {
     let mut d = fixture();
     let mut activity = d.processes[0].nodes[0].clone();
     activity.id = id("activity");
-    activity.name.clear();
+    activity.name = Some(String::new());
     d.processes[0].nodes.push(activity);
     let node = &mut d.processes[0].nodes[0];
-    node.name.clear();
+    node.name = Some(String::new());
     node.kind = NodeKind::BoundaryEvent;
     node.details = Some(NodeDetails::Event {
         definitions: vec![EventDefinition::Compensate {
@@ -647,7 +669,7 @@ fn multiple_event_uses_one_marker_and_unsupported_kind_is_diagnosed() {
     let mut d = fixture();
     let node = &mut d.processes[0].nodes[0];
     node.kind = NodeKind::IntermediateCatchEvent;
-    node.name.clear();
+    node.name = Some(String::new());
     node.details = Some(NodeDetails::Event {
         definitions: vec![
             EventDefinition::Signal {
@@ -678,11 +700,11 @@ fn nested_diagram_shows_children_and_collapsed_parent_hides_them() {
     let mut d = fixture();
     let mut child = d.processes[0].nodes[0].clone();
     child.id = id("child");
-    child.name = "Nested task".into();
+    child.name = Some("Nested task".into());
     let parent = &mut d.processes[0].nodes[0];
     parent.id = id("sub");
     parent.kind = NodeKind::SubProcess;
-    parent.name.clear();
+    parent.name = Some(String::new());
     parent.details = Some(NodeDetails::SubProcess {
         content: Box::new(FlowContainer {
             lane_set_id: None,
@@ -717,7 +739,7 @@ fn nested_diagram_shows_children_and_collapsed_parent_hides_them() {
     let expanded = build(&d, Appearance::Light);
     assert_eq!(
         expanded.hit_test(100.0, 100.0, 0.0).unwrap().key.xml_id,
-        id("child")
+        id::<processcraft_core::ids::ElementSelector>("child")
     );
     assert!(expanded.scene.to_svg().contains("Nested task"));
     let expanded_svg = expanded.scene.to_svg();
@@ -725,7 +747,7 @@ fn nested_diagram_shows_children_and_collapsed_parent_hides_them() {
     let collapsed = build(&d, Appearance::Light);
     assert_eq!(
         collapsed.hit_test(100.0, 100.0, 0.0).unwrap().key.xml_id,
-        id("sub")
+        id::<processcraft_core::ids::ElementSelector>("sub")
     );
     assert!(!collapsed.scene.to_svg().contains("Nested task"));
     assert_ne!(expanded_svg, collapsed.scene.to_svg());
@@ -744,7 +766,12 @@ fn nested_diagram_shows_children_and_collapsed_parent_hides_them() {
         },
     )
     .unwrap();
-    assert!(!viewport.hits.iter().any(|h| h.key.xml_id == id("child")));
+    assert!(
+        !viewport
+            .hits
+            .iter()
+            .any(|h| h.key.xml_id == id::<processcraft_core::ids::ElementSelector>("child"))
+    );
     let mut child_diagram = d.diagrams[0].clone();
     child_diagram.id = id("child_diagram");
     child_diagram.plane = id("sub");
@@ -760,7 +787,7 @@ fn nested_diagram_shows_children_and_collapsed_parent_hides_them() {
     .unwrap();
     assert_eq!(
         sub.hit_test(100.0, 100.0, 0.0).unwrap().key.xml_id,
-        id("child")
+        id::<processcraft_core::ids::ElementSelector>("child")
     );
 }
 #[test]
@@ -772,7 +799,7 @@ fn nested_flow_and_called_activity_use_semantic_ids() {
     let mut d = fixture();
     let mut child = d.processes[0].nodes[0].clone();
     child.id = id("nested_a");
-    child.name.clear();
+    child.name = Some(String::new());
     let mut called = child.clone();
     called.id = id("nested_b");
     called.kind = NodeKind::CallActivity;
@@ -788,7 +815,7 @@ fn nested_flow_and_called_activity_use_semantic_ids() {
         kind: FlowKind::Sequence,
         source: id("nested_a"),
         target: id("nested_b"),
-        name: "Inner".into(),
+        name: Some("Inner".into()),
         documentation: String::new(),
         condition: None,
     };
@@ -829,13 +856,12 @@ fn nested_flow_and_called_activity_use_semantic_ids() {
         scene
             .hits
             .iter()
-            .any(|hit| hit.key.xml_id == id("nested_b"))
+            .any(|hit| hit.key.xml_id == id::<processcraft_core::ids::ElementSelector>("nested_b"))
     );
     assert!(
-        scene
-            .hits
-            .iter()
-            .any(|hit| hit.key.xml_id == id("inner_flow"))
+        scene.hits.iter().any(
+            |hit| hit.key.xml_id == id::<processcraft_core::ids::ElementSelector>("inner_flow")
+        )
     );
     assert!(scene.scene.to_svg().contains("Inner"));
     assert!(!scene.diagnostics.iter().any(|d| d.contains("Unknown")));
@@ -844,7 +870,7 @@ fn nested_flow_and_called_activity_use_semantic_ids() {
 fn loop_and_multi_instance_markers_use_distinct_shared_vectors() {
     use processcraft_core::bpmn_model::LoopCharacteristics;
     let mut d = fixture();
-    d.processes[0].nodes[0].name.clear();
+    d.processes[0].nodes[0].name = Some(String::new());
     let base = build(&d, Appearance::Light).scene.to_svg();
     d.processes[0].nodes[0].loop_characteristics = Some(LoopCharacteristics::Standard {
         test_before: false,
@@ -878,24 +904,25 @@ fn conversation_hexagons_and_links_render_with_semantic_hits() {
     use processcraft_render::{BpmnViewport, Viewport};
     let mut d = fixture();
     d.collaboration = Some(Collaboration {
+        name: None,
         id: id("collab"),
         participants: vec![Participant {
             id: id("participant"),
-            name: "Buyer".into(),
+            name: Some("Buyer".into()),
             process: Some(id("process")),
         }],
         flows: vec![],
         conversation_nodes: vec![
             ConversationNode {
                 id: id("conversation"),
-                name: "Order".into(),
+                name: Some("Order".into()),
                 kind: ConversationKind::SubConversation,
                 participant_refs: vec![id("participant")],
                 parent: None,
             },
             ConversationNode {
                 id: id("inner"),
-                name: "Inner".into(),
+                name: Some("Inner".into()),
                 kind: ConversationKind::Conversation,
                 participant_refs: vec![id("participant")],
                 parent: Some(id("conversation")),
@@ -903,7 +930,7 @@ fn conversation_hexagons_and_links_render_with_semantic_hits() {
         ],
         conversation_links: vec![ConversationLink {
             id: id("link"),
-            name: "Coordination".into(),
+            name: Some("Coordination".into()),
             source: id("participant"),
             target: id("conversation"),
         }],
@@ -950,10 +977,20 @@ fn conversation_hexagons_and_links_render_with_semantic_hits() {
     assert!(scene.hit_test(50.0, 50.0, 0.0).is_none());
     assert_eq!(
         scene.hit_test(140.0, 100.0, 0.0).unwrap().key.xml_id,
-        id("conversation")
+        id::<processcraft_core::ids::ElementSelector>("conversation")
     );
-    assert!(scene.hits.iter().any(|h| h.key.xml_id == id("link")));
-    assert!(!scene.hits.iter().any(|h| h.key.xml_id == id("inner")));
+    assert!(
+        scene
+            .hits
+            .iter()
+            .any(|h| h.key.xml_id == id::<processcraft_core::ids::ElementSelector>("link"))
+    );
+    assert!(
+        !scene
+            .hits
+            .iter()
+            .any(|h| h.key.xml_id == id::<processcraft_core::ids::ElementSelector>("inner"))
+    );
     let v = BpmnViewport::build(
         &d,
         &id("diagram"),
@@ -969,11 +1006,24 @@ fn conversation_hexagons_and_links_render_with_semantic_hits() {
         },
     )
     .unwrap();
-    assert!(v.hits.iter().any(|h| h.key.xml_id == id("link")));
-    assert!(!v.hits.iter().any(|h| h.key.xml_id == id("inner")));
+    assert!(
+        v.hits
+            .iter()
+            .any(|h| h.key.xml_id == id::<processcraft_core::ids::ElementSelector>("link"))
+    );
+    assert!(
+        !v.hits
+            .iter()
+            .any(|h| h.key.xml_id == id::<processcraft_core::ids::ElementSelector>("inner"))
+    );
     d.diagrams[0].shapes[0].is_expanded = Some(true);
     let expanded = build(&d, Appearance::Light);
-    assert!(expanded.hits.iter().any(|h| h.key.xml_id == id("inner")));
+    assert!(
+        expanded
+            .hits
+            .iter()
+            .any(|h| h.key.xml_id == id::<processcraft_core::ids::ElementSelector>("inner"))
+    );
 }
 #[test]
 fn data_store_and_association_are_drawn_in_scene_and_viewport() {
@@ -984,7 +1034,7 @@ fn data_store_and_association_are_drawn_in_scene_and_viewport() {
     use processcraft_render::{BpmnViewport, Viewport};
     let mut d = fixture();
     d.processes[0].nodes[0].kind = NodeKind::DataStoreReference;
-    d.processes[0].nodes[0].name = "Archive".into();
+    d.processes[0].nodes[0].name = Some("Archive".into());
     d.processes[0].data_associations.push(DataAssociation {
         id: Some(id("assoc")),
         transformation: None,
@@ -1003,7 +1053,12 @@ fn data_store_and_association_are_drawn_in_scene_and_viewport() {
     });
     let scene = build(&d, Appearance::Light);
     assert!(!scene.diagnostics.iter().any(|v| v.contains("Unknown")));
-    assert!(scene.hits.iter().any(|h| h.key.xml_id == id("assoc")));
+    assert!(
+        scene
+            .hits
+            .iter()
+            .any(|h| h.key.xml_id == id::<processcraft_core::ids::ElementSelector>("assoc"))
+    );
     let v = BpmnViewport::build(
         &d,
         &id("diagram"),
@@ -1019,7 +1074,11 @@ fn data_store_and_association_are_drawn_in_scene_and_viewport() {
         },
     )
     .unwrap();
-    assert!(v.hits.iter().any(|h| h.key.xml_id == id("assoc")));
+    assert!(
+        v.hits
+            .iter()
+            .any(|h| h.key.xml_id == id::<processcraft_core::ids::ElementSelector>("assoc"))
+    );
 }
 #[test]
 fn choreography_task_shows_participant_bands_and_sequence_flow() {
@@ -1030,23 +1089,23 @@ fn choreography_task_shows_participant_bands_and_sequence_flow() {
     let mut d = fixture();
     d.choreographies.push(Choreography {
         id: id("choreo"),
-        name: "Choreography".into(),
+        name: Some("Choreography".into()),
         participants: vec![
             Participant {
                 id: id("buyer"),
-                name: "Buyer".into(),
+                name: Some("Buyer".into()),
                 process: None,
             },
             Participant {
                 id: id("seller"),
-                name: "Seller".into(),
+                name: Some("Seller".into()),
                 process: None,
             },
         ],
         message_flows: vec![],
         activities: vec![ChoreographyActivity {
             id: id("exchange"),
-            name: "Exchange".into(),
+            name: Some("Exchange".into()),
             participant_refs: vec![id("buyer"), id("seller")],
             initiating_participant: id("buyer"),
             message_flow_refs: vec![],
@@ -1057,7 +1116,7 @@ fn choreography_task_shows_participant_bands_and_sequence_flow() {
             kind: FlowKind::Sequence,
             source: id("exchange"),
             target: id("exchange"),
-            name: String::new(),
+            name: Some(String::new()),
             documentation: String::new(),
             condition: None,
         }],
@@ -1084,7 +1143,12 @@ fn choreography_task_shows_participant_bands_and_sequence_flow() {
     for name in ["Buyer", "Seller", "Exchange"] {
         assert!(svg.contains(name), "{name}");
     }
-    assert!(scene.hits.iter().any(|h| h.key.xml_id == id("seq")));
+    assert!(
+        scene
+            .hits
+            .iter()
+            .any(|h| h.key.xml_id == id::<processcraft_core::ids::ElementSelector>("seq"))
+    );
     assert!(!scene.diagnostics.iter().any(|v| v.contains("Unknown")));
 }
 #[test]
@@ -1115,14 +1179,14 @@ fn gateway_default_flow_marker_uses_semantic_owner_and_shared_exports() {
     use processcraft_render::{ExportFormat, ExportOptions, export_diagram};
     let mut d = fixture();
     d.processes[0].nodes[0].kind = NodeKind::ExclusiveGateway;
-    d.processes[0].nodes[0].name.clear();
+    d.processes[0].nodes[0].name = Some(String::new());
     d.processes[0].flows.push(Flow {
         association_direction: None,
         id: id("default"),
         kind: FlowKind::Sequence,
         source: id("task"),
         target: id("task"),
-        name: String::new(),
+        name: Some(String::new()),
         documentation: String::new(),
         condition: None,
     });
@@ -1205,7 +1269,7 @@ fn event_based_gateway_modes_render_distinct_symbols() {
     use processcraft_core::bpmn_model::{EventGatewayType, NodeDetails};
     let mut d = fixture();
     d.processes[0].nodes[0].kind = NodeKind::EventBasedGateway;
-    d.processes[0].nodes[0].name.clear();
+    d.processes[0].nodes[0].name = Some(String::new());
     let marker = |instantiate, event_gateway_type| {
         Some(NodeDetails::Gateway {
             default_flow: None,
@@ -1257,8 +1321,15 @@ fn group_is_drawn_and_keeps_contained_node_selectable() {
             .any(|d| d.contains("Unknown shape element group"))
     );
     assert!(s.scene.to_svg().contains("#aabbcc"));
-    assert!(s.hits.iter().any(|h| h.key.xml_id == id("group")));
-    assert_eq!(s.hit_test(0.0, 20.0, 2.0).unwrap().key.xml_id, id("task"));
+    assert!(
+        s.hits
+            .iter()
+            .any(|h| h.key.xml_id == id::<processcraft_core::ids::ElementSelector>("group"))
+    );
+    assert_eq!(
+        s.hit_test(0.0, 20.0, 2.0).unwrap().key.xml_id,
+        id::<processcraft_core::ids::ElementSelector>("task")
+    );
 }
 
 #[test]
@@ -1274,7 +1345,7 @@ fn association_directions_change_shared_vector_markers() {
         kind: FlowKind::Association,
         source: id("task"),
         target: id("task"),
-        name: String::new(),
+        name: Some(String::new()),
         documentation: String::new(),
         condition: None,
     });
@@ -1362,7 +1433,7 @@ fn group_category_label_uses_di_bounds_style_and_viewport_hit() {
         viewport
             .hits
             .iter()
-            .any(|hit| hit.key.xml_id == id("group"))
+            .any(|hit| hit.key.xml_id == id::<processcraft_core::ids::ElementSelector>("group"))
     );
     d.diagrams[0]
         .shapes
@@ -1423,7 +1494,7 @@ fn activity_properties_change_shared_vectors_and_viewport() {
         kind: FlowKind::Sequence,
         source: id("task"),
         target: id("task"),
-        name: String::new(),
+        name: Some(String::new()),
         documentation: String::new(),
         condition: None,
     });
@@ -1494,7 +1565,7 @@ fn assert_valid_event_document(d: &BpmnDocument) {
 fn link_markers_distinguish_catch_and_throw_in_shared_scene() {
     use processcraft_core::bpmn_model::{EventDefinition, NodeDetails};
     let mut d = fixture();
-    d.processes[0].nodes[0].name.clear();
+    d.processes[0].nodes[0].name = Some(String::new());
     d.diagrams[0].shapes[0].bounds = Bounds {
         x: 0.0,
         y: 0.0,
@@ -1532,7 +1603,7 @@ fn cancel_boundary_and_end_use_hollow_and_filled_crosses() {
     let mut transaction = d.processes[0].nodes[0].clone();
     transaction.id = id("transaction");
     transaction.kind = NodeKind::Transaction;
-    transaction.name.clear();
+    transaction.name = Some(String::new());
     transaction.details = Some(NodeDetails::SubProcess {
         content: Box::new(FlowContainer {
             lane_set_id: None,
@@ -1546,7 +1617,7 @@ fn cancel_boundary_and_end_use_hollow_and_filled_crosses() {
     });
     d.processes[0].nodes.push(transaction);
     let node = &mut d.processes[0].nodes[0];
-    node.name.clear();
+    node.name = Some(String::new());
     node.kind = NodeKind::BoundaryEvent;
     node.details = Some(NodeDetails::Event {
         definitions: vec![EventDefinition::Cancel { id: None }],
@@ -1578,10 +1649,10 @@ fn compensation_boundary_and_throw_render_distinct_markers() {
     let mut d = fixture();
     let mut activity = d.processes[0].nodes[0].clone();
     activity.id = id("activity");
-    activity.name.clear();
+    activity.name = Some(String::new());
     d.processes[0].nodes.push(activity);
     let node = &mut d.processes[0].nodes[0];
-    node.name.clear();
+    node.name = Some(String::new());
     node.kind = NodeKind::BoundaryEvent;
     node.details = Some(NodeDetails::Event {
         definitions: vec![EventDefinition::Compensate {
@@ -1619,7 +1690,7 @@ fn data_reference_state_and_collection_share_scene_and_viewport() {
     let mut d = fixture();
     let node = &mut d.processes[0].nodes[0];
     node.kind = NodeKind::DataObjectReference;
-    node.name.clear();
+    node.name = Some(String::new());
     node.details = Some(NodeDetails::DataObjectReference {
         data_object_ref: Some(id("data")),
     });
@@ -1815,14 +1886,14 @@ fn nested_reference_resolves_ancestor_data_object_and_hides_when_collapsed() {
     });
     let mut child = d.processes[0].nodes[0].clone();
     child.id = id("nested_ref");
-    child.name.clear();
+    child.name = Some(String::new());
     child.kind = NodeKind::DataObjectReference;
     child.details = Some(NodeDetails::DataObjectReference {
         data_object_ref: Some(id("ancestor_data")),
     });
     let parent = &mut d.processes[0].nodes[0];
     parent.id = id("sub");
-    parent.name.clear();
+    parent.name = Some(String::new());
     parent.kind = NodeKind::SubProcess;
     parent.details = Some(NodeDetails::SubProcess {
         content: Box::new(FlowContainer {
@@ -1862,7 +1933,7 @@ fn nested_reference_resolves_ancestor_data_object_and_hides_when_collapsed() {
         expanded
             .hits
             .iter()
-            .any(|h| h.key.xml_id == id("nested_ref"))
+            .any(|h| h.key.xml_id == id::<processcraft_core::ids::ElementSelector>("nested_ref"))
     );
     d.diagrams[0].shapes[0].is_expanded = Some(false);
     let collapsed = build(&d, Appearance::Light);
@@ -1871,7 +1942,7 @@ fn nested_reference_resolves_ancestor_data_object_and_hides_when_collapsed() {
         !collapsed
             .hits
             .iter()
-            .any(|h| h.key.xml_id == id("nested_ref"))
+            .any(|h| h.key.xml_id == id::<processcraft_core::ids::ElementSelector>("nested_ref"))
     );
 }
 
@@ -1891,7 +1962,7 @@ fn data_store_reference_displays_its_own_name_including_empty() {
     });
     let node = &mut d.processes[0].nodes[0];
     node.kind = NodeKind::DataStoreReference;
-    node.name = "Reference Name".into();
+    node.name = Some("Reference Name".into());
     node.details = Some(NodeDetails::DataStoreReference {
         data_store_ref: Some(DataStoreRef::Legacy(id("store"))),
     });
@@ -1899,8 +1970,139 @@ fn data_store_reference_displays_its_own_name_including_empty() {
     let svg = build(&d, Appearance::Light).scene.to_svg();
     assert!(svg.contains("Reference Name"));
     assert!(!svg.contains("Declaration Name"));
-    d.processes[0].nodes[0].name.clear();
+    d.processes[0].nodes[0].name = Some(String::new());
     assert_valid_event_document(&d);
     let svg = build(&d, Appearance::Light).scene.to_svg();
     assert!(!svg.contains("Reference Name") && !svg.contains("Declaration Name"));
+}
+
+#[test]
+fn anonymous_node_and_representation_have_native_hits() {
+    use processcraft_core::ids::{ElementIdentity, ElementSelector, NativeElementId};
+    let mut d = fixture();
+    let node_native = NativeElementId::new();
+    let shape_native = NativeElementId::new();
+    d.processes[0].nodes[0].id = ElementIdentity::Native {
+        native_id: node_native,
+        xml_id: None,
+    };
+    d.processes[0].nodes[0].name = None;
+    d.diagrams[0].shapes[0].id = ElementIdentity::Native {
+        native_id: shape_native,
+        xml_id: None,
+    };
+    d.diagrams[0].shapes[0].element = ElementSelector::Native {
+        native_id: node_native,
+    };
+    assert_valid_event_document(&d);
+    let scene = build(&d, Appearance::Light);
+    let hit = scene.hit_test(0.0, 20.0, 0.0).unwrap();
+    assert_eq!(
+        hit.key.xml_id,
+        ElementSelector::Native {
+            native_id: node_native
+        }
+    );
+    assert_eq!(
+        hit.diagram_element_id,
+        ElementSelector::Native {
+            native_id: shape_native
+        }
+    );
+    assert!(d.processes[0].nodes[0].id.xml_id().is_none());
+    assert!(d.processes[0].nodes[0].name.is_none());
+}
+
+#[test]
+fn annotation_text_uses_dedicated_payload_with_legacy_fallback() {
+    use processcraft_core::bpmn_model::NodeDetails;
+    let mut d = fixture();
+    let node = &mut d.processes[0].nodes[0];
+    node.kind = NodeKind::TextAnnotation;
+    node.name = Some("Legacy annotation".into());
+    node.details = Some(NodeDetails::TextAnnotation {
+        text_format: None,
+        text: None,
+    });
+    assert_valid_event_document(&d);
+    let legacy = build(&d, Appearance::Light).scene.to_svg();
+    assert!(legacy.contains("Legacy annotation"));
+    d.processes[0].nodes[0].details = Some(NodeDetails::TextAnnotation {
+        text_format: None,
+        text: Some("New annotation".into()),
+    });
+    assert_valid_event_document(&d);
+    let updated = build(&d, Appearance::Light).scene.to_svg();
+    assert!(updated.contains("New annotation"));
+    assert!(!updated.contains("Legacy annotation"));
+    assert_eq!(
+        d.processes[0].nodes[0].name.as_deref(),
+        Some("Legacy annotation")
+    );
+}
+
+#[test]
+fn activity_port_shape_is_diagnosed_without_scene_or_viewport_hit() {
+    use processcraft_core::bpmn_data::{DataPort, IoSet, IoSpecification};
+    use processcraft_render::{BpmnViewport, Viewport};
+    let mut d = fixture();
+    d.processes[0].nodes[0].io_specification = Some(IoSpecification {
+        id: None,
+        inputs: vec![DataPort {
+            id: Some(id("activity_input")),
+            name: Some("Local port".into()),
+            item_aware: None,
+            is_collection: None,
+        }],
+        outputs: vec![],
+        input_sets: vec![IoSet {
+            data_refs: vec![id("activity_input")],
+            ..Default::default()
+        }],
+        output_sets: vec![IoSet::default()],
+    });
+    d.diagrams[0].shapes[0].element = id("activity_input");
+    d.diagrams[0].shapes[0].label = Some(processcraft_core::model::Label {
+        bounds: Bounds {
+            x: 0.0,
+            y: 0.0,
+            width: 100.0,
+            height: 30.0,
+        },
+        style: None,
+    });
+    assert_valid_event_document(&d);
+    let original = serde_json::to_vec(&d).unwrap();
+    let scene = build(&d, Appearance::Light);
+    assert!(
+        scene
+            .diagnostics
+            .iter()
+            .any(|d| d.contains("Activity-local data port"))
+    );
+    assert!(scene.hits.is_empty());
+    assert!(!scene.scene.to_svg().contains("Local port"));
+    let viewport = BpmnViewport::build(
+        &d,
+        &id("diagram"),
+        Appearance::Light,
+        &mut TextEngine::new(),
+        "Noto Sans",
+        Viewport {
+            x: -40.0,
+            y: 0.0,
+            width: 160.0,
+            height: 120.0,
+            zoom: 1.0,
+        },
+    )
+    .unwrap();
+    assert!(
+        viewport
+            .diagnostics
+            .iter()
+            .any(|d| d.contains("Activity-local data port"))
+    );
+    assert!(viewport.hits.is_empty());
+    assert_eq!(serde_json::to_vec(&d).unwrap(), original);
 }

@@ -1,24 +1,28 @@
 use processcraft_core::{
-    ids::XmlId,
+    ids::{ElementIdentity, ElementSelector},
     layout::{propose_layout, validate_proposal},
     model::{
         Bounds, BpmnDocument, Diagram, Edge, Flow, FlowKind, Node, NodeKind, Point, Process, Shape,
     },
 };
 use std::sync::atomic::AtomicBool;
-fn id(s: &str) -> XmlId {
+fn id<T: std::str::FromStr>(s: &str) -> T
+where
+    T::Err: std::fmt::Debug,
+{
     s.parse().unwrap()
 }
 fn fixture() -> BpmnDocument {
     let mut d = BpmnDocument::new("Example".into(), id("defs"));
     d.processes.push(Process {
+        is_executable: Some(false),
         io_specification: None,
         lane_set_id: None,
         groups: vec![],
         data_objects: vec![],
         data_associations: vec![],
         id: id("p"),
-        name: String::new(),
+        name: Some(String::new()),
         documentation: String::new(),
         nodes: ["a", "b", "c", "d"]
             .iter()
@@ -26,7 +30,7 @@ fn fixture() -> BpmnDocument {
                 item_aware: None,
                 activity: None,
                 id: id(s),
-                name: s.to_string(),
+                name: Some(s.to_string()),
                 documentation: String::new(),
                 kind: NodeKind::Task,
                 details: None,
@@ -40,6 +44,7 @@ fn fixture() -> BpmnDocument {
         flows: vec![],
     });
     d.diagrams.push(Diagram {
+        name: None,
         id: id("diagram"),
         plane_id: id("plane"),
         plane: id("p"),
@@ -71,7 +76,7 @@ fn flow(d: &mut BpmnDocument, name: &str, a: &str, b: &str) {
         kind: FlowKind::Sequence,
         source: id(a),
         target: id(b),
-        name: String::new(),
+        name: Some(String::new()),
         documentation: String::new(),
         condition: None,
     });
@@ -243,7 +248,7 @@ fn lane_membership_and_unlaned_nodes_use_separate_bands() {
     d.processes[0].lanes.push(Lane {
         child_lane_set_id: None,
         id: id("lane"),
-        name: "Lane".into(),
+        name: Some("Lane".into()),
         parent: None,
         members: vec![id("a"), id("b")],
     });
@@ -265,7 +270,7 @@ fn lane_membership_and_unlaned_nodes_use_separate_bands() {
         .proposed
         .shapes
         .iter()
-        .find(|s| s.id == id("lane_di"))
+        .find(|s| s.id == id::<ElementSelector>("lane_di"))
         .unwrap()
         .bounds;
     for name in ["shape_a", "shape_b"] {
@@ -273,7 +278,7 @@ fn lane_membership_and_unlaned_nodes_use_separate_bands() {
             .proposed
             .shapes
             .iter()
-            .find(|s| s.id == id(name))
+            .find(|s| s.id == id::<ElementSelector>(name))
             .unwrap()
             .bounds;
         assert!(b.y >= lane.y && b.y + b.height <= lane.y + lane.height);
@@ -282,7 +287,7 @@ fn lane_membership_and_unlaned_nodes_use_separate_bands() {
         .proposed
         .shapes
         .iter()
-        .find(|s| s.id == id("shape_c"))
+        .find(|s| s.id == id::<ElementSelector>("shape_c"))
         .unwrap()
         .bounds;
     assert!(unlaned.y >= lane.y + lane.height);
@@ -333,7 +338,7 @@ fn external_labels_keep_sizes_and_styles() {
         .proposed
         .shapes
         .iter()
-        .find(|s| s.id == id("shape_a"))
+        .find(|s| s.id == id::<ElementSelector>("shape_a"))
         .unwrap();
     assert_eq!(shape.label_bounds.as_ref().unwrap().width, 60.0);
     let edge = &p.proposed.edges[0];
@@ -359,12 +364,12 @@ fn external_labels_keep_sizes_and_styles() {
 fn maximum_shape_count_is_bounded_and_above_limits_refused() {
     let mut d = fixture();
     for i in 4..400 {
-        let node_id = id(&format!("node_{i}"));
+        let node_id: ElementIdentity = id(&format!("node_{i}"));
         d.processes[0].nodes.push(Node {
             item_aware: None,
             activity: None,
             id: node_id.clone(),
-            name: String::new(),
+            name: Some(String::new()),
             documentation: String::new(),
             kind: NodeKind::Task,
             details: None,
@@ -376,7 +381,7 @@ fn maximum_shape_count_is_bounded_and_above_limits_refused() {
         d.diagrams[0].shapes.push(Shape {
             is_expanded: None,
             id: id(&format!("shape_{i}")),
-            element: node_id,
+            element: node_id.selector(),
             bounds: Bounds {
                 x: 0.0,
                 y: 0.0,
@@ -425,17 +430,18 @@ fn one_pool_contains_lanes_and_unlaned_band() {
     d.processes[0].lanes.push(Lane {
         child_lane_set_id: None,
         id: id("lane"),
-        name: String::new(),
+        name: Some(String::new()),
         parent: None,
         members: vec![id("a")],
     });
     d.collaboration = Some(Collaboration {
+        name: None,
         id: id("collab"),
         conversation_nodes: vec![],
         conversation_links: vec![],
         participants: vec![Participant {
             id: id("pool"),
-            name: String::new(),
+            name: Some(String::new()),
             process: Some(id("p")),
         }],
         flows: vec![],
@@ -460,7 +466,7 @@ fn one_pool_contains_lanes_and_unlaned_band() {
         .proposed
         .shapes
         .iter()
-        .find(|s| s.id == id("pool_di"))
+        .find(|s| s.id == id::<ElementSelector>("pool_di"))
         .unwrap()
         .bounds;
     for name in ["lane_di", "shape_a", "shape_b"] {
@@ -468,7 +474,7 @@ fn one_pool_contains_lanes_and_unlaned_band() {
             .proposed
             .shapes
             .iter()
-            .find(|s| s.id == id(name))
+            .find(|s| s.id == id::<ElementSelector>(name))
             .unwrap()
             .bounds;
         assert!(
@@ -510,14 +516,14 @@ fn event_and_gateway_routes_terminate_on_shape_border() {
         .proposed
         .shapes
         .iter()
-        .find(|s| s.id == id("shape_a"))
+        .find(|s| s.id == id::<ElementSelector>("shape_a"))
         .unwrap()
         .bounds;
     let b = &p
         .proposed
         .shapes
         .iter()
-        .find(|s| s.id == id("shape_b"))
+        .find(|s| s.id == id::<ElementSelector>("shape_b"))
         .unwrap()
         .bounds;
     let edge = &p.proposed.edges[0];
@@ -536,10 +542,10 @@ fn four_hundred_connected_nodes_fit_bounded_straight_route_profile() {
     for i in 0..400 {
         let mut node = template.clone();
         node.id = id(&format!("n{i:03}"));
-        node.name.clear();
+        node.name = Some(String::new());
         let mut shape = shape_template.clone();
         shape.id = id(&format!("s{i:03}"));
-        shape.element = node.id.clone();
+        shape.element = node.id.selector();
         shape.label = None;
         d.processes[0].nodes.push(node);
         d.diagrams[0].shapes.push(shape);
@@ -589,7 +595,42 @@ fn labelled_two_lane_branch_has_collision_free_layout() {
     let d: BpmnDocument =
         serde_json::from_str(include_str!("fixtures/layout-operations.json")).unwrap();
     let diagram = &d.diagrams[0];
-    let p = propose_layout(&d, &diagram.id, "session", 0, &AtomicBool::new(false)).unwrap();
+    let p = propose_layout(
+        &d,
+        &diagram.id.selector(),
+        "session",
+        0,
+        &AtomicBool::new(false),
+    )
+    .unwrap();
     assert_eq!(p.proposed.edges.len(), 5);
     validate_proposal(&d, &p).unwrap();
+}
+
+#[test]
+fn layout_uses_native_selectors_without_inventing_xml_ids() {
+    use processcraft_core::ids::NativeElementId;
+    let mut doc = fixture();
+    flow(&mut doc, "ab", "a", "b");
+    doc.diagrams[0].id = ElementIdentity::Native {
+        native_id: NativeElementId::new(),
+        xml_id: None,
+    };
+    doc.diagrams[0].shapes[0].id = ElementIdentity::Native {
+        native_id: NativeElementId::new(),
+        xml_id: None,
+    };
+    let diagram = doc.diagrams[0].id.selector();
+    let shape = doc.diagrams[0].shapes[0].id.selector();
+    let proposal = propose_layout(&doc, &diagram, "session", 0, &AtomicBool::new(false)).unwrap();
+    assert!(
+        proposal
+            .original
+            .shapes
+            .iter()
+            .any(|entry| entry.id == shape)
+    );
+    assert!(doc.diagrams[0].id.xml_id().is_none());
+    assert!(doc.diagrams[0].shapes[0].id.xml_id().is_none());
+    validate_proposal(&doc, &proposal).unwrap();
 }

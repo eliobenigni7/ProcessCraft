@@ -744,13 +744,14 @@ fn layout_file_preview_apply_and_stale_guard() {
         processcraft_core::model::BpmnDocument::new("Model".into(), "defs".parse().unwrap());
     let document_id = doc.id.to_string();
     doc.processes.push(processcraft_core::model::Process {
+        is_executable: Some(false),
         io_specification: None,
         lane_set_id: None,
         groups: vec![],
         data_objects: vec![],
         data_associations: vec![],
         id: "process".parse().unwrap(),
-        name: String::new(),
+        name: Some(String::new()),
         documentation: String::new(),
         nodes: vec![processcraft_core::model::Node {
             item_aware: None,
@@ -758,7 +759,7 @@ fn layout_file_preview_apply_and_stale_guard() {
             io_specification: None,
             loop_characteristics: None,
             id: "task".parse().unwrap(),
-            name: "Task".into(),
+            name: Some("Task".into()),
             documentation: String::new(),
             kind: processcraft_core::model::NodeKind::Task,
             details: None,
@@ -769,6 +770,7 @@ fn layout_file_preview_apply_and_stale_guard() {
         flows: vec![],
     });
     doc.diagrams.push(processcraft_core::model::Diagram {
+        name: None,
         id: "diagram".parse().unwrap(),
         plane_id: "plane".parse().unwrap(),
         plane: "process".parse().unwrap(),
