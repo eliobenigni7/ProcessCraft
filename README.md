@@ -42,6 +42,8 @@ cargo run --release -p processcraft-cli --example m2_qualify -- --out target/m2-
 cargo test --workspace --all-targets --all-features --locked --offline
 ```
 
+Supporting catalog values can be queried with `processcraft-cli query <input> catalog <document-id> --offset 0 --limit 50`. Results are bounded pages of scalar JSON Pointer fields with a content ID; the corresponding MCP query also reports the session generation. This is a read-only projection of the supported catalog profile.
+
 MCP starts only through `processcraft-cli mcp`. Standalone mode takes `--new NAME` or `--in PATH`, with explicit absolute `--read-root` / `--write-root` folders. The GUI's **Enable attachment** shows endpoint, session and token; `mcp --attach ENDPOINT --session SESSION --token TOKEN` edits that visible session. File effects require **Authorize automation write folder…** in the GUI; CLI arguments cannot extend those grants. Disable or changing project revokes the endpoint. No listener starts by default and no account/provider is needed. Keep tokens private.
 
 The historical M2 medium benchmark measured 5,000 nodes and 10,100 dictionary links: table p95 22 ms and save p95 950 ms; rename remains about 134 ms against a 20 ms target. These are M2 measurements, not performance qualification of the expanded M3 model. See the evidence for the measured disposition and other limits, including bounded request ledgers and GUI reconciliation for uncertain attached exports. Dependency downloads are needed on the first build. The `test-fault` feature is a debug-only test seam, absent from normal builds and compiled out of release builds.

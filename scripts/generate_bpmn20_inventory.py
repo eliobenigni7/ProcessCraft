@@ -146,6 +146,42 @@ for declaration in declarations:
             "Bounded inline local-reference profile and selected context checks only; "
             "root/referenced definitions, complete context rules, GUI and independent consumers remain unverified."
         )
+# Selected supporting catalogs; inherited metadata and external resolution are not complete.
+catalog_types = {"tItemDefinition", "tInterface", "tOperation", "tResource", "tResourceParameter"}
+catalog_elements = {"itemDefinition", "interface", "operation", "resource", "resourceParameter"}
+for declaration in declarations:
+    if (declaration["schema"] == "Semantic.xsd" and (
+        (declaration["kind"] == "element" and declaration["name"] in catalog_elements) or
+        (declaration["kind"] == "complexType" and declaration["name"] in catalog_types) or
+        (declaration["kind"] == "attribute" and any(
+            f"/complexType[@name={name}]/" in declaration["path"] for name in catalog_types)))):
+        declaration["coverage"].update({k: "partial" for k in ("model", "edit", "import", "export", "validate")})
+        declaration["evidence"] = [
+            "crates/processcraft-io/tests/interchange.rs:supporting_catalog_qnames_and_presence_roundtrip",
+            "crates/processcraft-io/tests/interchange.rs:supporting_catalog_unrepresented_metadata_is_preserved",
+            "crates/processcraft-core/tests/commands.rs:supporting_catalog_validates_references_and_undoes_atomically",
+            "crates/processcraft-io/tests/native.rs:supporting_catalog_capability_covers_live_and_checkpoint_documents",
+        ]
+        declaration["limitations"] = (
+            "Bounded typed catalog profile only; inherited documentation/extensions, all user paths, "
+            "external resolution and full normative semantics remain unverified or preserved."
+        )
+# Task binding attributes only; general task and operation semantics remain partial.
+for declaration in declarations:
+    if (declaration["schema"] == "Semantic.xsd" and declaration["kind"] == "attribute"
+            and any(f"/complexType[@name={name}]/" in declaration["path"]
+                    for name in {"tSendTask", "tReceiveTask", "tServiceTask"})
+            and declaration["name"] in {"messageRef", "operationRef"}):
+        declaration["coverage"].update({k: "partial" for k in ("model", "edit", "import", "export", "validate")})
+        declaration["evidence"] = [
+            "crates/processcraft-io/tests/interchange.rs:activity_message_and_operation_qnames_roundtrip_with_loop_context",
+            "crates/processcraft-io/tests/interchange.rs:activity_unqualified_qname_and_wrong_subtype_are_safe",
+            "crates/processcraft-core/tests/commands.rs:activity_bindings_validate_new_local_refs_and_preserve_legacy",
+        ]
+        declaration["limitations"] = (
+            "Bounded QName binding profile; full task I/O, external resolution, GUI and normative semantics remain unverified. "
+            "No general equality between task messageRef and operation messages is inferred."
+        )
 result = {"profiles": profiles, "cmof_declarations": cmof, "version": "2.0.2", "coverage_policy": "unverified means no construct-level evidence recorded; raw retention is not modeling support", "sources": sources, "declarations": declarations,
           "conformance": {"status": "not_assessed", "note": "OMG PDF conformance classes and semantic constraints require separate clause-by-clause mapping; XSD declarations do not establish conformance."}}
 serialized = json.dumps(result, indent=2, ensure_ascii=False) + "\n"

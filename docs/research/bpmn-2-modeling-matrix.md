@@ -38,8 +38,8 @@ Columns are model, edit/create/delete, render/hit-test, import, export and valid
 | Activity base properties | §10.3, Table 10.3; `tActivity` | P | P | P | P; S | P; S | P | Compensation, quantity and default-flow subsets; `activity_attributes_and_plain_script_round_trip`. Arbitrary XML integer range, bindings and complete inheritance remain open. |
 | Resource roles, performers and assignments | §10.3.1–10.3.2, Tables 10.5–10.7, 10.17–10.18 | U | U | — | S | S | U | Resource-role identity, parameter bindings, potential/human owners and assignment expressions differ from analyst dictionary entries. |
 | Abstract/manual task | §10.3.3, Table 10.15 | P | P | P | P; S | P; S | P | Selected task kinds; all inherited activity fields and prescribed glyphs require complete qualification. |
-| Service task | §10.3.3, Tables 10.8, 10.46 | P | P | P | P; S | P; S | P | Subtype implementation profile only; interface/operation and I/O bindings are open. |
-| Send and receive tasks | §10.3.3, Tables 10.9–10.10, 10.42, 10.45 | P | P | P | P; S | P; S | P | Selected implementation/instantiate metadata; operation/message references and context rules remain open. |
+| Service task | §10.3.3, Tables 10.8, 10.46 | P | P | P | P; S | P; S | P | Selected operationRef QName retains local, external and empty namespaces; local wrong-kind references are rejected. Complete interface and I/O bindings remain open. |
+| Send and receive tasks | §10.3.3, Tables 10.9–10.10, 10.42, 10.45 | P | P | P | P; S | P; S | P | Selected messageRef/operationRef QNames retain local, external and empty namespaces; local wrong-kind references are rejected and unresolved legacy references have an advisory. Complete task I/O and context rules remain open. |
 | Business rule task | §10.3.3, Tables 10.11, 10.34 | P | P | P | P; S | P; S | P | Selected subtype metadata only; implementation bindings and inherited obligations remain open. |
 | Script task | §10.3.3, Tables 10.12, 10.44 | P | P | P | P; S | P; S | P | Plain script and script format subset; scripts are data and are never executed. |
 | User task and human interaction | §10.3.3–10.3.4, Tables 10.13, 10.16–10.18 | P | P | P | P; S | P; S | P | Selected implementation property; performer/resource assignment and rendering/interaction qualification remain open. |
@@ -79,3 +79,39 @@ Columns are model, edit/create/delete, render/hit-test, import, export and valid
 The crosswalk records requirements and current limits; it does not certify normative correctness or establish that all test pointers passed in the current environment. Continue with individual attributes, inheritance and positive/negative examples, and link actual native, XML schema and independent-consumer evidence before marking any required cell complete.
 
 The inline event profile is bounded by `inline_link_cancel_and_compensation_roundtrip`, `inline_events_preserve_unrepresented_or_invalid_content`, `compensation_wait_attribute_presence_roundtrips`, core `link_and_compensation_events_validate_atomically`, native `compensation_event_capability_covers_live_and_checkpoint_documents`, and renderer tests `link_markers_distinguish_catch_and_throw_in_shared_scene`, `cancel_boundary_and_end_use_hollow_and_filled_crosses`, and `compensation_boundary_and_throw_render_distinct_markers`. These are test pointers, not complete semantic, GUI or independent-consumer qualification.
+
+## Data inheritance and property continuation
+
+Each row inherits the six partial/unverified dimensions in the data family above; this table expands obligations, not capability claims. References to XSD are to pinned `Semantic.xsd` and its declared base types. PDF references are §10.4.1 and the specified tables.
+
+| Construct/property | Inheritance and requirement | Acceptance still needed |
+|---|---|---|
+| ItemAwareElement | Table 10.51; itemSubjectRef identifies ItemDefinition and dataState records state | Namespace-aware type references, optional state and inherited BaseElement identity/documentation for every applicable owner. |
+| DataObject | Table 10.52, `tDataObject` → `tFlowElement` → `tBaseElement`; dataState, itemSubjectRef QName, isCollection default false | Preserve explicit/omitted default, scope and state; no identity merge by name. |
+| DataObjectReference | Table 10.53, `tDataObjectReference` → `tFlowElement`; dataObjectRef plus item-aware context | Correct local target kind and scope, label/DI and referenced collection state; native and interchange negative cases. |
+| DataState | Table 10.54; `tDataState` → `tBaseElement` | Preserve state name and inherited metadata across every owner. |
+| DataStore | Tables 10.55–10.56, `tDataStore` → `tRootElement`; capacity is `xsd:integer`, isUnlimited defaults true, itemSubjectRef QName, optional state | Preserve arbitrary integer lexical range and explicit default presence; do not narrow to unsigned machine integers. |
+| Property | Table 10.57, `tProperty` → `tBaseElement` | Complete item-aware metadata, owner scope and identity. |
+| InputOutputSpecification | Table 10.58, `tInputOutputSpecification` → `tBaseElement` | All owner scopes, input/output ports and set membership; consistent deletion and references. |
+| DataInput and DataOutput | Tables 10.59–10.60; each extends `tBaseElement`, includes optional state/name, itemSubjectRef QName and isCollection default false | Preserve QName context and omission, identity, owner, state and port relationships. |
+| InputSet and OutputSet | Tables 10.61–10.62; each extends `tBaseElement`; lists of port IDs, optional/while-executing subsets and opposite-set IDs | Validate correct scope, target kind and membership, including empty/optional combinations; distinguish IDREF from QName on export. |
+| DataAssociation | Table 10.63, `tDataAssociation` → `tBaseElement`; zero or more sourceRef IDREFs, exactly one targetRef, optional transformation and repeated assignment | Preserve source ordering and all endpoints, transforms/assignments and scoped references; geometry must follow each qualified endpoint move. |
+| Assignment | Table 10.64, `tAssignment` → `tBaseElement`; required from/to expressions | Preserve complete expression context and identity; no evaluation during editing/import/export. |
+
+The current bounded basic I/O tests are `data_io_sets_ports_and_associations_round_trip` and `invalid_data_ports_and_unmodeled_assignments_cannot_become_editable`; they do not establish completion of these individual properties.
+
+## Shared flow and callable inheritance continuation
+
+These shared obligations apply in addition to each concrete activity, gateway, event or flow row above. Their presence in the schema does not establish full support; all six dimensions remain partial or unverified as recorded for each descendant.
+
+| Base construct | Pinned schema and PDF | Audit obligations |
+|---|---|---|
+| FlowElement | `tFlowElement` → `tBaseElement`; §8.4.7, Table 8.44 | Preserve optional name, auditing and monitoring, categoryValueRef QNames and inherited identity/documentation/extensions. Table 8.44 confines audit/monitoring definitions to a Process; check owner context rather than accepting arbitrary placement. |
+| FlowNode | `tFlowNode` → `tFlowElement`; §8.4.14, Tables 8.52, 8.57 | Reconcile incoming/outgoing QName declarations with actual sequence-flow endpoints and scope; preserve source namespace identity or safely refuse unsupported declarations. |
+| CallableElement | `tCallableElement` → `tRootElement`; §10.3.6, Tables 10.24–10.25, 10.35 | Preserve name, supportedInterfaceRef QNames, optional I/O specification and repeated I/O bindings; validate references and scope without loading external services. |
+| CallActivity | `tCallActivity` → `tActivity`; §10.3.6, Tables 10.23, 10.36 | Preserve calledElement QName and inherited activity metadata; local and external callable targets require distinct resolution and safe handling. |
+| SequenceFlow | `tSequenceFlow` → `tFlowElement`; §8.4.13, Tables 8.51, 8.64 | sourceRef/targetRef are IDREFs (unqualified IDs), unlike QName references elsewhere. Preserve optional isImmediate and condition expression presence; validate endpoint/scope and context-specific rules. |
+
+Send and Receive task message references denote a sent and received message respectively (Tables 10.9–10.10). Those tables do not state a general equality rule between `messageRef` and an operation's input or output message. The specific item-definition and input/output-set constraints on p. 158–160 require separate checks; do not manufacture an operation-direction constraint.
+
+Task-binding evidence: `activity_message_and_operation_qnames_roundtrip_with_loop_context`, `activity_unqualified_qname_and_wrong_subtype_are_safe`, and `activity_unqualified_operation_with_loop_and_documentation_roundtrips` in interchange tests; `activity_bindings_validate_new_local_refs_and_preserve_legacy` in core commands. These cover bounded reference behavior, not all task subtype metadata or semantics.

@@ -2,6 +2,32 @@
 
 M3 work resumed on 2026-11-11 at the user's explicit request. The earlier Windows partial-close evidence below remains historical; it is not a Cloud result. M3 and full BPMN 2.0.2 modeling/interchange remain unfinished.
 
+## Supporting-catalog and activity-binding Cloud checkpoint
+
+Source commit `013f382` adds typed item definitions, interfaces and operations, resources and resource parameters; a shared atomic `setSupportingCatalog` command; native catalog and binding editors; and paginated catalog query parity. Optional IDs and explicit/omitted default values survive native and XML roundtrips. Interface operation cardinality, global IDs and known local message/error/item references are validated; external type/service targets remain inert QName data. Catalog edits that create dangling activity operation references roll back. Inherited documentation, extensions and foreign metadata still cause source preservation and are not completed by accepting the root element names.
+
+Service tasks now expose operation bindings; Send/Receive expose message and operation bindings. The codec preserves local, external and empty-namespace QNames, including owner scopes with loops, documentation, I/O and associations. Namespace changes do not silently retarget references. New local wrong-kind or missing references are refused; historical unresolved or non-exportable reference metadata remains readable, with diagnostics and unchanged identity. Editing unrelated fields does not erase or newly reject that historical data. No unsupported equality between task messageRef and operation in/out messages was inferred from the specification; complete I/O compatibility remains unverified.
+
+The native schema stays 3. Nonempty supporting catalogs in live documents or checkpoints require `bpmn-supporting-catalog`. Activity-binding fields already existed in the legacy format, so nonempty historical QName values do not gain a new capability. The newly accepted empty-namespace activity references require `bpmn-empty-namespace-activity-bindings`, including nested/frozen content; missing declarations are rejected. Tests cover both compatibility paths.
+
+`processcraft-cli query <input> catalog <document-id> --offset 0 --limit 50` and MCP `query` kind `catalog` expose the shared core projection. Each item contains a JSON Pointer `path` and one scalar or empty-container `value`; large nested operation lists are not truncated into oversized individual response items. Pages carry content identity, plus generation in session-based MCP responses. The real stdio MCP test applies the catalog command and verifies multiple pages, exact values, advancing offsets and stable identity. Attached Windows dispatch uses the same core projection, but its native runtime remains unqualified here.
+
+Final integrated results for this checkpoint:
+
+| Gate | Actual result |
+|---|---|
+| Formatting and workspace all-target/all-feature Clippy with `-D warnings`, locked/offline | Passed; `target/m3-catalog-clippy.log`. |
+| Workspace all-target/all-feature tests, locked/offline, `--no-fail-fast` | **319 passed, 15 failed, 0 ignored across 37 targets**; exit 101, `target/m3-catalog-workspace-tests.log`. The same 15 existing CLI filesystem/grant-dependent failures listed below remain. This is not a passing full workspace suite. |
+| Normal release desktop and CLI | Passed; `target/m3-catalog-release.log`. |
+| `catalog_qualify` | Passed native in-memory identity/reopen and complete typed catalog BPMN roundtrip; both actual source and output XSD-valid. `target/m3-catalog-qualification.log`. |
+| `activity_bindings_qualify` | Passed native identity/reopen and typed process/catalog BPMN roundtrip; both actual source and output XSD-valid. `target/m3-activity-bindings-qualification.log`. |
+| Synthetic fixtures | CC0 provenance/version/hash manifests beside `supporting-catalog.bpmn` and `activity-bindings.bpmn`; both hashes independently verified. No type/schema/service location was fetched or executed. |
+| Inventory and preservation | Generator `--check` passed; pinned normative sources, Cargo.lock, dependency revisions and toolchain unchanged. |
+
+The new catalog/binding GUI controls have automated guarded-draft/history tests. The earlier Xvfb pointer smoke below covered expression metadata, not every later catalog/binding workflow. Windows NTFS safety, named-pipe dispatch, full native accessibility/DPI coverage, independent tool reopen, complete BaseElement inheritance, data assignments/resource roles, root/referenced/multiple events, global/callable catalogs, collaboration/choreography and full DI remain open. M3 is still unfinished; the scoped matrices and original work packages remain the continuation record.
+
+Reproduce the new codec evidence with `cargo run -p processcraft-io --example catalog_qualify --locked --offline` and `cargo run -p processcraft-io --example activity_bindings_qualify --locked --offline`, then validate their generated input/output files under `target/m3-qualification/` with `scripts/check_bpmn20_xsd.py`. As with earlier examples, these are synthetic codec artifacts, not qualified file-session saves.
+
 ## Expanded Cloud modeling checkpoint
 
 Source commit `962ea6e` extends the preceding definitions/import work. It does not complete M3. The product-quality objective now explicitly calls for reproducible, named-version comparisons with tools such as Signavio and Camunda across the agreed native/offline modeling workflows; no superiority claim has been established by these tests.

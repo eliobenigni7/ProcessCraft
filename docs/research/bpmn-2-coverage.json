@@ -22965,13 +22965,20 @@
       "abstract": null,
       "substitution_group": "rootElement",
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:supporting_catalog_qnames_and_presence_roundtrip",
+        "crates/processcraft-io/tests/interchange.rs:supporting_catalog_unrepresented_metadata_is_preserved",
+        "crates/processcraft-core/tests/commands.rs:supporting_catalog_validates_references_and_undoes_atomically",
+        "crates/processcraft-io/tests/native.rs:supporting_catalog_capability_covers_live_and_checkpoint_documents"
+      ],
+      "limitations": "Bounded typed catalog profile only; inherited documentation/extensions, all user paths, external resolution and full normative semantics remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -22987,13 +22994,20 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:supporting_catalog_qnames_and_presence_roundtrip",
+        "crates/processcraft-io/tests/interchange.rs:supporting_catalog_unrepresented_metadata_is_preserved",
+        "crates/processcraft-core/tests/commands.rs:supporting_catalog_validates_references_and_undoes_atomically",
+        "crates/processcraft-io/tests/native.rs:supporting_catalog_capability_covers_live_and_checkpoint_documents"
+      ],
+      "limitations": "Bounded typed catalog profile only; inherited documentation/extensions, all user paths, external resolution and full normative semantics remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -23009,13 +23023,20 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:supporting_catalog_qnames_and_presence_roundtrip",
+        "crates/processcraft-io/tests/interchange.rs:supporting_catalog_unrepresented_metadata_is_preserved",
+        "crates/processcraft-core/tests/commands.rs:supporting_catalog_validates_references_and_undoes_atomically",
+        "crates/processcraft-io/tests/native.rs:supporting_catalog_capability_covers_live_and_checkpoint_documents"
+      ],
+      "limitations": "Bounded typed catalog profile only; inherited documentation/extensions, all user paths, external resolution and full normative semantics remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -23031,13 +23052,20 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:supporting_catalog_qnames_and_presence_roundtrip",
+        "crates/processcraft-io/tests/interchange.rs:supporting_catalog_unrepresented_metadata_is_preserved",
+        "crates/processcraft-core/tests/commands.rs:supporting_catalog_validates_references_and_undoes_atomically",
+        "crates/processcraft-io/tests/native.rs:supporting_catalog_capability_covers_live_and_checkpoint_documents"
+      ],
+      "limitations": "Bounded typed catalog profile only; inherited documentation/extensions, all user paths, external resolution and full normative semantics remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -23303,13 +23331,20 @@
       "abstract": null,
       "substitution_group": "rootElement",
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:supporting_catalog_qnames_and_presence_roundtrip",
+        "crates/processcraft-io/tests/interchange.rs:supporting_catalog_unrepresented_metadata_is_preserved",
+        "crates/processcraft-core/tests/commands.rs:supporting_catalog_validates_references_and_undoes_atomically",
+        "crates/processcraft-io/tests/native.rs:supporting_catalog_capability_covers_live_and_checkpoint_documents"
+      ],
+      "limitations": "Bounded typed catalog profile only; inherited documentation/extensions, all user paths, external resolution and full normative semantics remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -23325,13 +23360,20 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:supporting_catalog_qnames_and_presence_roundtrip",
+        "crates/processcraft-io/tests/interchange.rs:supporting_catalog_unrepresented_metadata_is_preserved",
+        "crates/processcraft-core/tests/commands.rs:supporting_catalog_validates_references_and_undoes_atomically",
+        "crates/processcraft-io/tests/native.rs:supporting_catalog_capability_covers_live_and_checkpoint_documents"
+      ],
+      "limitations": "Bounded typed catalog profile only; inherited documentation/extensions, all user paths, external resolution and full normative semantics remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -23347,13 +23389,20 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:supporting_catalog_qnames_and_presence_roundtrip",
+        "crates/processcraft-io/tests/interchange.rs:supporting_catalog_unrepresented_metadata_is_preserved",
+        "crates/processcraft-core/tests/commands.rs:supporting_catalog_validates_references_and_undoes_atomically",
+        "crates/processcraft-io/tests/native.rs:supporting_catalog_capability_covers_live_and_checkpoint_documents"
+      ],
+      "limitations": "Bounded typed catalog profile only; inherited documentation/extensions, all user paths, external resolution and full normative semantics remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -23369,13 +23418,20 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:supporting_catalog_qnames_and_presence_roundtrip",
+        "crates/processcraft-io/tests/interchange.rs:supporting_catalog_unrepresented_metadata_is_preserved",
+        "crates/processcraft-core/tests/commands.rs:supporting_catalog_validates_references_and_undoes_atomically",
+        "crates/processcraft-io/tests/native.rs:supporting_catalog_capability_covers_live_and_checkpoint_documents"
+      ],
+      "limitations": "Bounded typed catalog profile only; inherited documentation/extensions, all user paths, external resolution and full normative semantics remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -23391,13 +23447,20 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:supporting_catalog_qnames_and_presence_roundtrip",
+        "crates/processcraft-io/tests/interchange.rs:supporting_catalog_unrepresented_metadata_is_preserved",
+        "crates/processcraft-core/tests/commands.rs:supporting_catalog_validates_references_and_undoes_atomically",
+        "crates/processcraft-io/tests/native.rs:supporting_catalog_capability_covers_live_and_checkpoint_documents"
+      ],
+      "limitations": "Bounded typed catalog profile only; inherited documentation/extensions, all user paths, external resolution and full normative semantics remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -24626,13 +24689,20 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:supporting_catalog_qnames_and_presence_roundtrip",
+        "crates/processcraft-io/tests/interchange.rs:supporting_catalog_unrepresented_metadata_is_preserved",
+        "crates/processcraft-core/tests/commands.rs:supporting_catalog_validates_references_and_undoes_atomically",
+        "crates/processcraft-io/tests/native.rs:supporting_catalog_capability_covers_live_and_checkpoint_documents"
+      ],
+      "limitations": "Bounded typed catalog profile only; inherited documentation/extensions, all user paths, external resolution and full normative semantics remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -24648,13 +24718,20 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:supporting_catalog_qnames_and_presence_roundtrip",
+        "crates/processcraft-io/tests/interchange.rs:supporting_catalog_unrepresented_metadata_is_preserved",
+        "crates/processcraft-core/tests/commands.rs:supporting_catalog_validates_references_and_undoes_atomically",
+        "crates/processcraft-io/tests/native.rs:supporting_catalog_capability_covers_live_and_checkpoint_documents"
+      ],
+      "limitations": "Bounded typed catalog profile only; inherited documentation/extensions, all user paths, external resolution and full normative semantics remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -24736,13 +24813,20 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:supporting_catalog_qnames_and_presence_roundtrip",
+        "crates/processcraft-io/tests/interchange.rs:supporting_catalog_unrepresented_metadata_is_preserved",
+        "crates/processcraft-core/tests/commands.rs:supporting_catalog_validates_references_and_undoes_atomically",
+        "crates/processcraft-io/tests/native.rs:supporting_catalog_capability_covers_live_and_checkpoint_documents"
+      ],
+      "limitations": "Bounded typed catalog profile only; inherited documentation/extensions, all user paths, external resolution and full normative semantics remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -24758,13 +24842,20 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:supporting_catalog_qnames_and_presence_roundtrip",
+        "crates/processcraft-io/tests/interchange.rs:supporting_catalog_unrepresented_metadata_is_preserved",
+        "crates/processcraft-core/tests/commands.rs:supporting_catalog_validates_references_and_undoes_atomically",
+        "crates/processcraft-io/tests/native.rs:supporting_catalog_capability_covers_live_and_checkpoint_documents"
+      ],
+      "limitations": "Bounded typed catalog profile only; inherited documentation/extensions, all user paths, external resolution and full normative semantics remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -25928,13 +26019,19 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:activity_message_and_operation_qnames_roundtrip_with_loop_context",
+        "crates/processcraft-io/tests/interchange.rs:activity_unqualified_qname_and_wrong_subtype_are_safe",
+        "crates/processcraft-core/tests/commands.rs:activity_bindings_validate_new_local_refs_and_preserve_legacy"
+      ],
+      "limitations": "Bounded QName binding profile; full task I/O, external resolution, GUI and normative semantics remain unverified. No general equality between task messageRef and operation messages is inferred."
     },
     {
       "schema": "Semantic.xsd",
@@ -25950,13 +26047,19 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:activity_message_and_operation_qnames_roundtrip_with_loop_context",
+        "crates/processcraft-io/tests/interchange.rs:activity_unqualified_qname_and_wrong_subtype_are_safe",
+        "crates/processcraft-core/tests/commands.rs:activity_bindings_validate_new_local_refs_and_preserve_legacy"
+      ],
+      "limitations": "Bounded QName binding profile; full task I/O, external resolution, GUI and normative semantics remain unverified. No general equality between task messageRef and operation messages is inferred."
     },
     {
       "schema": "Semantic.xsd",
@@ -26170,13 +26273,20 @@
       "abstract": null,
       "substitution_group": "rootElement",
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:supporting_catalog_qnames_and_presence_roundtrip",
+        "crates/processcraft-io/tests/interchange.rs:supporting_catalog_unrepresented_metadata_is_preserved",
+        "crates/processcraft-core/tests/commands.rs:supporting_catalog_validates_references_and_undoes_atomically",
+        "crates/processcraft-io/tests/native.rs:supporting_catalog_capability_covers_live_and_checkpoint_documents"
+      ],
+      "limitations": "Bounded typed catalog profile only; inherited documentation/extensions, all user paths, external resolution and full normative semantics remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -26192,13 +26302,20 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:supporting_catalog_qnames_and_presence_roundtrip",
+        "crates/processcraft-io/tests/interchange.rs:supporting_catalog_unrepresented_metadata_is_preserved",
+        "crates/processcraft-core/tests/commands.rs:supporting_catalog_validates_references_and_undoes_atomically",
+        "crates/processcraft-io/tests/native.rs:supporting_catalog_capability_covers_live_and_checkpoint_documents"
+      ],
+      "limitations": "Bounded typed catalog profile only; inherited documentation/extensions, all user paths, external resolution and full normative semantics remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -26214,13 +26331,20 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:supporting_catalog_qnames_and_presence_roundtrip",
+        "crates/processcraft-io/tests/interchange.rs:supporting_catalog_unrepresented_metadata_is_preserved",
+        "crates/processcraft-core/tests/commands.rs:supporting_catalog_validates_references_and_undoes_atomically",
+        "crates/processcraft-io/tests/native.rs:supporting_catalog_capability_covers_live_and_checkpoint_documents"
+      ],
+      "limitations": "Bounded typed catalog profile only; inherited documentation/extensions, all user paths, external resolution and full normative semantics remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -26280,13 +26404,20 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:supporting_catalog_qnames_and_presence_roundtrip",
+        "crates/processcraft-io/tests/interchange.rs:supporting_catalog_unrepresented_metadata_is_preserved",
+        "crates/processcraft-core/tests/commands.rs:supporting_catalog_validates_references_and_undoes_atomically",
+        "crates/processcraft-io/tests/native.rs:supporting_catalog_capability_covers_live_and_checkpoint_documents"
+      ],
+      "limitations": "Bounded typed catalog profile only; inherited documentation/extensions, all user paths, external resolution and full normative semantics remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -26302,13 +26433,20 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:supporting_catalog_qnames_and_presence_roundtrip",
+        "crates/processcraft-io/tests/interchange.rs:supporting_catalog_unrepresented_metadata_is_preserved",
+        "crates/processcraft-core/tests/commands.rs:supporting_catalog_validates_references_and_undoes_atomically",
+        "crates/processcraft-io/tests/native.rs:supporting_catalog_capability_covers_live_and_checkpoint_documents"
+      ],
+      "limitations": "Bounded typed catalog profile only; inherited documentation/extensions, all user paths, external resolution and full normative semantics remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -26324,13 +26462,20 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:supporting_catalog_qnames_and_presence_roundtrip",
+        "crates/processcraft-io/tests/interchange.rs:supporting_catalog_unrepresented_metadata_is_preserved",
+        "crates/processcraft-core/tests/commands.rs:supporting_catalog_validates_references_and_undoes_atomically",
+        "crates/processcraft-io/tests/native.rs:supporting_catalog_capability_covers_live_and_checkpoint_documents"
+      ],
+      "limitations": "Bounded typed catalog profile only; inherited documentation/extensions, all user paths, external resolution and full normative semantics remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -26346,13 +26491,20 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:supporting_catalog_qnames_and_presence_roundtrip",
+        "crates/processcraft-io/tests/interchange.rs:supporting_catalog_unrepresented_metadata_is_preserved",
+        "crates/processcraft-core/tests/commands.rs:supporting_catalog_validates_references_and_undoes_atomically",
+        "crates/processcraft-io/tests/native.rs:supporting_catalog_capability_covers_live_and_checkpoint_documents"
+      ],
+      "limitations": "Bounded typed catalog profile only; inherited documentation/extensions, all user paths, external resolution and full normative semantics remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -26368,13 +26520,20 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:supporting_catalog_qnames_and_presence_roundtrip",
+        "crates/processcraft-io/tests/interchange.rs:supporting_catalog_unrepresented_metadata_is_preserved",
+        "crates/processcraft-core/tests/commands.rs:supporting_catalog_validates_references_and_undoes_atomically",
+        "crates/processcraft-io/tests/native.rs:supporting_catalog_capability_covers_live_and_checkpoint_documents"
+      ],
+      "limitations": "Bounded typed catalog profile only; inherited documentation/extensions, all user paths, external resolution and full normative semantics remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -26776,13 +26935,19 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:activity_message_and_operation_qnames_roundtrip_with_loop_context",
+        "crates/processcraft-io/tests/interchange.rs:activity_unqualified_qname_and_wrong_subtype_are_safe",
+        "crates/processcraft-core/tests/commands.rs:activity_bindings_validate_new_local_refs_and_preserve_legacy"
+      ],
+      "limitations": "Bounded QName binding profile; full task I/O, external resolution, GUI and normative semantics remain unverified. No general equality between task messageRef and operation messages is inferred."
     },
     {
       "schema": "Semantic.xsd",
@@ -26798,13 +26963,19 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:activity_message_and_operation_qnames_roundtrip_with_loop_context",
+        "crates/processcraft-io/tests/interchange.rs:activity_unqualified_qname_and_wrong_subtype_are_safe",
+        "crates/processcraft-core/tests/commands.rs:activity_bindings_validate_new_local_refs_and_preserve_legacy"
+      ],
+      "limitations": "Bounded QName binding profile; full task I/O, external resolution, GUI and normative semantics remain unverified. No general equality between task messageRef and operation messages is inferred."
     },
     {
       "schema": "Semantic.xsd",
@@ -27024,13 +27195,19 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:activity_message_and_operation_qnames_roundtrip_with_loop_context",
+        "crates/processcraft-io/tests/interchange.rs:activity_unqualified_qname_and_wrong_subtype_are_safe",
+        "crates/processcraft-core/tests/commands.rs:activity_bindings_validate_new_local_refs_and_preserve_legacy"
+      ],
+      "limitations": "Bounded QName binding profile; full task I/O, external resolution, GUI and normative semantics remain unverified. No general equality between task messageRef and operation messages is inferred."
     },
     {
       "schema": "Semantic.xsd",
