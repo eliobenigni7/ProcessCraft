@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:tns="urn:event-ownership" xmlns:ext="urn:external" xmlns:b="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" id="defs" targetNamespace="urn:event-ownership">
+  <itemDefinition id="item"/>
+  <message id="message" itemRef="tns:item"/>
+  <signal id="signal" structureRef="ext:Type"/>
+  <interface id="interface" name="Service"><operation id="operation" name="Notify"><inMessageRef>tns:message</inMessageRef></operation></interface>
+  <signalEventDefinition id="sharedSignal" signalRef="tns:signal"/>
+  <timerEventDefinition id="sharedTimer"><timeDuration>PT1M</timeDuration></timerEventDefinition>
+  <process id="process" isExecutable="false">
+    <dataObject id="object"/><dataObjectReference id="objectRef" name="Object" dataObjectRef="object"/>
+    <startEvent id="start" isInterrupting="false"/>
+    <intermediateCatchEvent id="catch" parallelMultiple="true"><property id="property" name="Event property" itemSubjectRef="tns:item"/><dataOutput id="output" itemSubjectRef="tns:item"><dataState name="available"/></dataOutput><dataOutputAssociation id="outputAssociation"><sourceRef>output</sourceRef><targetRef>objectRef</targetRef></dataOutputAssociation><outputSet><dataOutputRefs>output</dataOutputRefs></outputSet><timerEventDefinition id="inlineTimer"><timeCycle>R3/PT1M</timeCycle></timerEventDefinition><eventDefinitionRef>tns:sharedSignal</eventDefinitionRef><eventDefinitionRef>ext:ExternalDefinition</eventDefinitionRef></intermediateCatchEvent>
+    <intermediateThrowEvent id="throw"><dataInput id="input"/><dataInputAssociation id="inputAssociation"><sourceRef>objectRef</sourceRef><targetRef>input</targetRef></dataInputAssociation><inputSet><dataInputRefs>input</dataInputRefs></inputSet><messageEventDefinition id="inlineMessage" messageRef="tns:message"><operationRef>tns:operation</operationRef></messageEventDefinition></intermediateThrowEvent>
+    <endEvent id="end"><eventDefinitionRef>tns:sharedSignal</eventDefinitionRef></endEvent>
+  </process>
+</definitions>

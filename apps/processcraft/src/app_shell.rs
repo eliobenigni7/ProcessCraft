@@ -972,9 +972,7 @@ impl ProcessCraft {
                     }
                 }
             });
-            if self.draft_dirty
-                || self.dictionary_draft_changed(&self.ctl.session.snapshot().project)
-            {
+            if self.has_drafts() {
                 ui.label("Attachment requests wait until the current draft is applied.");
             }
         }

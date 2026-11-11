@@ -306,6 +306,8 @@ fn splice_is_one_undo_and_rejects_branches() {
         plane: id("process"),
         shapes: vec![],
         edges: vec![Edge {
+            source_element: None,
+            target_element: None,
             id: id("oldedge"),
             element: id("old"),
             waypoints: vec![pt(0.), pt(10.)],
@@ -321,6 +323,8 @@ fn splice_is_one_undo_and_rejects_branches() {
         new_flow: flow("newflow", "inserted", "target"),
         diagram_id: id("diagram"),
         shape: Shape {
+            is_horizontal: None,
+            is_marker_visible: None,
             is_expanded: None,
             id: id("shape"),
             element: id("inserted"),
@@ -335,6 +339,8 @@ fn splice_is_one_undo_and_rejects_branches() {
         },
         old_waypoints: vec![pt(0.), pt(2.)],
         new_edge: Edge {
+            source_element: None,
+            target_element: None,
             id: id("newedge"),
             element: id("newflow"),
             waypoints: vec![pt(4.), pt(10.)],
@@ -612,10 +618,15 @@ fn details_mutation_is_validated_atomically_and_undoable() {
     let (mut session, key) = fixture();
     let before = session.snapshot();
     let details = Some(NodeDetails::Event {
+        definition_refs: vec![],
+        parallel_multiple: None,
+        is_interrupting: None,
+        properties: vec![],
+        io: None,
         definitions: vec![EventDefinition::Timer {
             id: None,
-            kind: TimerKind::Duration,
-            expression: "PT5M".into(),
+            kind: Some(TimerKind::Duration),
+            expression: Some("PT5M".into()),
         }],
         attached_to: None,
         cancel_activity: None,
@@ -1179,6 +1190,8 @@ fn nested_data_associations_resolve_ancestor_and_global_endpoints() {
         plane_id: id("plane"),
         plane: id("process"),
         shapes: vec![Shape {
+            is_horizontal: None,
+            is_marker_visible: None,
             id: id("store_shape"),
             element: id("store"),
             is_expanded: None,
@@ -1427,6 +1440,8 @@ fn conversation_delete_removes_di_and_undo_restores_it() {
         plane_id: id("plane"),
         plane: id("collaboration"),
         shapes: vec![Shape {
+            is_horizontal: None,
+            is_marker_visible: None,
             id: id("shape"),
             element: id("conversation"),
             is_expanded: None,
@@ -1440,6 +1455,8 @@ fn conversation_delete_removes_di_and_undo_restores_it() {
             style: None,
         }],
         edges: vec![Edge {
+            source_element: None,
+            target_element: None,
             id: id("edge"),
             element: id("link"),
             waypoints: vec![Point { x: 0.0, y: 0.0 }, Point { x: 50.0, y: 50.0 }],
@@ -1517,6 +1534,8 @@ fn label_bounds_update_preserves_style_and_undo() {
         plane_id: id("plane_label"),
         plane: id("process"),
         shapes: vec![Shape {
+            is_horizontal: None,
+            is_marker_visible: None,
             id: id("shape_label"),
             element: key.xml_id.clone(),
             is_expanded: None,
@@ -1730,6 +1749,8 @@ fn deleting_group_removes_di_and_undo_restores_both() {
                     plane_id: id("group_plane"),
                     plane: id("process"),
                     shapes: vec![Shape {
+                        is_horizontal: None,
+                        is_marker_visible: None,
                         id: id("group_shape"),
                         element: id("group_di"),
                         is_expanded: None,

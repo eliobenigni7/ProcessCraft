@@ -21,6 +21,28 @@ pub struct Envelope {
 #[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
 #[allow(clippy::large_enum_variant)]
 pub enum Mutation {
+    SetEventResources {
+        document_id: DocumentId,
+        resources: Vec<crate::bpmn_model::EventResource>,
+    },
+    SetRootEventDefinitions {
+        document_id: DocumentId,
+        definitions: Vec<crate::bpmn_model::EventDefinition>,
+    },
+    SetShapeDiAttributes {
+        document_id: DocumentId,
+        diagram_id: ElementSelector,
+        shape_id: ElementSelector,
+        is_horizontal: Option<bool>,
+        is_marker_visible: Option<bool>,
+    },
+    SetEdgeDiEndpoints {
+        document_id: DocumentId,
+        diagram_id: ElementSelector,
+        edge_id: ElementSelector,
+        source_element: Option<ElementSelector>,
+        target_element: Option<ElementSelector>,
+    },
     SetElementXmlId {
         document_id: DocumentId,
         element_id: ElementSelector,
@@ -973,19 +995,140 @@ fn nested_flow_mut<'a>(
     }
     None
 }
+fn collect_association_ids(
+    association: &crate::bpmn_data::DataAssociation,
+    ids: &mut std::collections::HashSet<ElementSelector>,
+) {
+    if let Some(id) = &association.id {
+        ids.insert(id.selector());
+    }
+    let mut expression = |expression: &crate::bpmn_model::Expression| {
+        if let crate::bpmn_model::Expression::Structured(data) = expression
+            && let Some(id) = &data.id
+        {
+            ids.insert(id.selector());
+        }
+    };
+    if let Some(value) = &association.transformation {
+        expression(value);
+    }
+    for assignment in &association.assignments {
+        if let Some(id) = &assignment.id {
+            ids.insert(id.selector());
+        }
+        if let crate::bpmn_model::Expression::Structured(data) = &assignment.from
+            && let Some(id) = &data.id
+        {
+            ids.insert(id.selector());
+        }
+        if let crate::bpmn_model::Expression::Structured(data) = &assignment.to
+            && let Some(id) = &data.id
+        {
+            ids.insert(id.selector());
+        }
+    }
+}
 fn collect_node_ids(
     node: &Node,
     ids: &mut std::collections::HashSet<ElementSelector>,
     depth: usize,
 ) {
     ids.insert(node.id.selector());
+    let mut collect_meta = |metadata: &Option<crate::bpmn_data::ItemAwareMetadata>| {
+        if let Some(id) = metadata
+            .as_ref()
+            .and_then(|m| m.data_state.as_ref())
+            .and_then(|s| s.id.as_ref())
+        {
+            ids.insert(id.selector());
+        }
+    };
+    collect_meta(&node.item_aware);
+    if let Some(crate::bpmn_model::NodeDetails::Event { properties, .. }) = &node.details {
+        for property in properties {
+            if let Some(id) = &property.id {
+                ids.insert(id.selector());
+            }
+            if let Some(id) = property
+                .item_aware
+                .as_ref()
+                .and_then(|m| m.data_state.as_ref())
+                .and_then(|s| s.id.as_ref())
+            {
+                ids.insert(id.selector());
+            }
+        }
+    }
     if let Some(io) = &node.io_specification {
+        if let Some(id) = &io.id {
+            ids.insert(id.selector());
+        }
         ids.extend(
             io.inputs
                 .iter()
                 .chain(&io.outputs)
                 .filter_map(|p| p.id.as_ref().map(|id| id.selector())),
         );
+        ids.extend(
+            io.input_sets
+                .iter()
+                .chain(&io.output_sets)
+                .filter_map(|set| set.id.as_ref().map(|id| id.selector())),
+        );
+        ids.extend(io.inputs.iter().chain(&io.outputs).filter_map(|port| {
+            port.item_aware
+                .as_ref()
+                .and_then(|m| m.data_state.as_ref())
+                .and_then(|s| s.id.as_ref())
+                .map(|id| id.selector())
+        }));
+    }
+    if let Some(crate::bpmn_model::NodeDetails::Event {
+        definitions, io, ..
+    }) = &node.details
+    {
+        for definition in definitions {
+            if let Some(id) = definition.id() {
+                ids.insert(id.selector());
+            }
+            let expression = match definition {
+                crate::bpmn_model::EventDefinition::Conditional { expression, .. } => {
+                    Some(expression)
+                }
+                crate::bpmn_model::EventDefinition::Timer { expression, .. } => expression.as_ref(),
+                _ => None,
+            };
+            if let Some(crate::bpmn_model::Expression::Structured(data)) = expression
+                && let Some(id) = &data.id
+            {
+                ids.insert(id.selector());
+            }
+        }
+        if let Some(io) = io {
+            let (ports, set) = match io {
+                crate::bpmn_model::EventIo::Catch {
+                    outputs,
+                    output_set,
+                } => (outputs, output_set),
+                crate::bpmn_model::EventIo::Throw { inputs, input_set } => (inputs, input_set),
+            };
+            for port in ports {
+                if let Some(id) = &port.id {
+                    ids.insert(id.selector());
+                }
+                if let Some(id) = port
+                    .item_aware
+                    .as_ref()
+                    .and_then(|m| m.data_state.as_ref())
+                    .and_then(|s| s.id.as_ref())
+                {
+                    ids.insert(id.selector());
+                }
+            }
+            if let Some(id) = set.as_ref().and_then(|s| s.id.as_ref()) {
+                ids.insert(id.selector());
+            }
+        }
     }
     if depth >= 32 {
         return;
@@ -1012,18 +1155,16 @@ fn collect_node_ids(
                 .iter()
                 .filter_map(|o| o.id.as_ref().map(|id| id.selector())),
         );
-        ids.extend(
-            content
-                .data_associations
-                .iter()
-                .filter_map(|a| a.id.as_ref().map(|id| id.selector())),
-        );
+        for association in &content.data_associations {
+            collect_association_ids(association, ids);
+        }
     }
 }
 fn delete_nested(
     nodes: &mut Vec<Node>,
     lanes: &mut Vec<Lane>,
     flows: &mut Vec<Flow>,
+    associations: &mut Vec<crate::bpmn_data::DataAssociation>,
     id: &ElementSelector,
     removed: &mut std::collections::HashSet<ElementSelector>,
     depth: usize,
@@ -1034,6 +1175,14 @@ fn delete_nested(
     if let Some(index) = nodes.iter().position(|n| &n.id == id) {
         collect_node_ids(&nodes[index], removed, depth);
         nodes.remove(index);
+        associations.retain(|association| {
+            if association.owner == *id {
+                collect_association_ids(association, removed);
+                false
+            } else {
+                true
+            }
+        });
         for lane in lanes {
             lane.members.retain(|member| member != id);
         }
@@ -1055,6 +1204,7 @@ fn delete_nested(
                 &mut content.nodes,
                 &mut content.lanes,
                 &mut content.flows,
+                &mut content.data_associations,
                 id,
                 removed,
                 depth + 1,
@@ -1156,6 +1306,48 @@ fn diagram<'a>(
 }
 fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
     match m {
+        Mutation::SetEventResources {
+            document_id,
+            resources,
+        } => {
+            doc(p, document_id, true)?.event_resources = resources;
+        }
+        Mutation::SetRootEventDefinitions {
+            document_id,
+            definitions,
+        } => {
+            doc(p, document_id, true)?.root_event_definitions = definitions;
+        }
+        Mutation::SetShapeDiAttributes {
+            document_id,
+            diagram_id,
+            shape_id,
+            is_horizontal,
+            is_marker_visible,
+        } => {
+            let shape = diagram(doc(p, document_id, true)?, &diagram_id)?
+                .shapes
+                .iter_mut()
+                .find(|shape| shape.id == shape_id)
+                .ok_or_else(|| invalid("shape not found"))?;
+            shape.is_horizontal = is_horizontal;
+            shape.is_marker_visible = is_marker_visible;
+        }
+        Mutation::SetEdgeDiEndpoints {
+            document_id,
+            diagram_id,
+            edge_id,
+            source_element,
+            target_element,
+        } => {
+            let edge = diagram(doc(p, document_id, true)?, &diagram_id)?
+                .edges
+                .iter_mut()
+                .find(|edge| edge.id == edge_id)
+                .ok_or_else(|| invalid("edge not found"))?;
+            edge.source_element = source_element;
+            edge.target_element = target_element;
+        }
         Mutation::SetElementXmlId { .. } => {
             return Err(invalid(
                 "XML ID changes are unavailable until reference rewriting is supported",
@@ -2118,6 +2310,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             if namespace_changed
                 && (d.catalog.has_qname_refs()
                     || d.has_data_qname_refs()
+                    || d.has_event_qname_refs()
                     || d.processes
                         .iter()
                         .any(|p| has_qualified_references(&p.nodes))
@@ -2333,6 +2526,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                     &mut pr.nodes,
                     &mut pr.lanes,
                     &mut pr.flows,
+                    &mut pr.data_associations,
                     &element_id,
                     &mut removed,
                     0,
@@ -2381,6 +2575,10 @@ pub struct CommandParam {
 }
 macro_rules! descriptor { ($id:literal,$label:literal $(,$name:literal:$ty:literal)* $(,)?) => { CommandDescriptor { id: $id, serde_tag: $id, label: $label, params: &[$(CommandParam {name:$name,value_type:$ty,required:true}),*] } }; }
 static COMMAND_DESCRIPTORS: &[CommandDescriptor] = &[
+    descriptor!("setEventResources", "Set event resources", "document_id":"DocumentId", "resources":"EventResource[]"),
+    descriptor!("setRootEventDefinitions", "Set reusable event definitions", "document_id":"DocumentId", "definitions":"EventDefinition[]"),
+    descriptor!("setShapeDiAttributes", "Set shape diagram attributes", "document_id":"DocumentId", "diagram_id":"ElementSelector", "shape_id":"ElementSelector", "is_horizontal":"bool|null", "is_marker_visible":"bool|null"),
+    descriptor!("setEdgeDiEndpoints", "Set edge diagram endpoints", "document_id":"DocumentId", "diagram_id":"ElementSelector", "edge_id":"ElementSelector", "source_element":"ElementSelector|null", "target_element":"ElementSelector|null"),
     descriptor!("setCollaborationName", "Set collaboration name", "document_id":"DocumentId", "name":"String|null"),
     descriptor!("setDiagramName", "Set diagram name", "document_id":"DocumentId", "diagram_id":"ElementSelector", "name":"String|null"),
     descriptor!("setProcessExecutable", "Set process executable attribute", "document_id":"DocumentId", "process_id":"ElementSelector", "is_executable":"bool|null"),
@@ -2490,6 +2688,8 @@ mod shape_label_tests {
     #[test]
     fn moving_shape_translates_label_without_resizing_it() {
         let mut shape = Shape {
+            is_horizontal: None,
+            is_marker_visible: None,
             is_expanded: None,
             id: "Shape".parse().unwrap(),
             element: "Node".parse().unwrap(),

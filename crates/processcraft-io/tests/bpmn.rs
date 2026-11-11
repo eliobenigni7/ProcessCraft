@@ -257,7 +257,58 @@ fn all_io_set_and_binding_idrefs_use_ncname_lexical_space() {
 }
 
 #[test]
-fn external_qname_targets_are_preserved_without_resolving_or_aliasing_local_ids() {
+fn reusable_event_and_operation_text_references_preserve_namespace_identity() {
+    let input = r#"<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+        xmlns:local="urn:events" xmlns:external="urn:external" targetNamespace="urn:events">
+        <itemDefinition id="Item"/>
+        <message id="Message" itemRef="local:Item"/>
+        <signal id="Signal" structureRef="local:Item"/>
+        <error id="Error" structureRef="external:RemoteType"/>
+        <escalation id="Escalation" structureRef="local:Item"/>
+        <interface id="Interface" name="Service"><operation id="Operation" name="Run"><inMessageRef>local:Message</inMessageRef></operation></interface>
+        <messageEventDefinition id="Shared" messageRef="local:Message"><operationRef>local:Operation</operationRef></messageEventDefinition>
+        <process id="Process"><startEvent id="Start"><eventDefinitionRef>local:Shared</eventDefinitionRef></startEvent></process>
+    </definitions>"#;
+    let parsed = import_bpmn(input.as_bytes()).unwrap();
+    assert!(parsed.report().qname_values.iter().any(|name| {
+        name.namespace_uri.as_deref() == Some("urn:events") && name.local_name == "Shared"
+    }));
+    for (before, after) in [
+        (">local:Shared<", ">local:Missing<"),
+        (">local:Operation<", ">local:Missing<"),
+        ("itemRef=\"local:Item\"", "itemRef=\"local:Missing\""),
+        (
+            "structureRef=\"local:Item\"",
+            "structureRef=\"local:Missing\"",
+        ),
+    ] {
+        let invalid = input.replace(before, after);
+        assert_eq!(
+            import_bpmn(invalid.as_bytes()).unwrap_err().kind,
+            ImportErrorKind::Reference,
+            "{after}"
+        );
+    }
+    let external = input
+        .replace(">local:Shared<", ">external:Shared<")
+        .replace(">local:Operation<", ">external:Operation<");
+    let parsed = import_bpmn(external.as_bytes()).unwrap();
+    assert_eq!(parsed.export_source(), external.as_bytes());
+    assert!(parsed.report().qname_values.iter().any(|name| {
+        name.namespace_uri.as_deref() == Some("urn:external") && name.local_name == "Shared"
+    }));
+    assert!(
+        import_bpmn(
+            input
+                .replace(">local:Shared<", ">unbound:Shared<")
+                .as_bytes()
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn external_qname_targets_are_retained_as_inert_qualified_metadata() {
     let bytes = br#"<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
         xmlns:ext="urn:external" xmlns:local="urn:local" targetNamespace="urn:local" id="Defs">
         <import namespace="urn:external" location="file:///nonexistent/external.bpmn"
@@ -274,7 +325,26 @@ fn external_qname_targets_are_preserved_without_resolving_or_aliasing_local_ids(
             .any(|l| l.contains("External QName"))
     );
     let prepared = processcraft_io::interchange::prepare_import(bytes, "external").unwrap();
-    assert!(!prepared.report.editable);
+    assert!(
+        prepared.report.editable,
+        "{:?}",
+        prepared.report.limitations
+    );
+    let reference = match &prepared.document.processes[0].nodes[0].details {
+        Some(processcraft_core::bpmn_model::NodeDetails::Event { definitions, .. }) => {
+            match &definitions[0] {
+                processcraft_core::bpmn_model::EventDefinition::Message {
+                    message_ref: Some(reference),
+                    ..
+                } => reference.clone(),
+                _ => panic!("expected message reference"),
+            }
+        }
+        _ => panic!("expected event metadata"),
+    };
+    assert!(matches!(&reference,
+        processcraft_core::bpmn_model::EventReference::Qualified(q)
+            if q.namespace == "urn:external" && q.local.to_string() == "Message"));
     let mut project = processcraft_core::model::ProjectData::new("External".into());
     let id = prepared.document.id;
     project
@@ -282,7 +352,17 @@ fn external_qname_targets_are_preserved_without_resolving_or_aliasing_local_ids(
         .push(std::sync::Arc::new(prepared.document));
     project.resources = prepared.resources;
     let output = processcraft_io::interchange::export_bpmn(&project, id, false).unwrap();
-    assert_eq!(output.bytes, bytes);
+    let reopened =
+        processcraft_io::interchange::prepare_import(&output.bytes, "external roundtrip").unwrap();
+    assert!(reopened.report.editable);
+    match &reopened.document.processes[0].nodes[0].details {
+        Some(processcraft_core::bpmn_model::NodeDetails::Event { definitions, .. }) => {
+            assert!(matches!(&definitions[0],
+                processcraft_core::bpmn_model::EventDefinition::Message { message_ref: Some(actual), .. }
+                    if actual == &reference));
+        }
+        _ => panic!("expected retained event metadata"),
+    }
     let local_missing = std::str::from_utf8(bytes)
         .unwrap()
         .replace("ext:Message", "local:Message");

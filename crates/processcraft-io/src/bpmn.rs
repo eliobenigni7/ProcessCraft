@@ -119,6 +119,7 @@ struct Frame {
     external_reference_allowed: bool,
     link_definition: bool,
     operation: bool,
+    message_definition: bool,
 }
 
 /// Validate into temporary bounded state and publish a source document only after
@@ -225,18 +226,23 @@ pub fn import_bpmn(bytes: &[u8]) -> Result<PreservedBpmn, ImportError> {
                             | "inMessageRef"
                             | "outMessageRef"
                             | "errorRef"
+                            | "eventDefinitionRef"
+                            | "operationRef"
                     ),
                     link_definition: ns == Some(BPMN) && local == "linkEventDefinition",
                     operation: ns == Some(BPMN) && local == "operation",
+                    message_definition: ns == Some(BPMN) && local == "messageEventDefinition",
                     documentation: ns == Some(BPMN) && local == "documentation",
                     label: ns == Some(BPMN) && local == "text",
                     reference_text: (ns == Some(BPMN)
-                        && (matches!(local, "incoming" | "outgoing")
+                        && (matches!(local, "incoming" | "outgoing" | "eventDefinitionRef")
                             || idref_text_reference(local)
                             || (matches!(local, "source" | "target")
                                 && stack.last().is_some_and(|parent| parent.link_definition))
                             || (matches!(local, "inMessageRef" | "outMessageRef" | "errorRef")
-                                && stack.last().is_some_and(|parent| parent.operation))))
+                                && stack.last().is_some_and(|parent| parent.operation))
+                            || (local == "operationRef"
+                                && stack.last().is_some_and(|parent| parent.message_definition))))
                     .then(String::new),
                     ..Frame::default()
                 };
@@ -642,6 +648,8 @@ fn known_reference(ns: Option<&str>, element: &str, attr: &str) -> bool {
                 | ("errorEventDefinition", "errorRef")
                 | ("escalationEventDefinition", "escalationRef")
                 | ("compensateEventDefinition", "activityRef")
+                | ("message", "itemRef")
+                | ("signal" | "error" | "escalation", "structureRef")
                 | (
                     "dataObject"
                         | "dataObjectReference"

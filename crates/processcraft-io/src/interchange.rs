@@ -5,8 +5,9 @@ use processcraft_core::{
         BpmnResource, Interface, ItemDefinition, ItemKind, Operation, ResourceParameter,
     },
     bpmn_model::{
-        EventDefinition, EventGatewayType, EventResource, Expression, ExpressionData,
-        ExpressionKind, GatewayDirection, LoopCharacteristics, NodeDetails, QNameRef, TimerKind,
+        EventDefinition, EventGatewayType, EventIo, EventProperty, EventReference, EventResource,
+        Expression, ExpressionData, ExpressionKind, GatewayDirection, LoopCharacteristics,
+        NodeDetails, QNameRef, TimerKind,
     },
     ids::{ElementIdentity, ElementSelector, XmlId},
     model::*,
@@ -183,13 +184,21 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                                 | ("serviceTask" | "sendTask" | "receiveTask", "operationRef")
                                 | ("sendTask" | "receiveTask", "messageRef")
                                 | ("dataStoreReference", "dataStoreRef")
+                                | ("message", "itemRef")
+                                | ("signal" | "error" | "escalation", "structureRef")
+                                | ("messageEventDefinition", "messageRef")
+                                | ("signalEventDefinition", "signalRef")
+                                | ("errorEventDefinition", "errorRef")
+                                | ("escalationEventDefinition", "escalationRef")
+                                | ("compensateEventDefinition", "activityRef")
                                 | (
                                     "dataObject"
                                         | "dataObjectReference"
                                         | "dataStore"
                                         | "dataStoreReference"
                                         | "dataInput"
-                                        | "dataOutput",
+                                        | "dataOutput"
+                                        | "property",
                                     "itemSubjectRef"
                                 )
                         )
@@ -236,12 +245,8 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                                 "messageFlow" | "conversationLink" | "association",
                                 "sourceRef" | "targetRef"
                             )
-                            | (B, "errorEventDefinition", "errorRef")
-                            | (B, "escalationEventDefinition", "escalationRef")
-                            | (B, "messageEventDefinition", "messageRef")
-                            | (B, "signalEventDefinition", "signalRef")
-                            | (B, "compensateEventDefinition", "activityRef")
                             | (BD, "BPMNPlane" | "BPMNShape" | "BPMNEdge", "bpmnElement")
+                            | (BD, "BPMNEdge", "sourceElement" | "targetElement")
                     ) {
                         if item.name == "sequenceFlow" && !value.contains(':') {
                             item.attrs.insert(key.into(), value);
@@ -267,7 +272,7 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                 if item.ns == B
                     && matches!(
                         item.name.as_str(),
-                        "flowNodeRef" | "participantRef" | "messageFlowRef" | "source" | "target"
+                        "flowNodeRef" | "participantRef" | "messageFlowRef"
                     )
                 {
                     let q = item.text.trim();
@@ -289,7 +294,13 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                 if item.ns == B
                     && matches!(
                         item.name.as_str(),
-                        "inMessageRef" | "outMessageRef" | "errorRef"
+                        "inMessageRef"
+                            | "outMessageRef"
+                            | "errorRef"
+                            | "eventDefinitionRef"
+                            | "operationRef"
+                            | "source"
+                            | "target"
                     )
                 {
                     let (resolved, local) = r.resolver().resolve_element(QName(item.text.trim()));
@@ -334,6 +345,8 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                                 | "inMessageRef"
                                 | "outMessageRef"
                                 | "errorRef"
+                                | "eventDefinitionRef"
+                                | "operationRef"
                                 | "conditionExpression"
                                 | "condition"
                                 | "timeDate"
@@ -512,228 +525,131 @@ fn parse_expression(e: &Elem, implicit_formal: bool) -> Option<Expression> {
             .collect(),
     }))
 }
-fn timer_details(e: &Elem) -> Option<(String, NodeDetails)> {
-    let mut documentation = String::new();
-    let mut seen_doc = false;
-    let mut timer = None;
-    for child in &e.children {
-        if child.ns != B {
-            return None;
-        }
-        if child.name == "documentation"
-            && !seen_doc
-            && child.attrs.is_empty()
-            && child.children.is_empty()
-        {
-            documentation = child.text.clone();
-            seen_doc = true;
-            continue;
-        }
-        if child.name != "timerEventDefinition"
-            || timer.is_some()
-            || !attrs(child, &["id"])
-            || child.children.len() != 1
-        {
-            return None;
-        }
-        let expr = &child.children[0];
-        let kind = match expr.name.as_str() {
-            "timeDate" => TimerKind::Date,
-            "timeDuration" => TimerKind::Duration,
-            "timeCycle" => TimerKind::Cycle,
-            _ => return None,
-        };
-        let id = optional_id(child)?;
-        timer = Some(EventDefinition::Timer {
-            id,
-            kind,
-            expression: parse_expression(expr, false)?,
-        });
+fn event_reference(qname: &QNameRef, target_namespace: &str) -> EventReference {
+    if qname.namespace == target_namespace {
+        EventReference::Local(qname.local.clone().into())
+    } else {
+        EventReference::Qualified(qname.clone())
     }
-    Some((
-        documentation,
-        NodeDetails::Event {
-            definitions: vec![timer?],
-            attached_to: None,
-            cancel_activity: None,
-        },
-    ))
 }
-fn message_signal_details(e: &Elem) -> Option<(String, NodeDetails)> {
-    let mut doc = String::new();
-    let mut seen_doc = false;
-    let mut definition = None;
-    for child in &e.children {
-        if child.ns != B {
-            return None;
-        }
-        if child.name == "documentation"
-            && !seen_doc
-            && child.attrs.is_empty()
-            && child.children.is_empty()
-        {
-            doc = child.text.clone();
-            seen_doc = true;
-            continue;
-        }
-        if definition.is_some() || !child.children.is_empty() {
-            return None;
-        }
-        let def_id = optional_id(child)?;
-        definition = Some(match child.name.as_str() {
-            "errorEventDefinition" if attrs(child, &["id", "errorRef"]) => EventDefinition::Error {
-                id: def_id,
-                error_ref: Some(selector(child, "errorRef")?),
-            },
-            "escalationEventDefinition" if attrs(child, &["id", "escalationRef"]) => {
-                EventDefinition::Escalation {
-                    id: def_id,
-                    escalation_ref: Some(selector(child, "escalationRef")?),
-                }
-            }
-            "signalEventDefinition" if attrs(child, &["id", "signalRef"]) => {
-                EventDefinition::Signal {
-                    id: def_id,
-                    signal_ref: Some(selector(child, "signalRef")?),
-                }
-            }
-            "messageEventDefinition" if attrs(child, &["id", "messageRef"]) => {
-                EventDefinition::Message {
-                    id: def_id,
-                    message_ref: Some(selector(child, "messageRef")?),
-                    operation_ref: None,
-                }
-            }
-            _ => return None,
-        });
+fn parse_event_definition(e: &Elem, target_namespace: &str) -> Option<EventDefinition> {
+    if e.ns != B {
+        return None;
     }
-    Some((
-        doc,
-        NodeDetails::Event {
-            definitions: vec![definition?],
-            attached_to: None,
-            cancel_activity: None,
-        },
-    ))
-}
-fn link_cancel_compensate_details(e: &Elem) -> Option<(String, NodeDetails)> {
-    let mut doc = String::new();
-    let mut seen_doc = false;
-    let mut definition = None;
-    for child in &e.children {
-        if child.ns != B {
-            return None;
-        }
-        if child.name == "documentation"
-            && !seen_doc
-            && child.attrs.is_empty()
-            && child.children.is_empty()
-        {
-            doc = child.text.clone();
-            seen_doc = true;
-            continue;
-        }
-        if definition.is_some() {
-            return None;
-        }
-        let def_id = optional_id(child)?;
-        definition = Some(match child.name.as_str() {
-            "cancelEventDefinition" if attrs(child, &["id"]) && child.children.is_empty() => {
-                EventDefinition::Cancel { id: def_id }
+    let id = optional_id(e)?;
+    let reference = |key: &str| {
+        e.catalog_qnames
+            .get(key)
+            .map(|q| event_reference(q, target_namespace))
+    };
+    Some(match e.name.as_str() {
+        "messageEventDefinition" if attrs(e, &["id", "messageRef"]) => {
+            let mut operation_ref = None;
+            for child in &e.children {
+                if child.ns != B
+                    || child.name != "operationRef"
+                    || !child.attrs.is_empty()
+                    || !child.children.is_empty()
+                    || operation_ref.is_some()
+                {
+                    return None;
+                }
+                operation_ref = Some(event_reference(
+                    child.catalog_text_qname.as_ref()?,
+                    target_namespace,
+                ));
             }
-            "compensateEventDefinition"
-                if attrs(child, &["id", "waitForCompletion", "activityRef"])
-                    && child.children.is_empty() =>
-            {
-                EventDefinition::Compensate {
-                    id: def_id,
-                    wait_for_completion: optional_bool(child.attrs.get("waitForCompletion"))?,
-                    activity_ref: child
-                        .attrs
-                        .get("activityRef")
-                        .map(|v| v.parse())
-                        .transpose()
-                        .ok()?,
+            EventDefinition::Message {
+                id,
+                message_ref: reference("messageRef"),
+                operation_ref,
+            }
+        }
+        "signalEventDefinition" if attrs(e, &["id", "signalRef"]) && e.children.is_empty() => {
+            EventDefinition::Signal {
+                id,
+                signal_ref: reference("signalRef"),
+            }
+        }
+        "errorEventDefinition" if attrs(e, &["id", "errorRef"]) && e.children.is_empty() => {
+            EventDefinition::Error {
+                id,
+                error_ref: reference("errorRef"),
+            }
+        }
+        "escalationEventDefinition"
+            if attrs(e, &["id", "escalationRef"]) && e.children.is_empty() =>
+        {
+            EventDefinition::Escalation {
+                id,
+                escalation_ref: reference("escalationRef"),
+            }
+        }
+        "cancelEventDefinition" if attrs(e, &["id"]) && e.children.is_empty() => {
+            EventDefinition::Cancel { id }
+        }
+        "compensateEventDefinition"
+            if attrs(e, &["id", "waitForCompletion", "activityRef"]) && e.children.is_empty() =>
+        {
+            EventDefinition::Compensate {
+                id,
+                wait_for_completion: optional_bool(e.attrs.get("waitForCompletion"))?,
+                activity_ref: reference("activityRef"),
+            }
+        }
+        "terminateEventDefinition" if attrs(e, &["id"]) && e.children.is_empty() => {
+            EventDefinition::Terminate { id }
+        }
+        "conditionalEventDefinition"
+            if attrs(e, &["id"]) && e.children.len() == 1 && e.children[0].name == "condition" =>
+        {
+            EventDefinition::Conditional {
+                id,
+                expression: parse_expression(&e.children[0], false)?,
+            }
+        }
+        "timerEventDefinition" if attrs(e, &["id"]) && e.children.len() <= 1 => {
+            let (kind, expression) = if let Some(child) = e.children.first() {
+                let kind = match child.name.as_str() {
+                    "timeDate" => TimerKind::Date,
+                    "timeDuration" => TimerKind::Duration,
+                    "timeCycle" => TimerKind::Cycle,
+                    _ => return None,
+                };
+                (Some(kind), Some(parse_expression(child, false)?))
+            } else {
+                (None, None)
+            };
+            EventDefinition::Timer {
+                id,
+                kind,
+                expression,
+            }
+        }
+        "linkEventDefinition" if attrs(e, &["id", "name"]) => {
+            let mut sources = Vec::new();
+            let mut target = None;
+            for child in &e.children {
+                if child.ns != B || !child.attrs.is_empty() || !child.children.is_empty() {
+                    return None;
+                }
+                let reference =
+                    event_reference(child.catalog_text_qname.as_ref()?, target_namespace);
+                match child.name.as_str() {
+                    "source" if target.is_none() => sources.push(reference),
+                    "target" if target.is_none() => target = Some(reference),
+                    _ => return None,
                 }
             }
-            "linkEventDefinition" if attrs(child, &["id", "name"]) => {
-                let name = child.attrs.get("name")?.clone();
-                let mut sources = Vec::new();
-                let mut target = None;
-                for reference in &child.children {
-                    if reference.ns != B
-                        || !reference.attrs.is_empty()
-                        || !reference.children.is_empty()
-                    {
-                        return None;
-                    }
-                    match reference.name.as_str() {
-                        "source" if target.is_none() => sources.push(reference.text.parse().ok()?),
-                        "target" if target.is_none() => target = Some(reference.text.parse().ok()?),
-                        _ => return None,
-                    }
-                }
-                EventDefinition::Link {
-                    id: def_id,
-                    name,
-                    sources,
-                    target,
-                }
+            EventDefinition::Link {
+                id,
+                name: e.attrs.get("name")?.clone(),
+                sources,
+                target,
             }
-            _ => return None,
-        });
-    }
-    Some((
-        doc,
-        NodeDetails::Event {
-            definitions: vec![definition?],
-            attached_to: None,
-            cancel_activity: None,
-        },
-    ))
-}
-fn conditional_details(e: &Elem) -> Option<(String, NodeDetails)> {
-    let mut doc = String::new();
-    let mut seen_doc = false;
-    let mut definition = None;
-    for child in &e.children {
-        if child.ns != B {
-            return None;
         }
-        if child.name == "documentation"
-            && !seen_doc
-            && child.attrs.is_empty()
-            && child.children.is_empty()
-        {
-            doc = child.text.clone();
-            seen_doc = true;
-            continue;
-        }
-        if child.name != "conditionalEventDefinition"
-            || definition.is_some()
-            || !attrs(child, &["id"])
-            || child.children.len() != 1
-        {
-            return None;
-        }
-        let expr = &child.children[0];
-        if expr.ns != B || expr.name != "condition" {
-            return None;
-        }
-        let id = optional_id(child)?;
-        definition = Some(EventDefinition::Conditional {
-            id,
-            expression: parse_expression(expr, false)?,
-        });
-    }
-    Some((
-        doc,
-        NodeDetails::Event {
-            definitions: vec![definition?],
-            attached_to: None,
-            cancel_activity: None,
-        },
-    ))
+        _ => return None,
+    })
 }
 fn optional_bool(value: Option<&String>) -> Option<Option<bool>> {
     match value.map(String::as_str) {
@@ -891,8 +807,51 @@ fn item_documentation(e: &Elem) -> Option<String> {
     }
     Some(doc.unwrap_or_default())
 }
+fn parse_data_port(e: &Elem) -> Option<processcraft_core::bpmn_data::DataPort> {
+    if e.ns != B
+        || !matches!(e.name.as_str(), "dataInput" | "dataOutput")
+        || !attrs(e, &["id", "name", "itemSubjectRef", "isCollection"])
+        || e.children.iter().any(|c| c.name == "documentation")
+    {
+        return None;
+    }
+    Some(processcraft_core::bpmn_data::DataPort {
+        id: optional_id(e)?,
+        name: e.attrs.get("name").cloned(),
+        item_aware: parse_item_aware(e)?,
+        is_collection: optional_bool(e.attrs.get("isCollection"))?,
+    })
+}
+fn parse_io_set(child: &Elem, input: bool) -> Option<processcraft_core::bpmn_data::IoSet> {
+    if child.ns != B || !attrs(child, &["id", "name"]) {
+        return None;
+    }
+    let mut set = processcraft_core::bpmn_data::IoSet {
+        id: optional_id(child)?,
+        name: child.attrs.get("name").cloned(),
+        ..Default::default()
+    };
+    for reference in &child.children {
+        if reference.ns != B || !reference.attrs.is_empty() || !reference.children.is_empty() {
+            return None;
+        }
+        let value = reference.text.trim().parse().ok()?;
+        match (input, reference.name.as_str()) {
+            (true, "dataInputRefs") | (false, "dataOutputRefs") => set.data_refs.push(value),
+            (true, "optionalInputRefs") | (false, "optionalOutputRefs") => {
+                set.optional_refs.push(value)
+            }
+            (true, "whileExecutingInputRefs") | (false, "whileExecutingOutputRefs") => {
+                set.while_executing_refs.push(value)
+            }
+            (true, "outputSetRefs") | (false, "inputSetRefs") => set.counterpart_refs.push(value),
+            _ => return None,
+        }
+    }
+    Some(set)
+}
 fn parse_io_specification(e: &Elem) -> Option<processcraft_core::bpmn_data::IoSpecification> {
-    use processcraft_core::bpmn_data::{DataPort, IoSet, IoSpecification};
+    use processcraft_core::bpmn_data::IoSpecification;
     if !attrs(e, &["id"]) {
         return None;
     }
@@ -909,12 +868,7 @@ fn parse_io_specification(e: &Elem) -> Option<processcraft_core::bpmn_data::IoSp
                 if attrs(child, &["id", "name", "itemSubjectRef", "isCollection"])
                     && !child.children.iter().any(|c| c.name == "documentation") =>
             {
-                let port = DataPort {
-                    id: optional_id(child)?,
-                    name: child.attrs.get("name").cloned(),
-                    item_aware: parse_item_aware(child)?,
-                    is_collection: optional_bool(child.attrs.get("isCollection"))?,
-                };
+                let port = parse_data_port(child)?;
                 if child.name == "dataInput" {
                     io.inputs.push(port);
                 } else {
@@ -923,35 +877,7 @@ fn parse_io_specification(e: &Elem) -> Option<processcraft_core::bpmn_data::IoSp
             }
             "inputSet" | "outputSet" if attrs(child, &["id", "name"]) => {
                 let input = child.name == "inputSet";
-                let mut set = IoSet {
-                    id: optional_id(child)?,
-                    name: child.attrs.get("name").cloned(),
-                    ..Default::default()
-                };
-                for reference in &child.children {
-                    if reference.ns != B
-                        || !reference.attrs.is_empty()
-                        || !reference.children.is_empty()
-                    {
-                        return None;
-                    }
-                    let value = reference.text.trim().parse().ok()?;
-                    match (input, reference.name.as_str()) {
-                        (true, "dataInputRefs") | (false, "dataOutputRefs") => {
-                            set.data_refs.push(value)
-                        }
-                        (true, "optionalInputRefs") | (false, "optionalOutputRefs") => {
-                            set.optional_refs.push(value)
-                        }
-                        (true, "whileExecutingInputRefs") | (false, "whileExecutingOutputRefs") => {
-                            set.while_executing_refs.push(value)
-                        }
-                        (true, "outputSetRefs") | (false, "inputSetRefs") => {
-                            set.counterpart_refs.push(value)
-                        }
-                        _ => return None,
-                    }
-                }
+                let set = parse_io_set(child, input)?;
                 if input {
                     io.input_sets.push(set);
                 } else {
@@ -1054,6 +980,138 @@ fn activity_io(
     }
     Some((io, associations))
 }
+fn parse_event(
+    e: &Elem,
+    kind: NodeKind,
+    owner: &ElementSelector,
+    target_namespace: &str,
+) -> Option<(
+    String,
+    Option<NodeDetails>,
+    Vec<processcraft_core::bpmn_data::DataAssociation>,
+)> {
+    let catch = matches!(
+        kind,
+        NodeKind::StartEvent | NodeKind::IntermediateCatchEvent | NodeKind::BoundaryEvent
+    );
+    let mut doc = None;
+    let mut properties = Vec::new();
+    let mut ports = Vec::new();
+    let mut associations = Vec::new();
+    let mut set = None;
+    let mut definitions = Vec::new();
+    let mut definition_refs = Vec::new();
+    let mut phase = 0u8;
+    for child in &e.children {
+        if child.ns != B {
+            return None;
+        }
+        match child.name.as_str() {
+            "documentation"
+                if phase == 0
+                    && doc.is_none()
+                    && child.attrs.is_empty()
+                    && child.children.is_empty() =>
+            {
+                doc = Some(child.text.clone())
+            }
+            "property"
+                if phase <= 1
+                    && attrs(child, &["id", "name", "itemSubjectRef"])
+                    && !child.children.iter().any(|c| c.name == "documentation") =>
+            {
+                phase = 1;
+                properties.push(EventProperty {
+                    id: optional_id(child)?,
+                    name: child.attrs.get("name").cloned(),
+                    item_aware: parse_item_aware(child)?,
+                });
+            }
+            "dataOutput" if catch && phase <= 2 => {
+                phase = 2;
+                ports.push(parse_data_port(child)?);
+            }
+            "dataInput" if !catch && phase <= 2 => {
+                phase = 2;
+                ports.push(parse_data_port(child)?);
+            }
+            "dataOutputAssociation" if catch && phase <= 3 => {
+                phase = 3;
+                associations.push(parse_data_association(child, owner)?);
+            }
+            "dataInputAssociation" if !catch && phase <= 3 => {
+                phase = 3;
+                associations.push(parse_data_association(child, owner)?);
+            }
+            "outputSet" if catch && phase <= 4 && set.is_none() => {
+                phase = 4;
+                set = Some(parse_io_set(child, false)?);
+            }
+            "inputSet" if !catch && phase <= 4 && set.is_none() => {
+                phase = 4;
+                set = Some(parse_io_set(child, true)?);
+            }
+            "eventDefinitionRef"
+                if phase <= 6 && child.attrs.is_empty() && child.children.is_empty() =>
+            {
+                phase = 6;
+                definition_refs.push(event_reference(
+                    child.catalog_text_qname.as_ref()?,
+                    target_namespace,
+                ));
+            }
+            _ if phase <= 5 => {
+                phase = 5;
+                definitions.push(parse_event_definition(child, target_namespace)?);
+            }
+            _ => return None,
+        }
+    }
+    let attached_to = if kind == NodeKind::BoundaryEvent {
+        Some(selector(e, "attachedToRef")?)
+    } else {
+        None
+    };
+    let cancel_activity = optional_bool(e.attrs.get("cancelActivity"))?;
+    let parallel_multiple = optional_bool(e.attrs.get("parallelMultiple"))?;
+    let is_interrupting = optional_bool(e.attrs.get("isInterrupting"))?;
+    let io = if ports.is_empty() && set.is_none() {
+        None
+    } else if catch {
+        Some(EventIo::Catch {
+            outputs: ports,
+            output_set: set,
+        })
+    } else {
+        Some(EventIo::Throw {
+            inputs: ports,
+            input_set: set,
+        })
+    };
+    let details = if definitions.is_empty()
+        && definition_refs.is_empty()
+        && properties.is_empty()
+        && io.is_none()
+        && attached_to.is_none()
+        && cancel_activity.is_none()
+        && parallel_multiple.is_none()
+        && is_interrupting.is_none()
+    {
+        None
+    } else {
+        Some(NodeDetails::Event {
+            definitions,
+            attached_to,
+            cancel_activity,
+            definition_refs,
+            parallel_multiple,
+            is_interrupting,
+            properties,
+            io,
+        })
+    };
+    Some((doc.unwrap_or_default(), details, associations))
+}
 fn activity_properties(
     e: &Elem,
 ) -> Option<Option<processcraft_core::bpmn_activity::ActivityProperties>> {
@@ -1144,112 +1202,8 @@ fn activity_parts(e: &Elem) -> Option<(String, Option<LoopCharacteristics>)> {
     }
     Some((doc, lp))
 }
-fn terminate_details(e: &Elem) -> Option<(String, NodeDetails)> {
-    let mut doc = String::new();
-    let mut seen_doc = false;
-    let mut definition = None;
-    for child in &e.children {
-        if child.ns != B {
-            return None;
-        }
-        if child.name == "documentation"
-            && !seen_doc
-            && child.attrs.is_empty()
-            && child.children.is_empty()
-        {
-            doc = child.text.clone();
-            seen_doc = true;
-            continue;
-        }
-        if child.name != "terminateEventDefinition"
-            || definition.is_some()
-            || !attrs(child, &["id"])
-            || !child.children.is_empty()
-        {
-            return None;
-        }
-        let id = optional_id(child)?;
-        definition = Some(EventDefinition::Terminate { id });
-    }
-    Some((
-        doc,
-        NodeDetails::Event {
-            definitions: vec![definition?],
-            attached_to: None,
-            cancel_activity: None,
-        },
-    ))
-}
-fn supported_event_details(n: &Node) -> bool {
-    let Some(NodeDetails::Event {
-        definitions,
-        attached_to,
-        cancel_activity,
-    }) = &n.details
-    else {
-        return false;
-    };
-    if matches!(n.kind, NodeKind::BoundaryEvent) != attached_to.is_some() {
-        return false;
-    }
-    if !matches!(n.kind, NodeKind::BoundaryEvent) && cancel_activity.is_some() {
-        return false;
-    }
-    match definitions.as_slice() {
-        [EventDefinition::Timer { .. }] => matches!(
-            n.kind,
-            NodeKind::StartEvent | NodeKind::IntermediateCatchEvent | NodeKind::BoundaryEvent
-        ),
-        [EventDefinition::Terminate { .. }] => matches!(n.kind, NodeKind::EndEvent),
-        [EventDefinition::Link { .. }] => matches!(
-            n.kind,
-            NodeKind::IntermediateCatchEvent | NodeKind::IntermediateThrowEvent
-        ),
-        [EventDefinition::Cancel { .. }] => {
-            matches!(n.kind, NodeKind::BoundaryEvent | NodeKind::EndEvent)
-        }
-        [EventDefinition::Compensate { .. }] => matches!(
-            n.kind,
-            NodeKind::BoundaryEvent | NodeKind::IntermediateThrowEvent | NodeKind::EndEvent
-        ),
-        [
-            EventDefinition::Error {
-                error_ref: Some(_), ..
-            },
-        ] => matches!(n.kind, NodeKind::EndEvent | NodeKind::BoundaryEvent),
-        [
-            EventDefinition::Escalation {
-                escalation_ref: Some(_),
-                ..
-            },
-        ] => matches!(
-            n.kind,
-            NodeKind::EndEvent | NodeKind::IntermediateThrowEvent | NodeKind::BoundaryEvent
-        ),
-        [EventDefinition::Conditional { .. }] => matches!(
-            n.kind,
-            NodeKind::StartEvent | NodeKind::IntermediateCatchEvent | NodeKind::BoundaryEvent
-        ),
-        [
-            EventDefinition::Signal {
-                signal_ref: Some(_),
-                ..
-            }
-            | EventDefinition::Message {
-                message_ref: Some(_),
-                operation_ref: None,
-                ..
-            },
-        ] => matches!(
-            n.kind,
-            NodeKind::StartEvent
-                | NodeKind::EndEvent
-                | NodeKind::IntermediateCatchEvent
-                | NodeKind::IntermediateThrowEvent
-                | NodeKind::BoundaryEvent
-        ),
-        _ => false,
-    }
+fn supported_event_details(node: &Node) -> bool {
+    matches!(node.details, Some(NodeDetails::Event { .. }))
 }
 fn parse_lane_set(
     set: &Elem,
@@ -1664,7 +1618,17 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
             if !attrs(
                 n,
                 if matches!(kind, NodeKind::BoundaryEvent) {
-                    &["id", "name", "attachedToRef", "cancelActivity"]
+                    &[
+                        "id",
+                        "name",
+                        "attachedToRef",
+                        "cancelActivity",
+                        "parallelMultiple",
+                    ]
+                } else if matches!(kind, NodeKind::StartEvent) {
+                    &["id", "name", "parallelMultiple", "isInterrupting"]
+                } else if matches!(kind, NodeKind::IntermediateCatchEvent) {
+                    &["id", "name", "parallelMultiple"]
                 } else if matches!(
                     kind,
                     NodeKind::ExclusiveGateway
@@ -1701,95 +1665,20 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
             ) {
                 return None;
             }
+            let node_id = element_identity(n)?;
+            let mut event_associations = Vec::new();
             let (documentation, details) = if matches!(
                 kind,
-                NodeKind::IntermediateCatchEvent | NodeKind::BoundaryEvent
-            ) || (matches!(kind, NodeKind::StartEvent)
-                && n.children.iter().any(|c| {
-                    matches!(
-                        c.name.as_str(),
-                        "timerEventDefinition" | "conditionalEventDefinition"
-                    )
-                })) {
-                let (doc, mut details) = if n.children.iter().any(|c| {
-                    matches!(
-                        c.name.as_str(),
-                        "linkEventDefinition"
-                            | "cancelEventDefinition"
-                            | "compensateEventDefinition"
-                    )
-                }) {
-                    link_cancel_compensate_details(n)?
-                } else if n.children.iter().any(|c| {
-                    matches!(
-                        c.name.as_str(),
-                        "messageEventDefinition"
-                            | "signalEventDefinition"
-                            | "errorEventDefinition"
-                            | "escalationEventDefinition"
-                    )
-                }) {
-                    message_signal_details(n)?
-                } else if n
-                    .children
-                    .iter()
-                    .any(|c| c.name == "conditionalEventDefinition")
-                {
-                    conditional_details(n)?
-                } else {
-                    timer_details(n)?
-                };
-                if matches!(kind, NodeKind::BoundaryEvent) {
-                    let NodeDetails::Event {
-                        attached_to,
-                        cancel_activity,
-                        ..
-                    } = &mut details
-                    else {
-                        return None;
-                    };
-                    *attached_to = Some(selector(n, "attachedToRef")?);
-                    *cancel_activity = match n.attrs.get("cancelActivity").map(String::as_str) {
-                        None => None,
-                        Some("true" | "1") => Some(true),
-                        Some("false" | "0") => Some(false),
-                        _ => return None,
-                    };
-                }
-                (doc, Some(details))
-            } else if matches!(kind, NodeKind::EndEvent | NodeKind::IntermediateThrowEvent)
-                && n.children.iter().any(|c| {
-                    matches!(
-                        c.name.as_str(),
-                        "linkEventDefinition"
-                            | "cancelEventDefinition"
-                            | "compensateEventDefinition"
-                    )
-                })
-            {
-                let (doc, details) = link_cancel_compensate_details(n)?;
-                (doc, Some(details))
-            } else if matches!(
-                kind,
-                NodeKind::StartEvent | NodeKind::EndEvent | NodeKind::IntermediateThrowEvent
-            ) && n.children.iter().any(|c| {
-                matches!(
-                    c.name.as_str(),
-                    "messageEventDefinition"
-                        | "signalEventDefinition"
-                        | "errorEventDefinition"
-                        | "escalationEventDefinition"
-                )
-            }) {
-                let (doc, details) = message_signal_details(n)?;
-                (doc, Some(details))
-            } else if matches!(kind, NodeKind::EndEvent)
-                && n.children
-                    .iter()
-                    .any(|c| c.name == "terminateEventDefinition")
-            {
-                let (doc, details) = terminate_details(n)?;
-                (doc, Some(details))
+                NodeKind::StartEvent
+                    | NodeKind::IntermediateCatchEvent
+                    | NodeKind::IntermediateThrowEvent
+                    | NodeKind::BoundaryEvent
+                    | NodeKind::EndEvent
+            ) {
+                let (doc, details, associations) =
+                    parse_event(n, kind, &node_id.selector(), target_namespace)?;
+                event_associations = associations;
+                (doc, details)
             } else if matches!(
                 kind,
                 NodeKind::ExclusiveGateway
@@ -1809,13 +1698,13 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
             } else {
                 None
             };
-            let node_id = element_identity(n)?;
             let (io, associations) = if kind.is_activity() {
                 activity_io(n, &node_id.selector())?
             } else {
                 (None, Vec::new())
             };
             p.data_associations.extend(associations);
+            p.data_associations.extend(event_associations);
             p.nodes.push(Node {
                 item_aware: None,
                 id: node_id,
@@ -2205,15 +2094,33 @@ fn catalog_resource(e: &Elem) -> Option<BpmnResource> {
     })
 }
 fn activity_ports(document: &BpmnDocument) -> Option<std::collections::HashSet<ElementSelector>> {
-    Some(
-        scopes(document)?
-            .iter()
-            .flat_map(|scope| scope.nodes)
-            .filter_map(|node| node.io_specification.as_ref())
-            .flat_map(|io| io.inputs.iter().chain(&io.outputs))
-            .filter_map(|port| port.id.as_ref().map(ElementIdentity::selector))
-            .collect(),
-    )
+    let mut ports = std::collections::HashSet::new();
+    for node in scopes(document)?.iter().flat_map(|scope| scope.nodes) {
+        if let Some(io) = &node.io_specification {
+            ports.extend(
+                io.inputs
+                    .iter()
+                    .chain(&io.outputs)
+                    .filter_map(|port| port.id.as_ref().map(ElementIdentity::selector)),
+            );
+        }
+        if let Some(NodeDetails::Event { io, .. }) = &node.details {
+            match io {
+                Some(EventIo::Catch { outputs, .. }) => ports.extend(
+                    outputs
+                        .iter()
+                        .filter_map(|port| port.id.as_ref().map(ElementIdentity::selector)),
+                ),
+                Some(EventIo::Throw { inputs, .. }) => ports.extend(
+                    inputs
+                        .iter()
+                        .filter_map(|port| port.id.as_ref().map(ElementIdentity::selector)),
+                ),
+                None => {}
+            }
+        }
+    }
+    Some(ports)
 }
 fn is_process_port(
     document: &BpmnDocument,
@@ -2231,6 +2138,38 @@ fn is_process_port(
                 .as_ref()
                 .is_some_and(|id| id.selector() == *selector)
         })
+}
+fn event_definition_identity(definition: &EventDefinition) -> Option<&ElementIdentity> {
+    match definition {
+        EventDefinition::Message { id, .. }
+        | EventDefinition::Signal { id, .. }
+        | EventDefinition::Error { id, .. }
+        | EventDefinition::Escalation { id, .. }
+        | EventDefinition::Conditional { id, .. }
+        | EventDefinition::Link { id, .. }
+        | EventDefinition::Cancel { id }
+        | EventDefinition::Compensate { id, .. }
+        | EventDefinition::Terminate { id }
+        | EventDefinition::Timer { id, .. } => id.as_ref(),
+    }
+}
+fn event_definition_resources_valid(document: &BpmnDocument, definition: &EventDefinition) -> bool {
+    fn local_or_external(
+        reference: &EventReference,
+        matches_local: impl FnOnce(&ElementSelector) -> bool,
+    ) -> bool {
+        match reference {
+            EventReference::Local(selector) => matches_local(selector),
+            EventReference::Qualified(_) => true,
+        }
+    }
+    match definition {
+        EventDefinition::Signal { signal_ref: Some(reference), .. } => local_or_external(reference, |selector| document.event_resources.iter().any(|r| matches!(r, EventResource::Signal { id, .. } if id.selector() == *selector))),
+        EventDefinition::Message { message_ref, operation_ref, .. } => message_ref.as_ref().is_none_or(|reference| local_or_external(reference, |selector| document.event_resources.iter().any(|r| matches!(r, EventResource::Message { id, .. } if id.selector() == *selector)))) && operation_ref.as_ref().is_none_or(|reference| local_or_external(reference, |selector| document.catalog.interfaces.iter().flat_map(|i| &i.operations).any(|op| op.id.as_ref().is_some_and(|id| id.selector() == *selector)))),
+        EventDefinition::Error { error_ref: Some(reference), .. } => local_or_external(reference, |selector| document.event_resources.iter().any(|r| matches!(r, EventResource::Error { id, .. } if id.selector() == *selector))),
+        EventDefinition::Escalation { escalation_ref: Some(reference), .. } => local_or_external(reference, |selector| document.event_resources.iter().any(|r| matches!(r, EventResource::Escalation { id, .. } if id.selector() == *selector))),
+        _ => true,
+    }
 }
 fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
     let root = tree(bytes)?;
@@ -2298,6 +2237,22 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
         }
         seen_non_import = true;
         match (e.ns.as_str(), e.name.as_str()) {
+            (
+                B,
+                "messageEventDefinition"
+                | "signalEventDefinition"
+                | "errorEventDefinition"
+                | "escalationEventDefinition"
+                | "conditionalEventDefinition"
+                | "timerEventDefinition"
+                | "linkEventDefinition"
+                | "cancelEventDefinition"
+                | "compensateEventDefinition"
+                | "terminateEventDefinition",
+            ) => d.root_event_definitions.push(parse_event_definition(
+                e,
+                root.attrs.get("targetNamespace")?,
+            )?),
             (B, "itemDefinition") if d.catalog.item_definitions.len() < 256 => {
                 d.catalog.item_definitions.push(catalog_item(e)?)
             }
@@ -2348,8 +2303,10 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                 });
             }
             (B, "error" | "escalation") => {
-                if !attrs(e, &["id", "name", "errorCode", "escalationCode"])
-                    || !e.children.is_empty()
+                if !attrs(
+                    e,
+                    &["id", "name", "errorCode", "escalationCode", "structureRef"],
+                ) || !e.children.is_empty()
                 {
                     return None;
                 }
@@ -2375,25 +2332,43 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                         id: root_id,
                         name,
                         code,
+                        structure_ref: e.catalog_qnames.get("structureRef").cloned(),
                     }
                 } else {
                     EventResource::Escalation {
                         id: root_id,
                         name,
                         code,
+                        structure_ref: e.catalog_qnames.get("structureRef").cloned(),
                     }
                 });
             }
             (B, "signal" | "message") => {
-                if !attrs(e, &["id", "name"]) || !e.children.is_empty() {
+                if !attrs(
+                    e,
+                    if e.name == "signal" {
+                        &["id", "name", "structureRef"]
+                    } else {
+                        &["id", "name", "itemRef"]
+                    },
+                ) || !e.children.is_empty()
+                {
                     return None;
                 }
                 let root_id = element_identity(e)?;
                 let name = e.attrs.get("name").cloned();
                 d.event_resources.push(if e.name == "signal" {
-                    EventResource::Signal { id: root_id, name }
+                    EventResource::Signal {
+                        id: root_id,
+                        name,
+                        structure_ref: e.catalog_qnames.get("structureRef").cloned(),
+                    }
                 } else {
-                    EventResource::Message { id: root_id, name }
+                    EventResource::Message {
+                        id: root_id,
+                        name,
+                        item_ref: e.catalog_qnames.get("itemRef").cloned(),
+                    }
                 });
             }
             (B, "choreography") => {
@@ -2435,9 +2410,15 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                         || !attrs(
                             item,
                             if item.name == "BPMNShape" {
-                                &["id", "bpmnElement", "isExpanded"]
+                                &[
+                                    "id",
+                                    "bpmnElement",
+                                    "isExpanded",
+                                    "isHorizontal",
+                                    "isMarkerVisible",
+                                ]
                             } else {
-                                &["id", "bpmnElement"]
+                                &["id", "bpmnElement", "sourceElement", "targetElement"]
                             },
                         )
                     {
@@ -2464,6 +2445,10 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                                 id: element_identity(item)?,
                                 element: selector(item, "bpmnElement")?,
                                 is_expanded,
+                                is_horizontal: optional_bool(item.attrs.get("isHorizontal"))?,
+                                is_marker_visible: optional_bool(
+                                    item.attrs.get("isMarkerVisible"),
+                                )?,
                                 bounds: bounds(&item.children[0])?,
                                 label,
                                 style: None,
@@ -2498,6 +2483,18 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                             diagram.edges.push(Edge {
                                 id: element_identity(item)?,
                                 element: selector(item, "bpmnElement")?,
+                                source_element: item
+                                    .attrs
+                                    .get("sourceElement")
+                                    .map(|v| v.parse())
+                                    .transpose()
+                                    .ok()?,
+                                target_element: item
+                                    .attrs
+                                    .get("targetElement")
+                                    .map(|v| v.parse())
+                                    .transpose()
+                                    .ok()?,
                                 waypoints: points,
                                 label,
                                 style: None,
@@ -2510,6 +2507,12 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
             }
             _ => return None,
         }
+    }
+    if d.root_event_definitions
+        .iter()
+        .any(|definition| !event_definition_resources_valid(&d, definition))
+    {
+        return None;
     }
     // Every flow and lane reference is validated in its owning scope.
     let all_scopes = scopes(&d)?;
@@ -2545,16 +2548,25 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
             {
                 return None;
             }
-            if let Some(NodeDetails::Event { definitions, .. }) = &node.details {
-                for def in definitions {
-                    let valid = match def {
-                        EventDefinition::Signal { signal_ref: Some(id), .. } => d.event_resources.iter().any(|r| matches!(r, EventResource::Signal { id: other, .. } if id == other)),
-                        EventDefinition::Message { message_ref: Some(id), .. } => d.event_resources.iter().any(|r| matches!(r, EventResource::Message { id: other, .. } if id == other)),
-                        EventDefinition::Error { error_ref: Some(id), .. } => d.event_resources.iter().any(|r| matches!(r, EventResource::Error { id: other, .. } if id == other)),
-                        EventDefinition::Escalation { escalation_ref: Some(id), .. } => d.event_resources.iter().any(|r| matches!(r, EventResource::Escalation { id: other, .. } if id == other)),
-                        _ => true,
-                    };
-                    if !valid {
+            if let Some(NodeDetails::Event {
+                definitions,
+                definition_refs,
+                ..
+            }) = &node.details
+            {
+                if definitions
+                    .iter()
+                    .any(|definition| !event_definition_resources_valid(&d, definition))
+                {
+                    return None;
+                }
+                for reference in definition_refs {
+                    if let EventReference::Local(selector) = reference
+                        && !d.root_event_definitions.iter().any(|definition| {
+                            event_definition_identity(definition)
+                                .is_some_and(|id| id.selector() == *selector)
+                        })
+                    {
                         return None;
                     }
                 }
@@ -2582,10 +2594,17 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
         }
         for f in p.flows {
             if !(p.nodes.iter().any(|n| n.id == f.source)
-                || (f.kind == FlowKind::Association && p.groups.iter().any(|g| g.id == f.source)))
+                || (f.kind == FlowKind::Association
+                    && (p.groups.iter().any(|g| g.id == f.source)
+                        || p.flows
+                            .iter()
+                            .any(|flow| flow.kind == FlowKind::Sequence && flow.id == f.source))))
                 || !(p.nodes.iter().any(|n| n.id == f.target)
                     || (f.kind == FlowKind::Association
-                        && p.groups.iter().any(|g| g.id == f.target)))
+                        && (p.groups.iter().any(|g| g.id == f.target)
+                            || p.flows.iter().any(|flow| {
+                                flow.kind == FlowKind::Sequence && flow.id == f.target
+                            }))))
             {
                 return None;
             }
@@ -2632,9 +2651,12 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                         .conversation_links
                         .iter()
                         .any(|f| f.id == e.element)
-                    && !all_scopes
-                        .iter()
-                        .any(|p| p.flows.iter().any(|f| f.id == e.element))
+                    && !all_scopes.iter().any(|p| {
+                        p.flows.iter().any(|f| f.id == e.element)
+                            || p.data_associations
+                                .iter()
+                                .any(|a| a.id.as_ref().is_some_and(|id| id.selector() == e.element))
+                    })
             }) {
                 return None;
             }
@@ -2659,9 +2681,12 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                         || p.groups.iter().any(|g| g.id == s.element)
                 })
         }) || dia.edges.iter().any(|e| {
-            !contained
-                .iter()
-                .any(|p| p.flows.iter().any(|f| f.id == e.element))
+            !contained.iter().any(|p| {
+                p.flows.iter().any(|f| f.id == e.element)
+                    || p.data_associations
+                        .iter()
+                        .any(|a| a.id.as_ref().is_some_and(|id| id.selector() == e.element))
+            })
         }) {
             return None;
         }
@@ -2806,6 +2831,139 @@ fn write_message_flow(xml: &mut String, flow: &Flow, namespace: &str, document: 
         write_doc(xml, &flow.documentation);
     }
     xml.push_str(&format!("</{tag}>"));
+}
+fn event_reference_qname(
+    reference: &EventReference,
+    namespace: &str,
+    context: &ExportContext,
+) -> QNameRef {
+    match reference {
+        EventReference::Local(selector) => QNameRef {
+            namespace: namespace.to_owned(),
+            local: xml_reference(context, selector).clone(),
+        },
+        EventReference::Qualified(qname) => qname.clone(),
+    }
+}
+fn write_event_qname_text(
+    xml: &mut String,
+    tag: &str,
+    reference: &EventReference,
+    namespace: &str,
+    context: &ExportContext,
+) {
+    let qname = event_reference_qname(reference, namespace, context);
+    xml.push_str(&format!(
+        "<pc_event:{tag} xmlns:pc_event=\"{B}\" xmlns=\"{}\">{}</pc_event:{tag}>",
+        esc(&qname.namespace),
+        qname.local
+    ));
+}
+fn write_event_definition(
+    xml: &mut String,
+    definition: &EventDefinition,
+    restore_default: bool,
+    namespace: &str,
+    context: &ExportContext,
+) {
+    let (tag, id, attribute_reference) = match definition {
+        EventDefinition::Message {
+            id, message_ref, ..
+        } => (
+            "messageEventDefinition",
+            id,
+            message_ref.as_ref().map(|r| ("messageRef", r)),
+        ),
+        EventDefinition::Signal { id, signal_ref } => (
+            "signalEventDefinition",
+            id,
+            signal_ref.as_ref().map(|r| ("signalRef", r)),
+        ),
+        EventDefinition::Error { id, error_ref } => (
+            "errorEventDefinition",
+            id,
+            error_ref.as_ref().map(|r| ("errorRef", r)),
+        ),
+        EventDefinition::Escalation { id, escalation_ref } => (
+            "escalationEventDefinition",
+            id,
+            escalation_ref.as_ref().map(|r| ("escalationRef", r)),
+        ),
+        EventDefinition::Compensate {
+            id, activity_ref, ..
+        } => (
+            "compensateEventDefinition",
+            id,
+            activity_ref.as_ref().map(|r| ("activityRef", r)),
+        ),
+        EventDefinition::Conditional { id, .. } => ("conditionalEventDefinition", id, None),
+        EventDefinition::Timer { id, .. } => ("timerEventDefinition", id, None),
+        EventDefinition::Link { id, .. } => ("linkEventDefinition", id, None),
+        EventDefinition::Cancel { id } => ("cancelEventDefinition", id, None),
+        EventDefinition::Terminate { id } => ("terminateEventDefinition", id, None),
+    };
+    let name = if let Some((_, reference)) = attribute_reference {
+        let qname = event_reference_qname(reference, namespace, context);
+        write_local_qname_open(xml, tag, &qname.namespace)
+    } else {
+        xml.push_str(&format!("<{tag}"));
+        if restore_default {
+            xml.push_str(&format!(" xmlns=\"{B}\""));
+        }
+        tag.to_owned()
+    };
+    if let Some(id) = id {
+        write_xml_id(xml, id);
+    }
+    if let Some((attribute, reference)) = attribute_reference {
+        let qname = event_reference_qname(reference, namespace, context);
+        xml.push_str(&format!(
+            " {attribute}=\"{}\"",
+            local_qname_value(&qname.local, &qname.namespace)
+        ));
+    }
+    match definition {
+        EventDefinition::Compensate {
+            wait_for_completion: Some(value),
+            ..
+        } => xml.push_str(&format!(" waitForCompletion=\"{value}\"")),
+        EventDefinition::Link { name, .. } => xml.push_str(&format!(" name=\"{}\"", esc(name))),
+        _ => {}
+    }
+    xml.push('>');
+    match definition {
+        EventDefinition::Message {
+            operation_ref: Some(reference),
+            ..
+        } => write_event_qname_text(xml, "operationRef", reference, namespace, context),
+        EventDefinition::Conditional { expression, .. } => {
+            write_expression(xml, "condition", expression, false)
+        }
+        EventDefinition::Timer {
+            kind: Some(kind),
+            expression: Some(expression),
+            ..
+        } => {
+            let child = match kind {
+                TimerKind::Date => "timeDate",
+                TimerKind::Duration => "timeDuration",
+                TimerKind::Cycle => "timeCycle",
+            };
+            write_expression(xml, child, expression, false);
+        }
+        EventDefinition::Link {
+            sources, target, ..
+        } => {
+            for source in sources {
+                write_event_qname_text(xml, "source", source, namespace, context);
+            }
+            if let Some(target) = target {
+                write_event_qname_text(xml, "target", target, namespace, context);
+            }
+        }
+        _ => {}
+    }
+    xml.push_str(&format!("</{name}>"));
 }
 fn write_xml_id(xml: &mut String, identity: &ElementIdentity) {
     if let Some(id) = identity.xml_id() {
@@ -2987,6 +3145,126 @@ fn write_io_specification(
     }
     xml.push_str("</ioSpecification>");
 }
+fn write_event_port(
+    xml: &mut String,
+    port: &processcraft_core::bpmn_data::DataPort,
+    tag: &str,
+    restore_default: bool,
+) {
+    let empty_qname = port
+        .item_aware
+        .as_ref()
+        .and_then(|m| m.item_subject_ref.as_ref())
+        .is_some_and(|q| q.namespace.is_empty());
+    let element = if empty_qname {
+        format!("pc_data:{tag}")
+    } else {
+        tag.to_owned()
+    };
+    xml.push_str(&format!("<{element}"));
+    if empty_qname {
+        xml.push_str(&format!(" xmlns:pc_data=\"{B}\" xmlns=\"\""));
+    } else if restore_default {
+        xml.push_str(&format!(" xmlns=\"{B}\""));
+    }
+    if let Some(id) = &port.id {
+        write_xml_id(xml, id);
+    }
+    write_xml_name(xml, port.name.as_deref());
+    if let Some(collection) = port.is_collection {
+        xml.push_str(&format!(" isCollection=\"{collection}\""));
+    }
+    write_item_attributes(xml, port.item_aware.as_ref());
+    xml.push('>');
+    write_item_state(xml, port.item_aware.as_ref(), empty_qname);
+    xml.push_str(&format!("</{element}>"));
+}
+fn write_event_set(
+    xml: &mut String,
+    set: &processcraft_core::bpmn_data::IoSet,
+    input: bool,
+    restore_default: bool,
+    context: &ExportContext,
+) {
+    let tag = if input { "inputSet" } else { "outputSet" };
+    xml.push_str(&format!("<{tag}"));
+    if restore_default {
+        xml.push_str(&format!(" xmlns=\"{B}\""));
+    }
+    if let Some(id) = &set.id {
+        write_xml_id(xml, id);
+    }
+    write_xml_name(xml, set.name.as_deref());
+    xml.push('>');
+    for (child, refs) in [
+        (
+            if input {
+                "dataInputRefs"
+            } else {
+                "dataOutputRefs"
+            },
+            &set.data_refs,
+        ),
+        (
+            if input {
+                "optionalInputRefs"
+            } else {
+                "optionalOutputRefs"
+            },
+            &set.optional_refs,
+        ),
+        (
+            if input {
+                "whileExecutingInputRefs"
+            } else {
+                "whileExecutingOutputRefs"
+            },
+            &set.while_executing_refs,
+        ),
+        (
+            if input {
+                "outputSetRefs"
+            } else {
+                "inputSetRefs"
+            },
+            &set.counterpart_refs,
+        ),
+    ] {
+        for reference in refs {
+            xml.push_str(&format!(
+                "<{child}>{}</{child}>",
+                xml_reference(context, reference)
+            ));
+        }
+    }
+    xml.push_str(&format!("</{tag}>"));
+}
+fn write_event_property(xml: &mut String, property: &EventProperty, restore_default: bool) {
+    let empty_qname = property
+        .item_aware
+        .as_ref()
+        .and_then(|m| m.item_subject_ref.as_ref())
+        .is_some_and(|q| q.namespace.is_empty());
+    let tag = if empty_qname {
+        "pc_data:property"
+    } else {
+        "property"
+    };
+    xml.push_str(&format!("<{tag}"));
+    if empty_qname {
+        xml.push_str(&format!(" xmlns:pc_data=\"{B}\" xmlns=\"\""));
+    } else if restore_default {
+        xml.push_str(&format!(" xmlns=\"{B}\""));
+    }
+    if let Some(id) = &property.id {
+        write_xml_id(xml, id);
+    }
+    write_xml_name(xml, property.name.as_deref());
+    write_item_attributes(xml, property.item_aware.as_ref());
+    xml.push('>');
+    write_item_state(xml, property.item_aware.as_ref(), empty_qname);
+    xml.push_str(&format!("</{tag}>"));
+}
 fn write_data_association(
     xml: &mut String,
     a: &processcraft_core::bpmn_data::DataAssociation,
@@ -3151,7 +3429,10 @@ fn write_scope(
         if let Some(NodeDetails::Event { definitions, .. }) = &n.details {
             for definition in definitions {
                 match definition {
-                    EventDefinition::Timer { expression, .. }
+                    EventDefinition::Timer {
+                        expression: Some(expression),
+                        ..
+                    }
                     | EventDefinition::Conditional { expression, .. } => {
                         expressions.push(expression)
                     }
@@ -3255,7 +3536,10 @@ fn write_scope(
                     .iter()
                     .find_map(|definition| {
                         let expression = match definition {
-                            EventDefinition::Timer { expression, .. }
+                            EventDefinition::Timer {
+                                expression: Some(expression),
+                                ..
+                            }
                             | EventDefinition::Conditional { expression, .. } => expression,
                             _ => return None,
                         };
@@ -3288,6 +3572,19 @@ fn write_scope(
             }
         }
         write_item_attributes(xml, n.item_aware.as_ref());
+        if let Some(NodeDetails::Event {
+            parallel_multiple,
+            is_interrupting,
+            ..
+        }) = &n.details
+        {
+            if let Some(value) = parallel_multiple {
+                xml.push_str(&format!(" parallelMultiple=\"{value}\""));
+            }
+            if let Some(value) = is_interrupting {
+                xml.push_str(&format!(" isInterrupting=\"{value}\""));
+            }
+        }
         if let Some(a) = &n.activity {
             if let Some(v) = a.is_for_compensation {
                 xml.push_str(&format!(" isForCompensation=\"{}\"", v));
@@ -3402,6 +3699,24 @@ fn write_scope(
             write_doc(xml, &n.documentation);
         }
         write_item_state(xml, n.item_aware.as_ref(), unqualified);
+        if let Some(NodeDetails::Event { properties, io, .. }) = &n.details {
+            for property in properties {
+                write_event_property(xml, property, unqualified);
+            }
+            match io {
+                Some(EventIo::Catch { outputs, .. }) => {
+                    for port in outputs {
+                        write_event_port(xml, port, "dataOutput", unqualified);
+                    }
+                }
+                Some(EventIo::Throw { inputs, .. }) => {
+                    for port in inputs {
+                        write_event_port(xml, port, "dataInput", unqualified);
+                    }
+                }
+                None => {}
+            }
+        }
         if let Some(io) = &n.io_specification {
             write_io_specification(xml, io, unqualified, document);
         }
@@ -3422,6 +3737,19 @@ fn write_scope(
                 )
         }) {
             write_data_association(xml, association, unqualified, document);
+        }
+        if let Some(NodeDetails::Event { io, .. }) = &n.details {
+            match io {
+                Some(EventIo::Catch {
+                    output_set: Some(set),
+                    ..
+                }) => write_event_set(xml, set, false, unqualified, document),
+                Some(EventIo::Throw {
+                    input_set: Some(set),
+                    ..
+                }) => write_event_set(xml, set, true, unqualified, document),
+                _ => {}
+            }
         }
         if let Some(NodeDetails::Gateway {
             activation_condition: Some(condition),
@@ -3505,175 +3833,18 @@ fn write_scope(
                 namespace,
             );
         }
-        if let Some(NodeDetails::Event { definitions, .. }) = &n.details
-            && let [
-                EventDefinition::Timer {
-                    id,
-                    kind,
-                    expression,
-                },
-            ] = definitions.as_slice()
+        if let Some(NodeDetails::Event {
+            definitions,
+            definition_refs,
+            ..
+        }) = &n.details
         {
-            xml.push_str("<timerEventDefinition");
-            if unqualified {
-                xml.push_str(&format!(" xmlns=\"{B}\""));
+            for definition in definitions {
+                write_event_definition(xml, definition, unqualified, namespace, document);
             }
-            if let Some(id) = id {
-                write_xml_id(xml, id);
+            for reference in definition_refs {
+                write_event_qname_text(xml, "eventDefinitionRef", reference, namespace, document);
             }
-            let tag = match kind {
-                TimerKind::Date => "timeDate",
-                TimerKind::Duration => "timeDuration",
-                TimerKind::Cycle => "timeCycle",
-            };
-            xml.push('>');
-            write_expression(xml, tag, expression, false);
-            xml.push_str("</timerEventDefinition>");
-        }
-        if let Some(NodeDetails::Event { definitions, .. }) = &n.details
-            && let [EventDefinition::Terminate { id }] = definitions.as_slice()
-        {
-            xml.push_str("<terminateEventDefinition");
-            if unqualified {
-                xml.push_str(&format!(" xmlns=\"{B}\""));
-            }
-            if let Some(id) = id {
-                write_xml_id(xml, id);
-            }
-            xml.push_str("/>");
-        }
-        if let Some(NodeDetails::Event { definitions, .. }) = &n.details {
-            let referenced = match definitions.as_slice() {
-                [
-                    EventDefinition::Signal {
-                        id,
-                        signal_ref: Some(target),
-                    },
-                ] => Some(("signalEventDefinition", "signalRef", id, target)),
-                [
-                    EventDefinition::Message {
-                        id,
-                        message_ref: Some(target),
-                        operation_ref: None,
-                    },
-                ] => Some(("messageEventDefinition", "messageRef", id, target)),
-                [
-                    EventDefinition::Error {
-                        id,
-                        error_ref: Some(target),
-                    },
-                ] => Some(("errorEventDefinition", "errorRef", id, target)),
-                [
-                    EventDefinition::Escalation {
-                        id,
-                        escalation_ref: Some(target),
-                    },
-                ] => Some(("escalationEventDefinition", "escalationRef", id, target)),
-                _ => None,
-            };
-            if let Some((tag, attribute, id, target)) = referenced {
-                write_local_qname_open(xml, tag, namespace);
-                if let Some(id) = id {
-                    write_xml_id(xml, id);
-                }
-                xml.push_str(&format!(
-                    " {attribute}=\"{}\"/>",
-                    local_qname_value(xml_reference(document, target), namespace)
-                ));
-            }
-        }
-        if let Some(NodeDetails::Event { definitions, .. }) = &n.details {
-            match definitions.as_slice() {
-                [EventDefinition::Cancel { id }] => {
-                    xml.push_str("<cancelEventDefinition");
-                    if unqualified {
-                        xml.push_str(&format!(" xmlns=\"{B}\""));
-                    }
-                    if let Some(id) = id {
-                        write_xml_id(xml, id);
-                    }
-                    xml.push_str("/>");
-                }
-                [
-                    EventDefinition::Compensate {
-                        id,
-                        wait_for_completion,
-                        activity_ref,
-                    },
-                ] => {
-                    if activity_ref.is_some() {
-                        write_local_qname_open(xml, "compensateEventDefinition", namespace);
-                    } else {
-                        xml.push_str("<compensateEventDefinition");
-                        if unqualified {
-                            xml.push_str(&format!(" xmlns=\"{B}\""));
-                        }
-                    }
-                    if let Some(id) = id {
-                        write_xml_id(xml, id);
-                    }
-                    if let Some(wait) = wait_for_completion {
-                        xml.push_str(&format!(" waitForCompletion=\"{wait}\""));
-                    }
-                    if let Some(activity) = activity_ref {
-                        xml.push_str(&format!(
-                            " activityRef=\"{}\"",
-                            local_qname_value(xml_reference(document, activity), namespace)
-                        ));
-                    }
-                    xml.push_str("/>");
-                }
-                [
-                    EventDefinition::Link {
-                        id,
-                        name,
-                        sources,
-                        target,
-                    },
-                ] => {
-                    xml.push_str("<linkEventDefinition");
-                    if unqualified {
-                        xml.push_str(&format!(" xmlns=\"{B}\""));
-                    }
-                    xml.push_str(&format!(" name=\"{}\"", esc(name)));
-                    if let Some(id) = id {
-                        write_xml_id(xml, id);
-                    }
-                    xml.push('>');
-                    for source in sources {
-                        write_local_qname_text(
-                            xml,
-                            "source",
-                            xml_reference(document, source),
-                            namespace,
-                        );
-                    }
-                    if let Some(target) = target {
-                        write_local_qname_text(
-                            xml,
-                            "target",
-                            xml_reference(document, target),
-                            namespace,
-                        );
-                    }
-                    xml.push_str("</linkEventDefinition>");
-                }
-                _ => {}
-            }
-        }
-        if let Some(NodeDetails::Event { definitions, .. }) = &n.details
-            && let [EventDefinition::Conditional { id, expression }] = definitions.as_slice()
-        {
-            xml.push_str("<conditionalEventDefinition");
-            if unqualified {
-                xml.push_str(&format!(" xmlns=\"{B}\""));
-            }
-            if let Some(id) = id {
-                write_xml_id(xml, id);
-            }
-            xml.push('>');
-            write_expression(xml, "condition", expression, false);
-            xml.push_str("</conditionalEventDefinition>");
         }
         if let Some(a) = &n.activity
             && let Some(value) = &a.completion_condition
@@ -3808,6 +3979,29 @@ pub fn export_bpmn(
     }
     Ok(result)
 }
+fn event_local_selectors(definition: &EventDefinition) -> Vec<&ElementSelector> {
+    let refs: Vec<&EventReference> = match definition {
+        EventDefinition::Message {
+            message_ref,
+            operation_ref,
+            ..
+        } => message_ref.iter().chain(operation_ref.iter()).collect(),
+        EventDefinition::Signal { signal_ref, .. } => signal_ref.iter().collect(),
+        EventDefinition::Error { error_ref, .. } => error_ref.iter().collect(),
+        EventDefinition::Escalation { escalation_ref, .. } => escalation_ref.iter().collect(),
+        EventDefinition::Link {
+            sources, target, ..
+        } => sources.iter().chain(target.iter()).collect(),
+        EventDefinition::Compensate { activity_ref, .. } => activity_ref.iter().collect(),
+        _ => Vec::new(),
+    };
+    refs.into_iter()
+        .filter_map(|reference| match reference {
+            EventReference::Local(selector) => Some(selector),
+            EventReference::Qualified(_) => None,
+        })
+        .collect()
+}
 fn missing_xml_reference(document: &ExportContext) -> Option<ElementSelector> {
     fn check(document: &ExportContext, selector: &ElementSelector) -> Option<ElementSelector> {
         (!document.xml_ids.contains_key(selector)).then(|| selector.clone())
@@ -3883,40 +4077,30 @@ fn missing_xml_reference(document: &ExportContext) -> Option<ElementSelector> {
                 Some(NodeDetails::BoundaryEvent { attached_to, .. }) => vec![attached_to],
                 Some(NodeDetails::Event {
                     definitions,
+                    definition_refs,
                     attached_to,
+                    io,
                     ..
                 }) => {
                     let mut refs: Vec<_> = attached_to.iter().collect();
                     for definition in definitions {
-                        match definition {
-                            EventDefinition::Message {
-                                message_ref,
-                                operation_ref,
-                                ..
-                            } => {
-                                refs.extend(message_ref.iter());
-                                refs.extend(operation_ref.iter());
-                            }
-                            EventDefinition::Signal { signal_ref, .. } => {
-                                refs.extend(signal_ref.iter())
-                            }
-                            EventDefinition::Error { error_ref, .. } => {
-                                refs.extend(error_ref.iter())
-                            }
-                            EventDefinition::Escalation { escalation_ref, .. } => {
-                                refs.extend(escalation_ref.iter())
-                            }
-                            EventDefinition::Link {
-                                sources, target, ..
-                            } => {
-                                refs.extend(sources);
-                                refs.extend(target.iter());
-                            }
-                            EventDefinition::Compensate { activity_ref, .. } => {
-                                refs.extend(activity_ref.iter())
-                            }
-                            _ => {}
+                        refs.extend(event_local_selectors(definition));
+                    }
+                    for reference in definition_refs {
+                        if let EventReference::Local(selector) = reference {
+                            refs.push(selector);
                         }
+                    }
+                    let event_set = match io {
+                        Some(EventIo::Catch { output_set, .. }) => output_set.as_ref(),
+                        Some(EventIo::Throw { input_set, .. }) => input_set.as_ref(),
+                        None => None,
+                    };
+                    if let Some(set) = event_set {
+                        refs.extend(set.data_refs.iter());
+                        refs.extend(set.optional_refs.iter());
+                        refs.extend(set.while_executing_refs.iter());
+                        refs.extend(set.counterpart_refs.iter());
                     }
                     refs
                 }
@@ -3926,6 +4110,13 @@ fn missing_xml_reference(document: &ExportContext) -> Option<ElementSelector> {
                 if let Some(missing) = check(document, reference) {
                     return Some(missing);
                 }
+            }
+        }
+    }
+    for definition in &document.root_event_definitions {
+        for reference in event_local_selectors(definition) {
+            if let Some(missing) = check(document, reference) {
+                return Some(missing);
             }
         }
     }
@@ -4002,6 +4193,13 @@ fn missing_xml_reference(document: &ExportContext) -> Option<ElementSelector> {
         if let Some(missing) = check(document, &diagram.plane) {
             return Some(missing);
         }
+        for edge in &diagram.edges {
+            for reference in edge.source_element.iter().chain(edge.target_element.iter()) {
+                if let Some(missing) = check(document, reference) {
+                    return Some(missing);
+                }
+            }
+        }
         for r in diagram
             .shapes
             .iter()
@@ -4047,8 +4245,37 @@ fn export_document(
         .flat_map(|diagram| &diagram.shapes)
         .any(|shape| activity_ports.contains(&shape.element))
     {
-        report.blocked.push("Activity data input/output ports cannot be shown in BPMN diagrams; remove their shapes before export".into());
+        report.blocked.push("Activity or event data input/output ports cannot be shown in BPMN diagrams; remove their shapes before export".into());
         return Err(ExportFailure { report });
+    }
+    if let Some(scopes) = scopes(document) {
+        let associations: std::collections::HashMap<_, _> = scopes
+            .iter()
+            .flat_map(|scope| scope.data_associations)
+            .filter_map(|association| {
+                association
+                    .id
+                    .as_ref()
+                    .map(|id| (id.selector(), association))
+            })
+            .collect();
+        for edge in document.diagrams.iter().flat_map(|diagram| &diagram.edges) {
+            if let Some(association) = associations.get(&edge.element) {
+                if association
+                    .sources
+                    .iter()
+                    .any(|source| activity_ports.contains(source))
+                    && edge.source_element.is_none()
+                {
+                    report.blocked.push("Data association uses a non-process output port; select the visible source representation before export".into());
+                    return Err(ExportFailure { report });
+                }
+                if activity_ports.contains(&association.target) && edge.target_element.is_none() {
+                    report.blocked.push("Data association uses a non-process input port; select the visible target representation before export".into());
+                    return Err(ExportFailure { report });
+                }
+            }
+        }
     }
     let context = ExportContext::new(document);
     if let Some(selector) = missing_xml_reference(&context) {
@@ -4280,16 +4507,58 @@ fn export_document(
         xml.push_str(&format!("</{tag}>"));
     }
     for resource in &document.event_resources {
-        let (tag, id, name) = match resource {
-            EventResource::Signal { id, name } => ("signal", id, name),
-            EventResource::Message { id, name } => ("message", id, name),
-            EventResource::Error { id, name, .. } => ("error", id, name),
-            EventResource::Escalation { id, name, .. } => ("escalation", id, name),
+        let (tag, id, name, qname) = match resource {
+            EventResource::Signal {
+                id,
+                name,
+                structure_ref,
+            } => (
+                "signal",
+                id,
+                name,
+                structure_ref.as_ref().map(|q| ("structureRef", q)),
+            ),
+            EventResource::Message { id, name, item_ref } => (
+                "message",
+                id,
+                name,
+                item_ref.as_ref().map(|q| ("itemRef", q)),
+            ),
+            EventResource::Error {
+                id,
+                name,
+                structure_ref,
+                ..
+            } => (
+                "error",
+                id,
+                name,
+                structure_ref.as_ref().map(|q| ("structureRef", q)),
+            ),
+            EventResource::Escalation {
+                id,
+                name,
+                structure_ref,
+                ..
+            } => (
+                "escalation",
+                id,
+                name,
+                structure_ref.as_ref().map(|q| ("structureRef", q)),
+            ),
         };
-        xml.push_str(&format!("<{tag}"));
+        if let Some((_, q)) = qname {
+            write_local_qname_open(&mut xml, tag, &q.namespace);
+        } else {
+            xml.push_str(&format!("<{tag}"));
+        }
         write_xml_id(&mut xml, id);
-        if let Some(name) = name {
-            xml.push_str(&format!(" name=\"{}\"", esc(name)));
+        write_xml_name(&mut xml, name.as_deref());
+        if let Some((attribute, q)) = qname {
+            xml.push_str(&format!(
+                " {attribute}=\"{}\"",
+                local_qname_value(&q.local, &q.namespace)
+            ));
         }
         match resource {
             EventResource::Error {
@@ -4301,6 +4570,9 @@ fn export_document(
             _ => {}
         }
         xml.push_str("/>");
+    }
+    for definition in &document.root_event_definitions {
+        write_event_definition(&mut xml, definition, false, &namespace, &context);
     }
     for c in &document.choreographies {
         if c.activities
@@ -4450,6 +4722,12 @@ fn export_document(
             if let Some(expanded) = s.is_expanded {
                 xml.push_str(&format!(" isExpanded=\"{}\"", expanded));
             }
+            if let Some(horizontal) = s.is_horizontal {
+                xml.push_str(&format!(" isHorizontal=\"{}\"", horizontal));
+            }
+            if let Some(marker) = s.is_marker_visible {
+                xml.push_str(&format!(" isMarkerVisible=\"{}\"", marker));
+            }
             xml.push_str(&format!(
                 "><dc:Bounds x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\"/>",
                 b.x, b.y, b.width, b.height
@@ -4464,9 +4742,22 @@ fn export_document(
             xml.push_str(&ns_binding);
             write_xml_id(&mut xml, &e.id);
             xml.push_str(&format!(
-                " bpmnElement=\"{}\">",
+                " bpmnElement=\"{}\"",
                 xml_reference(&context, &e.element)
             ));
+            if let Some(source) = &e.source_element {
+                xml.push_str(&format!(
+                    " sourceElement=\"{}\"",
+                    xml_reference(&context, source)
+                ));
+            }
+            if let Some(target) = &e.target_element {
+                xml.push_str(&format!(
+                    " targetElement=\"{}\"",
+                    xml_reference(&context, target)
+                ));
+            }
+            xml.push('>');
             for p in &e.waypoints {
                 xml.push_str(&format!("<di:waypoint x=\"{}\" y=\"{}\"/>", p.x, p.y));
             }

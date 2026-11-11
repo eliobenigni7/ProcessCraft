@@ -230,6 +230,7 @@ fn supporting_catalog_validates_references_and_undoes_atomically() {
         .push(EventResource::Message {
             id: id("message1"),
             name: None,
+            item_ref: None,
         });
     let mut s = Session::new(project).unwrap();
     let q = |local| QNameRef {
@@ -454,6 +455,7 @@ fn activity_bindings_validate_new_local_refs_and_preserve_legacy() {
     d.event_resources.push(EventResource::Message {
         id: id("message1"),
         name: None,
+        item_ref: None,
     });
     let q = |local| QNameRef {
         namespace: GENERATED_TARGET_NAMESPACE.into(),
@@ -776,6 +778,11 @@ fn link_and_compensation_events_validate_atomically() {
             definitions: vec![definition],
             attached_to: None,
             cancel_activity: None,
+            definition_refs: vec![],
+            parallel_multiple: None,
+            is_interrupting: None,
+            properties: vec![],
+            io: None,
         }),
         loop_characteristics: None,
         io_specification: None,
@@ -790,7 +797,9 @@ fn link_and_compensation_events_validate_atomically() {
             id: Some(id("throw_def")),
             name: "jump".into(),
             sources: vec![],
-            target: Some(id("catch_def")),
+            target: Some(processcraft_core::bpmn_model::EventReference::Local(id(
+                "catch_def",
+            ))),
         },
     );
     let catch = node(
@@ -799,7 +808,9 @@ fn link_and_compensation_events_validate_atomically() {
         EventDefinition::Link {
             id: Some(id("catch_def")),
             name: "jump".into(),
-            sources: vec![id("throw_def")],
+            sources: vec![processcraft_core::bpmn_model::EventReference::Local(id(
+                "throw_def",
+            ))],
             target: None,
         },
     );
@@ -809,7 +820,9 @@ fn link_and_compensation_events_validate_atomically() {
         EventDefinition::Compensate {
             id: None,
             wait_for_completion: None,
-            activity_ref: Some(id("review")),
+            activity_ref: Some(processcraft_core::bpmn_model::EventReference::Local(id(
+                "review",
+            ))),
         },
     );
     let create = |element| Mutation::CreateElement {
@@ -1338,6 +1351,10 @@ fn flow_condition_changes_identity_and_protected_document_rejects_it() {
 fn descriptors_match_protocol_tags() {
     let descriptors = processcraft_core::commands::command_descriptors();
     let expected = [
+        "setEventResources",
+        "setRootEventDefinitions",
+        "setShapeDiAttributes",
+        "setEdgeDiEndpoints",
         "setCollaborationName",
         "setDiagramName",
         "setProcessExecutable",
@@ -1678,4 +1695,456 @@ fn annotation_text_edit_migrates_legacy_body_and_undo_restores_it() {
             .as_deref(),
         Some("old body")
     );
+}
+
+#[test]
+fn reusable_event_catalog_edits_are_atomic_and_undoable() {
+    use processcraft_core::bpmn_model::{EventDefinition, EventReference, NodeDetails};
+    let mut s = project();
+    fixture(&mut s);
+    let before = s.snapshot().content_id;
+    let root = EventDefinition::Signal {
+        id: Some(id("root_signal")),
+        signal_ref: None,
+    };
+    let details = NodeDetails::Event {
+        definitions: vec![],
+        definition_refs: vec![EventReference::Local(id("root_signal"))],
+        attached_to: None,
+        cancel_activity: None,
+        parallel_multiple: Some(false),
+        is_interrupting: None,
+        properties: vec![],
+        io: None,
+    };
+    apply(
+        &mut s,
+        batch(vec![
+            Mutation::SetRootEventDefinitions {
+                document_id: docid(),
+                definitions: vec![root],
+            },
+            Mutation::SetNodeDetails {
+                document_id: docid(),
+                element_id: id("start"),
+                details: Some(details),
+            },
+        ]),
+    )
+    .unwrap();
+    let after = s.snapshot().content_id;
+    assert_ne!(before, after);
+    assert!(
+        apply(
+            &mut s,
+            batch(vec![Mutation::SetRootEventDefinitions {
+                document_id: docid(),
+                definitions: vec![]
+            }])
+        )
+        .is_err()
+    );
+    assert_eq!(s.snapshot().content_id, after);
+    apply(&mut s, Request::Undo).unwrap();
+    assert_eq!(s.snapshot().content_id, before);
+    apply(&mut s, Request::Redo).unwrap();
+    assert_eq!(s.snapshot().content_id, after);
+}
+
+#[test]
+fn root_event_rename_remaps_local_refs_without_touching_external_qnames() {
+    use processcraft_core::bpmn_model::{EventDefinition, EventReference, NodeDetails, QNameRef};
+    let mut s = project();
+    fixture(&mut s);
+    let local = QNameRef {
+        namespace: GENERATED_TARGET_NAMESPACE.into(),
+        local: id("root_signal"),
+    };
+    let external = QNameRef {
+        namespace: "urn:external".into(),
+        local: id("root_signal"),
+    };
+    let details = NodeDetails::Event {
+        definitions: vec![],
+        definition_refs: vec![
+            EventReference::Qualified(local),
+            EventReference::Qualified(external.clone()),
+        ],
+        attached_to: None,
+        cancel_activity: None,
+        parallel_multiple: Some(false),
+        is_interrupting: None,
+        properties: vec![],
+        io: None,
+    };
+    apply(
+        &mut s,
+        batch(vec![
+            Mutation::SetRootEventDefinitions {
+                document_id: docid(),
+                definitions: vec![EventDefinition::Signal {
+                    id: Some(id("root_signal")),
+                    signal_ref: None,
+                }],
+            },
+            Mutation::SetNodeDetails {
+                document_id: docid(),
+                element_id: id("start"),
+                details: Some(details),
+            },
+        ]),
+    )
+    .unwrap();
+    let before = s.snapshot().content_id;
+    assert!(
+        apply(
+            &mut s,
+            batch(vec![Mutation::SetElementXmlId {
+                document_id: docid(),
+                element_id: id("root_signal"),
+                xml_id: None
+            }])
+        )
+        .is_err()
+    );
+    assert_eq!(s.snapshot().content_id, before);
+    apply(
+        &mut s,
+        batch(vec![Mutation::SetElementXmlId {
+            document_id: docid(),
+            element_id: id("root_signal"),
+            xml_id: Some(id("signal_new")),
+        }]),
+    )
+    .unwrap();
+    let snap = s.snapshot();
+    let node =
+        processcraft_core::queries::find_node(&snap.project.documents[0], &id("start")).unwrap();
+    let Some(NodeDetails::Event {
+        definition_refs, ..
+    }) = &node.details
+    else {
+        panic!("event details missing")
+    };
+    assert!(
+        matches!(&definition_refs[0], EventReference::Qualified(q) if q.local == id::<processcraft_core::ids::XmlId>("signal_new"))
+    );
+    assert_eq!(definition_refs[1], EventReference::Qualified(external));
+    apply(&mut s, Request::Undo).unwrap();
+    assert_eq!(s.snapshot().content_id, before);
+}
+
+#[test]
+fn diagram_attributes_and_endpoint_changes_are_atomic_and_undoable() {
+    let mut s = project();
+    fixture(&mut s);
+    let before = s.snapshot().content_id;
+    let changes = vec![
+        Mutation::SetShapeDiAttributes {
+            document_id: docid(),
+            diagram_id: id("procurement_diagram"),
+            shape_id: id("pc_shape_start"),
+            is_horizontal: Some(false),
+            is_marker_visible: Some(true),
+        },
+        Mutation::SetEdgeDiEndpoints {
+            document_id: docid(),
+            diagram_id: id("procurement_diagram"),
+            edge_id: id("pc_edge_flow_start_review"),
+            source_element: Some(id("pc_shape_start")),
+            target_element: Some(id("pc_shape_review")),
+        },
+    ];
+    apply(&mut s, batch(changes)).unwrap();
+    let after = s.snapshot().content_id;
+    assert_ne!(before, after);
+    let diagram = &s.snapshot().project.documents[0].diagrams[0];
+    assert_eq!(
+        diagram
+            .shapes
+            .iter()
+            .find(
+                |shape| shape.id == id::<processcraft_core::ids::ElementIdentity>("pc_shape_start")
+            )
+            .unwrap()
+            .is_horizontal,
+        Some(false)
+    );
+    assert!(
+        apply(
+            &mut s,
+            batch(vec![Mutation::SetEdgeDiEndpoints {
+                document_id: docid(),
+                diagram_id: id("procurement_diagram"),
+                edge_id: id("pc_edge_flow_start_review"),
+                source_element: Some(id("missing")),
+                target_element: None
+            }])
+        )
+        .is_err()
+    );
+    assert_eq!(s.snapshot().content_id, after);
+    apply(&mut s, Request::Undo).unwrap();
+    assert_eq!(s.snapshot().content_id, before);
+    apply(&mut s, Request::Redo).unwrap();
+    assert_eq!(s.snapshot().content_id, after);
+}
+
+#[test]
+fn event_resource_catalog_rejects_dangling_local_reference() {
+    use processcraft_core::bpmn_model::{
+        EventDefinition, EventReference, EventResource, NodeDetails,
+    };
+    let mut s = project();
+    fixture(&mut s);
+    let details = NodeDetails::Event {
+        definitions: vec![EventDefinition::Signal {
+            id: None,
+            signal_ref: Some(EventReference::Local(id("signal"))),
+        }],
+        definition_refs: vec![],
+        attached_to: None,
+        cancel_activity: None,
+        parallel_multiple: None,
+        is_interrupting: None,
+        properties: vec![],
+        io: None,
+    };
+    apply(
+        &mut s,
+        batch(vec![
+            Mutation::SetEventResources {
+                document_id: docid(),
+                resources: vec![EventResource::Signal {
+                    id: id("signal"),
+                    name: None,
+                    structure_ref: None,
+                }],
+            },
+            Mutation::SetNodeDetails {
+                document_id: docid(),
+                element_id: id("start"),
+                details: Some(details),
+            },
+        ]),
+    )
+    .unwrap();
+    let before = s.snapshot().content_id;
+    assert!(
+        apply(
+            &mut s,
+            batch(vec![Mutation::SetEventResources {
+                document_id: docid(),
+                resources: vec![]
+            }])
+        )
+        .is_err()
+    );
+    assert_eq!(s.snapshot().content_id, before);
+}
+
+#[test]
+fn diagram_representation_id_promotion_remaps_edge_endpoint_and_undo() {
+    let mut s = project();
+    fixture(&mut s);
+    apply(
+        &mut s,
+        batch(vec![Mutation::SetEdgeDiEndpoints {
+            document_id: docid(),
+            diagram_id: id("procurement_diagram"),
+            edge_id: id("pc_edge_flow_start_review"),
+            source_element: Some(id("pc_shape_start")),
+            target_element: None,
+        }]),
+    )
+    .unwrap();
+    let before = s.snapshot().content_id;
+    let changed = apply(
+        &mut s,
+        batch(vec![Mutation::SetElementXmlId {
+            document_id: docid(),
+            element_id: id("pc_shape_start"),
+            xml_id: Some(id("renamed_shape")),
+        }]),
+    )
+    .unwrap();
+    let snap = s.snapshot();
+    let diagram = &snap.project.documents[0].diagrams[0];
+    let edge = diagram
+        .edges
+        .iter()
+        .find(|e| {
+            e.id == id::<processcraft_core::ids::ElementIdentity>("pc_edge_flow_start_review")
+        })
+        .unwrap();
+    assert_eq!(
+        edge.source_element.as_ref(),
+        Some(&changed.selector_mappings[0].to)
+    );
+    apply(&mut s, Request::Undo).unwrap();
+    assert_eq!(s.snapshot().content_id, before);
+}
+
+#[test]
+fn deleting_event_cleans_navigation_from_owned_property() {
+    use processcraft_core::bpmn_model::{EventProperty, NodeDetails};
+    let mut original = project();
+    fixture(&mut original);
+    let mut p = (*original.snapshot().project).clone();
+    let doc = Arc::make_mut(&mut p.documents[0]);
+    let event = doc.processes[0]
+        .nodes
+        .iter_mut()
+        .find(|node| node.id == id::<processcraft_core::ids::ElementIdentity>("start"))
+        .unwrap();
+    event.details = Some(NodeDetails::Event {
+        definitions: vec![],
+        definition_refs: vec![],
+        attached_to: None,
+        cancel_activity: None,
+        parallel_multiple: None,
+        is_interrupting: None,
+        properties: vec![EventProperty {
+            id: Some(id("property")),
+            name: Some("property".into()),
+            item_aware: None,
+        }],
+        io: None,
+    });
+    p.links.push(NavigationLink {
+        source: ElementKey {
+            document_id: docid(),
+            xml_id: id("property"),
+        },
+        target: docid(),
+        label: "property".into(),
+    });
+    // Remove connected flows and diagram representations so deleting this event is otherwise valid.
+    let doc = Arc::make_mut(&mut p.documents[0]);
+    doc.processes[0].flows.retain(|flow| {
+        flow.source != id::<processcraft_core::ids::ElementSelector>("start")
+            && flow.target != id::<processcraft_core::ids::ElementSelector>("start")
+    });
+    for diagram in &mut doc.diagrams {
+        diagram.shapes.retain(|shape| {
+            shape.element != id::<processcraft_core::ids::ElementSelector>("start")
+        });
+        diagram.edges.retain(|edge| {
+            edge.element != id::<processcraft_core::ids::ElementSelector>("flow_start_review")
+        });
+    }
+    let mut session = Session::new(p).unwrap();
+    let before = session.snapshot().content_id;
+    apply(
+        &mut session,
+        batch(vec![Mutation::Delete {
+            document_id: docid(),
+            element_id: id("start"),
+        }]),
+    )
+    .unwrap();
+    assert!(session.snapshot().project.links.is_empty());
+    apply(&mut session, Request::Undo).unwrap();
+    assert_eq!(session.snapshot().content_id, before);
+}
+
+#[test]
+fn deleting_event_cascades_its_data_association_and_undo_restores_it() {
+    use processcraft_core::{
+        bpmn_data::{DataAssociation, DataAssociationKind, DataObject, DataPort},
+        bpmn_model::{EventIo, NodeDetails},
+        ids::CommentId,
+    };
+    let mut original = project();
+    fixture(&mut original);
+    let mut p = (*original.snapshot().project).clone();
+    let doc = Arc::make_mut(&mut p.documents[0]);
+    let process = &mut doc.processes[0];
+    process
+        .nodes
+        .iter_mut()
+        .find(|n| n.id == id::<processcraft_core::ids::ElementIdentity>("start"))
+        .unwrap()
+        .details = Some(NodeDetails::Event {
+        definitions: vec![],
+        definition_refs: vec![],
+        attached_to: None,
+        cancel_activity: None,
+        parallel_multiple: None,
+        is_interrupting: None,
+        properties: vec![],
+        io: Some(EventIo::Catch {
+            outputs: vec![DataPort {
+                id: Some(id("event_output")),
+                name: Some("output".into()),
+                item_aware: None,
+                is_collection: None,
+            }],
+            output_set: None,
+        }),
+    });
+    process.data_objects.push(DataObject {
+        id: Some(id("object")),
+        name: Some("object".into()),
+        is_collection: None,
+        item_aware: None,
+    });
+    process.data_associations.push(DataAssociation {
+        id: Some(id("association")),
+        owner: id("start"),
+        kind: DataAssociationKind::Output,
+        sources: vec![id("event_output")],
+        target: id("object"),
+        transformation: None,
+        assignments: vec![],
+    });
+    process.flows.retain(|flow| {
+        flow.source != id::<processcraft_core::ids::ElementSelector>("start")
+            && flow.target != id::<processcraft_core::ids::ElementSelector>("start")
+    });
+    for diagram in &mut doc.diagrams {
+        diagram.shapes.retain(|shape| {
+            shape.element != id::<processcraft_core::ids::ElementSelector>("start")
+        });
+        diagram.edges.retain(|edge| {
+            edge.element != id::<processcraft_core::ids::ElementSelector>("flow_start_review")
+        });
+    }
+    p.links.push(NavigationLink {
+        source: ElementKey {
+            document_id: docid(),
+            xml_id: id("association"),
+        },
+        target: docid(),
+        label: "association".into(),
+    });
+    p.comments.push(Comment {
+        id: CommentId::new(),
+        target: ElementKey {
+            document_id: docid(),
+            xml_id: id("event_output"),
+        },
+        author: "test".into(),
+        text: "context".into(),
+    });
+    let mut session = Session::new(p).unwrap();
+    let before = session.snapshot().content_id;
+    apply(
+        &mut session,
+        batch(vec![Mutation::Delete {
+            document_id: docid(),
+            element_id: id("start"),
+        }]),
+    )
+    .unwrap();
+    let snapshot = session.snapshot();
+    assert!(
+        snapshot.project.documents[0].processes[0]
+            .data_associations
+            .is_empty()
+    );
+    assert!(snapshot.project.links.is_empty());
+    assert_eq!(snapshot.project.comments.len(), 1);
+    apply(&mut session, Request::Undo).unwrap();
+    assert_eq!(session.snapshot().content_id, before);
 }

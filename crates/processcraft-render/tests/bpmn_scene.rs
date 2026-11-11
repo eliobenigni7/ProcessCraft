@@ -42,6 +42,8 @@ fn fixture() -> BpmnDocument {
         plane_id: id("plane"),
         plane: id("process"),
         shapes: vec![Shape {
+            is_horizontal: None,
+            is_marker_visible: None,
             is_expanded: None,
             id: id("shape"),
             element: id("task"),
@@ -186,6 +188,8 @@ fn named_flow_without_di_label_is_visible() {
     d.diagrams[0].edges.push(processcraft_core::model::Edge {
         id: id("edge"),
         element: id("flow"),
+        source_element: None,
+        target_element: None,
         waypoints: vec![
             processcraft_core::model::Point { x: 10., y: 100. },
             processcraft_core::model::Point { x: 90., y: 100. },
@@ -246,6 +250,8 @@ fn many_dashed_edges_fit_path_budget() {
         d.diagrams[0].edges.push(processcraft_core::model::Edge {
             id: id(&format!("edge{i}")),
             element: key.selector(),
+            source_element: None,
+            target_element: None,
             waypoints: vec![
                 processcraft_core::model::Point { x: 0., y: i as f64 },
                 processcraft_core::model::Point {
@@ -324,6 +330,8 @@ fn viewport_clips_polyline_without_intermediate_arrows_or_duplicate_label() {
     d.diagrams[0].edges.push(Edge {
         id: id("e"),
         element: id("f"),
+        source_element: None,
+        target_element: None,
         waypoints: vec![
             Point { x: 10., y: 50. },
             Point { x: 50., y: 50. },
@@ -489,6 +497,8 @@ fn viewport_displays_explicit_edge_label_when_edge_is_offscreen() {
     d.diagrams[0].edges.push(Edge {
         id: id("e"),
         element: id("f"),
+        source_element: None,
+        target_element: None,
         waypoints: vec![Point { x: 500., y: 500. }, Point { x: 600., y: 500. }],
         label: Some(Label {
             bounds: Bounds {
@@ -562,10 +572,15 @@ fn typed_timer_event_has_circle_hits_and_shared_vector_marker() {
     let mut d = fixture();
     d.processes[0].nodes[0].kind = NodeKind::IntermediateCatchEvent;
     d.processes[0].nodes[0].details = Some(NodeDetails::Event {
+        definition_refs: vec![],
+        parallel_multiple: None,
+        is_interrupting: None,
+        properties: vec![],
+        io: None,
         definitions: vec![EventDefinition::Timer {
             id: None,
-            kind: TimerKind::Duration,
-            expression: "PT5M".into(),
+            kind: Some(TimerKind::Duration),
+            expression: Some("PT5M".into()),
         }],
         attached_to: None,
         cancel_activity: None,
@@ -599,6 +614,11 @@ fn unsupported_event_definition_produces_export_diagnostic() {
     let mut d = fixture();
     d.processes[0].nodes[0].kind = NodeKind::IntermediateCatchEvent;
     d.processes[0].nodes[0].details = Some(NodeDetails::Event {
+        definition_refs: vec![],
+        parallel_multiple: None,
+        is_interrupting: None,
+        properties: vec![],
+        io: None,
         definitions: vec![EventDefinition::Terminate { id: None }],
         attached_to: None,
         cancel_activity: None,
@@ -642,6 +662,11 @@ fn non_interrupting_boundary_and_compensation_have_distinct_shared_vectors() {
     node.name = Some(String::new());
     node.kind = NodeKind::BoundaryEvent;
     node.details = Some(NodeDetails::Event {
+        definition_refs: vec![],
+        parallel_multiple: None,
+        is_interrupting: None,
+        properties: vec![],
+        io: None,
         definitions: vec![EventDefinition::Compensate {
             id: None,
             wait_for_completion: None,
@@ -671,6 +696,11 @@ fn multiple_event_uses_one_marker_and_unsupported_kind_is_diagnosed() {
     node.kind = NodeKind::IntermediateCatchEvent;
     node.name = Some(String::new());
     node.details = Some(NodeDetails::Event {
+        definition_refs: vec![],
+        parallel_multiple: None,
+        is_interrupting: None,
+        properties: vec![],
+        io: None,
         definitions: vec![
             EventDefinition::Signal {
                 id: None,
@@ -847,6 +877,8 @@ fn nested_flow_and_called_activity_use_semantic_ids() {
     d.diagrams[0].edges.push(Edge {
         id: id("inner_di"),
         element: id("inner_flow"),
+        source_element: None,
+        target_element: None,
         waypoints: vec![Point { x: 250.0, y: 50.0 }, Point { x: 300.0, y: 50.0 }],
         label: None,
         style: None,
@@ -941,6 +973,8 @@ fn conversation_hexagons_and_links_render_with_semantic_hits() {
     diagram.shapes.push(Shape {
         id: id("conversation_di"),
         element: id("conversation"),
+        is_horizontal: None,
+        is_marker_visible: None,
         is_expanded: Some(false),
         bounds: Bounds {
             x: 50.0,
@@ -954,6 +988,8 @@ fn conversation_hexagons_and_links_render_with_semantic_hits() {
     diagram.shapes.push(Shape {
         id: id("inner_di"),
         element: id("inner"),
+        is_horizontal: None,
+        is_marker_visible: None,
         is_expanded: None,
         bounds: Bounds {
             x: 100.0,
@@ -967,6 +1003,8 @@ fn conversation_hexagons_and_links_render_with_semantic_hits() {
     diagram.edges.push(Edge {
         id: id("link_di"),
         element: id("link"),
+        source_element: None,
+        target_element: None,
         waypoints: vec![Point { x: 0.0, y: 100.0 }, Point { x: 50.0, y: 100.0 }],
         label: None,
         style: None,
@@ -1047,6 +1085,8 @@ fn data_store_and_association_are_drawn_in_scene_and_viewport() {
     d.diagrams[0].edges.push(Edge {
         id: id("assoc_di"),
         element: id("assoc"),
+        source_element: None,
+        target_element: None,
         waypoints: vec![Point { x: 0.0, y: 110.0 }, Point { x: 100.0, y: 110.0 }],
         label: None,
         style: None,
@@ -1134,6 +1174,8 @@ fn choreography_task_shows_participant_bands_and_sequence_flow() {
     diag.edges.push(Edge {
         id: id("seq_di"),
         element: id("seq"),
+        source_element: None,
+        target_element: None,
         waypoints: vec![Point { x: 260.0, y: 70.0 }, Point { x: 300.0, y: 70.0 }],
         label: None,
         style: None,
@@ -1193,6 +1235,8 @@ fn gateway_default_flow_marker_uses_semantic_owner_and_shared_exports() {
     d.diagrams[0].edges.push(Edge {
         id: id("edge_di"),
         element: id("default"),
+        source_element: None,
+        target_element: None,
         waypoints: vec![Point { x: 95.0, y: 50.0 }, Point { x: 180.0, y: 50.0 }],
         label: None,
         style: None,
@@ -1298,6 +1342,8 @@ fn group_is_drawn_and_keeps_contained_node_selectable() {
         category_value_ref: None,
     });
     d.diagrams[0].shapes.push(Shape {
+        is_horizontal: None,
+        is_marker_visible: None,
         is_expanded: None,
         id: id("group_shape"),
         element: id("group"),
@@ -1352,6 +1398,8 @@ fn association_directions_change_shared_vector_markers() {
     d.diagrams[0].edges.push(Edge {
         id: id("assoc_edge"),
         element: id("assoc"),
+        source_element: None,
+        target_element: None,
         waypoints: vec![Point { x: 0., y: 100. }, Point { x: 90., y: 100. }],
         label: None,
         style: None,
@@ -1386,6 +1434,8 @@ fn group_category_label_uses_di_bounds_style_and_viewport_hit() {
         category_value_ref: Some(id("value")),
     });
     d.diagrams[0].shapes.push(Shape {
+        is_horizontal: None,
+        is_marker_visible: None,
         is_expanded: None,
         id: id("group_shape"),
         element: id("group"),
@@ -1501,6 +1551,8 @@ fn activity_properties_change_shared_vectors_and_viewport() {
     d.diagrams[0].edges.push(Edge {
         id: id("edge"),
         element: id("default_flow"),
+        source_element: None,
+        target_element: None,
         waypoints: vec![Point { x: 0., y: 100. }, Point { x: 90., y: 100. }],
         label: None,
         style: None,
@@ -1576,6 +1628,11 @@ fn link_markers_distinguish_catch_and_throw_in_shared_scene() {
         let node = &mut d.processes[0].nodes[0];
         node.kind = kind;
         node.details = Some(NodeDetails::Event {
+            definition_refs: vec![],
+            parallel_multiple: None,
+            is_interrupting: None,
+            properties: vec![],
+            io: None,
             definitions: vec![EventDefinition::Link {
                 id: None,
                 name: "link".into(),
@@ -1620,6 +1677,11 @@ fn cancel_boundary_and_end_use_hollow_and_filled_crosses() {
     node.name = Some(String::new());
     node.kind = NodeKind::BoundaryEvent;
     node.details = Some(NodeDetails::Event {
+        definition_refs: vec![],
+        parallel_multiple: None,
+        is_interrupting: None,
+        properties: vec![],
+        io: None,
         definitions: vec![EventDefinition::Cancel { id: None }],
         attached_to: Some(id("transaction")),
         cancel_activity: Some(true),
@@ -1629,6 +1691,11 @@ fn cancel_boundary_and_end_use_hollow_and_filled_crosses() {
     let mut end = d.processes[0].nodes.remove(0);
     end.kind = NodeKind::EndEvent;
     end.details = Some(NodeDetails::Event {
+        definition_refs: vec![],
+        parallel_multiple: None,
+        is_interrupting: None,
+        properties: vec![],
+        io: None,
         definitions: vec![EventDefinition::Cancel { id: None }],
         attached_to: None,
         cancel_activity: None,
@@ -1655,6 +1722,11 @@ fn compensation_boundary_and_throw_render_distinct_markers() {
     node.name = Some(String::new());
     node.kind = NodeKind::BoundaryEvent;
     node.details = Some(NodeDetails::Event {
+        definition_refs: vec![],
+        parallel_multiple: None,
+        is_interrupting: None,
+        properties: vec![],
+        io: None,
         definitions: vec![EventDefinition::Compensate {
             id: None,
             wait_for_completion: None,
@@ -1667,6 +1739,11 @@ fn compensation_boundary_and_throw_render_distinct_markers() {
     let boundary = build(&d, Appearance::Light).scene.to_svg();
     d.processes[0].nodes[0].kind = NodeKind::IntermediateThrowEvent;
     d.processes[0].nodes[0].details = Some(NodeDetails::Event {
+        definition_refs: vec![],
+        parallel_multiple: None,
+        is_interrupting: None,
+        properties: vec![],
+        io: None,
         definitions: vec![EventDefinition::Compensate {
             id: None,
             wait_for_completion: None,
@@ -2074,12 +2151,7 @@ fn activity_port_shape_is_diagnosed_without_scene_or_viewport_hit() {
     assert_valid_event_document(&d);
     let original = serde_json::to_vec(&d).unwrap();
     let scene = build(&d, Appearance::Light);
-    assert!(
-        scene
-            .diagnostics
-            .iter()
-            .any(|d| d.contains("Activity-local data port"))
-    );
+    assert!(scene.diagnostics.iter().any(|d| d.contains("data port")));
     assert!(scene.hits.is_empty());
     assert!(!scene.scene.to_svg().contains("Local port"));
     let viewport = BpmnViewport::build(
@@ -2097,12 +2169,270 @@ fn activity_port_shape_is_diagnosed_without_scene_or_viewport_hit() {
         },
     )
     .unwrap();
-    assert!(
-        viewport
-            .diagnostics
-            .iter()
-            .any(|d| d.contains("Activity-local data port"))
-    );
+    assert!(viewport.diagnostics.iter().any(|d| d.contains("data port")));
     assert!(viewport.hits.is_empty());
     assert_eq!(serde_json::to_vec(&d).unwrap(), original);
+}
+
+#[test]
+fn conditional_source_marker_only_appears_for_nongateway_source() {
+    use processcraft_core::{
+        bpmn_model::Expression,
+        model::{Edge, Flow, FlowKind, Point},
+    };
+    let mut d = fixture();
+    d.processes[0].nodes[0].name = None;
+    d.processes[0].flows.push(Flow {
+        id: id("conditional"),
+        kind: FlowKind::Sequence,
+        source: id("task"),
+        target: id("task"),
+        name: None,
+        documentation: String::new(),
+        condition: None,
+        association_direction: None,
+    });
+    d.diagrams[0].edges.push(Edge {
+        id: id("conditional_di"),
+        element: id("conditional"),
+        source_element: None,
+        target_element: None,
+        waypoints: vec![Point { x: 95.0, y: 50.0 }, Point { x: 150.0, y: 50.0 }],
+        label: None,
+        style: None,
+    });
+    assert_valid_event_document(&d);
+    let plain = build(&d, Appearance::Light);
+    let count = plain.scene.paths().count();
+    d.processes[0].flows[0].condition = Some(Expression::Legacy("x".into()));
+    assert_valid_event_document(&d);
+    let conditional = build(&d, Appearance::Light);
+    assert_eq!(conditional.scene.paths().count(), count + 2);
+    let source = (95.0 - conditional.origin.0) as f32;
+    assert!(conditional.scene.paths().any(|path| {
+        let b = path.path.bounds();
+        (b.left() - source).abs() < 2.0 && (b.right() - (source + 12.0)).abs() < 2.0
+    }));
+    d.processes[0].nodes[0].kind = NodeKind::ExclusiveGateway;
+    let gateway_conditional = build(&d, Appearance::Light).scene.paths().count();
+    d.processes[0].flows[0].condition = None;
+    assert_eq!(
+        gateway_conditional,
+        build(&d, Appearance::Light).scene.paths().count()
+    );
+}
+
+#[test]
+fn effective_multiple_event_resolves_root_and_parallel_marker() {
+    use processcraft_core::bpmn_model::{EventDefinition, EventReference, NodeDetails, QNameRef};
+    let mut d = fixture();
+    d.root_event_definitions.push(EventDefinition::Signal {
+        id: Some(id("root_signal")),
+        signal_ref: None,
+    });
+    let node = &mut d.processes[0].nodes[0];
+    node.kind = NodeKind::IntermediateCatchEvent;
+    node.name = None;
+    node.details = Some(NodeDetails::Event {
+        definitions: vec![EventDefinition::Message {
+            id: None,
+            message_ref: None,
+            operation_ref: None,
+        }],
+        definition_refs: vec![EventReference::Local(id("root_signal"))],
+        parallel_multiple: Some(false),
+        is_interrupting: None,
+        properties: vec![],
+        io: None,
+        attached_to: None,
+        cancel_activity: None,
+    });
+    assert_valid_event_document(&d);
+    let multiple = build(&d, Appearance::Light);
+    let multiple_count = multiple.scene.paths().count();
+    if let Some(NodeDetails::Event {
+        parallel_multiple, ..
+    }) = &mut d.processes[0].nodes[0].details
+    {
+        *parallel_multiple = Some(true);
+    }
+    assert_valid_event_document(&d);
+    let parallel = build(&d, Appearance::Light);
+    assert_eq!(parallel.scene.paths().count(), multiple_count + 1);
+    if let Some(NodeDetails::Event {
+        definition_refs, ..
+    }) = &mut d.processes[0].nodes[0].details
+    {
+        *definition_refs = vec![EventReference::Qualified(QNameRef {
+            namespace: "urn:external".into(),
+            local: id("root_signal"),
+        })];
+    }
+    let unresolved = build(&d, Appearance::Light);
+    assert!(
+        unresolved
+            .diagnostics
+            .iter()
+            .any(|message| message.contains("unresolved event definition"))
+    );
+}
+
+#[test]
+fn exclusive_marker_visibility_uses_di_default_and_explicit_true() {
+    let mut d = fixture();
+    d.processes[0].nodes[0].kind = NodeKind::ExclusiveGateway;
+    d.processes[0].nodes[0].name = None;
+    d.diagrams[0].shapes[0].is_marker_visible = None;
+    assert_valid_event_document(&d);
+    let absent_count = build(&d, Appearance::Light).scene.paths().count();
+    d.diagrams[0].shapes[0].is_marker_visible = Some(false);
+    assert_eq!(
+        build(&d, Appearance::Light).scene.paths().count(),
+        absent_count
+    );
+    d.diagrams[0].shapes[0].is_marker_visible = Some(true);
+    assert_eq!(
+        build(&d, Appearance::Light).scene.paths().count(),
+        absent_count + 2
+    );
+}
+
+#[test]
+fn omitted_subprocess_expansion_draws_collapsed_marker() {
+    use processcraft_core::{bpmn_model::NodeDetails, model::FlowContainer};
+    let mut d = fixture();
+    let node = &mut d.processes[0].nodes[0];
+    node.kind = NodeKind::SubProcess;
+    node.name = None;
+    node.details = Some(NodeDetails::SubProcess {
+        content: Box::new(FlowContainer::default()),
+    });
+    d.diagrams[0].shapes[0].is_expanded = None;
+    assert_valid_event_document(&d);
+    let absent = build(&d, Appearance::Light);
+    d.diagrams[0].shapes[0].is_expanded = Some(false);
+    let collapsed = build(&d, Appearance::Light);
+    assert_eq!(
+        absent.scene.paths().count(),
+        collapsed.scene.paths().count()
+    );
+    d.diagrams[0].shapes[0].is_expanded = Some(true);
+    assert_eq!(
+        collapsed.scene.paths().count(),
+        build(&d, Appearance::Light).scene.paths().count() + 3
+    );
+}
+
+#[test]
+fn lane_orientation_places_divider_on_corresponding_axis() {
+    use processcraft_core::model::Lane;
+    let mut d = fixture();
+    d.processes[0].lanes.push(Lane {
+        child_lane_set_id: None,
+        id: id("lane"),
+        name: None,
+        parent: None,
+        members: vec![],
+    });
+    d.diagrams[0].shapes[0].element = id("lane");
+    d.diagrams[0].shapes[0].bounds = Bounds {
+        x: 0.0,
+        y: 0.0,
+        width: 100.0,
+        height: 80.0,
+    };
+    d.diagrams[0].shapes[0].is_horizontal = None;
+    assert_valid_event_document(&d);
+    let horizontal = build(&d, Appearance::Light);
+    let x = (24.0 - horizontal.origin.0) as f32;
+    assert!(horizontal.scene.paths().any(|path| {
+        let b = path.path.bounds();
+        (b.left() - x).abs() < 2.0 && b.height() > 75.0 && b.width() < 3.0
+    }));
+    d.diagrams[0].shapes[0].is_horizontal = Some(false);
+    let vertical = build(&d, Appearance::Light);
+    let y = (24.0 - vertical.origin.1) as f32;
+    assert!(vertical.scene.paths().any(|path| {
+        let b = path.path.bounds();
+        (b.top() - y).abs() < 2.0 && b.width() > 95.0 && b.height() < 3.0
+    }));
+}
+
+#[test]
+fn event_subprocess_start_interrupting_flag_controls_outer_ring() {
+    use processcraft_core::{
+        bpmn_activity::ActivityProperties,
+        bpmn_model::{EventDefinition, NodeDetails},
+        model::FlowContainer,
+    };
+    let mut d = fixture();
+    let mut start = d.processes[0].nodes[0].clone();
+    start.id = id("start_event");
+    start.name = None;
+    start.kind = NodeKind::StartEvent;
+    start.details = Some(NodeDetails::Event {
+        definitions: vec![EventDefinition::Message {
+            id: None,
+            message_ref: None,
+            operation_ref: None,
+        }],
+        definition_refs: vec![],
+        parallel_multiple: None,
+        is_interrupting: Some(true),
+        properties: vec![],
+        io: None,
+        attached_to: None,
+        cancel_activity: None,
+    });
+    let parent = &mut d.processes[0].nodes[0];
+    parent.id = id("event_subprocess");
+    parent.name = None;
+    parent.kind = NodeKind::SubProcess;
+    parent.activity = Some(ActivityProperties {
+        triggered_by_event: Some(true),
+        ..Default::default()
+    });
+    parent.details = Some(NodeDetails::SubProcess {
+        content: Box::new(FlowContainer {
+            nodes: vec![start],
+            ..Default::default()
+        }),
+    });
+    let shape = &mut d.diagrams[0].shapes[0];
+    shape.element = id("event_subprocess");
+    shape.is_expanded = Some(true);
+    shape.bounds = Bounds {
+        x: 0.0,
+        y: 0.0,
+        width: 300.0,
+        height: 200.0,
+    };
+    let mut child = shape.clone();
+    child.id = id("start_shape");
+    child.element = id("start_event");
+    child.is_expanded = None;
+    child.bounds = Bounds {
+        x: 60.0,
+        y: 60.0,
+        width: 40.0,
+        height: 40.0,
+    };
+    d.diagrams[0].shapes.push(child);
+    assert_valid_event_document(&d);
+    let solid_count = build(&d, Appearance::Light).scene.paths().count();
+    let Some(NodeDetails::SubProcess { content }) = &mut d.processes[0].nodes[0].details else {
+        panic!("subprocess")
+    };
+    let Some(NodeDetails::Event {
+        is_interrupting, ..
+    }) = &mut content.nodes[0].details
+    else {
+        panic!("event")
+    };
+    *is_interrupting = Some(false);
+    assert_valid_event_document(&d);
+    assert_eq!(
+        build(&d, Appearance::Light).scene.paths().count(),
+        solid_count + 15
+    );
 }

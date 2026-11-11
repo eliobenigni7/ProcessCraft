@@ -496,6 +496,8 @@ mod lifecycle {
                 document_id: d.id,
                 diagram_id: diagram.id.selector(),
                 shape: Shape {
+                    is_horizontal: None,
+                    is_marker_visible: None,
                     is_expanded: None,
                     id: id("Shape").into(),
                     element: participant.into(),

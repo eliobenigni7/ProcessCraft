@@ -163,6 +163,8 @@ fn comparison_separates_rename_properties_geometry_and_frozen_context() {
         plane_id: "Plane".parse().unwrap(),
         plane: "Process".parse().unwrap(),
         shapes: vec![Shape {
+            is_horizontal: None,
+            is_marker_visible: None,
             id: "Shape".parse().unwrap(),
             element: "Task".parse().unwrap(),
             is_expanded: None,

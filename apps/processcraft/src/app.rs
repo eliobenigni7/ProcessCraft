@@ -185,6 +185,9 @@ pub struct ProcessCraft {
     binding_draft: Option<inspector::BindingDraft>,
     data_draft: Option<data::DataDraft>,
     xml_id_draft: Option<inspector::XmlIdDraft>,
+    di_draft: Option<di::DiDraft>,
+    event_draft: Option<event::EventDraft>,
+    event_catalog_draft: Option<event::EventCatalogDraft>,
     identity_page: usize,
     association_direction: Option<processcraft_core::bpmn_model::AssociationDirection>,
     connection_kind: FlowKind,
@@ -290,6 +293,9 @@ impl Default for ProcessCraft {
             binding_draft: None,
             data_draft: None,
             xml_id_draft: None,
+            di_draft: None,
+            event_draft: None,
+            event_catalog_draft: None,
             identity_page: 0,
             association_direction: None,
             connection_kind: FlowKind::Sequence,
@@ -349,7 +355,10 @@ impl ProcessCraft {
             || self.catalog_draft.is_some()
             || self.binding_draft.is_some()
             || self.data_draft.is_some()
-            || self.xml_id_draft.is_some())
+            || self.xml_id_draft.is_some()
+            || self.di_draft.is_some()
+            || self.event_draft.is_some()
+            || self.event_catalog_draft.is_some())
             && !self.commit_draft()
         {
             return;
@@ -509,6 +518,14 @@ impl ProcessCraft {
         );
     }
     fn commit_draft(&mut self) -> bool {
+        if self.event_draft.is_some() || self.event_catalog_draft.is_some() {
+            self.ctl.error = "Apply or cancel the event draft first.".into();
+            return false;
+        }
+        if self.di_draft.is_some() {
+            self.ctl.error = "Apply or cancel the diagram properties draft first.".into();
+            return false;
+        }
         if self.xml_id_draft.is_some() {
             self.ctl.error = "Apply or cancel the XML ID draft first.".into();
             return false;
@@ -784,6 +801,9 @@ impl ProcessCraft {
             || self.binding_draft.is_some()
             || self.data_draft.is_some()
             || self.xml_id_draft.is_some()
+            || self.di_draft.is_some()
+            || self.event_draft.is_some()
+            || self.event_catalog_draft.is_some()
             || self.m3.has_draft()
             || self.draft_dirty
             || self.dictionary_draft_changed(&self.ctl.session.snapshot().project)
@@ -845,6 +865,9 @@ impl ProcessCraft {
         self.binding_draft = None;
         self.data_draft = None;
         self.xml_id_draft = None;
+        self.di_draft = None;
+        self.event_draft = None;
+        self.event_catalog_draft = None;
         self.definitions_dirty = false;
         self.draft_dirty = false;
     }
@@ -1002,10 +1025,15 @@ impl ProcessCraft {
             NodeKind::IntermediateCatchEvent | NodeKind::BoundaryEvent
         ) {
             Some(processcraft_core::bpmn_model::NodeDetails::Event {
+                definition_refs: Vec::new(),
+                parallel_multiple: None,
+                is_interrupting: None,
+                properties: Vec::new(),
+                io: None,
                 definitions: vec![processcraft_core::bpmn_model::EventDefinition::Timer {
                     id: None,
-                    kind: processcraft_core::bpmn_model::TimerKind::Duration,
-                    expression: "PT1M".into(),
+                    kind: Some(processcraft_core::bpmn_model::TimerKind::Duration),
+                    expression: Some("PT1M".into()),
                 }],
                 attached_to: if kind == NodeKind::BoundaryEvent {
                     self.selected.clone()
@@ -1043,6 +1071,8 @@ impl ProcessCraft {
             )
         };
         let shape = Shape {
+            is_horizontal: None,
+            is_marker_visible: None,
             is_expanded: subprocess.then_some(true),
             id: controller::id("Shape").into(),
             element: eid.selector(),
@@ -1145,6 +1175,8 @@ impl ProcessCraft {
             document_id: d.id,
             diagram_id: diagram.id.selector(),
             shape: Shape {
+                is_horizontal: None,
+                is_marker_visible: None,
                 is_expanded: None,
                 id: controller::id("PoolShape").into(),
                 element: participant.into(),
@@ -1193,6 +1225,8 @@ impl ProcessCraft {
                 document_id: d.id,
                 diagram_id: diagram.id.selector(),
                 shape: Shape {
+                    is_horizontal: None,
+                    is_marker_visible: None,
                     is_expanded: None,
                     id: controller::id("LaneShape").into(),
                     element: lane.into(),
@@ -1411,6 +1445,8 @@ impl ProcessCraft {
                 document_id: d.id,
                 diagram_id: diagram.id.selector(),
                 edge: Edge {
+                    source_element: None,
+                    target_element: None,
                     id: controller::id("Edge").into(),
                     element: eid.into(),
                     waypoints: points,
@@ -1972,6 +2008,8 @@ mod tests {
             contact: String::new(),
         });
         doc.diagrams[0].shapes.push(Shape {
+            is_horizontal: None,
+            is_marker_visible: None,
             is_expanded: None,
             id: shape.clone().into(),
             element: node.into(),
@@ -2085,6 +2123,8 @@ mod tests {
             plane_id: "Plane".parse().unwrap(),
             plane: "Process".parse().unwrap(),
             shapes: vec![Shape {
+                is_horizontal: None,
+                is_marker_visible: None,
                 is_expanded: None,
                 id: "Shape".parse().unwrap(),
                 element: "Node".parse().unwrap(),
@@ -2106,6 +2146,8 @@ mod tests {
                 style: None,
             }],
             edges: vec![Edge {
+                source_element: None,
+                target_element: None,
                 id: "Edge".parse().unwrap(),
                 element: "Flow".parse().unwrap(),
                 waypoints: vec![Point { x: 90.0, y: 50.0 }, Point { x: 300.0, y: 50.0 }],
@@ -2196,6 +2238,11 @@ mod tests {
             target: None,
         };
         app.bpmn_details = Some(NodeDetails::Event {
+            definition_refs: Vec::new(),
+            parallel_multiple: None,
+            is_interrupting: None,
+            properties: Vec::new(),
+            io: None,
             definitions: vec![link.clone()],
             attached_to: None,
             cancel_activity: None,
@@ -2217,6 +2264,11 @@ mod tests {
             activity_ref: None,
         };
         app.bpmn_details = Some(NodeDetails::Event {
+            definition_refs: Vec::new(),
+            parallel_multiple: None,
+            is_interrupting: None,
+            properties: Vec::new(),
+            io: None,
             definitions: vec![compensate.clone()],
             attached_to: None,
             cancel_activity: None,
@@ -2238,6 +2290,11 @@ mod tests {
         let transaction = app.selected.clone().unwrap();
         app.add(NodeKind::BoundaryEvent);
         app.bpmn_details = Some(NodeDetails::Event {
+            definition_refs: Vec::new(),
+            parallel_multiple: None,
+            is_interrupting: None,
+            properties: Vec::new(),
+            io: None,
             definitions: vec![EventDefinition::Cancel { id: None }],
             attached_to: Some(transaction),
             cancel_activity: Some(true),
@@ -2270,6 +2327,7 @@ mod tests {
         let mut project = crate::controller::blank_project();
         let document = std::sync::Arc::make_mut(&mut project.documents[0]);
         document.event_resources.push(EventResource::Message {
+            item_ref: None,
             id: message.local.clone().into(),
             name: None,
         });
@@ -2541,10 +2599,15 @@ mod tests {
             ],
         });
         app.bpmn_details = Some(NodeDetails::Event {
+            definition_refs: Vec::new(),
+            parallel_multiple: None,
+            is_interrupting: None,
+            properties: Vec::new(),
+            io: None,
             definitions: vec![EventDefinition::Timer {
                 id: None,
-                kind: TimerKind::Duration,
-                expression: expression.clone(),
+                kind: Some(TimerKind::Duration),
+                expression: Some(expression.clone()),
             }],
             attached_to: None,
             cancel_activity: None,
@@ -2554,7 +2617,7 @@ mod tests {
         if let Some(NodeDetails::Event { definitions, .. }) = &mut app.bpmn_details
             && let EventDefinition::Timer { expression, .. } = &mut definitions[0]
         {
-            expression.set_text("PT5M".into());
+            expression.as_mut().unwrap().set_text("PT5M".into());
         }
         app.draft_dirty = true;
         assert!(app.commit_draft(), "{}", app.ctl.error);
@@ -2570,20 +2633,20 @@ mod tests {
         };
         let mut expected = expression.clone();
         expected.set_text("PT5M".into());
-        assert_eq!(updated, &expected);
+        assert_eq!(updated.as_ref(), Some(&expected));
         app.history(Request::Undo);
         let Some(NodeDetails::Event { definitions, .. }) = &app.bpmn_details else {
             panic!("event missing")
         };
         assert!(
-            matches!(&definitions[0], EventDefinition::Timer { expression: actual, .. } if actual == &expression)
+            matches!(&definitions[0], EventDefinition::Timer { expression: actual, .. } if actual.as_ref() == Some(&expression))
         );
         app.history(Request::Redo);
         let Some(NodeDetails::Event { definitions, .. }) = &app.bpmn_details else {
             panic!("event missing")
         };
         assert!(
-            matches!(&definitions[0], EventDefinition::Timer { expression: actual, .. } if actual == &expected)
+            matches!(&definitions[0], EventDefinition::Timer { expression: actual, .. } if actual.as_ref() == Some(&expected))
         );
     }
     #[test]
@@ -2601,10 +2664,15 @@ mod tests {
         let child = app.selected.clone().expect("child created");
         assert_eq!(app.process_id.as_ref(), Some(&parent));
         app.bpmn_details = Some(NodeDetails::Event {
+            definition_refs: Vec::new(),
+            parallel_multiple: None,
+            is_interrupting: None,
+            properties: Vec::new(),
+            io: None,
             definitions: vec![EventDefinition::Timer {
                 id: None,
-                kind: TimerKind::Duration,
-                expression: "PT5M".into(),
+                kind: Some(TimerKind::Duration),
+                expression: Some("PT5M".into()),
             }],
             attached_to: None,
             cancel_activity: None,
@@ -2616,11 +2684,11 @@ mod tests {
         assert_eq!(node.details, app.bpmn_details);
         app.history(Request::Undo);
         assert!(
-            matches!(&app.bpmn_details, Some(NodeDetails::Event { definitions, .. }) if matches!(&definitions[0], EventDefinition::Timer { expression, .. } if expression.text() == "PT1M"))
+            matches!(&app.bpmn_details, Some(NodeDetails::Event { definitions, .. }) if matches!(&definitions[0], EventDefinition::Timer { expression, .. } if expression.as_ref().is_some_and(|value| value.text() == "PT1M")))
         );
         app.history(Request::Redo);
         assert!(
-            matches!(&app.bpmn_details, Some(NodeDetails::Event { definitions, .. }) if matches!(&definitions[0], EventDefinition::Timer { expression, .. } if expression.text() == "PT5M"))
+            matches!(&app.bpmn_details, Some(NodeDetails::Event { definitions, .. }) if matches!(&definitions[0], EventDefinition::Timer { expression, .. } if expression.as_ref().is_some_and(|value| value.text() == "PT5M")))
         );
     }
 }
@@ -2634,6 +2702,10 @@ mod canvas;
 mod catalog;
 #[path = "app_data.rs"]
 mod data;
+#[path = "app_di.rs"]
+mod di;
+#[path = "app_event.rs"]
+mod event;
 #[path = "app_inspector.rs"]
 mod inspector;
 #[path = "app_shell.rs"]

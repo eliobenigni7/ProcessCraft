@@ -775,6 +775,8 @@ fn layout_file_preview_apply_and_stale_guard() {
         plane_id: "plane".parse().unwrap(),
         plane: "process".parse().unwrap(),
         shapes: vec![processcraft_core::model::Shape {
+            is_horizontal: None,
+            is_marker_visible: None,
             is_expanded: None,
             id: "shape".parse().unwrap(),
             element: "task".parse().unwrap(),

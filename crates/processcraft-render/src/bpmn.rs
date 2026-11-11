@@ -94,6 +94,21 @@ impl<'a> SemanticIndex<'a> {
             }
             for node in nodes {
                 result.nodes.push((node, depth));
+                if let Some(NodeDetails::Event {
+                    io: Some(event_io), ..
+                }) = &node.details
+                {
+                    let event_ports: &[DataPort] = match event_io {
+                        processcraft_core::bpmn_model::EventIo::Catch { outputs, .. } => outputs,
+                        processcraft_core::bpmn_model::EventIo::Throw { inputs, .. } => inputs,
+                    };
+                    for port in event_ports {
+                        if let Some(id) = &port.id {
+                            result.activity_ports.insert(id.selector());
+                            result.parents.insert(id.selector(), node.id.selector());
+                        }
+                    }
+                }
                 if let Some(io) = &node.io_specification {
                     for (port, output) in io
                         .inputs
@@ -222,6 +237,21 @@ impl<'a> SemanticIndex<'a> {
     fn is_default_flow(&self, flow: &Flow) -> bool {
         self.node(&flow.source).is_some_and(|(node,_)| matches!(&node.details,Some(NodeDetails::Gateway{default_flow:Some(id),..}) if id==&flow.id) || node.activity.as_ref().and_then(|a| a.default_flow.as_ref()).is_some_and(|id| id == &flow.id))
     }
+    fn conditional_flow_marker(&self, flow: &Flow) -> bool {
+        matches!(flow.kind, FlowKind::Sequence)
+            && flow.condition.is_some()
+            && !self.is_default_flow(flow)
+            && !self.node(&flow.source).is_some_and(|(node, _)| {
+                matches!(
+                    node.kind,
+                    NodeKind::ExclusiveGateway
+                        | NodeKind::ParallelGateway
+                        | NodeKind::InclusiveGateway
+                        | NodeKind::ComplexGateway
+                        | NodeKind::EventBasedGateway
+                )
+            })
+    }
     fn node(&self, id: &ElementSelector) -> Option<(&'a Node, usize)> {
         self.nodes.iter().copied().find(|(n, _)| &n.id == id)
     }
@@ -313,6 +343,38 @@ impl HitRegion {
         }
     }
 }
+fn effective_event_definitions<'a>(
+    details: Option<&'a NodeDetails>,
+    document: &'a BpmnDocument,
+) -> Result<(Vec<&'a EventDefinition>, bool), ()> {
+    let Some(NodeDetails::Event {
+        definitions,
+        definition_refs,
+        parallel_multiple,
+        ..
+    }) = details
+    else {
+        return Ok((Vec::new(), false));
+    };
+    let mut result: Vec<_> = definitions.iter().collect();
+    for reference in definition_refs {
+        let definition = document.root_event_definitions.iter().find(|definition| {
+            definition.id().is_some_and(|id| match reference {
+                processcraft_core::bpmn_model::EventReference::Local(selector) => id == selector,
+                processcraft_core::bpmn_model::EventReference::Qualified(name) => {
+                    document
+                        .definitions
+                        .as_ref()
+                        .is_some_and(|defs| defs.target_namespace == name.namespace)
+                        && id.xml_id() == Some(&name.local)
+                }
+            })
+        });
+        result.push(definition.ok_or(())?);
+    }
+    Ok((result, parallel_multiple == &Some(true)))
+}
+
 fn node_display_name(node: &Node) -> &str {
     if let Some(NodeDetails::TextAnnotation {
         text: Some(text), ..
@@ -503,7 +565,7 @@ impl BpmnScene {
         });
         for shape in ordered_shapes {
             if semantics.activity_ports.contains(&shape.element) {
-                diagnostics.push(format!("Activity-local data port {} cannot be depicted as a BPMN shape; only process ports can be shown", shape.element));
+                diagnostics.push(format!("Activity-local or event-local data port {} cannot be depicted as a BPMN shape; only process ports can be shown", shape.element));
                 continue;
             }
             if semantics.groups.iter().any(|g| g.id == shape.element) {
@@ -801,7 +863,23 @@ impl BpmnScene {
                     | NodeKind::IntermediateThrowEvent
                     | NodeKind::BoundaryEvent,
                 ) => {
-                    if matches!(kind, Some(NodeKind::BoundaryEvent)) && non_interrupting(details) {
+                    let non_interrupting_start = matches!(kind, Some(NodeKind::StartEvent))
+                        && matches!(
+                            details,
+                            Some(NodeDetails::Event {
+                                is_interrupting: Some(false),
+                                ..
+                            })
+                        )
+                        && semantics
+                            .parents
+                            .get(&shape.element)
+                            .and_then(|parent| semantics.node(parent))
+                            .and_then(|(node, _)| node.activity.as_ref())
+                            .is_some_and(|activity| activity.triggered_by_event == Some(true));
+                    if (matches!(kind, Some(NodeKind::BoundaryEvent)) && non_interrupting(details))
+                        || non_interrupting_start
+                    {
                         dashed_ellipse(&mut scene, x, y, w, h, stroke)?;
                     } else {
                         let mut p = PathBuilder::new();
@@ -852,7 +930,9 @@ impl BpmnScene {
                             stroke,
                             2.0,
                         )?;
-                    } else if matches!(kind, Some(NodeKind::ExclusiveGateway)) {
+                    } else if matches!(kind, Some(NodeKind::ExclusiveGateway))
+                        && shape.is_marker_visible == Some(true)
+                    {
                         lines(
                             &mut scene,
                             &[(x + w * 0.35, y + h * 0.35), (x + w * 0.65, y + h * 0.65)],
@@ -1044,7 +1124,11 @@ impl BpmnScene {
                     )?;
                 }
                 None if conversation.is_none() && choreography.is_none() => {
-                    lines(&mut scene, &[(x + 24.0, y), (x + 24.0, y + h)], stroke, 1.0)?;
+                    if shape.is_horizontal == Some(false) {
+                        lines(&mut scene, &[(x, y + 24.0), (x + w, y + 24.0)], stroke, 1.0)?;
+                    } else {
+                        lines(&mut scene, &[(x + 24.0, y), (x + 24.0, y + h)], stroke, 1.0)?;
+                    }
                 }
                 _ => {}
             }
@@ -1058,7 +1142,7 @@ impl BpmnScene {
                 )
             ) {
                 match shape.is_expanded {
-                    Some(false) => {
+                    Some(false) | None if !matches!(kind, Some(NodeKind::CallActivity)) => {
                         let offset = if node.is_some_and(|n| n.loop_characteristics.is_some()) {
                             -9.0
                         } else {
@@ -1073,6 +1157,23 @@ impl BpmnScene {
                             (cx - 6.0, cy - 6.0),
                         ];
                         lines(&mut scene, &box_pts, stroke, 1.0)?;
+                        lines(&mut scene, &[(cx - 4.0, cy), (cx + 4.0, cy)], stroke, 1.0)?;
+                        lines(&mut scene, &[(cx, cy - 4.0), (cx, cy + 4.0)], stroke, 1.0)?;
+                    }
+                    Some(false) => {
+                        let (cx, cy) = (x + w / 2.0, y + h - 10.0);
+                        lines(
+                            &mut scene,
+                            &[
+                                (cx - 6.0, cy - 6.0),
+                                (cx + 6.0, cy - 6.0),
+                                (cx + 6.0, cy + 6.0),
+                                (cx - 6.0, cy + 6.0),
+                                (cx - 6.0, cy - 6.0),
+                            ],
+                            stroke,
+                            1.0,
+                        )?;
                         lines(&mut scene, &[(cx - 4.0, cy), (cx + 4.0, cy)], stroke, 1.0)?;
                         lines(&mut scene, &[(cx, cy - 4.0), (cx, cy + 4.0)], stroke, 1.0)?;
                     }
@@ -1278,10 +1379,21 @@ impl BpmnScene {
                     }
                 }
             }
+            let effective = match effective_event_definitions(details, document) {
+                Ok(effective) => Some(effective),
+                Err(()) => {
+                    diagnostics.push(format!(
+                        "Event {} has an unresolved event definition reference; marker omitted",
+                        shape.element
+                    ));
+                    None
+                }
+            };
             draw_new_markers(
                 &mut scene,
                 kind,
                 details,
+                effective,
                 x,
                 y,
                 w,
@@ -1290,7 +1402,33 @@ impl BpmnScene {
                 fc,
                 &mut diagnostics,
             )?;
-            let fallback_label = if choreography.is_some() {
+            let is_lane_or_pool = semantics.lane(&shape.element).is_some()
+                || document
+                    .collaboration
+                    .as_ref()
+                    .is_some_and(|collaboration| {
+                        collaboration
+                            .participants
+                            .iter()
+                            .any(|participant| participant.id == shape.element)
+                    });
+            let fallback_label = if is_lane_or_pool {
+                if shape.is_horizontal == Some(false) {
+                    Bounds {
+                        x: b.x,
+                        y: b.y,
+                        width: b.width,
+                        height: b.height.min(24.0),
+                    }
+                } else {
+                    Bounds {
+                        x: b.x,
+                        y: b.y,
+                        width: b.width.min(24.0),
+                        height: b.height,
+                    }
+                }
+            } else if choreography.is_some() {
                 Bounds {
                     x: b.x,
                     y: b.y + b.height * 0.25,
@@ -1467,6 +1605,15 @@ impl BpmnScene {
             }
             if matches!(flow.kind, FlowKind::Sequence) && semantics.is_default_flow(flow) {
                 draw_default_slash(&mut scene, &pts, stroke)?;
+            }
+            if matches!(flow.kind, FlowKind::Message) || semantics.conditional_flow_marker(flow) {
+                draw_flow_source_marker(
+                    &mut scene,
+                    &pts,
+                    stroke,
+                    bg,
+                    matches!(flow.kind, FlowKind::Message),
+                )?;
             }
             if pts.len() > 1
                 && (!matches!(flow.kind, FlowKind::Association)
@@ -1667,6 +1814,52 @@ fn draw_default_slash(
         1.5,
     )
 }
+fn draw_flow_source_marker(
+    scene: &mut DiagramScene,
+    points: &[(f32, f32)],
+    stroke: [u8; 3],
+    background: [u8; 3],
+    message: bool,
+) -> Result<(), RenderError> {
+    if points.len() < 2 {
+        return Ok(());
+    }
+    let a = points[0];
+    let dx = points[1].0 - a.0;
+    let dy = points[1].1 - a.1;
+    let length = dx.hypot(dy);
+    if length == 0.0 {
+        return Ok(());
+    }
+    if message {
+        filled_ellipse(scene, a.0 - 4.0, a.1 - 4.0, 8.0, 8.0, background)?;
+        return ring(scene, a.0 - 4.0, a.1 - 4.0, 8.0, 8.0, stroke, 1.2);
+    }
+    let (ux, uy) = (dx / length, dy / length);
+    let (nx, ny) = (-uy * 4.0, ux * 4.0);
+    let mid = (a.0 + ux * 6.0, a.1 + uy * 6.0);
+    let end = (a.0 + ux * 12.0, a.1 + uy * 12.0);
+    let mut interior = PathBuilder::new();
+    polygon(
+        &mut interior,
+        &[a, (mid.0 + nx, mid.1 + ny), end, (mid.0 - nx, mid.1 - ny)],
+    );
+    if let Some(path) = interior.finish() {
+        scene.add_path(path, background)?;
+    }
+    lines(
+        scene,
+        &[
+            a,
+            (mid.0 + nx, mid.1 + ny),
+            end,
+            (mid.0 - nx, mid.1 - ny),
+            a,
+        ],
+        stroke,
+        1.2,
+    )
+}
 fn open_arrow(
     scene: &mut DiagramScene,
     points: &[(f32, f32)],
@@ -1750,6 +1943,7 @@ fn draw_new_markers(
     scene: &mut DiagramScene,
     kind: Option<NodeKind>,
     details: Option<&NodeDetails>,
+    effective: Option<(Vec<&EventDefinition>, bool)>,
     x: f32,
     y: f32,
     w: f32,
@@ -1973,8 +2167,12 @@ fn draw_new_markers(
         }
         _ => {}
     }
-    if let Some(NodeDetails::Event { definitions, .. }) = details {
-        if definitions.len() > 1 {
+    if let Some((definitions, parallel_multiple)) = effective {
+        if definitions.len() > 1 && parallel_multiple {
+            let r = w.min(h) * 0.26;
+            lines(scene, &[(cx - r, cy), (cx + r, cy)], stroke, 3.0)?;
+            lines(scene, &[(cx, cy - r), (cx, cy + r)], stroke, 3.0)?;
+        } else if definitions.len() > 1 {
             let r = w.min(h) * 0.26;
             let pts: Vec<_> = (0..=5)
                 .map(|i| {
@@ -2613,6 +2811,32 @@ impl BpmnViewport {
                     width: (b.width - 16.0).max(0.0),
                     height: b.height.min(28.0),
                 }
+            } else if semantics.lane(&shape.element).is_some()
+                || document
+                    .collaboration
+                    .as_ref()
+                    .is_some_and(|collaboration| {
+                        collaboration
+                            .participants
+                            .iter()
+                            .any(|participant| participant.id == shape.element)
+                    })
+            {
+                if shape.is_horizontal == Some(false) {
+                    Bounds {
+                        x: b.x,
+                        y: b.y,
+                        width: b.width,
+                        height: b.height.min(24.0),
+                    }
+                } else {
+                    Bounds {
+                        x: b.x,
+                        y: b.y,
+                        width: b.width.min(24.0),
+                        height: b.height,
+                    }
+                }
             } else if choreography.is_some() {
                 Bounds {
                     x: b.x,
@@ -2866,6 +3090,39 @@ impl BpmnViewport {
             }
             if segments > 0
                 && edge.waypoints.len() > 1
+                && (matches!(flow.kind, FlowKind::Message)
+                    || semantics.conditional_flow_marker(flow))
+            {
+                let a = &edge.waypoints[0];
+                if a.x >= view.x
+                    && a.x <= view.x + view.width
+                    && a.y >= view.y
+                    && a.y <= view.y + view.height
+                {
+                    let points: Vec<_> = edge.waypoints[..2]
+                        .iter()
+                        .map(|p| {
+                            (
+                                (p.x - view.x - built.origin.0) as f32,
+                                (p.y - view.y - built.origin.1) as f32,
+                            )
+                        })
+                        .collect();
+                    draw_flow_source_marker(
+                        &mut built.scene,
+                        &points,
+                        stroke,
+                        if matches!(appearance, Appearance::Dark) {
+                            [27, 31, 38]
+                        } else {
+                            [255, 255, 255]
+                        },
+                        matches!(flow.kind, FlowKind::Message),
+                    )?;
+                }
+            }
+            if segments > 0
+                && edge.waypoints.len() > 1
                 && (!matches!(flow.kind, FlowKind::Association)
                     || matches!(
                         flow.association_direction,
@@ -3056,4 +3313,40 @@ fn clip_segment(a: &Point, b: &Point, v: Viewport) -> Option<((f64, f64), (f64, 
         (a.x + lo * dx, a.y + lo * dy),
         (a.x + hi * dx, a.y + hi * dy),
     ))
+}
+
+#[cfg(test)]
+mod source_marker_tests {
+    use super::*;
+    #[test]
+    fn source_markers_have_expected_bounds_and_distinct_outlines() {
+        let mut diamond = DiagramScene::new(100.0, 100.0).unwrap();
+        draw_flow_source_marker(
+            &mut diamond,
+            &[(20.0, 30.0), (60.0, 30.0)],
+            [0, 0, 0],
+            [255, 255, 255],
+            false,
+        )
+        .unwrap();
+        let paths: Vec<_> = diamond.paths().collect();
+        assert_eq!(paths.len(), 2);
+        let bounds = paths[1].path.bounds();
+        assert!(bounds.left() <= 20.0 && bounds.right() >= 32.0);
+        assert!(bounds.top() <= 26.0 && bounds.bottom() >= 34.0);
+        let mut circle = DiagramScene::new(100.0, 100.0).unwrap();
+        draw_flow_source_marker(
+            &mut circle,
+            &[(20.0, 30.0), (60.0, 30.0)],
+            [0, 0, 0],
+            [255, 255, 255],
+            true,
+        )
+        .unwrap();
+        let paths: Vec<_> = circle.paths().collect();
+        assert_eq!(paths.len(), 2);
+        let bounds = paths[1].path.bounds();
+        assert!(bounds.left() <= 16.0 && bounds.right() >= 24.0);
+        assert!(bounds.top() <= 26.0 && bounds.bottom() >= 34.0);
+    }
 }

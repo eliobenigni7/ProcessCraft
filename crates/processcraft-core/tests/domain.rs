@@ -79,6 +79,8 @@ fn lane_membership_is_not_a_duplicate_node() {
 fn multiple_diagrams_share_semantics() {
     let mut p = sample();
     let shape = Shape {
+        is_horizontal: None,
+        is_marker_visible: None,
         is_expanded: None,
         id: id("shape"),
         element: id("task"),
@@ -148,6 +150,8 @@ fn invalid_ids_cannot_be_deserialized() {
 fn geometry_must_be_finite_and_negative_zero_is_canonical() {
     let mut p = sample();
     let shape = Shape {
+        is_horizontal: None,
+        is_marker_visible: None,
         is_expanded: None,
         id: id("s"),
         element: id("task"),
@@ -304,6 +308,8 @@ fn identity_changes_for_persistent_categories() {
             plane_id: id("diagram_plane"),
             plane: id("process"),
             shapes: vec![Shape {
+                is_horizontal: None,
+                is_marker_visible: None,
                 is_expanded: None,
                 id: id("shape"),
                 element: id("task"),

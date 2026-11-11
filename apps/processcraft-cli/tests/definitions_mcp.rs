@@ -342,4 +342,83 @@ fn definitions_metadata_uses_discovered_mcp_command_and_exact_history() {
             .iter()
             .any(|row| row["selector"] == mapping["to"] && row["xmlId"] == "ReviewRenamed")
     );
+    let extended = call(
+        json!({"jsonrpc":"2.0","id":113,"method":"tools/call","params":{"name":"apply","arguments":{
+            "sessionId":session,"requestId":"events-and-di","expectedGeneration":15,
+            "request":{"type":"batch","mutations":[
+                {"type":"setEventResources","document_id":"11111111-1111-4111-8111-111111111111",
+                    "resources":[{"type":"message","id":"IncomingMessage","name":null}]},
+                {"type":"setRootEventDefinitions","document_id":"11111111-1111-4111-8111-111111111111",
+                    "definitions":[{"type":"message","id":"SharedMessage","message_ref":"IncomingMessage","operation_ref":null}]},
+                {"type":"setNodeDetails","document_id":"11111111-1111-4111-8111-111111111111","element_id":"start",
+                    "details":{"type":"event","definitions":[],"definition_refs":["SharedMessage"],
+                        "parallel_multiple":false,"is_interrupting":true,"attached_to":null,"cancel_activity":null}},
+                {"type":"setShapeDiAttributes","document_id":"11111111-1111-4111-8111-111111111111",
+                    "diagram_id":"procurement_diagram","shape_id":"pc_shape_decision","is_horizontal":null,"is_marker_visible":false},
+                {"type":"setEdgeDiEndpoints","document_id":"11111111-1111-4111-8111-111111111111",
+                    "diagram_id":"procurement_diagram","edge_id":"pc_edge_flow_start_review",
+                    "source_element":"pc_shape_start","target_element":"pc_shape_review"}
+            ]}
+        }}}),
+    );
+    let extended = &extended["result"]["structuredContent"];
+    assert_eq!(extended["ok"], true, "{extended}");
+    for (kind, expected) in [
+        (
+            "events",
+            vec![
+                ("/root_definitions/0/message_ref", json!("IncomingMessage")),
+                (
+                    "/events/0/details/definition_refs/0",
+                    json!("SharedMessage"),
+                ),
+                ("/events/0/details/parallel_multiple", json!(false)),
+                ("/events/0/details/is_interrupting", json!(true)),
+            ],
+        ),
+        (
+            "diagrams",
+            vec![
+                ("/0/shapes/4/is_marker_visible", json!(false)),
+                ("/0/edges/0/source_element", json!("pc_shape_start")),
+                ("/0/edges/0/target_element", json!("pc_shape_review")),
+            ],
+        ),
+    ] {
+        let mut offset = 0;
+        let mut rows = vec![];
+        loop {
+            let result = call(
+                json!({"jsonrpc":"2.0","id":200+offset,"method":"tools/call","params":{"name":"query","arguments":{
+                    "kind":kind,"document_id":"11111111-1111-4111-8111-111111111111","offset":offset,"limit":10
+                }}}),
+            );
+            let result = &result["result"]["structuredContent"];
+            assert_eq!(result["generation"], 16);
+            assert_eq!(result["contentId"], extended["contentId"]);
+            rows.extend(result["items"].as_array().unwrap().iter().cloned());
+            if let Some(next) = result["nextOffset"].as_u64() {
+                assert!(next as usize > offset);
+                offset = next as usize;
+            } else {
+                assert_eq!(result["total"].as_u64().unwrap() as usize, rows.len());
+                break;
+            }
+        }
+        for (path, value) in expected {
+            assert!(
+                rows.iter()
+                    .any(|row| row["path"] == path && row["value"] == value),
+                "{kind}: {path}"
+            );
+        }
+    }
+    let unchanged = call(
+        json!({"jsonrpc":"2.0","id":400,"method":"tools/call","params":{"name":"inspect","arguments":{}}}),
+    );
+    assert_eq!(unchanged["result"]["structuredContent"]["generation"], 16);
+    assert_eq!(
+        unchanged["result"]["structuredContent"]["contentId"],
+        extended["contentId"]
+    );
 }

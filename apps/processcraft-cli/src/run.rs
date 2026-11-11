@@ -438,6 +438,22 @@ fn query_project(path: &Path, query: Query) -> Result<(), Error> {
     let loaded = native::load_bytes(&read(path)?).map_err(|e| error(3, e))?;
     let project = &loaded.project;
     let result = match query {
+        Query::Events {
+            document_id,
+            offset,
+            limit,
+        } => query_fields_page(project, &document_id, offset, limit, queries::event_fields)?,
+        Query::Diagrams {
+            document_id,
+            offset,
+            limit,
+        } => query_fields_page(
+            project,
+            &document_id,
+            offset,
+            limit,
+            queries::diagram_fields,
+        )?,
         Query::Identities {
             document_id,
             offset,
@@ -547,6 +563,32 @@ fn query_project(path: &Path, query: Query) -> Result<(), Error> {
 struct FileLayoutProposal {
     base_content_id: [u8; 32],
     proposal: processcraft_core::layout::LayoutProposal,
+}
+
+fn query_fields_page(
+    project: &ProjectData,
+    document_id: &str,
+    offset: usize,
+    limit: usize,
+    projection: fn(
+        &ProjectData,
+        processcraft_core::ids::DocumentId,
+    ) -> Option<Vec<processcraft_core::queries::ModelField>>,
+) -> Result<Value, Error> {
+    let id = document_id.parse().map_err(|e| error(2, e))?;
+    let rows = projection(project, id).ok_or_else(|| error(3, "document not found"))?;
+    let total = rows.len();
+    let mut page = bounded_page(
+        rows.into_iter()
+            .skip(offset)
+            .take(limit)
+            .map(|row| json!(row)),
+        total,
+        offset,
+        limit,
+    )?;
+    page["contentId"] = json!(project.content_identity().map_err(|e| error(3, e))?);
+    Ok(page)
 }
 
 fn layout_preview_file(

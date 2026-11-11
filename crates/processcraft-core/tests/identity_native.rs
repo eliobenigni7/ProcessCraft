@@ -66,6 +66,8 @@ fn native_graph_identity_is_stable_and_duplicate_xml_ids_are_rejected() {
         plane_id: native(),
         plane: process_id.selector(),
         shapes: vec![Shape {
+            is_horizontal: None,
+            is_marker_visible: None,
             id: native(),
             element: a.selector(),
             is_expanded: None,

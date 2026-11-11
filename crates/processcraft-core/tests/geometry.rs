@@ -108,6 +108,8 @@ fn session_fixture() -> (
     };
     session.apply(env(&session), fixture).unwrap();
     let shape = |id: &str, element: &str, x| Shape {
+        is_horizontal: None,
+        is_marker_visible: None,
         is_expanded: None,
         id: id.parse().unwrap(),
         element: element.parse().unwrap(),
@@ -127,6 +129,8 @@ fn session_fixture() -> (
         edges: vec![Edge {
             id: "edge".parse().unwrap(),
             element: "flow_start_review".parse().unwrap(),
+            source_element: None,
+            target_element: None,
             waypoints: vec![p(10.0, 5.0), p(20.0, 5.0), p(20.0, 8.0), p(30.0, 8.0)],
             label: None,
             style: None,
@@ -345,6 +349,8 @@ fn nested_session() -> processcraft_core::commands::Session {
     diagram.shapes.push(Shape {
         id: "sub_di".parse().unwrap(),
         element: "subprocess".parse().unwrap(),
+        is_horizontal: None,
+        is_marker_visible: None,
         is_expanded: Some(true),
         bounds: rect(-10.0, -10.0, 80.0, 50.0),
         label: None,
@@ -629,6 +635,8 @@ fn data_geometry_session() -> processcraft_core::commands::Session {
     diagram.shapes.push(Shape {
         id: "shape_data".parse().unwrap(),
         element: "data_ref".parse().unwrap(),
+        is_horizontal: None,
+        is_marker_visible: None,
         is_expanded: None,
         bounds: rect(60.0, 0.0, 10.0, 10.0),
         label: None,
@@ -649,6 +657,8 @@ fn data_geometry_session() -> processcraft_core::commands::Session {
         diagram.edges.push(Edge {
             id: id.parse().unwrap(),
             element: element.parse().unwrap(),
+            source_element: None,
+            target_element: None,
             waypoints: points,
             label: Some(Label {
                 bounds: rect(45.0, 10.0, 8.0, 4.0),
@@ -728,6 +738,8 @@ fn conversation_geometry_session() -> processcraft_core::commands::Session {
     let shape = |id: &str, element: &str, x| Shape {
         id: id.parse().unwrap(),
         element: element.parse().unwrap(),
+        is_horizontal: None,
+        is_marker_visible: None,
         is_expanded: None,
         bounds: rect(x, 0.0, 10.0, 10.0),
         label: None,
@@ -745,6 +757,8 @@ fn conversation_geometry_session() -> processcraft_core::commands::Session {
         edges: vec![Edge {
             id: "link_edge".parse().unwrap(),
             element: "link".parse().unwrap(),
+            source_element: None,
+            target_element: None,
             waypoints: vec![p(10.0, 5.0), p(20.0, 5.0), p(20.0, 8.0), p(30.0, 8.0)],
             label: Some(Label {
                 bounds: rect(15.0, 10.0, 8.0, 4.0),
@@ -860,6 +874,8 @@ fn moving_activity_translates_visible_port_and_repairs_association() {
     diagram.shapes.push(Shape {
         id: "input_shape".parse().unwrap(),
         element: "input_port".parse().unwrap(),
+        is_horizontal: None,
+        is_marker_visible: None,
         is_expanded: None,
         bounds: rect(42.0, 0.0, 10.0, 10.0),
         label: None,
@@ -874,7 +890,7 @@ fn moving_activity_translates_visible_port_and_repairs_association() {
     project.validate().unwrap();
     let mut session = Session::new(project).unwrap();
     let before = session.snapshot();
-    let diagram_id = "diagram".parse().unwrap();
+    let diagram_id: processcraft_core::ids::ElementSelector = "diagram".parse().unwrap();
     let prepared = prepare_move(
         &before.project.documents[0],
         &diagram_id,
@@ -1052,6 +1068,370 @@ fn native_anonymous_shape_moves_connected_route_and_undoes() {
     assert_eq!(
         coords(&diagram.edges[0].waypoints).first(),
         Some(&(12.0, 8.0))
+    );
+    apply_session(&mut session, Request::Undo);
+    assert_eq!(session.snapshot().content_id, before.content_id);
+    apply_session(&mut session, Request::Redo);
+    assert_eq!(session.snapshot().content_id, after.content_id);
+}
+
+#[test]
+fn explicit_di_endpoints_track_only_the_named_shape_and_undo() {
+    use processcraft_core::commands::{Request, Session, ShapeBounds};
+    let (initial, _) = session_fixture();
+    let mut project = (*initial.snapshot().project).clone();
+    let doc = std::sync::Arc::make_mut(&mut project.documents[0]);
+    let diagram = doc
+        .diagrams
+        .iter_mut()
+        .find(|d| d.id.to_string() == "diagram")
+        .unwrap();
+    let mut alternate = diagram
+        .shapes
+        .iter()
+        .find(|s| s.id.to_string() == "shape_start")
+        .unwrap()
+        .clone();
+    alternate.id = "alternate_start".parse().unwrap();
+    alternate.bounds.x = 100.0;
+    diagram.shapes.push(alternate);
+    diagram.edges[0].source_element = Some("shape_start".parse().unwrap());
+    diagram.edges[0].target_element = Some("shape_review".parse().unwrap());
+    project.validate().unwrap();
+    let mut session = Session::new(project).unwrap();
+    let before = session.snapshot();
+    let diagram_id: processcraft_core::ids::ElementSelector = "diagram".parse().unwrap();
+    let unrelated = prepare_move(
+        &before.project.documents[0],
+        &diagram_id,
+        vec![ShapeBounds {
+            diagram_id: diagram_id.clone(),
+            shape_id: "alternate_start".parse().unwrap(),
+            bounds: rect(102.0, 3.0, 10.0, 10.0),
+        }],
+    )
+    .unwrap();
+    apply_session(&mut session, unrelated.request);
+    let after_unrelated = session.snapshot();
+    let d = after_unrelated.project.documents[0]
+        .diagrams
+        .iter()
+        .find(|d| d.id == diagram_id)
+        .unwrap();
+    assert_eq!(
+        coords(&d.edges[0].waypoints),
+        vec![(10.0, 5.0), (20.0, 5.0), (20.0, 8.0), (30.0, 8.0)]
+    );
+    apply_session(&mut session, Request::Undo);
+    assert_eq!(session.snapshot().content_id, before.content_id);
+    let prepared = prepare_move(
+        &before.project.documents[0],
+        &diagram_id,
+        vec![ShapeBounds {
+            diagram_id: diagram_id.clone(),
+            shape_id: "shape_start".parse().unwrap(),
+            bounds: rect(2.0, 3.0, 10.0, 10.0),
+        }],
+    )
+    .unwrap();
+    apply_session(&mut session, prepared.request);
+    let after = session.snapshot();
+    let d = after.project.documents[0]
+        .diagrams
+        .iter()
+        .find(|d| d.id == diagram_id)
+        .unwrap();
+    assert_eq!(coords(&d.edges[0].waypoints).first(), Some(&(12.0, 8.0)));
+    apply_session(&mut session, Request::Undo);
+    assert_eq!(session.snapshot().content_id, before.content_id);
+    apply_session(&mut session, Request::Redo);
+    assert_eq!(session.snapshot().content_id, after.content_id);
+}
+
+#[test]
+fn edge_representation_endpoint_move_is_refused_atomically() {
+    use processcraft_core::{
+        commands::{Session, ShapeBounds},
+        model::Edge,
+    };
+    let (initial, _) = session_fixture();
+    let mut project = (*initial.snapshot().project).clone();
+    let doc = std::sync::Arc::make_mut(&mut project.documents[0]);
+    let mut note = doc.processes[0].nodes[0].clone();
+    note.id = "unrelated_note".parse().unwrap();
+    note.kind = NodeKind::TextAnnotation;
+    note.name = None;
+    note.details = None;
+    doc.processes[0].nodes.push(note);
+    let diagram = doc
+        .diagrams
+        .iter_mut()
+        .find(|d| d.id.to_string() == "diagram")
+        .unwrap();
+    let other = Edge {
+        id: "anchor_edge".parse().unwrap(),
+        ..diagram.edges[0].clone()
+    };
+    diagram.edges.push(other);
+    diagram.edges[0].source_element = Some("anchor_edge".parse().unwrap());
+    diagram.edges[1].target_element = Some("edge".parse().unwrap());
+    let mut note_shape = diagram.shapes[0].clone();
+    note_shape.id = "unrelated_shape".parse().unwrap();
+    note_shape.element = "unrelated_note".parse().unwrap();
+    note_shape.bounds = rect(200.0, 100.0, 20.0, 20.0);
+    diagram.shapes.push(note_shape);
+    project.validate().unwrap();
+    let session = Session::new(project).unwrap();
+    let before = session.snapshot();
+    let diagram_id: processcraft_core::ids::ElementSelector = "diagram".parse().unwrap();
+    let result = prepare_move(
+        &before.project.documents[0],
+        &diagram_id,
+        vec![ShapeBounds {
+            diagram_id: diagram_id.clone(),
+            shape_id: "shape_start".parse().unwrap(),
+            bounds: rect(2.0, 3.0, 10.0, 10.0),
+        }],
+    );
+    assert!(matches!(
+        result,
+        Err("cyclic edge representation endpoints are unsupported")
+    ));
+    assert_eq!(session.snapshot().content_id, before.content_id);
+    let unrelated = prepare_move(
+        &before.project.documents[0],
+        &diagram_id,
+        vec![ShapeBounds {
+            diagram_id: diagram_id.clone(),
+            shape_id: "unrelated_shape".parse().unwrap(),
+            bounds: rect(202.0, 103.0, 20.0, 20.0),
+        }],
+    );
+    assert!(unrelated.is_ok());
+}
+
+#[test]
+fn association_edge_attachment_follows_rerouted_sequence_with_undo() {
+    use processcraft_core::{
+        commands::{Request, Session, ShapeBounds},
+        model::{Edge, Flow, FlowKind, Label, NodeKind, Shape},
+    };
+    let (initial, _) = session_fixture();
+    let mut project = (*initial.snapshot().project).clone();
+    let doc = std::sync::Arc::make_mut(&mut project.documents[0]);
+    let process = &mut doc.processes[0];
+    let mut annotation = process.nodes[0].clone();
+    annotation.id = "note".parse().unwrap();
+    annotation.name = Some("Note".into());
+    annotation.kind = NodeKind::TextAnnotation;
+    annotation.details = None;
+    process.nodes.push(annotation);
+    process.flows.push(Flow {
+        id: "association".parse().unwrap(),
+        kind: FlowKind::Association,
+        source: "note".parse().unwrap(),
+        target: "review".parse().unwrap(),
+        name: None,
+        documentation: String::new(),
+        condition: None,
+        association_direction: None,
+    });
+    let diagram = doc
+        .diagrams
+        .iter_mut()
+        .find(|d| d.id.to_string() == "diagram")
+        .unwrap();
+    diagram.shapes.push(Shape {
+        id: "note_shape".parse().unwrap(),
+        element: "note".parse().unwrap(),
+        is_expanded: None,
+        is_horizontal: None,
+        is_marker_visible: None,
+        bounds: rect(10.0, 40.0, 20.0, 10.0),
+        label: None,
+        style: None,
+    });
+    diagram.edges.push(Edge {
+        id: "association_edge".parse().unwrap(),
+        element: "association".parse().unwrap(),
+        source_element: Some("note_shape".parse().unwrap()),
+        target_element: Some("edge".parse().unwrap()),
+        waypoints: vec![p(20.0, 40.0), p(20.0, 5.0)],
+        label: Some(Label {
+            bounds: rect(22.0, 20.0, 10.0, 5.0),
+            style: None,
+        }),
+        style: None,
+    });
+    for (source_attachment, move_note) in
+        [(false, false), (true, false), (false, true), (true, true)]
+    {
+        let mut project = project.clone();
+        if source_attachment {
+            let doc = std::sync::Arc::make_mut(&mut project.documents[0]);
+            let flow = doc.processes[0]
+                .flows
+                .iter_mut()
+                .find(|f| f.id.to_string() == "association")
+                .unwrap();
+            std::mem::swap(&mut flow.source, &mut flow.target);
+            let diagram = doc
+                .diagrams
+                .iter_mut()
+                .find(|d| d.id.to_string() == "diagram")
+                .unwrap();
+            let edge = diagram
+                .edges
+                .iter_mut()
+                .find(|e| e.id.to_string() == "association_edge")
+                .unwrap();
+            std::mem::swap(&mut edge.source_element, &mut edge.target_element);
+            edge.waypoints.reverse();
+        }
+        project.validate().unwrap();
+        let mut session = Session::new(project).unwrap();
+        let before = session.snapshot();
+        let diagram_id: processcraft_core::ids::ElementSelector = "diagram".parse().unwrap();
+        let mut moves = vec![ShapeBounds {
+            diagram_id: diagram_id.clone(),
+            shape_id: "shape_start".parse().unwrap(),
+            bounds: rect(2.0, 3.0, 10.0, 10.0),
+        }];
+        if move_note {
+            moves.push(ShapeBounds {
+                diagram_id: diagram_id.clone(),
+                shape_id: "note_shape".parse().unwrap(),
+                bounds: rect(12.0, 43.0, 20.0, 10.0),
+            });
+        }
+        let prepared = prepare_move(&before.project.documents[0], &diagram_id, moves).unwrap();
+        apply_session(&mut session, prepared.request);
+        let after = session.snapshot();
+        let diagram = after.project.documents[0]
+            .diagrams
+            .iter()
+            .find(|d| d.id == diagram_id)
+            .unwrap();
+        let link = diagram
+            .edges
+            .iter()
+            .find(|e| e.id.to_string() == "association_edge")
+            .unwrap();
+        let points = coords(&link.waypoints);
+        let (fixed, attachment) = if source_attachment {
+            (points.last(), points.first())
+        } else {
+            (points.first(), points.last())
+        };
+        assert_eq!(
+            fixed,
+            Some(&if move_note {
+                (22.0, 43.0)
+            } else {
+                (20.0, 40.0)
+            })
+        );
+        assert_ne!(attachment, Some(&(20.0, 5.0)));
+        assert_eq!(
+            link.label.as_ref().unwrap().bounds,
+            rect(22.0, 20.0, 10.0, 5.0)
+        );
+        apply_session(&mut session, Request::Undo);
+        assert_eq!(session.snapshot().content_id, before.content_id);
+        apply_session(&mut session, Request::Redo);
+        assert_eq!(session.snapshot().content_id, after.content_id);
+    }
+}
+
+#[test]
+fn nested_move_translates_edge_attachment_and_label_as_one_gesture() {
+    use processcraft_core::{
+        bpmn_model::NodeDetails,
+        commands::{Request, Session, ShapeBounds},
+        model::{Edge, Flow, FlowKind, Label, NodeKind, Shape},
+    };
+    let initial = nested_session();
+    let mut project = (*initial.snapshot().project).clone();
+    let doc = std::sync::Arc::make_mut(&mut project.documents[0]);
+    let Some(NodeDetails::SubProcess { content }) = &mut doc.processes[0].nodes[0].details else {
+        panic!("subprocess")
+    };
+    let mut note = content.nodes[0].clone();
+    note.id = "note".parse().unwrap();
+    note.name = None;
+    note.kind = NodeKind::TextAnnotation;
+    note.details = None;
+    content.nodes.push(note);
+    content.flows.push(Flow {
+        id: "association".parse().unwrap(),
+        kind: FlowKind::Association,
+        source: "note".parse().unwrap(),
+        target: "review".parse().unwrap(),
+        name: None,
+        documentation: String::new(),
+        condition: None,
+        association_direction: None,
+    });
+    let diagram = doc
+        .diagrams
+        .iter_mut()
+        .find(|d| d.id.to_string() == "diagram")
+        .unwrap();
+    diagram.shapes.push(Shape {
+        id: "note_shape".parse().unwrap(),
+        element: "note".parse().unwrap(),
+        is_expanded: None,
+        is_horizontal: None,
+        is_marker_visible: None,
+        bounds: rect(10.0, 20.0, 20.0, 10.0),
+        label: None,
+        style: None,
+    });
+    diagram.edges.push(Edge {
+        id: "association_edge".parse().unwrap(),
+        element: "association".parse().unwrap(),
+        source_element: Some("note_shape".parse().unwrap()),
+        target_element: Some("edge".parse().unwrap()),
+        waypoints: vec![p(20.0, 20.0), p(20.0, 5.0)],
+        label: Some(Label {
+            bounds: rect(22.0, 10.0, 10.0, 5.0),
+            style: None,
+        }),
+        style: None,
+    });
+    project.validate().unwrap();
+    let mut session = Session::new(project).unwrap();
+    let before = session.snapshot();
+    let diagram_id: processcraft_core::ids::ElementSelector = "diagram".parse().unwrap();
+    let prepared = prepare_move(
+        &before.project.documents[0],
+        &diagram_id,
+        vec![ShapeBounds {
+            diagram_id: diagram_id.clone(),
+            shape_id: "sub_di".parse().unwrap(),
+            bounds: rect(90.0, 40.0, 80.0, 50.0),
+        }],
+    )
+    .unwrap();
+    apply_session(&mut session, prepared.request);
+    let after = session.snapshot();
+    let diagram = after.project.documents[0]
+        .diagrams
+        .iter()
+        .find(|d| d.id == diagram_id)
+        .unwrap();
+    let association = diagram
+        .edges
+        .iter()
+        .find(|e| e.id.to_string() == "association_edge")
+        .unwrap();
+    assert_eq!(
+        coords(&association.waypoints),
+        vec![(120.0, 70.0), (120.0, 55.0)]
+    );
+    assert_eq!(
+        association.label.as_ref().unwrap().bounds,
+        rect(122.0, 60.0, 10.0, 5.0)
     );
     apply_session(&mut session, Request::Undo);
     assert_eq!(session.snapshot().content_id, before.content_id);

@@ -36,6 +36,8 @@ fn document() -> BpmnDocument {
         plane_id: "plane".parse().unwrap(),
         plane: "p".parse().unwrap(),
         shapes: vec![Shape {
+            is_horizontal: None,
+            is_marker_visible: None,
             is_expanded: None,
             id: "s".parse().unwrap(),
             element: "n".parse().unwrap(),

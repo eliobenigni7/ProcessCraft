@@ -89,6 +89,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             contact: String::new(),
         });
         shapes.push(Shape {
+            is_horizontal: None,
+            is_marker_visible: None,
             is_expanded: None,
             id: id(&format!("shape_{i}")),
             element: id(key),
@@ -162,6 +164,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         edges.push(Edge {
             id: id(&format!("edge_{i}")),
             element: id(key),
+            source_element: None,
+            target_element: None,
             waypoints: pts.into_iter().map(|(x, y)| Point { x, y }).collect(),
             label: None,
             style: None,

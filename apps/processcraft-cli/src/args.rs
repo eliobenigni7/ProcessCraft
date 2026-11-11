@@ -125,6 +125,22 @@ pub enum ImageFormat {
 
 #[derive(Subcommand)]
 pub enum Query {
+    /// Read event roots, references, flags and owned data as bounded field pages.
+    Events {
+        document_id: String,
+        #[arg(long, default_value_t = 0)]
+        offset: usize,
+        #[arg(long, default_value_t = 50)]
+        limit: usize,
+    },
+    /// Read DI attributes and representation endpoints as bounded field pages.
+    Diagrams {
+        document_id: String,
+        #[arg(long, default_value_t = 0)]
+        offset: usize,
+        #[arg(long, default_value_t = 50)]
+        limit: usize,
+    },
     /// Read persistent semantic/DI selectors and their optional XML IDs.
     Identities {
         document_id: String,

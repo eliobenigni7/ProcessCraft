@@ -10,7 +10,7 @@ use processcraft_core::bpmn_data::{
 type DataValues = (Vec<DataStore>, Vec<DataObject>, Vec<DataAssociation>);
 
 #[derive(Clone, Default)]
-struct ItemDraft {
+pub(super) struct ItemDraft {
     subject: Option<QNameDraft>,
     state: Option<StateDraft>,
 }
@@ -20,7 +20,7 @@ struct StateDraft {
     name: Option<String>,
 }
 impl ItemDraft {
-    fn from_item(item: &ItemAwareMetadata) -> Self {
+    pub(super) fn from_item(item: &ItemAwareMetadata) -> Self {
         Self {
             subject: item.item_subject_ref.as_ref().map(QNameDraft::from),
             state: item.data_state.as_ref().map(|state| StateDraft {
@@ -45,7 +45,7 @@ impl ItemDraft {
         })
     }
 }
-fn item_ui(ui: &mut egui::Ui, item: &mut Option<ItemDraft>) {
+pub(super) fn item_ui(ui: &mut egui::Ui, item: &mut Option<ItemDraft>) {
     let mut present = item.is_some();
     ui.checkbox(&mut present, "Item-aware metadata");
     if present {
@@ -64,7 +64,7 @@ fn item_ui(ui: &mut egui::Ui, item: &mut Option<ItemDraft>) {
         *item = None;
     }
 }
-fn build_item(item: &Option<ItemDraft>) -> Result<Option<ItemAwareMetadata>, String> {
+pub(super) fn build_item(item: &Option<ItemDraft>) -> Result<Option<ItemAwareMetadata>, String> {
     item.as_ref().map(ItemDraft::build).transpose()
 }
 #[derive(Clone)]
@@ -367,6 +367,13 @@ pub(super) fn ancestor_data_candidates(
     }
     (inputs, outputs, objects)
 }
+type EventOwner = (
+    ElementSelector,
+    String,
+    Vec<ElementSelector>,
+    Vec<ElementSelector>,
+    Vec<ElementSelector>,
+);
 pub(super) struct DataDraft {
     scope: ElementSelector,
     stores: Vec<StoreDraft>,
@@ -380,6 +387,7 @@ pub(super) struct DataDraft {
     new_sources: Vec<ElementSelector>,
     new_target: Option<ElementSelector>,
     ios: Vec<IoDraft>,
+    event_owners: Vec<EventOwner>,
     references: Vec<ReferenceDraft>,
     error: String,
 }
@@ -457,6 +465,47 @@ impl DataDraft {
                             )
                         }),
                 )
+                .collect(),
+            event_owners: scope
+                .nodes
+                .iter()
+                .filter_map(|node| {
+                    use processcraft_core::bpmn_model::{EventIo, NodeDetails};
+                    let Some(NodeDetails::Event {
+                        io: Some(io),
+                        properties,
+                        ..
+                    }) = &node.details
+                    else {
+                        return None;
+                    };
+                    let (inputs, outputs) = match io {
+                        EventIo::Catch { outputs, .. } => (
+                            Vec::new(),
+                            outputs
+                                .iter()
+                                .filter_map(|port| port.id.as_ref().map(|id| id.selector()))
+                                .collect(),
+                        ),
+                        EventIo::Throw { inputs, .. } => (
+                            inputs
+                                .iter()
+                                .filter_map(|port| port.id.as_ref().map(|id| id.selector()))
+                                .collect(),
+                            Vec::new(),
+                        ),
+                    };
+                    Some((
+                        node.id.selector(),
+                        node.name.clone().unwrap_or_default(),
+                        inputs,
+                        outputs,
+                        properties
+                            .iter()
+                            .filter_map(|property| property.id.as_ref().map(|id| id.selector()))
+                            .collect(),
+                    ))
+                })
                 .collect(),
             references: scope
                 .nodes
@@ -826,7 +875,7 @@ impl DataDraft {
             output_targets.extend(io.outputs.iter().filter_map(|port| id_selector(&port.id)));
         }
         let no_ports = Vec::new();
-        let owner_choices: Vec<_> = self
+        let mut owner_choices: Vec<_> = self
             .ios
             .iter()
             .filter(|io| !io.process)
@@ -842,9 +891,11 @@ impl DataDraft {
                         .iter()
                         .filter_map(|port| id_selector(&port.id))
                         .collect::<Vec<_>>(),
+                    Vec::<ElementSelector>::new(),
                 )
             })
             .collect();
+        owner_choices.extend(self.event_owners.iter().cloned());
         ui.collapsing("Data associations in scope", |ui| {
             let mut remove = None;
             for (i, draft) in self.associations.iter_mut().enumerate() {
@@ -856,7 +907,7 @@ impl DataDraft {
                     egui::ComboBox::from_label("Activity owner")
                         .selected_text(draft.value.owner.to_string())
                         .show_ui(ui, |ui| {
-                            for (id, name, _, _) in &owner_choices {
+                            for (id, name, _, _, _) in &owner_choices {
                                 ui.selectable_value(
                                     &mut draft.value.owner,
                                     id.clone(),
@@ -880,21 +931,27 @@ impl DataDraft {
                         });
                     let owner = owner_choices
                         .iter()
-                        .find(|(id, _, _, _)| id == &draft.value.owner);
-                    let ports = owner.map(|(_, _, inputs, outputs)| {
+                        .find(|(id, _, _, _, _)| id == &draft.value.owner);
+                    let ports = owner.map(|(_, _, inputs, outputs, _)| {
                         if draft.value.kind == DataAssociationKind::Input {
                             inputs
                         } else {
                             outputs
                         }
                     });
+                    let mut event_local = input_sources.clone();
+                    let mut event_target = output_targets.clone();
+                    if let Some((_, _, _, _, properties)) = owner {
+                        event_local.extend(properties.iter().cloned());
+                        event_target.extend(properties.iter().cloned());
+                    }
                     let source_candidates = if draft.value.kind == DataAssociationKind::Input {
-                        &input_sources
+                        &event_local
                     } else {
                         ports.unwrap_or(&no_ports)
                     };
                     let target_candidates = if draft.value.kind == DataAssociationKind::Output {
-                        &output_targets
+                        &event_target
                     } else {
                         ports.unwrap_or(&no_ports)
                     };
@@ -1006,7 +1063,7 @@ impl DataDraft {
                         .map_or("Select activity".into(), ToString::to_string),
                 )
                 .show_ui(ui, |ui| {
-                    for (id, name, _, _) in &owner_choices {
+                    for (id, name, _, _, _) in &owner_choices {
                         ui.selectable_value(
                             &mut self.new_owner,
                             Some(id.clone()),
@@ -1018,19 +1075,25 @@ impl DataDraft {
             let owner = self.new_owner.as_ref().and_then(|id| {
                 owner_choices
                     .iter()
-                    .find(|(candidate, _, _, _)| candidate == id)
+                    .find(|(candidate, _, _, _, _)| candidate == id)
             });
-            let ports =
-                owner.map(|(_, _, inputs, outputs)| if self.new_input { inputs } else { outputs });
+            let ports = owner
+                .map(|(_, _, inputs, outputs, _)| if self.new_input { inputs } else { outputs });
+            let mut event_local = input_sources.clone();
+            let mut event_target = output_targets.clone();
+            if let Some((_, _, _, _, properties)) = owner {
+                event_local.extend(properties.iter().cloned());
+                event_target.extend(properties.iter().cloned());
+            }
             let sources = if self.new_input {
-                &input_sources
+                &event_local
             } else {
                 ports.unwrap_or(&no_ports)
             };
             let targets = if self.new_input {
                 ports.unwrap_or(&no_ports)
             } else {
-                &output_targets
+                &event_target
             };
             reference_checkboxes(
                 ui,
@@ -1151,6 +1214,8 @@ impl ProcessCraft {
                             {
                                 let diagram = diagram.expect("enabled only with matching diagram");
                                 let shape = Shape {
+                                    is_horizontal: None,
+                                    is_marker_visible: None,
                                     id: crate::controller::id("DataPortShape").into(),
                                     element: id.selector(),
                                     is_expanded: None,
@@ -1210,6 +1275,8 @@ impl ProcessCraft {
                             {
                                 let diagram = diagram.expect("enabled only with matching diagram");
                                 let shape = Shape {
+                                    is_horizontal: None,
+                                    is_marker_visible: None,
                                     id: crate::controller::id("DataStoreShape").into(),
                                     element: id.selector(),
                                     is_expanded: None,
@@ -1329,6 +1396,19 @@ impl ProcessCraft {
                         Ok(()) => {
                             if self.ctl.mutate(mutations) {
                                 self.data_draft = None;
+                                if let Some(selected) = &self.selected {
+                                    let current = self.ctl.session.snapshot();
+                                    self.bpmn_details = current
+                                        .project
+                                        .documents
+                                        .get(self.doc)
+                                        .and_then(|document| {
+                                            processcraft_core::queries::find_node(
+                                                document, selected,
+                                            )
+                                        })
+                                        .and_then(|node| node.details.clone());
+                                }
                             }
                         }
                         Err(error) => draft.error = error,
@@ -1407,6 +1487,109 @@ mod tests {
             !inputs.contains(&sibling_object.clone().into())
                 && !outputs.contains(&sibling_object.clone().into())
                 && !objects.contains(&sibling_object.clone().into())
+        );
+    }
+
+    #[test]
+    fn event_owned_output_association_uses_event_port_and_store() {
+        use processcraft_core::bpmn_data::{DataAssociationKind, DataPort};
+        use processcraft_core::bpmn_model::{EventIo, NodeDetails};
+        let mut app = ProcessCraft::default();
+        app.add(NodeKind::IntermediateCatchEvent);
+        let selected = app.selected.clone().unwrap();
+        let snapshot = app.ctl.session.snapshot();
+        let document_id = snapshot.project.documents[0].id;
+        let scope_id = snapshot.project.documents[0].processes[0].id.selector();
+        let port_id = processcraft_core::ids::ElementIdentity::anonymous();
+        let store_id = processcraft_core::ids::ElementIdentity::anonymous();
+        let mut details =
+            processcraft_core::queries::find_node(&snapshot.project.documents[0], &selected)
+                .unwrap()
+                .details
+                .clone()
+                .unwrap();
+        if let NodeDetails::Event { io, .. } = &mut details {
+            *io = Some(EventIo::Catch {
+                outputs: vec![DataPort {
+                    id: Some(port_id.clone()),
+                    name: None,
+                    item_aware: None,
+                    is_collection: None,
+                }],
+                output_set: None,
+            });
+        }
+        assert!(
+            app.ctl.mutate(vec![
+                Mutation::SetNodeDetails {
+                    document_id,
+                    element_id: selected.clone(),
+                    details: Some(details)
+                },
+                Mutation::SetDataStores {
+                    document_id,
+                    data_stores: vec![DataStore {
+                        id: Some(store_id.clone()),
+                        name: None,
+                        capacity: None,
+                        is_unlimited: None,
+                        item_aware: None
+                    }]
+                }
+            ]),
+            "{}",
+            app.ctl.error
+        );
+        let snapshot = app.ctl.session.snapshot();
+        let document = &snapshot.project.documents[0];
+        let scope = processcraft_core::queries::scopes(document)
+            .into_iter()
+            .find(|scope| scope.id == &scope_id)
+            .unwrap();
+        let mut draft = DataDraft::new(document, scope);
+        assert!(
+            draft
+                .event_owners
+                .iter()
+                .any(|(owner, _, _, outputs, _)| owner == &selected
+                    && outputs.contains(&port_id.selector()))
+        );
+        let value = DataAssociation {
+            id: None,
+            owner: selected,
+            kind: DataAssociationKind::Output,
+            sources: vec![port_id.selector()],
+            target: store_id.selector(),
+            transformation: None,
+            assignments: Vec::new(),
+        };
+        draft.associations.push(AssociationDraft {
+            value,
+            id: IdentityDraft::default(),
+            assignments: Vec::new(),
+        });
+        let (_, _, data_associations) = draft.build().unwrap();
+        assert!(
+            app.ctl.mutate(vec![Mutation::SetScopeDataAssociations {
+                document_id,
+                scope_id,
+                data_associations
+            }]),
+            "{}",
+            app.ctl.error
+        );
+        app.history(Request::Undo);
+        assert!(
+            app.ctl.session.snapshot().project.documents[0].processes[0]
+                .data_associations
+                .is_empty()
+        );
+        app.history(Request::Redo);
+        assert_eq!(
+            app.ctl.session.snapshot().project.documents[0].processes[0]
+                .data_associations
+                .len(),
+            1
         );
     }
 

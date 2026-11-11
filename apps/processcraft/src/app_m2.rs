@@ -849,7 +849,7 @@ impl ProcessCraft {
                                 let mut mutations = vec![Mutation::CreateLane { document_id: d.id, process_id: p.id.selector(), lane: Lane {
     child_lane_set_id: None, id: lane_id.into(), name: Some(role.name.clone()), parent: None, members: vec![] } }, Mutation::SetDictionaryLinks { source: processcraft_core::ids::ElementKey { document_id: d.id, xml_id: lane.clone() }, kind: DictionaryKind::Role, targets: vec![DictionaryTarget::Entry(role.id)] }];
                                 if let Some(diagram) = d.diagrams.iter().find(|diagram| self.diagram_id.as_ref().is_none_or(|id| &diagram.id == id)) {
-                                    mutations.push(Mutation::CreateShape { document_id: d.id, diagram_id: diagram.id.selector(), shape: Shape {
+                                    mutations.push(Mutation::CreateShape { document_id: d.id, diagram_id: diagram.id.selector(), shape: Shape { is_horizontal: None, is_marker_visible: None,
     is_expanded: None, id: controller::id("LaneShape").into(), element: lane.clone(), bounds: lane_bounds, label: None, style: None } });
                                 }
                                 mutations.extend(moves);
@@ -963,6 +963,8 @@ impl ProcessCraft {
             },
             diagram_id: diagram.id.selector(),
             shape: Shape {
+                is_horizontal: None,
+                is_marker_visible: None,
                 is_expanded: None,
                 id: controller::id("Shape").into(),
                 element: node_id.clone().into(),
@@ -977,6 +979,8 @@ impl ProcessCraft {
             },
             old_waypoints: vec![a.clone(), enter],
             new_edge: Edge {
+                source_element: None,
+                target_element: None,
                 id: controller::id("Edge").into(),
                 element: new_flow_id.into(),
                 waypoints: vec![exit, b.clone()],
@@ -1320,6 +1324,8 @@ mod tests {
         let diagram = &mut d.diagrams[0];
         for (id, x) in [(&node, 0.0), (&target, 300.0)] {
             diagram.shapes.push(Shape {
+                is_horizontal: None,
+                is_marker_visible: None,
                 is_expanded: None,
                 id: controller::id("Shape").into(),
                 element: id.clone().into(),
@@ -1334,6 +1340,8 @@ mod tests {
             });
         }
         diagram.edges.push(Edge {
+            source_element: None,
+            target_element: None,
             id: controller::id("Edge").into(),
             element: flow.into(),
             waypoints: vec![Point { x: 100.0, y: 35.0 }, Point { x: 300.0, y: 35.0 }],

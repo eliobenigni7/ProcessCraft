@@ -97,6 +97,18 @@ enum ExportKind {
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
 enum Query {
+    Events {
+        #[serde(alias = "documentId", alias = "docId")]
+        document_id: processcraft_core::ids::DocumentId,
+        offset: usize,
+        limit: usize,
+    },
+    Diagrams {
+        #[serde(alias = "documentId", alias = "docId")]
+        document_id: processcraft_core::ids::DocumentId,
+        offset: usize,
+        limit: usize,
+    },
     Identities {
         #[serde(alias = "documentId", alias = "docId")]
         document_id: processcraft_core::ids::DocumentId,
@@ -499,9 +511,21 @@ impl Attachment {
                 let snapshot = controller.session.snapshot();
                 let catalog_query = matches!(
                     &q,
-                    Query::Catalog { .. } | Query::Data { .. } | Query::Identities { .. }
+                    Query::Catalog { .. }
+                        | Query::Data { .. }
+                        | Query::Identities { .. }
+                        | Query::Events { .. }
+                        | Query::Diagrams { .. }
                 );
                 let (items, offset, limit): (Vec<Value>, usize, usize) = match q {
+                    Query::Events { document_id, offset, limit } => {
+                        let Some(rows) = processcraft_core::queries::event_fields(&snapshot.project, document_id) else { return json!({"ok":false,"error":"document not found"}); };
+                        (rows.into_iter().map(|row| json!(row)).collect(), offset, limit)
+                    },
+                    Query::Diagrams { document_id, offset, limit } => {
+                        let Some(rows) = processcraft_core::queries::diagram_fields(&snapshot.project, document_id) else { return json!({"ok":false,"error":"document not found"}); };
+                        (rows.into_iter().map(|row| json!(row)).collect(), offset, limit)
+                    },
                     Query::Identities { document_id, offset, limit } => {
                         let Some(rows) = processcraft_core::queries::identified_elements(&snapshot.project, document_id) else {
                             return json!({"ok":false,"error":"document not found"});

@@ -760,6 +760,11 @@ fn compensation_event_capability_covers_live_and_checkpoint_documents() {
         }],
         attached_to: None,
         cancel_activity: None,
+        definition_refs: vec![],
+        parallel_multiple: None,
+        is_interrupting: None,
+        properties: vec![],
+        io: None,
     };
     doc.processes.push(Process {
         is_executable: Some(false),
@@ -1326,6 +1331,7 @@ fn identity_capability_covers_independent_new_fields() {
     doc.event_resources.push(EventResource::Message {
         id: "message".parse().unwrap(),
         name: None,
+        item_ref: None,
     });
     doc.processes.push(Process {
         id: "process".parse().unwrap(),
@@ -1458,4 +1464,373 @@ fn identity_capability_covers_independent_new_fields() {
             "checkpoint case {case}"
         );
     }
+}
+
+#[test]
+fn expanded_events_and_di_capability_round_trips_live_and_checkpoint() {
+    use processcraft_core::{
+        bpmn_model::{EventDefinition, EventReference, NodeDetails},
+        ids::CheckpointId,
+        model::{
+            Bounds, BpmnDocument, Checkpoint, Diagram, FrozenProject, Node, NodeKind, Process,
+            Shape,
+        },
+    };
+    let mut project = ProjectData::new("event capability".into());
+    let mut doc = BpmnDocument::new("doc".into(), "defs".parse().unwrap());
+    doc.root_event_definitions.push(EventDefinition::Timer {
+        id: Some("timer".parse().unwrap()),
+        kind: None,
+        expression: None,
+    });
+    doc.processes.push(Process {
+        id: "process".parse().unwrap(),
+        name: Some("Process".into()),
+        documentation: String::new(),
+        is_executable: Some(false),
+        io_specification: None,
+        lane_set_id: None,
+        groups: vec![],
+        data_objects: vec![],
+        data_associations: vec![],
+        nodes: vec![Node {
+            id: "event".parse().unwrap(),
+            name: Some("Start".into()),
+            documentation: String::new(),
+            kind: NodeKind::StartEvent,
+            item_aware: None,
+            loop_characteristics: None,
+            io_specification: None,
+            activity: None,
+            owner: String::new(),
+            contact: String::new(),
+            details: Some(NodeDetails::Event {
+                definitions: vec![],
+                attached_to: None,
+                cancel_activity: None,
+                definition_refs: vec![EventReference::Local("timer".parse().unwrap())],
+                parallel_multiple: Some(false),
+                is_interrupting: Some(true),
+                properties: vec![],
+                io: None,
+            }),
+        }],
+        lanes: vec![],
+        flows: vec![],
+    });
+    doc.diagrams.push(Diagram {
+        id: "diagram".parse().unwrap(),
+        name: None,
+        plane_id: "plane".parse().unwrap(),
+        plane: "process".parse().unwrap(),
+        shapes: vec![Shape {
+            id: "shape".parse().unwrap(),
+            element: "event".parse().unwrap(),
+            is_expanded: None,
+            is_horizontal: Some(false),
+            is_marker_visible: Some(true),
+            bounds: Bounds {
+                x: 0.0,
+                y: 0.0,
+                width: 36.0,
+                height: 36.0,
+            },
+            label: None,
+            style: None,
+        }],
+        edges: vec![],
+    });
+    project.documents.push(Arc::new(doc));
+    let bytes = write_bytes(&project).unwrap();
+    let mut archived = entries(&bytes);
+    let manifest: serde_json::Value = serde_json::from_slice(
+        &archived
+            .iter()
+            .find(|(name, _)| name == "manifest.json")
+            .unwrap()
+            .1,
+    )
+    .unwrap();
+    assert!(
+        manifest["required_capabilities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|value| value == "bpmn-expanded-events-di")
+    );
+    let loaded = load_bytes(&bytes).unwrap().project;
+    assert_eq!(
+        loaded.content_identity().unwrap(),
+        project.content_identity().unwrap()
+    );
+    assert!(matches!(
+        &loaded.documents[0].root_event_definitions[0],
+        EventDefinition::Timer {
+            kind: None,
+            expression: None,
+            ..
+        }
+    ));
+    edit_json(&mut archived, "manifest.json", |value| {
+        value["required_capabilities"] = serde_json::json!(["comments", "checkpoints"])
+    });
+    assert!(
+        load_bytes(&archive(&archived))
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("expanded events and diagram metadata require capability")
+    );
+    let snapshot = FrozenProject::capture(&project);
+    let doc = Arc::make_mut(&mut project.documents[0]);
+    doc.root_event_definitions.clear();
+    doc.processes[0].nodes.clear();
+    doc.diagrams.clear();
+    project.checkpoints.push(Checkpoint {
+        id: CheckpointId::new(),
+        name: "snapshot".into(),
+        created_unix_ms: 0,
+        content: snapshot,
+    });
+    let bytes = write_bytes(&project).unwrap();
+    let mut archived = entries(&bytes);
+    assert_eq!(
+        load_bytes(&bytes)
+            .unwrap()
+            .project
+            .content_identity()
+            .unwrap(),
+        project.content_identity().unwrap()
+    );
+    edit_json(&mut archived, "manifest.json", |value| {
+        value["required_capabilities"] = serde_json::json!(["comments", "checkpoints"])
+    });
+    assert!(
+        load_bytes(&archive(&archived))
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("expanded events and diagram metadata require capability")
+    );
+}
+
+#[test]
+fn expanded_events_and_di_capability_detects_independent_features() {
+    use processcraft_core::{
+        bpmn_data::{DataPort, ItemAwareMetadata},
+        bpmn_model::{
+            EventDefinition, EventIo, EventProperty, EventReference, EventResource, NodeDetails,
+            QNameRef,
+        },
+        model::{BpmnDocument, Node, NodeKind, Process},
+    };
+    let q = || QNameRef {
+        namespace: "urn:external".into(),
+        local: "item".parse().unwrap(),
+    };
+    for case in 0..5 {
+        let mut project = ProjectData::new("feature".into());
+        let mut doc = BpmnDocument::new("doc".into(), "defs".parse().unwrap());
+        let mut details = NodeDetails::Event {
+            definitions: vec![],
+            definition_refs: vec![],
+            attached_to: None,
+            cancel_activity: None,
+            parallel_multiple: None,
+            is_interrupting: None,
+            properties: vec![],
+            io: None,
+        };
+        if let NodeDetails::Event {
+            definition_refs,
+            properties,
+            io,
+            ..
+        } = &mut details
+        {
+            match case {
+                0 => doc.root_event_definitions.push(EventDefinition::Timer {
+                    id: None,
+                    kind: None,
+                    expression: None,
+                }),
+                1 => definition_refs.push(EventReference::Qualified(q())),
+                2 => properties.push(EventProperty {
+                    id: None,
+                    name: Some("state".into()),
+                    item_aware: Some(ItemAwareMetadata {
+                        item_subject_ref: Some(q()),
+                        data_state: None,
+                    }),
+                }),
+                3 => {
+                    *io = Some(EventIo::Catch {
+                        outputs: vec![DataPort {
+                            id: None,
+                            name: Some("output".into()),
+                            item_aware: None,
+                            is_collection: None,
+                        }],
+                        output_set: None,
+                    })
+                }
+                _ => doc.event_resources.push(EventResource::Message {
+                    id: "message".parse().unwrap(),
+                    name: None,
+                    item_ref: Some(q()),
+                }),
+            }
+        }
+        doc.processes.push(Process {
+            id: "process".parse().unwrap(),
+            name: Some("Process".into()),
+            documentation: String::new(),
+            is_executable: Some(false),
+            io_specification: None,
+            lane_set_id: None,
+            groups: vec![],
+            data_objects: vec![],
+            data_associations: vec![],
+            nodes: vec![Node {
+                id: "start".parse().unwrap(),
+                name: Some("Start".into()),
+                documentation: String::new(),
+                kind: NodeKind::StartEvent,
+                details: Some(details),
+                item_aware: None,
+                loop_characteristics: None,
+                io_specification: None,
+                activity: None,
+                owner: String::new(),
+                contact: String::new(),
+            }],
+            lanes: vec![],
+            flows: vec![],
+        });
+        project.documents.push(Arc::new(doc));
+        let bytes = write_bytes(&project).unwrap_or_else(|e| panic!("case {case}: {e}"));
+        let mut archived = entries(&bytes);
+        let manifest: serde_json::Value = serde_json::from_slice(
+            &archived
+                .iter()
+                .find(|(name, _)| name == "manifest.json")
+                .unwrap()
+                .1,
+        )
+        .unwrap();
+        assert!(
+            manifest["required_capabilities"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|v| v == "bpmn-expanded-events-di"),
+            "case {case}"
+        );
+        assert_eq!(
+            load_bytes(&bytes)
+                .unwrap()
+                .project
+                .content_identity()
+                .unwrap(),
+            project.content_identity().unwrap()
+        );
+        edit_json(&mut archived, "manifest.json", |v| {
+            v["required_capabilities"] = serde_json::json!(["comments", "checkpoints"])
+        });
+        assert!(
+            load_bytes(&archive(&archived))
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("expanded events and diagram metadata require capability"),
+            "case {case}"
+        );
+    }
+}
+
+#[test]
+fn legacy_timer_choice_and_local_reference_keep_old_json_shape() {
+    use processcraft_core::{
+        bpmn_model::{EventDefinition, EventReference, Expression, NodeDetails, TimerKind},
+        model::{BpmnDocument, Node, NodeKind, Process},
+    };
+    let mut p = ProjectData::new("legacy timer".into());
+    let mut doc = BpmnDocument::new("doc".into(), "defs".parse().unwrap());
+    doc.processes.push(Process {
+        id: "process".parse().unwrap(),
+        name: Some("process".into()),
+        documentation: String::new(),
+        is_executable: Some(false),
+        io_specification: None,
+        lane_set_id: None,
+        groups: vec![],
+        data_objects: vec![],
+        data_associations: vec![],
+        nodes: vec![Node {
+            id: "start".parse().unwrap(),
+            name: Some("start".into()),
+            documentation: String::new(),
+            kind: NodeKind::StartEvent,
+            item_aware: None,
+            loop_characteristics: None,
+            io_specification: None,
+            activity: None,
+            owner: String::new(),
+            contact: String::new(),
+            details: Some(NodeDetails::Event {
+                definitions: vec![EventDefinition::Timer {
+                    id: None,
+                    kind: Some(TimerKind::Duration),
+                    expression: Some(Expression::Legacy("PT1H".into())),
+                }],
+                attached_to: None,
+                cancel_activity: None,
+                definition_refs: vec![],
+                parallel_multiple: None,
+                is_interrupting: None,
+                properties: vec![],
+                io: None,
+            }),
+        }],
+        lanes: vec![],
+        flows: vec![],
+    });
+    p.documents.push(Arc::new(doc));
+    let bytes = write_bytes(&p).unwrap();
+    let archived = entries(&bytes);
+    let manifest: serde_json::Value = serde_json::from_slice(
+        &archived
+            .iter()
+            .find(|(name, _)| name == "manifest.json")
+            .unwrap()
+            .1,
+    )
+    .unwrap();
+    assert_eq!(
+        manifest["required_capabilities"],
+        serde_json::json!(["comments", "checkpoints"])
+    );
+    let raw: serde_json::Value = serde_json::from_slice(
+        &archived
+            .iter()
+            .find(|(name, _)| name == "project.json")
+            .unwrap()
+            .1,
+    )
+    .unwrap();
+    let timer = &raw["documents"][0]["processes"][0]["nodes"][0]["details"]["definitions"][0];
+    assert_eq!(timer["kind"], "Duration");
+    assert_eq!(timer["expression"], "PT1H");
+    assert_eq!(
+        serde_json::to_value(EventReference::Local("legacy".parse().unwrap())).unwrap(),
+        serde_json::json!("legacy")
+    );
+    assert_eq!(
+        load_bytes(&bytes)
+            .unwrap()
+            .project
+            .content_identity()
+            .unwrap(),
+        p.content_identity().unwrap()
+    );
 }

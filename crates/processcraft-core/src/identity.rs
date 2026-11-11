@@ -67,6 +67,99 @@ fn definitions_text(s: &str) -> Result<(), String> {
     }
     Ok(())
 }
+fn validate_event_payload(
+    d: &BpmnDocument,
+    definition: &crate::bpmn_model::EventDefinition,
+    namespace: Option<&str>,
+) -> Result<(), String> {
+    use crate::bpmn_model::{EventDefinition as E, EventReference, EventResource};
+    let valid_qname = |r: &EventReference| -> Result<(), String> {
+        if let EventReference::Qualified(name) = r {
+            definitions_text(&name.namespace)?;
+            if name.namespace.chars().any(char::is_whitespace) {
+                return fail("Invalid event QName namespace");
+            }
+        }
+        Ok(())
+    };
+    let resource = |reference: &Option<EventReference>, kind: &str| -> Result<(), String> {
+        let Some(reference) = reference else {
+            return Ok(());
+        };
+        valid_qname(reference)?;
+        if reference.is_external(namespace) {
+            return Ok(());
+        }
+        if !d.event_resources.iter().any(|item| match (kind, item) {
+            ("message", EventResource::Message { id, .. })
+            | ("signal", EventResource::Signal { id, .. })
+            | ("error", EventResource::Error { id, .. })
+            | ("escalation", EventResource::Escalation { id, .. }) => {
+                reference.matches_identity(id, namespace)
+            }
+            _ => false,
+        }) {
+            return fail("Missing or wrong-kind local event resource");
+        }
+        Ok(())
+    };
+    match definition {
+        E::Message {
+            message_ref,
+            operation_ref,
+            ..
+        } => {
+            resource(message_ref, "message")?;
+            if let Some(reference) = operation_ref {
+                valid_qname(reference)?;
+                if !reference.is_external(namespace)
+                    && !d
+                        .catalog
+                        .interfaces
+                        .iter()
+                        .flat_map(|i| &i.operations)
+                        .any(|o| {
+                            o.id.as_ref()
+                                .is_some_and(|id| reference.matches_identity(id, namespace))
+                        })
+                {
+                    return fail("Missing or wrong-kind local event operation");
+                }
+            }
+        }
+        E::Signal { signal_ref, .. } => resource(signal_ref, "signal")?,
+        E::Error { error_ref, .. } => resource(error_ref, "error")?,
+        E::Escalation { escalation_ref, .. } => resource(escalation_ref, "escalation")?,
+        E::Timer {
+            kind, expression, ..
+        } => {
+            if kind.is_some() != expression.is_some() {
+                return fail("Incomplete timer choice");
+            }
+            if expression.as_ref().is_some_and(|e| e.len() > 16_384) {
+                return fail("Invalid timer expression");
+            }
+        }
+        E::Conditional { expression, .. } => short(expression.text())?,
+        E::Link {
+            name,
+            sources,
+            target,
+            ..
+        } => {
+            short(name)?;
+            for reference in sources.iter().chain(target.iter()) {
+                valid_qname(reference)?;
+            }
+        }
+        E::Compensate {
+            activity_ref: Some(reference),
+            ..
+        } => valid_qname(reference)?,
+        _ => {}
+    }
+    Ok(())
+}
 fn validate_io<'a>(
     io: &'a crate::bpmn_data::IoSpecification,
     ids: &mut HashSet<&'a crate::ids::ElementIdentity>,
@@ -594,6 +687,73 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             }
         }
         for node in scope.nodes {
+            if let Some(crate::bpmn_model::NodeDetails::Event { properties, io, .. }) =
+                &node.details
+            {
+                for property in properties {
+                    if let Some(id) = &property.id {
+                        add(&mut ids, id)?;
+                    }
+                    if let Some(name) = &property.name {
+                        definitions_text(name)?;
+                    }
+                    if let Some(metadata) = &property.item_aware {
+                        item_metadata.push((metadata, None));
+                    }
+                }
+                if let Some(io) = io {
+                    use crate::bpmn_model::EventIo;
+                    let (ports, set) = match io {
+                        EventIo::Catch {
+                            outputs,
+                            output_set,
+                        } => (outputs, output_set),
+                        EventIo::Throw { inputs, input_set } => (inputs, input_set),
+                    };
+                    if ports.len() > 256 {
+                        return fail("Event port limit exceeded");
+                    }
+                    for port in ports {
+                        if let Some(id) = &port.id {
+                            add(&mut ids, id)?;
+                        }
+                        if let Some(name) = &port.name {
+                            definitions_text(name)?;
+                        }
+                        if let Some(metadata) = &port.item_aware {
+                            item_metadata
+                                .push((metadata, Some(port.is_collection.unwrap_or(false))));
+                        }
+                    }
+                    if let Some(set) = set {
+                        if let Some(id) = &set.id {
+                            add(&mut ids, id)?;
+                        }
+                        if let Some(name) = &set.name {
+                            definitions_text(name)?;
+                        }
+                        let mut seen = HashSet::new();
+                        for reference in &set.data_refs {
+                            if !seen.insert(reference)
+                                || !ports
+                                    .iter()
+                                    .any(|port| port.id.as_ref().is_some_and(|id| id == reference))
+                            {
+                                return fail("Invalid event set port reference");
+                            }
+                        }
+                        if set
+                            .optional_refs
+                            .iter()
+                            .chain(&set.while_executing_refs)
+                            .any(|reference| !set.data_refs.contains(reference))
+                            || !set.counterpart_refs.is_empty()
+                        {
+                            return fail("Invalid event set metadata");
+                        }
+                    }
+                }
+            }
             if let Some(meta) = &node.item_aware {
                 if !matches!(
                     node.kind,
@@ -750,14 +910,30 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
     use crate::bpmn_model::EventResource;
     for resource in &d.event_resources {
         let (id, name) = match resource {
-            EventResource::Signal { id, name }
-            | EventResource::Message { id, name }
+            EventResource::Signal { id, name, .. }
+            | EventResource::Message { id, name, .. }
             | EventResource::Error { id, name, .. }
             | EventResource::Escalation { id, name, .. } => (id, name),
         };
         add(&mut ids, id)?;
         if let Some(name) = name {
             short(name)?;
+        }
+        let item = match resource {
+            EventResource::Message { item_ref, .. } => item_ref,
+            EventResource::Signal { structure_ref, .. }
+            | EventResource::Error { structure_ref, .. }
+            | EventResource::Escalation { structure_ref, .. } => structure_ref,
+        };
+        if let Some(reference) = item {
+            check_qname(reference)?;
+            if local(reference)
+                && !catalog.item_definitions.iter().any(|item| {
+                    item.id.as_ref().and_then(|id| id.xml_id()) == Some(&reference.local)
+                })
+            {
+                return fail("Event resource references a missing local item definition");
+            }
         }
         match resource {
             EventResource::Error {
@@ -769,6 +945,30 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             _ => {}
         }
     }
+    if d.root_event_definitions.len() > 256 {
+        return fail("Root event definition limit exceeded");
+    }
+    for definition in &d.root_event_definitions {
+        if let Some(id) = definition.id() {
+            add(&mut ids, id)?;
+        }
+        validate_event_payload(d, definition, local_namespace)?;
+    }
+    let root_by_selector: HashMap<_, _> = d
+        .root_event_definitions
+        .iter()
+        .filter_map(|definition| definition.id().map(|id| (id.selector(), definition)))
+        .collect();
+    let root_by_xml: HashMap<_, _> = d
+        .root_event_definitions
+        .iter()
+        .filter_map(|definition| {
+            definition
+                .id()
+                .and_then(|id| id.xml_id())
+                .map(|id| (id, definition))
+        })
+        .collect();
     if let Some(p) = &d.provenance
         && !resources.contains(&p.source_resource_id)
     {
@@ -1249,11 +1449,29 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                 )
             {
                 use crate::bpmn_model::{EventDefinition, NodeDetails};
-                let (attached, definitions, cancel) = match details {
+                let (
+                    attached,
+                    definitions,
+                    cancel,
+                    definition_refs,
+                    parallel_multiple,
+                    is_interrupting,
+                    properties,
+                    event_io,
+                ) = match details {
                     NodeDetails::BoundaryEvent {
                         attached_to,
                         cancel_activity,
-                    } => (Some(attached_to), &[][..], Some(*cancel_activity)),
+                    } => (
+                        Some(attached_to),
+                        &[][..],
+                        Some(*cancel_activity),
+                        &[][..],
+                        None,
+                        None,
+                        &[][..],
+                        None,
+                    ),
                     NodeDetails::SubProcess { .. }
                     | NodeDetails::CallActivity { .. }
                     | NodeDetails::DataObjectReference { .. }
@@ -1266,10 +1484,20 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                         definitions,
                         attached_to,
                         cancel_activity,
+                        definition_refs,
+                        parallel_multiple,
+                        is_interrupting,
+                        properties,
+                        io,
                     } => (
                         attached_to.as_ref(),
                         definitions.as_slice(),
                         *cancel_activity,
+                        definition_refs.as_slice(),
+                        *parallel_multiple,
+                        *is_interrupting,
+                        properties.as_slice(),
+                        io.as_ref(),
                     ),
                 };
                 let event = matches!(
@@ -1280,8 +1508,40 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                         | NodeKind::IntermediateThrowEvent
                         | NodeKind::BoundaryEvent
                 );
-                if !event || definitions.len() > 1 {
+                if !event
+                    || definitions.len() > 256
+                    || definition_refs.len() > 256
+                    || properties.len() > 256
+                {
                     return fail("invalid event details");
+                }
+                let catch = matches!(
+                    n.kind,
+                    NodeKind::StartEvent
+                        | NodeKind::IntermediateCatchEvent
+                        | NodeKind::BoundaryEvent
+                );
+                let event_sub_start = n.kind == NodeKind::StartEvent
+                    && crate::queries::find_node(d, &p.id).is_some_and(|owner| {
+                        owner
+                            .activity
+                            .as_ref()
+                            .is_some_and(|a| a.triggered_by_event == Some(true))
+                    });
+                if parallel_multiple.is_some() && !catch {
+                    return fail("parallelMultiple requires a catch event");
+                }
+                if is_interrupting.is_some() && n.kind != NodeKind::StartEvent {
+                    return fail("isInterrupting requires a start event");
+                }
+                if event_io.is_some_and(|io| {
+                    !matches!(
+                        (catch, io),
+                        (true, crate::bpmn_model::EventIo::Catch { .. })
+                            | (false, crate::bpmn_model::EventIo::Throw { .. })
+                    )
+                }) {
+                    return fail("Event I/O direction does not match event kind");
                 }
                 if matches!(n.kind, NodeKind::BoundaryEvent) {
                     let Some(target) = attached else {
@@ -1297,83 +1557,79 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                 } else if attached.is_some() || cancel.is_some() {
                     return fail("attachment only allowed on boundary events");
                 }
-                for definition in definitions {
+                let mut resolved = Vec::new();
+                let mut seen_references = HashSet::new();
+                let mut seen_local_roots = HashSet::new();
+                for reference in definition_refs {
+                    if !seen_references.insert(reference) {
+                        return fail("Duplicate event definition reference");
+                    }
+                    if let crate::bpmn_model::EventReference::Qualified(name) = reference {
+                        check_qname(name)?;
+                    }
+                    if reference.is_external(local_namespace) {
+                        continue;
+                    }
+                    let definition = match reference {
+                        crate::bpmn_model::EventReference::Local(selector) => {
+                            root_by_selector.get(selector).copied()
+                        }
+                        crate::bpmn_model::EventReference::Qualified(name) => {
+                            root_by_xml.get(&name.local).copied()
+                        }
+                    }
+                    .ok_or("Missing or wrong-kind root event definition")?;
+                    if let Some(id) = definition.id()
+                        && !seen_local_roots.insert(id.selector())
+                    {
+                        return fail("Duplicate event definition reference");
+                    }
+                    resolved.push(definition);
+                }
+                for (definition, owned) in definitions
+                    .iter()
+                    .map(|d| (d, true))
+                    .chain(resolved.into_iter().map(|d| (d, false)))
+                {
+                    validate_event_payload(d, definition, local_namespace)?;
                     match definition {
-                        EventDefinition::Timer { id, expression, .. } => {
-                            if !matches!(
-                                n.kind,
-                                NodeKind::StartEvent
-                                    | NodeKind::IntermediateCatchEvent
-                                    | NodeKind::BoundaryEvent
-                            ) {
+                        EventDefinition::Timer { id, .. } => {
+                            if !catch {
                                 return fail("timer definition requires a catch event");
                             }
-                            if let Some(id) = id {
+                            if owned && let Some(id) = id {
                                 add(&mut ids, id)?;
                             }
-                            if expression.len() > 16_384 {
-                                return fail("invalid timer expression");
-                            }
                         }
-                        EventDefinition::Signal { id, signal_ref } => {
-                            if let Some(id) = id {
+                        EventDefinition::Signal { id, .. }
+                        | EventDefinition::Message { id, .. } => {
+                            if owned && let Some(id) = id {
                                 add(&mut ids, id)?;
                             }
-                            if signal_ref.as_ref().is_some_and(|r| {
-                                !d.event_resources.iter().any(
-                                    |e| matches!(e, EventResource::Signal { id, .. } if id == r),
-                                )
-                            }) {
-                                return fail("missing signal declaration");
-                            }
                         }
-                        EventDefinition::Message {
-                            id,
-                            message_ref,
-                            operation_ref,
-                        } => {
-                            if let Some(id) = id {
+                        EventDefinition::Error { id, .. } => {
+                            if !matches!(n.kind, NodeKind::EndEvent | NodeKind::BoundaryEvent)
+                                && !event_sub_start
+                            {
+                                return fail("invalid error event context");
+                            }
+                            if owned && let Some(id) = id {
                                 add(&mut ids, id)?;
                             }
-                            if operation_ref.is_some() {
-                                return fail("unsupported operation reference");
-                            }
-                            if message_ref.as_ref().is_some_and(|r| {
-                                !d.event_resources.iter().any(
-                                    |e| matches!(e, EventResource::Message { id, .. } if id == r),
-                                )
-                            }) {
-                                return fail("missing message declaration");
-                            }
                         }
-                        EventDefinition::Error { id, error_ref } => {
-                            if !matches!(n.kind, NodeKind::EndEvent | NodeKind::BoundaryEvent) {
-                                return fail("error event requires end or boundary event");
-                            }
-                            if let Some(id) = id {
-                                add(&mut ids, id)?;
-                            }
-                            if error_ref.as_ref().is_some_and(|r| {
-                                !d.event_resources.iter().any(
-                                    |e| matches!(e, EventResource::Error { id, .. } if id == r),
-                                )
-                            }) {
-                                return fail("missing error declaration");
-                            }
-                        }
-                        EventDefinition::Escalation { id, escalation_ref } => {
+                        EventDefinition::Escalation { id, .. } => {
                             if !matches!(
                                 n.kind,
                                 NodeKind::EndEvent
                                     | NodeKind::IntermediateThrowEvent
                                     | NodeKind::BoundaryEvent
-                            ) {
-                                return fail("invalid escalation event");
+                            ) && !event_sub_start
+                            {
+                                return fail("invalid escalation event context");
                             }
-                            if let Some(id) = id {
+                            if owned && let Some(id) = id {
                                 add(&mut ids, id)?;
                             }
-                            if escalation_ref.as_ref().is_some_and(|r| !d.event_resources.iter().any(|e| matches!(e, EventResource::Escalation { id, .. } if id == r))) { return fail("missing escalation declaration"); }
                         }
                         EventDefinition::Conditional { id, expression } => {
                             if !matches!(
@@ -1384,7 +1640,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                             ) {
                                 return fail("conditional definition requires a catch event");
                             }
-                            if let Some(id) = id {
+                            if owned && let Some(id) = id {
                                 add(&mut ids, id)?;
                             }
                             if expression.len() > 16_384 {
@@ -1405,7 +1661,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                                     "Link definition requires an intermediate catch or throw event",
                                 );
                             }
-                            if let Some(id) = id {
+                            if owned && let Some(id) = id {
                                 add(&mut ids, id)?;
                             }
                             short(name)?;
@@ -1424,17 +1680,23 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                                 if !unique.insert(reference) {
                                     return fail("Duplicate link reference");
                                 }
-                                let valid = p.nodes.iter().any(|other| other.kind == expected && matches!(&other.details,
-                                    Some(NodeDetails::Event { definitions, .. }) if definitions.iter().any(|definition|
-                                        matches!(definition, EventDefinition::Link { id: Some(other_id), name: other_name, .. }
-                                            if other_id == reference && other_name == name))));
-                                if !valid {
+                                let valid = p.nodes.iter().any(|other| {
+                                    if other.kind != expected { return false; }
+                                    let Some(NodeDetails::Event { definitions, definition_refs, .. }) = &other.details else { return false; };
+                                    let matches_link = |definition: &EventDefinition| matches!(definition,
+                                        EventDefinition::Link { id: Some(other_id), name: other_name, .. }
+                                        if reference.matches_identity(other_id, local_namespace) && other_name == name);
+                                    definitions.iter().any(matches_link) || definition_refs.iter().any(|use_ref|
+                                        d.root_event_definitions.iter().any(|definition|
+                                            definition.id().is_some_and(|id| use_ref.matches_identity(id, local_namespace)) && matches_link(definition)))
+                                });
+                                if !valid && !reference.is_external(local_namespace) {
                                     return fail("Invalid or cross-scope link reference");
                                 }
                             }
                         }
                         EventDefinition::Cancel { id } => {
-                            if let Some(id) = id {
+                            if owned && let Some(id) = id {
                                 add(&mut ids, id)?;
                             }
                             let valid = match n.kind {
@@ -1460,7 +1722,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                         EventDefinition::Compensate {
                             id, activity_ref, ..
                         } => {
-                            if let Some(id) = id {
+                            if owned && let Some(id) = id {
                                 add(&mut ids, id)?;
                             }
                             let valid_kind = matches!(
@@ -1482,10 +1744,10 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                                 !matches!(
                                     n.kind,
                                     NodeKind::IntermediateThrowEvent | NodeKind::EndEvent
-                                ) || !p
-                                    .nodes
-                                    .iter()
-                                    .any(|other| &other.id == reference && other.kind.is_activity())
+                                ) || !p.nodes.iter().any(|other| {
+                                    reference.matches_identity(&other.id, local_namespace)
+                                        && other.kind.is_activity()
+                                }) && !reference.is_external(local_namespace)
                             }) {
                                 return fail("Invalid compensation activity reference");
                             }
@@ -1493,7 +1755,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                         EventDefinition::Terminate { id }
                             if matches!(n.kind, NodeKind::EndEvent) =>
                         {
-                            if let Some(id) = id {
+                            if owned && let Some(id) = id {
                                 add(&mut ids, id)?;
                             }
                         }
@@ -1716,17 +1978,36 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
         }
         for association in p.associations {
             use crate::bpmn_data::DataAssociationKind;
-            let Some(owner) = p
-                .nodes
-                .iter()
-                .find(|n| n.id == association.owner && n.kind.is_activity())
-            else {
+            let Some(owner) = p.nodes.iter().find(|n| n.id == association.owner) else {
                 return fail("invalid data association owner");
             };
-            let Some(io) = &owner.io_specification else {
-                return fail("data association requires activity ports");
-            };
+            let (inputs, outputs): (&[crate::bpmn_data::DataPort], &[crate::bpmn_data::DataPort]) =
+                if owner.kind.is_activity() {
+                    let Some(io) = &owner.io_specification else {
+                        return fail("data association requires activity ports");
+                    };
+                    (&io.inputs, &io.outputs)
+                } else if let Some(crate::bpmn_model::NodeDetails::Event {
+                    io: Some(event_io),
+                    ..
+                }) = &owner.details
+                {
+                    match event_io {
+                        crate::bpmn_model::EventIo::Catch { outputs, .. } => (&[], outputs),
+                        crate::bpmn_model::EventIo::Throw { inputs, .. } => (inputs, &[]),
+                    }
+                } else {
+                    return fail("data association requires compatible owner ports");
+                };
             let local = |id: &crate::ids::ElementSelector, input_source: bool| {
+                if let Some(crate::bpmn_model::NodeDetails::Event { properties, .. }) =
+                    &owner.details
+                    && properties
+                        .iter()
+                        .any(|property| property.id.as_ref().is_some_and(|identity| identity == id))
+                {
+                    return true;
+                }
                 if d.data_stores
                     .iter()
                     .any(|store| store.id.as_ref().is_some_and(|identity| identity == id))
@@ -1776,7 +2057,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             }
             let valid = match association.kind {
                 DataAssociationKind::Input => {
-                    io.inputs.iter().any(|port| {
+                    inputs.iter().any(|port| {
                         port.id
                             .as_ref()
                             .is_some_and(|identity| identity == &association.target)
@@ -1785,7 +2066,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                 DataAssociationKind::Output => {
                     local(&association.target, false)
                         && association.sources.iter().all(|id| {
-                            io.outputs
+                            outputs
                                 .iter()
                                 .any(|port| port.id.as_ref().is_some_and(|identity| identity == id))
                         })
@@ -1813,9 +2094,18 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             {
                 return fail("association requires an artifact endpoint");
             }
+            let association_endpoint = |reference: &crate::ids::ElementSelector| {
+                node_process.get(reference) == Some(&p.id)
+                    || p.flows
+                        .iter()
+                        .any(|flow| flow.id == *reference && flow.kind == FlowKind::Sequence)
+            };
             if f.kind == FlowKind::Message
-                || node_process.get(&f.source) != Some(&p.id)
-                || node_process.get(&f.target) != Some(&p.id)
+                || (f.kind == FlowKind::Association
+                    && (!association_endpoint(&f.source) || !association_endpoint(&f.target)))
+                || (f.kind != FlowKind::Association
+                    && (node_process.get(&f.source) != Some(&p.id)
+                        || node_process.get(&f.target) != Some(&p.id)))
             {
                 return fail("invalid process flow endpoints");
             }
@@ -1917,8 +2207,21 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             bounds(&s.bounds)?;
             label(&s.label)?;
         }
+        let representations: HashSet<_> = diagram
+            .shapes
+            .iter()
+            .map(|shape| shape.id.selector())
+            .chain(diagram.edges.iter().map(|edge| edge.id.selector()))
+            .collect();
         for e in &diagram.edges {
             add(&mut ids, &e.id)?;
+            if e.source_element
+                .iter()
+                .chain(e.target_element.iter())
+                .any(|reference| !representations.contains(reference))
+            {
+                return fail("Edge endpoint references a representation outside its diagram");
+            }
             if !contained.is_empty()
                 && !element_scope
                     .get(&e.element)

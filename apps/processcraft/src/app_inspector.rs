@@ -176,6 +176,8 @@ fn optional_identity_rows(
                     "input_sets" => Some("Input set"),
                     "output_sets" => Some("Output set"),
                     "assignments" => Some("Assignment"),
+                    "root_event_definitions" | "definitions" => Some("Event definition"),
+                    "properties" => Some("Event property"),
                     "item_definitions" => Some("Item definition"),
                     "interfaces" => Some("Interface"),
                     "operations" => Some("Operation"),
@@ -208,7 +210,18 @@ fn optional_identity_rows(
             } else if child.is_object() {
                 if matches!(
                     key.as_str(),
-                    "data_state" | "io_specification" | "from" | "to" | "transformation"
+                    "data_state"
+                        | "io_specification"
+                        | "input_set"
+                        | "output_set"
+                        | "from"
+                        | "to"
+                        | "transformation"
+                        | "condition"
+                        | "expression"
+                        | "cardinality"
+                        | "completion_condition"
+                        | "activation_condition"
                 ) {
                     let identity = child
                         .get("id")
@@ -218,7 +231,10 @@ fn optional_identity_rows(
                         "io_specification" => "I/O specification",
                         "from" => "Assignment source expression",
                         "to" => "Assignment target expression",
-                        _ => "Transformation expression",
+                        "input_set" => "Input set",
+                        "output_set" => "Output set",
+                        "transformation" => "Transformation expression",
+                        _ => "Expression",
                     };
                     rows.push((label.into(), format!("{child_path}/id"), identity));
                 }
@@ -608,7 +624,7 @@ impl ProcessCraft {
                         .and_then(|document| processcraft_core::queries::element_identity(document, selected))
                         .and_then(|identity| identity.xml_id());
                     side.label(egui::RichText::new(xml_id.map_or_else(|| "XML ID · Not assigned".to_owned(), |id| format!("XML ID · {id}"))).small().color(palette.muted));
-                    if let Some(mappings) = xml_id_editor(side, &mut self.xml_id_draft, &mut self.ctl, snap.project.documents[self.doc].id, selected, xml_id, editable && !self.draft_dirty && self.expression_draft.is_none() && self.catalog_draft.is_none() && self.binding_draft.is_none() && self.data_draft.is_none()) {
+                    if let Some(mappings) = xml_id_editor(side, &mut self.xml_id_draft, &mut self.ctl, snap.project.documents[self.doc].id, selected, xml_id, editable && !self.draft_dirty && self.expression_draft.is_none() && self.catalog_draft.is_none() && self.binding_draft.is_none() && self.data_draft.is_none() && self.di_draft.is_none() && self.event_draft.is_none() && self.event_catalog_draft.is_none()) {
                         selector_mappings = mappings; refresh_selection = true;
                     }
                     side.add_space(8.0);
@@ -716,6 +732,7 @@ impl ProcessCraft {
                             });
                         self.draft_dirty |= before != self.association_direction;
                     }
+                    self.di_ui(side, editable);
                     if self.is_node {
                         self.bpmn_properties_ui(side, editable);
                         self.dictionary_links_ui(side);
@@ -813,15 +830,15 @@ impl ProcessCraft {
                     if let Some(document) = snap.project.documents.get(self.doc) {
                         if let Some(process) = document.processes.iter().find(|process| self.process_id.as_ref().is_none_or(|id| process.id == *id)) {
                             side.label(format!("Process XML ID · {}", process.id.xml_id().map_or("Not assigned".into(), ToString::to_string)));
-                            if let Some(mappings) = xml_id_editor(side, &mut self.xml_id_draft, &mut self.ctl, document.id, &process.id.selector(), process.id.xml_id(), editable && !self.draft_dirty && self.expression_draft.is_none() && self.catalog_draft.is_none() && self.binding_draft.is_none() && self.data_draft.is_none()) { selector_mappings = mappings; refresh_selection = true; }
+                            if let Some(mappings) = xml_id_editor(side, &mut self.xml_id_draft, &mut self.ctl, document.id, &process.id.selector(), process.id.xml_id(), editable && !self.draft_dirty && self.expression_draft.is_none() && self.catalog_draft.is_none() && self.binding_draft.is_none() && self.data_draft.is_none() && self.di_draft.is_none() && self.event_draft.is_none() && self.event_catalog_draft.is_none()) { selector_mappings = mappings; refresh_selection = true; }
                         }
                         if let Some(diagram) = document.diagrams.iter().find(|diagram| self.diagram_id.as_ref().is_none_or(|id| diagram.id == *id)) {
                             side.label(format!("Diagram XML ID · {}", diagram.id.xml_id().map_or("Not assigned".into(), ToString::to_string)));
-                            if let Some(mappings) = xml_id_editor(side, &mut self.xml_id_draft, &mut self.ctl, document.id, &diagram.id.selector(), diagram.id.xml_id(), editable && !self.draft_dirty && self.expression_draft.is_none() && self.catalog_draft.is_none() && self.binding_draft.is_none() && self.data_draft.is_none()) { selector_mappings = mappings; refresh_selection = true; }
+                            if let Some(mappings) = xml_id_editor(side, &mut self.xml_id_draft, &mut self.ctl, document.id, &diagram.id.selector(), diagram.id.xml_id(), editable && !self.draft_dirty && self.expression_draft.is_none() && self.catalog_draft.is_none() && self.binding_draft.is_none() && self.data_draft.is_none() && self.di_draft.is_none() && self.event_draft.is_none() && self.event_catalog_draft.is_none()) { selector_mappings = mappings; refresh_selection = true; }
                         }
                         if let Some(collaboration) = &document.collaboration {
                             side.label(format!("Collaboration XML ID · {}", collaboration.id.xml_id().map_or("Not assigned".into(), ToString::to_string)));
-                            if let Some(mappings) = xml_id_editor(side, &mut self.xml_id_draft, &mut self.ctl, document.id, &collaboration.id.selector(), collaboration.id.xml_id(), editable && !self.draft_dirty && self.expression_draft.is_none() && self.catalog_draft.is_none() && self.binding_draft.is_none() && self.data_draft.is_none()) { selector_mappings = mappings; refresh_selection = true; }
+                            if let Some(mappings) = xml_id_editor(side, &mut self.xml_id_draft, &mut self.ctl, document.id, &collaboration.id.selector(), collaboration.id.xml_id(), editable && !self.draft_dirty && self.expression_draft.is_none() && self.catalog_draft.is_none() && self.binding_draft.is_none() && self.data_draft.is_none() && self.di_draft.is_none() && self.event_draft.is_none() && self.event_catalog_draft.is_none()) { selector_mappings = mappings; refresh_selection = true; }
                         }
                         if document.processes.iter().any(|process| self.process_id.as_ref().is_none_or(|id| process.id == *id)) {
                             let before = self.process_name.clone(); optional_metadata_text(side, "Process name", &mut self.process_name); self.draft_dirty |= before != self.process_name;
@@ -923,7 +940,7 @@ impl ProcessCraft {
                         for (label, path, identity) in optional_identity_rows(document) {
                             ui.push_id(&path, |ui| {
                                 ui.label(label);
-                                let enabled = editable && !self.draft_dirty && self.expression_draft.is_none() && self.catalog_draft.is_none() && self.binding_draft.is_none() && self.data_draft.is_none();
+                                let enabled = editable && !self.draft_dirty && self.expression_draft.is_none() && self.catalog_draft.is_none() && self.binding_draft.is_none() && self.data_draft.is_none() && self.di_draft.is_none() && self.event_draft.is_none() && self.event_catalog_draft.is_none();
                                 let mappings = if let Some(identity) = identity {
                                     ui.label(format!("XML ID · {}", identity.xml_id().map_or("Not assigned".into(), ToString::to_string)));
                                     xml_id_editor(ui, &mut self.xml_id_draft, &mut self.ctl, document.id, &identity.selector(), identity.xml_id(), enabled)
@@ -950,13 +967,14 @@ impl ProcessCraft {
                                 let name = processcraft_core::queries::element_name(document, &row.selector).filter(|name| !name.is_empty());
                                 ui.label(name.map_or_else(|| format!("Element {}", index + 1), str::to_owned));
                                 ui.label(format!("XML ID · {}", row.xml_id.as_ref().map_or("Not assigned".into(), ToString::to_string)));
-                                if let Some(mappings) = xml_id_editor(ui, &mut self.xml_id_draft, &mut self.ctl, document.id, &row.selector, row.xml_id.as_ref(), editable && !self.draft_dirty && self.expression_draft.is_none() && self.catalog_draft.is_none() && self.binding_draft.is_none() && self.data_draft.is_none()) { selector_mappings = mappings; refresh_selection = true; }
+                                if let Some(mappings) = xml_id_editor(ui, &mut self.xml_id_draft, &mut self.ctl, document.id, &row.selector, row.xml_id.as_ref(), editable && !self.draft_dirty && self.expression_draft.is_none() && self.catalog_draft.is_none() && self.binding_draft.is_none() && self.data_draft.is_none() && self.di_draft.is_none() && self.event_draft.is_none() && self.event_catalog_draft.is_none()) { selector_mappings = mappings; refresh_selection = true; }
                             });
                         }
                     });
                 }
                 self.catalog_ui(side, editable);
                 self.data_ui(side, editable);
+                self.event_catalog_ui(side, editable);
                 if let Some(p) = process {
                     side.separator();
                     egui::CollapsingHeader::new("Connections and lanes").show(side, |side| {
@@ -1020,7 +1038,6 @@ impl ProcessCraft {
                     });
                 }
             });
-        self.draft_dirty |= self.expression_draft.is_some() || self.binding_draft.is_some();
         if refresh_selection {
             self.remap_context(&selector_mappings);
             self.restore_selection();
@@ -1030,7 +1047,7 @@ impl ProcessCraft {
 
 impl ProcessCraft {
     fn bpmn_properties_ui(&mut self, ui: &mut egui::Ui, editable: bool) {
-        use processcraft_core::bpmn_model::{EventDefinition as E, NodeDetails as D, TimerKind};
+        use processcraft_core::bpmn_model::NodeDetails as D;
         use processcraft_core::{model::NodeKind as K, queries};
         let snapshot = self.ctl.session.snapshot();
         let Some(document) = snapshot.project.documents.get(self.doc) else {
@@ -1278,140 +1295,9 @@ impl ProcessCraft {
                 }
             });
         }
-        if !event {
-            return;
+        if event {
+            self.event_editor_ui(ui, editable);
         }
-        ui.separator();
-        ui.strong("Event definition");
-        ui.add_enabled_ui(editable, |ui| {
-            // Multiple and referenced definitions stay intact until an explicit multi-definition editor exists.
-            if matches!(&self.bpmn_details, Some(D::Event { definitions, .. }) if definitions.len() > 1) {
-                ui.label("Multiple definitions retained. Single-definition editing is unavailable.");
-                return;
-            }
-            let (definitions, attached_to, cancel_activity) = match &self.bpmn_details {
-                Some(D::Event { definitions, attached_to, cancel_activity }) => (definitions.clone(), attached_to.clone(), *cancel_activity),
-                Some(D::BoundaryEvent { attached_to, cancel_activity }) => (vec![], Some(attached_to.clone()), Some(*cancel_activity)),
-                _ => (vec![], None, None),
-            };
-            let mut tag = match definitions.first() {
-                None => "None", Some(E::Timer{..}) => "Timer", Some(E::Conditional{..}) => "Conditional",
-                Some(E::Terminate{..}) => "Terminate", Some(E::Message{..}) => "Message", Some(E::Signal{..}) => "Signal",
-                Some(E::Error{..}) => "Error", Some(E::Escalation{..}) => "Escalation",
-                Some(E::Link{..}) => "Link", Some(E::Cancel{..}) => "Cancel", Some(E::Compensate{..}) => "Compensate",
-            };
-            let original_tag = tag;
-            let scope = queries::scopes(document).into_iter().find(|scope| scope.nodes.iter().any(|candidate| candidate.id == node.id));
-            let parent = scope.as_ref().and_then(|scope| queries::find_node(document, &scope.id.selector()));
-            let transaction_scope = parent.is_some_and(|parent| parent.kind == K::Transaction);
-            let event_subprocess = parent.is_some_and(|parent| parent.kind == K::SubProcess && parent.activity.as_ref().is_some_and(|activity| activity.triggered_by_event == Some(true)));
-            let transaction_attachment = attached_to.as_ref().and_then(|id| queries::find_node(document, id)).is_some_and(|target| target.kind == K::Transaction);
-            ui.add_enabled_ui(self.expression_draft.is_none(), |ui| { egui::ComboBox::from_label("Definition type").selected_text(tag).show_ui(ui, |ui| {
-                for option in ["None", "Timer", "Conditional", "Terminate", "Message", "Signal", "Error", "Escalation", "Link", "Cancel", "Compensate"] {
-                    let allowed = match option {
-                        "Timer" | "Conditional" => matches!(node.kind,K::StartEvent | K::IntermediateCatchEvent | K::BoundaryEvent),
-                        "Terminate" => node.kind == K::EndEvent,
-                        "Error" => matches!(node.kind,K::EndEvent | K::BoundaryEvent),
-                        "Link" => matches!(node.kind, K::IntermediateCatchEvent | K::IntermediateThrowEvent),
-                        "Cancel" => (node.kind == K::BoundaryEvent && transaction_attachment && cancel_activity.unwrap_or(true)) || (node.kind == K::EndEvent && transaction_scope),
-                        "Compensate" => matches!(node.kind, K::BoundaryEvent | K::IntermediateThrowEvent | K::EndEvent) || (node.kind == K::StartEvent && event_subprocess),
-                        "None" => node.kind != K::BoundaryEvent && node.kind != K::IntermediateCatchEvent,
-                        _ => true,
-                    };
-                    if allowed { ui.selectable_value(&mut tag, option, option); }
-                }
-            }); });
-            let mut definition = if tag == original_tag { definitions.first().cloned() } else {
-                match tag {
-                    "Timer" => Some(E::Timer { id: None, kind: TimerKind::Duration, expression: "PT1M".into() }),
-                    "Conditional" => Some(E::Conditional { id: None, expression: String::new().into() }),
-                    "Terminate" => Some(E::Terminate { id: None }),
-                    "Message" => Some(E::Message { id: None, message_ref: None, operation_ref: None }),
-                    "Signal" => Some(E::Signal { id: None, signal_ref: None }),
-                    "Error" => Some(E::Error { id: None, error_ref: None }),
-                    "Escalation" => Some(E::Escalation { id: None, escalation_ref: None }),
-                    "Link" => Some(E::Link { id: Some(crate::controller::id("LinkDefinition").into()), name: String::new(), sources: Vec::new(), target: None }),
-                    "Cancel" => Some(E::Cancel { id: None }),
-                    "Compensate" => Some(E::Compensate { id: None, wait_for_completion: None, activity_ref: None }), _ => None,
-                }
-            };
-            let mut changed = tag != original_tag;
-            match &mut definition {
-                Some(E::Timer { kind, expression, .. }) => {
-                    let old = *kind;
-                    egui::ComboBox::from_label("Timer expression").selected_text(format!("{kind:?}")).show_ui(ui, |ui| {
-                        ui.selectable_value(kind, TimerKind::Date, "Date");
-                        ui.selectable_value(kind, TimerKind::Duration, "Duration");
-                        ui.selectable_value(kind, TimerKind::Cycle, "Cycle");
-                    });
-                    changed |= old != *kind;
-                    changed |= expression_ui(ui, "Expression", expression, false, &mut self.expression_draft, ExpressionDefault::Base);
-                }
-                Some(E::Conditional { expression, .. }) => {
-                    changed |= expression_ui(ui, "Condition expression", expression, true, &mut self.expression_draft, ExpressionDefault::Base);
-                }
-                Some(E::Link { id, name, sources, target }) => {
-                    if let Some(id) = id { ui.label(format!("Definition ID: {id}")); }
-                    let label = ui.label("Link name");
-                    changed |= ui.text_edit_singleline(name).labelled_by(label.id).changed();
-                    let mut links: Vec<_> = scope.as_ref().into_iter().flat_map(|scope| scope.nodes.iter()).filter(|other| {
-                        other.id != node.id && if node.kind == K::IntermediateCatchEvent { other.kind == K::IntermediateThrowEvent } else { other.kind == K::IntermediateCatchEvent }
-                    }).flat_map(|other| match &other.details {
-                        Some(D::Event { definitions, .. }) => definitions.as_slice(), _ => &[],
-                    }).filter_map(|event| match event {
-                        E::Link { id: Some(id), name: other_name, .. } if other_name == name => Some(id.selector()), _ => None,
-                    }).collect();
-                    if node.kind == K::IntermediateCatchEvent {
-                        ui.label("Source link definitions");
-                        for existing in sources.iter() { if !links.contains(existing) { links.push(existing.clone()); } }
-                        for candidate in links {
-                            let mut present = sources.contains(&candidate);
-                            if ui.checkbox(&mut present, candidate.to_string()).changed() {
-                                if present { sources.push(candidate); } else { sources.retain(|id| id != &candidate); }
-                                changed = true;
-                            }
-                        }
-                    } else {
-                        let previous = target.clone();
-                        egui::ComboBox::from_label("Target link definition").selected_text(target.as_ref().map_or("None".into(), ToString::to_string)).show_ui(ui, |ui| {
-                            ui.selectable_value(target, None, "None");
-                            for candidate in links { ui.selectable_value(target, Some(candidate.clone()), candidate.to_string()); }
-                        });
-                        changed |= *target != previous;
-                    }
-                }
-                Some(E::Compensate { wait_for_completion, activity_ref, .. }) => {
-                    let previous = *wait_for_completion;
-                    egui::ComboBox::from_label("Wait for completion").selected_text(match wait_for_completion { None => "Default", Some(true) => "Yes", Some(false) => "No" }).show_ui(ui, |ui| {
-                        ui.selectable_value(wait_for_completion, None, "Default");
-                        ui.selectable_value(wait_for_completion, Some(true), "Yes");
-                        ui.selectable_value(wait_for_completion, Some(false), "No");
-                    });
-                    changed |= *wait_for_completion != previous;
-                    let previous = activity_ref.clone();
-                    egui::ComboBox::from_label("Activity reference").selected_text(activity_ref.as_ref().map_or("None".into(), ToString::to_string)).show_ui(ui, |ui| {
-                        ui.selectable_value(activity_ref, None, "None");
-                        for activity in scope.as_ref().into_iter().flat_map(|scope| scope.nodes.iter()).filter(|candidate| candidate.kind.is_activity()) {
-                            ui.selectable_value(activity_ref, Some(activity.id.selector()), format!("{} · {}", activity.name.as_deref().unwrap_or("Unnamed"), activity.id));
-                        }
-                    });
-                    changed |= *activity_ref != previous;
-                }
-                _ => {}
-            }
-            let mut cancel_activity = cancel_activity;
-            if node.kind == K::BoundaryEvent {
-                if let Some(target) = &attached_to { ui.label(format!("Attached to: {}", queries::element_name(document, target).unwrap_or("Unnamed activity"))); }
-                let mut interrupt = cancel_activity.unwrap_or(true);
-                if ui.add_enabled(!matches!(definition, Some(E::Cancel { .. })), egui::Checkbox::new(&mut interrupt, "Interrupt activity")).changed() { cancel_activity = Some(interrupt); changed = true; }
-            }
-            if changed {
-                self.bpmn_details = if definition.is_none() && attached_to.is_none() { None } else {
-                    Some(D::Event { definitions: definition.into_iter().collect(), attached_to, cancel_activity })
-                };
-                self.draft_dirty = true;
-            }
-        });
     }
 }
 
@@ -1598,6 +1484,113 @@ mod expression_draft_tests {
         assert!(draft.build().is_err());
         draft.formal = false;
         assert!(draft.build().is_ok());
+    }
+
+    #[test]
+    fn expression_id_edit_and_null_promotion_preserve_identity() {
+        use processcraft_core::bpmn_model::{EventDefinition, Expression, NodeDetails, TimerKind};
+        use processcraft_core::commands::Mutation;
+        let mut fresh = ExpressionDraft::new(
+            "Timer",
+            &Expression::Legacy("PT1M".into()),
+            ExpressionDefault::Base,
+        );
+        fresh.id.value = Some("ExpressionId".into());
+        let created = fresh.build().unwrap();
+        assert_eq!(
+            created.id.as_ref().unwrap().xml_id().unwrap().to_string(),
+            "ExpressionId"
+        );
+        let mut app = ProcessCraft::default();
+        app.add(NodeKind::IntermediateCatchEvent);
+        let selected = app.selected.clone().unwrap();
+        let snapshot = app.ctl.session.snapshot();
+        let document_id = snapshot.project.documents[0].id;
+        let mut data = created;
+        data.id = None;
+        let details = NodeDetails::Event {
+            definitions: vec![EventDefinition::Timer {
+                id: None,
+                kind: Some(TimerKind::Duration),
+                expression: Some(Expression::Structured(data)),
+            }],
+            attached_to: None,
+            cancel_activity: None,
+            definition_refs: Vec::new(),
+            parallel_multiple: None,
+            is_interrupting: None,
+            properties: Vec::new(),
+            io: None,
+        };
+        assert!(app.ctl.mutate(vec![Mutation::SetNodeDetails {
+            document_id,
+            element_id: selected.clone(),
+            details: Some(details)
+        }]));
+        let snapshot = app.ctl.session.snapshot();
+        let rows = optional_identity_rows(&snapshot.project.documents[0]);
+        let path = rows
+            .iter()
+            .find(|(_, path, identity)| path.ends_with("/expression/id") && identity.is_none())
+            .unwrap()
+            .1
+            .clone();
+        let changes = app
+            .ctl
+            .mutate_changes(vec![Mutation::PromoteElementIdentity {
+                document_id,
+                model_path: path,
+                xml_id: Some("PromotedExpression".parse().unwrap()),
+            }])
+            .unwrap();
+        let selector = changes.promoted_identities[0].selector.clone();
+        let snapshot = app.ctl.session.snapshot();
+        let identity =
+            processcraft_core::queries::element_identity(&snapshot.project.documents[0], &selector)
+                .unwrap();
+        assert_eq!(identity.xml_id().unwrap().to_string(), "PromotedExpression");
+        app.history(processcraft_core::commands::Request::Undo);
+        assert!(
+            optional_identity_rows(&app.ctl.session.snapshot().project.documents[0])
+                .iter()
+                .any(|(_, path, identity)| path.ends_with("/expression/id") && identity.is_none())
+        );
+    }
+
+    #[test]
+    fn event_singleton_sets_are_listed_for_identity_promotion() {
+        use processcraft_core::bpmn_data::IoSet;
+        use processcraft_core::bpmn_model::{EventIo, NodeDetails};
+        let mut app = ProcessCraft::default();
+        app.add(NodeKind::IntermediateCatchEvent);
+        let selected = app.selected.clone().unwrap();
+        let snapshot = app.ctl.session.snapshot();
+        let document_id = snapshot.project.documents[0].id;
+        let mut details =
+            processcraft_core::queries::find_node(&snapshot.project.documents[0], &selected)
+                .unwrap()
+                .details
+                .clone()
+                .unwrap();
+        if let NodeDetails::Event { io, .. } = &mut details {
+            *io = Some(EventIo::Catch {
+                outputs: Vec::new(),
+                output_set: Some(IoSet::default()),
+            });
+        }
+        assert!(app.ctl.mutate(vec![
+            processcraft_core::commands::Mutation::SetNodeDetails {
+                document_id,
+                element_id: selected,
+                details: Some(details)
+            }
+        ]));
+        let snapshot = app.ctl.session.snapshot();
+        assert!(
+            optional_identity_rows(&snapshot.project.documents[0])
+                .iter()
+                .any(|(_, path, identity)| path.ends_with("/output_set/id") && identity.is_none())
+        );
     }
 
     #[test]

@@ -181,6 +181,8 @@ pub struct BpmnDocument {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub event_resources: Vec<crate::bpmn_model::EventResource>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub root_event_definitions: Vec<crate::bpmn_model::EventDefinition>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub data_stores: Vec<crate::bpmn_data::DataStore>,
     pub processes: Vec<Process>,
     pub collaboration: Option<Collaboration>,
@@ -223,6 +225,9 @@ impl BpmnDocument {
                 | EventResource::Error { id, .. }
                 | EventResource::Escalation { id, .. } => id,
             });
+        }
+        for definition in &self.root_event_definitions {
+            out.extend(definition.id());
         }
         for store in &self.data_stores {
             out.extend(store.id.iter());
@@ -317,7 +322,43 @@ impl BpmnDocument {
                             &content.groups,
                         ));
                     }
-                    Some(NodeDetails::Event { definitions, .. }) => {
+                    Some(NodeDetails::Event {
+                        definitions,
+                        properties,
+                        io,
+                        ..
+                    }) => {
+                        for property in properties {
+                            out.extend(property.id.iter());
+                            if let Some(state) = property
+                                .item_aware
+                                .as_ref()
+                                .and_then(|m| m.data_state.as_ref())
+                            {
+                                out.extend(state.id.iter());
+                            }
+                        }
+                        if let Some(io) = io {
+                            use crate::bpmn_model::EventIo;
+                            let (ports, set) = match io {
+                                EventIo::Catch {
+                                    outputs,
+                                    output_set,
+                                } => (outputs, output_set),
+                                EventIo::Throw { inputs, input_set } => (inputs, input_set),
+                            };
+                            for port in ports {
+                                out.extend(port.id.iter());
+                                if let Some(state) =
+                                    port.item_aware.as_ref().and_then(|m| m.data_state.as_ref())
+                                {
+                                    out.extend(state.id.iter());
+                                }
+                            }
+                            if let Some(set) = set {
+                                out.extend(set.id.iter());
+                            }
+                        }
                         for definition in definitions {
                             let id = match definition {
                                 EventDefinition::Message { id, .. }
@@ -403,6 +444,13 @@ impl BpmnDocument {
         {
             return true;
         }
+        if self
+            .root_event_definitions
+            .iter()
+            .any(crate::bpmn_model::EventDefinition::has_native_references)
+        {
+            return true;
+        }
         for scope in crate::queries::scopes(self) {
             if scope.lanes.iter().any(|l| {
                 l.parent.as_ref().is_some_and(|r| r.is_native())
@@ -464,10 +512,31 @@ impl BpmnDocument {
                     Some(NodeDetails::Event {
                         definitions,
                         attached_to,
+                        definition_refs,
+                        io,
                         ..
                     }) => {
-                        if attached_to.as_ref().is_some_and(|r| r.is_native()) {
+                        if attached_to.as_ref().is_some_and(|r| r.is_native())
+                            || definition_refs.iter().any(|r| r.is_native())
+                        {
                             return true;
+                        }
+                        if let Some(io) = io {
+                            use crate::bpmn_model::EventIo;
+                            let set = match io {
+                                EventIo::Catch { output_set, .. } => output_set,
+                                EventIo::Throw { input_set, .. } => input_set,
+                            };
+                            if set.as_ref().is_some_and(|set| {
+                                set.data_refs
+                                    .iter()
+                                    .chain(&set.optional_refs)
+                                    .chain(&set.while_executing_refs)
+                                    .chain(&set.counterpart_refs)
+                                    .any(|r| r.is_native())
+                            }) {
+                                return true;
+                            }
                         }
                         for definition in definitions {
                             let native = match definition {
@@ -528,7 +597,11 @@ impl BpmnDocument {
         if self.diagrams.iter().any(|d| {
             d.plane.is_native()
                 || d.shapes.iter().any(|s| s.element.is_native())
-                || d.edges.iter().any(|e| e.element.is_native())
+                || d.edges.iter().any(|e| {
+                    e.element.is_native()
+                        || e.source_element.as_ref().is_some_and(|r| r.is_native())
+                        || e.target_element.as_ref().is_some_and(|r| r.is_native())
+                })
         }) {
             return true;
         }
@@ -619,6 +692,7 @@ impl BpmnDocument {
             catalog: crate::bpmn_catalog::SupportingCatalog::default(),
             categories: vec![],
             event_resources: vec![],
+            root_event_definitions: vec![],
             data_stores: vec![],
             processes: vec![],
             collaboration: None,
@@ -631,6 +705,13 @@ impl BpmnDocument {
     pub fn expressions(&self) -> Vec<&crate::bpmn_model::Expression> {
         use crate::bpmn_model::{EventDefinition, LoopCharacteristics, NodeDetails};
         let mut result = Vec::new();
+        for definition in &self.root_event_definitions {
+            match definition {
+                EventDefinition::Conditional { expression, .. } => result.push(expression),
+                EventDefinition::Timer { expression, .. } => result.extend(expression.iter()),
+                _ => {}
+            }
+        }
         for scope in crate::queries::scopes(self) {
             for association in scope.data_associations {
                 result.extend(association.transformation.iter());
@@ -677,9 +758,11 @@ impl BpmnDocument {
                     Some(NodeDetails::Event { definitions, .. }) => {
                         for definition in definitions {
                             match definition {
-                                EventDefinition::Conditional { expression, .. }
-                                | EventDefinition::Timer { expression, .. } => {
+                                EventDefinition::Conditional { expression, .. } => {
                                     result.push(expression)
+                                }
+                                EventDefinition::Timer { expression, .. } => {
+                                    result.extend(expression.iter())
                                 }
                                 _ => {}
                             }
@@ -738,6 +821,134 @@ impl BpmnDocument {
                                 })
                             })
                     })
+            })
+    }
+    pub fn has_expanded_events_and_di(&self) -> bool {
+        use crate::bpmn_model::{
+            EventDefinition as E, EventReference as R, EventResource, NodeDetails,
+        };
+        fn qualified(reference: &Option<R>) -> bool {
+            matches!(reference, Some(R::Qualified(_)))
+        }
+        fn expanded(definition: &E) -> bool {
+            match definition {
+                E::Message {
+                    message_ref,
+                    operation_ref,
+                    ..
+                } => qualified(message_ref) || operation_ref.is_some(),
+                E::Signal { signal_ref, .. } => qualified(signal_ref),
+                E::Error { error_ref, .. } => qualified(error_ref),
+                E::Escalation { escalation_ref, .. } => qualified(escalation_ref),
+                E::Compensate { activity_ref, .. } => qualified(activity_ref),
+                E::Link {
+                    sources, target, ..
+                } => sources.iter().any(|r| matches!(r, R::Qualified(_))) || qualified(target),
+                E::Timer {
+                    kind, expression, ..
+                } => kind.is_none() || expression.is_none(),
+                _ => false,
+            }
+        }
+        !self.root_event_definitions.is_empty()
+            || self.event_resources.iter().any(|resource| match resource {
+                EventResource::Message { item_ref, .. } => item_ref.is_some(),
+                EventResource::Signal { structure_ref, .. }
+                | EventResource::Error { structure_ref, .. }
+                | EventResource::Escalation { structure_ref, .. } => structure_ref.is_some(),
+            })
+            || self.diagrams.iter().any(|d| {
+                d.shapes
+                    .iter()
+                    .any(|s| s.is_horizontal.is_some() || s.is_marker_visible.is_some())
+                    || d.edges
+                        .iter()
+                        .any(|e| e.source_element.is_some() || e.target_element.is_some())
+            })
+            || crate::queries::scopes(self).iter().any(|scope| {
+                scope.data_associations.iter().any(|association| {
+                    scope.nodes.iter().any(|node| {
+                        node.id == association.owner
+                            && matches!(
+                                node.kind,
+                                NodeKind::StartEvent
+                                    | NodeKind::IntermediateCatchEvent
+                                    | NodeKind::IntermediateThrowEvent
+                                    | NodeKind::EndEvent
+                                    | NodeKind::BoundaryEvent
+                            )
+                    })
+                }) || scope.nodes.iter().any(|node| match &node.details {
+                    Some(NodeDetails::Event {
+                        definitions,
+                        definition_refs,
+                        parallel_multiple,
+                        is_interrupting,
+                        properties,
+                        io,
+                        ..
+                    }) => {
+                        definitions.len() > 1
+                            || (node.kind == NodeKind::StartEvent
+                                && definitions
+                                    .iter()
+                                    .any(|d| matches!(d, E::Error { .. } | E::Escalation { .. })))
+                            || definitions.iter().any(expanded)
+                            || !definition_refs.is_empty()
+                            || parallel_multiple.is_some()
+                            || is_interrupting.is_some()
+                            || !properties.is_empty()
+                            || io.is_some()
+                    }
+                    _ => false,
+                })
+            })
+    }
+    pub fn has_event_qname_refs(&self) -> bool {
+        use crate::bpmn_model::{
+            EventDefinition, EventIo, EventReference, EventResource, NodeDetails,
+        };
+        let item = |metadata: &Option<crate::bpmn_data::ItemAwareMetadata>| {
+            metadata
+                .as_ref()
+                .is_some_and(|metadata| metadata.item_subject_ref.is_some())
+        };
+        self.root_event_definitions
+            .iter()
+            .any(EventDefinition::has_qualified_references)
+            || self.event_resources.iter().any(|resource| match resource {
+                EventResource::Message { item_ref, .. } => item_ref.is_some(),
+                EventResource::Signal { structure_ref, .. }
+                | EventResource::Error { structure_ref, .. }
+                | EventResource::Escalation { structure_ref, .. } => structure_ref.is_some(),
+            })
+            || crate::queries::scopes(self).iter().any(|scope| {
+                scope.nodes.iter().any(|node| match &node.details {
+                    Some(NodeDetails::Event {
+                        definitions,
+                        definition_refs,
+                        properties,
+                        io,
+                        ..
+                    }) => {
+                        definitions
+                            .iter()
+                            .any(EventDefinition::has_qualified_references)
+                            || definition_refs
+                                .iter()
+                                .any(|r| matches!(r, EventReference::Qualified(_)))
+                            || properties.iter().any(|p| item(&p.item_aware))
+                            || io.as_ref().is_some_and(|io| {
+                                match io {
+                                    EventIo::Catch { outputs, .. } => outputs,
+                                    EventIo::Throw { inputs, .. } => inputs,
+                                }
+                                .iter()
+                                .any(|port| item(&port.item_aware))
+                            })
+                    }
+                    _ => false,
+                })
             })
     }
     pub fn has_data_qname_refs(&self) -> bool {
@@ -1029,6 +1240,10 @@ pub struct Shape {
     pub element: crate::ids::ElementSelector,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub is_expanded: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub is_horizontal: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub is_marker_visible: Option<bool>,
     pub bounds: Bounds,
     pub label: Option<Label>,
     pub style: Option<Style>,
@@ -1038,6 +1253,10 @@ pub struct Shape {
 pub struct Edge {
     pub id: crate::ids::ElementIdentity,
     pub element: crate::ids::ElementSelector,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_element: Option<crate::ids::ElementSelector>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_element: Option<crate::ids::ElementSelector>,
     pub waypoints: Vec<Point>,
     pub label: Option<Label>,
     pub style: Option<Style>,

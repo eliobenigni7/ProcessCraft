@@ -341,6 +341,74 @@ pub fn move_multiple(
     Ok(Request::Batch { mutations })
 }
 
+// Map an existing attachment to the same normalized arc-length on a repaired edge.
+// Ambiguous crossings and off-route attachments cannot be translated safely.
+fn edge_attachment(old: &[Point], new: &[Point], point: &Point) -> Result<Point, &'static str> {
+    let length = |points: &[Point]| {
+        points
+            .windows(2)
+            .map(|pair| (pair[1].x - pair[0].x).hypot(pair[1].y - pair[0].y))
+            .sum::<f64>()
+    };
+    let old_total = length(old);
+    let new_total = length(new);
+    if !old_total.is_finite() || !new_total.is_finite() || old_total == 0.0 || new_total == 0.0 {
+        return Err("edge attachment route has zero or invalid length");
+    }
+    let mut best: Option<(f64, f64)> = None;
+    let mut travelled = 0.0;
+    for pair in old.windows(2) {
+        let dx = pair[1].x - pair[0].x;
+        let dy = pair[1].y - pair[0].y;
+        let segment = dx.hypot(dy);
+        if segment == 0.0 {
+            continue;
+        }
+        let t = (((point.x - pair[0].x) * dx + (point.y - pair[0].y) * dy) / (segment * segment))
+            .clamp(0.0, 1.0);
+        let distance = (point.x - pair[0].x - t * dx).hypot(point.y - pair[0].y - t * dy);
+        let position = travelled + t * segment;
+        if let Some((best_distance, best_position)) = best {
+            if (distance - best_distance).abs() <= 1e-7
+                && (position - best_position).abs() > 1e-7
+                && distance <= 1e-6
+            {
+                return Err("edge attachment position is ambiguous");
+            }
+            if distance < best_distance {
+                best = Some((distance, position));
+            }
+        } else {
+            best = Some((distance, position));
+        }
+        travelled += segment;
+    }
+    let (distance, position) = best.ok_or("edge attachment route has zero or invalid length")?;
+    if distance > 1e-6 {
+        return Err("edge attachment is not on its referenced route");
+    }
+    let mut remaining = position / old_total * new_total;
+    for pair in new.windows(2) {
+        let dx = pair[1].x - pair[0].x;
+        let dy = pair[1].y - pair[0].y;
+        let segment = dx.hypot(dy);
+        if segment == 0.0 {
+            continue;
+        }
+        if remaining <= segment {
+            return Ok(p(
+                pair[0].x + dx * remaining / segment,
+                pair[0].y + dy * remaining / segment,
+            ));
+        }
+        remaining -= segment;
+    }
+    Ok(new
+        .last()
+        .ok_or("edge attachment route has zero or invalid length")?
+        .clone())
+}
+
 /// A move batch and warnings which the caller should display to the user.
 pub struct PreparedMove {
     pub request: Request,
@@ -575,7 +643,22 @@ pub fn prepare_move(
                     &association.target,
                 ),
             };
-            if !visible(source) || !visible(target) {
+            let has_explicit = |source_side: bool| {
+                diagram
+                    .edges
+                    .iter()
+                    .filter(|edge| edge.element == association_id.selector())
+                    .any(|edge| {
+                        if source_side {
+                            edge.source_element.is_some()
+                        } else {
+                            edge.target_element.is_some()
+                        }
+                    })
+            };
+            if (!visible(source) && !has_explicit(true))
+                || (!visible(target) && !has_explicit(false))
+            {
                 if affected {
                     return Err("data association has unresolved visible endpoint");
                 }
@@ -592,50 +675,150 @@ pub fn prepare_move(
                 .map(|link| (link.id.selector(), link.source.clone(), link.target.clone())),
         );
     }
-    let mut routes = Vec::new();
+    let mut routes: Vec<(ElementSelector, ElementSelector, Vec<Point>)> = Vec::new();
     let mut label_moves = Vec::new();
     let mut warnings = Vec::new();
+    // Limit dependency analysis to the edges whose endpoints actually move, then
+    // propagate to their dependants. Unrelated cyclic or incomplete clusters are
+    // retained unchanged, while affected cycles are refused atomically.
+    let mut affected = std::collections::BTreeSet::new();
     for edge in &diagram.edges {
+        let Some((_, source, target)) = connections.iter().find(|(id, _, _)| *id == edge.element)
+        else {
+            return Err("cannot repair dependent edge with unsupported semantics");
+        };
+        let moved_endpoint =
+            |semantic: &ElementSelector, representation: Option<&ElementSelector>| {
+                moved.iter().any(|(shape_id, element, dx, dy)| {
+                    (*dx != 0.0 || *dy != 0.0)
+                        && match representation {
+                            Some(id) => *shape_id == id,
+                            None => *element == semantic,
+                        }
+                })
+            };
+        if moved_endpoint(source, edge.source_element.as_ref())
+            || moved_endpoint(target, edge.target_element.as_ref())
+        {
+            affected.insert(edge.id.selector());
+        }
+    }
+    loop {
+        let mut changed = false;
+        for edge in &diagram.edges {
+            if !affected.contains(&edge.id.selector())
+                && [edge.source_element.as_ref(), edge.target_element.as_ref()]
+                    .into_iter()
+                    .flatten()
+                    .any(|id| affected.contains(id))
+            {
+                affected.insert(edge.id.selector());
+                changed = true;
+                if affected.len() > 1000 {
+                    return Err("edge dependency limit exceeded");
+                }
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+    if affected.len() > 1000 {
+        return Err("edge dependency limit exceeded");
+    }
+    let mut pending: Vec<_> = diagram
+        .edges
+        .iter()
+        .filter(|edge| affected.contains(&edge.id.selector()))
+        .collect();
+    let mut remaining = affected;
+    let mut ordered = Vec::with_capacity(pending.len());
+    while !pending.is_empty() {
+        let index = pending.iter().position(|edge| {
+            [edge.source_element.as_ref(), edge.target_element.as_ref()]
+                .into_iter()
+                .flatten()
+                .all(|id| !remaining.contains(id))
+        });
+        let Some(index) = index else {
+            return Err("cyclic edge representation endpoints are unsupported");
+        };
+        let edge = pending.remove(index);
+        remaining.remove(&edge.id.selector());
+        ordered.push(edge);
+    }
+    for edge in ordered {
         let Some((_, source, target)) = connections.iter().find(|(id, _, _)| *id == edge.element)
         else {
             continue;
         };
-        let endpoint =
-            |element: &ElementSelector, point: &Point| -> Result<Option<Point>, &'static str> {
-                let matches: Vec<_> = moved
-                    .iter()
-                    .filter(|(_, id, _, _)| *id == element)
-                    .collect();
-                if matches.len() > 1 {
-                    return Err("ambiguous moved endpoint");
-                }
-                Ok(matches.first().and_then(|(_, _, dx, dy)| {
-                    if *dx == 0.0 && *dy == 0.0 {
-                        None
-                    } else {
-                        Some(p(point.x + dx, point.y + dy))
-                    }
-                }))
-            };
-        if edge.waypoints.len() < 2 {
-            if moved
+        // Explicit DI endpoints name representations, which may themselves be edges.
+        for representation in [edge.source_element.as_ref(), edge.target_element.as_ref()]
+            .into_iter()
+            .flatten()
+        {
+            if !diagram
+                .shapes
                 .iter()
-                .any(|(_, id, _, _)| *id == source || *id == target)
+                .any(|candidate| candidate.id == *representation)
+                && !diagram
+                    .edges
+                    .iter()
+                    .any(|candidate| candidate.id == *representation)
+            {
+                return Err("edge representation endpoint not found in diagram");
+            }
+        }
+        let delta = |element: &ElementSelector,
+                     representation: Option<&ElementSelector>,
+                     point: Option<&Point>|
+         -> Result<Option<(f64, f64)>, &'static str> {
+            if let Some(reference) = representation
+                && let Some(anchor_edge) = diagram
+                    .edges
+                    .iter()
+                    .find(|candidate| candidate.id == *reference)
+            {
+                if let Some((_, _, repaired)) = routes.iter().find(|(_, id, _)| id == reference) {
+                    let point = point.ok_or("connected edge has insufficient waypoints")?;
+                    let anchor = edge_attachment(&anchor_edge.waypoints, repaired, point)?;
+                    return Ok(Some((anchor.x - point.x, anchor.y - point.y)));
+                }
+                return Ok(None);
+            }
+            let matches: Vec<_> = moved
+                .iter()
+                .filter(|(shape_id, id, _, _)| match representation {
+                    Some(representation) => *shape_id == representation,
+                    None => *id == element,
+                })
+                .collect();
+            if matches.len() > 1 {
+                return Err("ambiguous moved endpoint");
+            }
+            Ok(matches.first().map(|(_, _, dx, dy)| (*dx, *dy)))
+        };
+        let source_delta = delta(source, edge.source_element.as_ref(), edge.waypoints.first())?;
+        let target_delta = delta(target, edge.target_element.as_ref(), edge.waypoints.last())?;
+        if edge.waypoints.len() < 2 {
+            if source_delta.is_some_and(|d| d != (0.0, 0.0))
+                || target_delta.is_some_and(|d| d != (0.0, 0.0))
             {
                 return Err("connected edge has insufficient waypoints");
             }
             continue;
         }
-        let start = endpoint(source, &edge.waypoints[0])?;
-        let end = endpoint(target, &edge.waypoints[edge.waypoints.len() - 1])?;
-        let source_delta = moved
-            .iter()
-            .find(|(_, id, _, _)| *id == source)
-            .map(|(_, _, dx, dy)| (*dx, *dy));
-        let target_delta = moved
-            .iter()
-            .find(|(_, id, _, _)| *id == target)
-            .map(|(_, _, dx, dy)| (*dx, *dy));
+        let move_endpoint = |point: &Point, delta: Option<(f64, f64)>| {
+            delta.and_then(|(dx, dy)| {
+                if dx == 0.0 && dy == 0.0 {
+                    None
+                } else {
+                    Some(p(point.x + dx, point.y + dy))
+                }
+            })
+        };
+        let start = move_endpoint(&edge.waypoints[0], source_delta);
+        let end = move_endpoint(&edge.waypoints[edge.waypoints.len() - 1], target_delta);
         if let (Some((dx, dy)), Some(other)) = (source_delta, target_delta)
             && (dx, dy) == other
             && (dx != 0.0 || dy != 0.0)
@@ -673,7 +856,17 @@ pub fn prepare_move(
         let obstacles: Vec<_> = diagram
             .shapes
             .iter()
-            .filter(|s| s.element != *source && s.element != *target)
+            .filter(|s| {
+                let source_is_shape = edge
+                    .source_element
+                    .as_ref()
+                    .map_or(s.element == *source, |id| s.id == *id);
+                let target_is_shape = edge
+                    .target_element
+                    .as_ref()
+                    .map_or(s.element == *target, |id| s.id == *id);
+                !source_is_shape && !target_is_shape
+            })
             // Ignore only containers of an endpoint; unrelated containers remain obstacles.
             .filter(|s| {
                 let is_scope_ancestor = |element: &ElementSelector, target: &ElementSelector| {

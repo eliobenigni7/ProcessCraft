@@ -52,6 +52,8 @@ fn fixture() -> BpmnDocument {
             .iter()
             .enumerate()
             .map(|(i, s)| Shape {
+                is_horizontal: None,
+                is_marker_visible: None,
                 is_expanded: None,
                 id: id(&format!("shape_{s}")),
                 element: id(s),
@@ -81,6 +83,8 @@ fn flow(d: &mut BpmnDocument, name: &str, a: &str, b: &str) {
         condition: None,
     });
     d.diagrams[0].edges.push(Edge {
+        source_element: None,
+        target_element: None,
         id: id(&format!("di_{name}")),
         element: id(name),
         waypoints: vec![Point { x: 0.0, y: 0.0 }, Point { x: 1.0, y: 0.0 }],
@@ -253,6 +257,8 @@ fn lane_membership_and_unlaned_nodes_use_separate_bands() {
         members: vec![id("a"), id("b")],
     });
     d.diagrams[0].shapes.push(Shape {
+        is_horizontal: None,
+        is_marker_visible: None,
         is_expanded: None,
         id: id("lane_di"),
         element: id("lane"),
@@ -379,6 +385,8 @@ fn maximum_shape_count_is_bounded_and_above_limits_refused() {
             contact: String::new(),
         });
         d.diagrams[0].shapes.push(Shape {
+            is_horizontal: None,
+            is_marker_visible: None,
             is_expanded: None,
             id: id(&format!("shape_{i}")),
             element: node_id.selector(),
@@ -448,6 +456,8 @@ fn one_pool_contains_lanes_and_unlaned_band() {
     });
     for (shape, element) in [("lane_di", "lane"), ("pool_di", "pool")] {
         d.diagrams[0].shapes.push(Shape {
+            is_horizontal: None,
+            is_marker_visible: None,
             is_expanded: None,
             id: id(shape),
             element: id(element),

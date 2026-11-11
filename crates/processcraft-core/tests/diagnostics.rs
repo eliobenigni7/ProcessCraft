@@ -244,3 +244,136 @@ fn diagnostics_anchor_anonymous_native_elements_without_xml_fallback() {
         .unwrap();
     assert_eq!(diagnostic.element_id, Some(selector));
 }
+
+#[test]
+fn incomplete_event_metadata_is_advisory_and_anchored() {
+    use processcraft_core::bpmn_model::{
+        EventDefinition, EventIo, EventReference, NodeDetails, QNameRef,
+    };
+    let mut start = node("start", NodeKind::StartEvent, "Start");
+    start.details = Some(NodeDetails::Event {
+        definitions: vec![EventDefinition::Timer {
+            id: None,
+            kind: None,
+            expression: None,
+        }],
+        attached_to: None,
+        cancel_activity: None,
+        definition_refs: vec![],
+        parallel_multiple: Some(true),
+        is_interrupting: Some(false),
+        properties: vec![],
+        io: Some(EventIo::Catch {
+            outputs: vec![processcraft_core::bpmn_data::DataPort {
+                id: Some(id("port")),
+                name: None,
+                item_aware: None,
+                is_collection: None,
+            }],
+            output_set: None,
+        }),
+    });
+    let mut external = node("external", NodeKind::IntermediateCatchEvent, "External");
+    external.details = Some(NodeDetails::Event {
+        definitions: vec![],
+        attached_to: None,
+        cancel_activity: None,
+        definition_refs: vec![EventReference::Qualified(QNameRef {
+            namespace: "urn:external".into(),
+            local: id("event"),
+        })],
+        parallel_multiple: None,
+        is_interrupting: None,
+        properties: vec![],
+        io: None,
+    });
+    let mut doc = BpmnDocument::new("d".into(), id("defs"));
+    doc.processes.push(Process {
+        is_executable: Some(false),
+        io_specification: None,
+        lane_set_id: None,
+        groups: vec![],
+        data_objects: vec![],
+        data_associations: vec![],
+        id: id("process"),
+        name: None,
+        documentation: String::new(),
+        nodes: vec![start, external],
+        lanes: vec![],
+        flows: vec![],
+    });
+    let mut project = ProjectData::new("p".into());
+    project.documents.push(Arc::new(doc));
+    let diagnostics = project.diagnostics();
+    for (code, anchor) in [
+        ("incompleteTimerDefinition", "start"),
+        ("parallelMultipleNotApplicable", "start"),
+        ("startInterruptingIgnored", "start"),
+        ("incompleteEventIo", "start"),
+        ("externalEventDefinitionUnverified", "external"),
+    ] {
+        let diagnostic = diagnostics.iter().find(|d| d.code == code).unwrap();
+        assert_eq!(diagnostic.element_id, Some(id(anchor)));
+        assert_eq!(diagnostic.severity, DiagnosticSeverity::Warning);
+    }
+}
+
+#[test]
+fn referenced_event_subprocess_error_interrupting_advisory_uses_root_definition() {
+    use processcraft_core::bpmn_model::{EventDefinition, EventReference, NodeDetails};
+    let mut start = node("start", NodeKind::StartEvent, "Start");
+    start.details = Some(NodeDetails::Event {
+        definitions: vec![],
+        definition_refs: vec![EventReference::Local(id("error_definition"))],
+        attached_to: None,
+        cancel_activity: None,
+        parallel_multiple: None,
+        is_interrupting: Some(false),
+        properties: vec![],
+        io: None,
+    });
+    let mut subprocess = node("sub", NodeKind::SubProcess, "Subprocess");
+    subprocess.activity = Some(processcraft_core::bpmn_activity::ActivityProperties {
+        triggered_by_event: Some(true),
+        ..Default::default()
+    });
+    subprocess.details = Some(NodeDetails::SubProcess {
+        content: Box::new(FlowContainer {
+            nodes: vec![start],
+            ..Default::default()
+        }),
+    });
+    let mut doc = BpmnDocument::new("d".into(), id("defs"));
+    doc.root_event_definitions.push(EventDefinition::Error {
+        id: Some(id("error_definition")),
+        error_ref: None,
+    });
+    doc.processes.push(Process {
+        is_executable: Some(false),
+        io_specification: None,
+        lane_set_id: None,
+        groups: vec![],
+        data_objects: vec![],
+        data_associations: vec![],
+        id: id("process"),
+        name: None,
+        documentation: String::new(),
+        nodes: vec![subprocess],
+        lanes: vec![],
+        flows: vec![],
+    });
+    let mut project = ProjectData::new("p".into());
+    project.documents.push(Arc::new(doc));
+    let diagnostics = project.diagnostics();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|d| d.code == "startInterruptingTriggerMismatch"
+                && d.element_id == Some(id("start")))
+    );
+    assert!(
+        !diagnostics
+            .iter()
+            .any(|d| d.code == "startInterruptingIgnored" && d.element_id == Some(id("start")))
+    );
+}

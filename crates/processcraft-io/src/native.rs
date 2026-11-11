@@ -34,6 +34,7 @@ const CATALOG_CAPABILITY: &str = "bpmn-supporting-catalog";
 const EMPTY_ACTIVITY_BINDING_CAPABILITY: &str = "bpmn-empty-namespace-activity-bindings";
 const EXPANDED_DATA_CAPABILITY: &str = "bpmn-expanded-data";
 const NATIVE_IDENTITY_CAPABILITY: &str = "bpmn-native-element-identity";
+const EXPANDED_EVENTS_DI_CAPABILITY: &str = "bpmn-expanded-events-di";
 
 fn has_native_identity_features(
     documents: &[Arc<BpmnDocument>],
@@ -330,6 +331,19 @@ pub fn write_bytes(project: &ProjectData) -> Result<Vec<u8>, NativeError> {
     }) {
         required_capabilities.push(NATIVE_IDENTITY_CAPABILITY.into());
     }
+    if project
+        .documents
+        .iter()
+        .any(|d| d.has_expanded_events_and_di())
+        || project.checkpoints.iter().any(|c| {
+            c.content
+                .documents
+                .iter()
+                .any(|d| d.has_expanded_events_and_di())
+        })
+    {
+        required_capabilities.push(EXPANDED_EVENTS_DI_CAPABILITY.into());
+    }
     let manifest = Manifest {
         format: "processcraft".into(),
         schema: 3,
@@ -525,6 +539,7 @@ fn load_with_limits(
                 && cap != EMPTY_ACTIVITY_BINDING_CAPABILITY
                 && cap != EXPANDED_DATA_CAPABILITY
                 && cap != NATIVE_IDENTITY_CAPABILITY
+                && cap != EXPANDED_EVENTS_DI_CAPABILITY
         })
         || (manifest.schema < 3 && !manifest.required_capabilities.is_empty())
         || (manifest.schema == 3
@@ -686,6 +701,19 @@ fn load_with_limits(
         .any(|cap| cap == NATIVE_IDENTITY_CAPABILITY)
     {
         return Err(err("native element identities require capability"));
+    }
+    if (dto.documents.iter().any(|d| d.has_expanded_events_and_di())
+        || frozen
+            .iter()
+            .any(|(_, c)| c.documents.iter().any(|d| d.has_expanded_events_and_di())))
+        && !manifest
+            .required_capabilities
+            .iter()
+            .any(|cap| cap == EXPANDED_EVENTS_DI_CAPABILITY)
+    {
+        return Err(err(
+            "expanded events and diagram metadata require capability",
+        ));
     }
     for resources in std::iter::once(&dto.resources).chain(frozen.iter().map(|(_, c)| &c.resources))
     {
@@ -1050,6 +1078,11 @@ mod limit_tests {
                     definitions: vec![event],
                     attached_to: None,
                     cancel_activity: None,
+                    definition_refs: vec![],
+                    parallel_multiple: None,
+                    is_interrupting: None,
+                    properties: vec![],
+                    io: None,
                 },
             );
             let outer = node(
@@ -1078,6 +1111,68 @@ mod limit_tests {
                 flows: vec![],
             });
             assert!(has_extended_event_definitions(&document));
+        }
+    }
+
+    #[test]
+    fn expanded_event_capability_detects_newly_supported_legacy_shapes() {
+        use processcraft_core::{
+            bpmn_model::{EventDefinition, EventReference, NodeDetails},
+            model::{Node, NodeKind, Process},
+        };
+        let definitions = [
+            EventDefinition::Message {
+                id: None,
+                message_ref: None,
+                operation_ref: Some(EventReference::Local("operation".parse().unwrap())),
+            },
+            EventDefinition::Error {
+                id: None,
+                error_ref: None,
+            },
+            EventDefinition::Escalation {
+                id: None,
+                escalation_ref: None,
+            },
+        ];
+        for definition in definitions {
+            let mut d = BpmnDocument::new("doc".into(), "defs".parse().unwrap());
+            d.processes.push(Process {
+                id: "process".parse().unwrap(),
+                name: Some("process".into()),
+                documentation: String::new(),
+                is_executable: Some(false),
+                io_specification: None,
+                lane_set_id: None,
+                groups: vec![],
+                data_objects: vec![],
+                data_associations: vec![],
+                nodes: vec![Node {
+                    id: "start".parse().unwrap(),
+                    name: Some("start".into()),
+                    documentation: String::new(),
+                    kind: NodeKind::StartEvent,
+                    details: Some(NodeDetails::Event {
+                        definitions: vec![definition],
+                        attached_to: None,
+                        cancel_activity: None,
+                        definition_refs: vec![],
+                        parallel_multiple: None,
+                        is_interrupting: None,
+                        properties: vec![],
+                        io: None,
+                    }),
+                    item_aware: None,
+                    loop_characteristics: None,
+                    io_specification: None,
+                    activity: None,
+                    owner: String::new(),
+                    contact: String::new(),
+                }],
+                lanes: vec![],
+                flows: vec![],
+            });
+            assert!(d.has_expanded_events_and_di());
         }
     }
 

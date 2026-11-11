@@ -34,6 +34,8 @@ fn sample(tiled: bool) -> BpmnDocument {
             contact: String::new(),
         });
         shapes.push(Shape {
+            is_horizontal: None,
+            is_marker_visible: None,
             is_expanded: None,
             id: id(&format!("shape{i}")),
             element: node.selector(),

@@ -184,16 +184,19 @@ fn additional_basic_node_kinds_round_trip_or_preserve_specialized_content() {
 }
 
 #[test]
-fn event_definitions_and_boundary_events_remain_preserved() {
-    for replacement in [
-        "<intermediateCatchEvent id=\"task\"><messageEventDefinition id=\"msg\"/></intermediateCatchEvent>",
-        "<boundaryEvent id=\"task\" attachedToRef=\"tns:start\"><timerEventDefinition id=\"timer\"/></boundaryEvent>",
-    ] {
-        let input = FLAT.replace("<task id=\"task\" name=\"Review\"/>", replacement);
-        let result = prepare_import(input.as_bytes(), "event").unwrap();
-        assert!(!result.report.editable);
-        assert_eq!(export(&result).bytes, input.as_bytes());
-    }
+fn unbound_message_event_roundtrips_and_invalid_boundary_stays_preserved() {
+    let input = FLAT.replace("<task id=\"task\" name=\"Review\"/>", "<intermediateCatchEvent id=\"task\"><messageEventDefinition id=\"msg\"/></intermediateCatchEvent>");
+    let parsed = prepare_import(input.as_bytes(), "unbound message").unwrap();
+    assert!(parsed.report.editable);
+    let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+    assert_eq!(
+        parsed.document.processes[0].nodes[1].details,
+        again.document.processes[0].nodes[1].details
+    );
+    let invalid = FLAT.replace("<task id=\"task\" name=\"Review\"/>", "<boundaryEvent id=\"task\" attachedToRef=\"tns:start\"><timerEventDefinition id=\"timer\"/></boundaryEvent>");
+    let preserved = prepare_import(invalid.as_bytes(), "invalid boundary").unwrap();
+    assert!(!preserved.report.editable);
+    assert_eq!(export(&preserved).bytes, invalid.as_bytes());
 }
 
 #[test]
@@ -1970,6 +1973,8 @@ fn activity_port_di_is_preserved_or_refused_while_process_port_di_roundtrips() {
             id: "portShape".parse().unwrap(),
             element: "input".parse().unwrap(),
             is_expanded: None,
+            is_horizontal: None,
+            is_marker_visible: None,
             bounds: Bounds {
                 x: 0.0,
                 y: 0.0,
@@ -1990,7 +1995,7 @@ fn activity_port_di_is_preserved_or_refused_while_process_port_di_roundtrips() {
             .report
             .blocked
             .iter()
-            .any(|message| message.contains("Activity data input/output ports"))
+            .any(|message| message.contains("data input/output ports"))
     );
 
     let process_port = include_str!("../../../tests/fixtures/bpmn/data-optional.bpmn")
@@ -2045,4 +2050,252 @@ fn diagram_local_qnames_keep_expanded_names_with_unqualified_lexical_values() {
                 .editable
         );
     }
+}
+
+#[test]
+fn event_root_refs_flags_properties_and_owned_io_roundtrip() {
+    use processcraft_core::bpmn_model::{EventDefinition, EventIo, EventReference, NodeDetails};
+    let input = include_bytes!("../../../tests/fixtures/bpmn/event-ownership.bpmn");
+    let parsed = prepare_import(input, "event ownership").unwrap();
+    assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+    assert_eq!(parsed.document.root_event_definitions.len(), 2);
+    let nodes = &parsed.document.processes[0].nodes;
+    let Some(NodeDetails::Event {
+        is_interrupting, ..
+    }) = &nodes[1].details
+    else {
+        panic!("start event expected")
+    };
+    assert_eq!(*is_interrupting, Some(false));
+    let Some(NodeDetails::Event {
+        definitions,
+        definition_refs,
+        parallel_multiple,
+        properties,
+        io,
+        ..
+    }) = &nodes[2].details
+    else {
+        panic!("catch event expected")
+    };
+    assert_eq!(*parallel_multiple, Some(true));
+    assert_eq!(properties.len(), 1);
+    assert!(matches!(
+        definitions.as_slice(),
+        [EventDefinition::Timer { kind: Some(_), .. }]
+    ));
+    assert!(matches!(
+        definition_refs.as_slice(),
+        [EventReference::Local(_), EventReference::Qualified(_)]
+    ));
+    assert!(
+        matches!(io, Some(EventIo::Catch { outputs, output_set: Some(_) }) if outputs.len() == 1)
+    );
+    let Some(NodeDetails::Event {
+        definitions, io, ..
+    }) = &nodes[3].details
+    else {
+        panic!("throw event expected")
+    };
+    assert!(matches!(
+        definitions.as_slice(),
+        [EventDefinition::Message {
+            operation_ref: Some(EventReference::Local(_)),
+            ..
+        }]
+    ));
+    assert!(matches!(io, Some(EventIo::Throw { inputs, input_set: Some(_) }) if inputs.len() == 1));
+    let output = export(&parsed);
+    let again = prepare_import(&output.bytes, "again").unwrap();
+    assert!(again.report.editable);
+    assert_eq!(
+        parsed.document.root_event_definitions,
+        again.document.root_event_definitions
+    );
+    assert_eq!(
+        parsed.document.event_resources,
+        again.document.event_resources
+    );
+    assert_eq!(
+        parsed.document.processes[0].data_associations,
+        again.document.processes[0].data_associations
+    );
+    assert_eq!(
+        parsed.document.processes[0]
+            .nodes
+            .iter()
+            .map(|node| &node.details)
+            .collect::<Vec<_>>(),
+        again.document.processes[0]
+            .nodes
+            .iter()
+            .map(|node| &node.details)
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn empty_timer_choice_and_event_flags_preserve_omission() {
+    use processcraft_core::bpmn_model::{EventDefinition, NodeDetails};
+    for (start_attr, expected_interrupting) in [
+        ("", None),
+        (" isInterrupting=\"false\"", Some(false)),
+        (" isInterrupting=\"true\"", Some(true)),
+    ] {
+        for (catch_attr, expected_parallel) in [
+            ("", None),
+            (" parallelMultiple=\"false\"", Some(false)),
+            (" parallelMultiple=\"true\"", Some(true)),
+        ] {
+            let input = format!(
+                "<definitions xmlns=\"http://www.omg.org/spec/BPMN/20100524/MODEL\" id=\"defs\" targetNamespace=\"urn:test\"><timerEventDefinition id=\"rootTimer\"/><process id=\"process\" isExecutable=\"false\"><startEvent id=\"start\"{start_attr}><timerEventDefinition/></startEvent><intermediateCatchEvent id=\"catch\"{catch_attr}><timerEventDefinition/></intermediateCatchEvent></process></definitions>"
+            );
+            let parsed = prepare_import(input.as_bytes(), "empty timer").unwrap();
+            assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+            assert!(matches!(
+                parsed.document.root_event_definitions.as_slice(),
+                [EventDefinition::Timer {
+                    kind: None,
+                    expression: None,
+                    ..
+                }]
+            ));
+            let Some(NodeDetails::Event {
+                is_interrupting, ..
+            }) = &parsed.document.processes[0].nodes[0].details
+            else {
+                panic!("start event")
+            };
+            assert_eq!(*is_interrupting, expected_interrupting);
+            let Some(NodeDetails::Event {
+                parallel_multiple, ..
+            }) = &parsed.document.processes[0].nodes[1].details
+            else {
+                panic!("catch event")
+            };
+            assert_eq!(*parallel_multiple, expected_parallel);
+            let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+            assert_eq!(
+                parsed.document.root_event_definitions,
+                again.document.root_event_definitions
+            );
+            assert_eq!(
+                parsed.document.processes[0].nodes[0].details,
+                again.document.processes[0].nodes[0].details
+            );
+            assert_eq!(
+                parsed.document.processes[0].nodes[1].details,
+                again.document.processes[0].nodes[1].details
+            );
+        }
+    }
+}
+
+#[test]
+fn event_definition_reference_must_target_root_and_opaque_metadata_is_preserved() {
+    let source = include_str!("../../../tests/fixtures/bpmn/event-ownership.bpmn");
+    for input in [
+        source.replacen("<eventDefinitionRef>tns:sharedSignal</eventDefinitionRef>", "<eventDefinitionRef>tns:inlineTimer</eventDefinitionRef>", 1),
+        source.replacen("<eventDefinitionRef>tns:sharedSignal</eventDefinitionRef>", "<eventDefinitionRef>tns:message</eventDefinitionRef>", 1),
+        source.replace("<signalEventDefinition id=\"sharedSignal\" signalRef=\"tns:signal\"/>", "<signalEventDefinition id=\"sharedSignal\" signalRef=\"tns:signal\"><documentation>opaque metadata</documentation></signalEventDefinition>"),
+    ] {
+        if let Ok(parsed) = prepare_import(input.as_bytes(), "unsupported event") {
+            assert!(!parsed.report.editable);
+            assert_eq!(export(&parsed).bytes, input.as_bytes());
+        }
+    }
+}
+
+#[test]
+fn explicit_di_representation_endpoints_and_shape_flags_roundtrip() {
+    let source = include_str!("../../../tests/fixtures/bpmn/di-endpoints.bpmn");
+    let input = source
+        .replace("targetRef=\"tns:flow\"", "targetRef=\"tns:a\"")
+        .replace(
+            "targetElement=\"tns:edgeFlow\"",
+            "targetElement=\"tns:shapeA\"",
+        );
+    for (input, expected_target) in [(source, "edgeFlow"), (input.as_str(), "shapeA")] {
+        let parsed = prepare_import(input.as_bytes(), "DI endpoints").unwrap();
+        assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+        let diagram = &parsed.document.diagrams[0];
+        assert_eq!(diagram.shapes[0].is_horizontal, Some(false));
+        assert_eq!(diagram.shapes[0].is_marker_visible, Some(true));
+        assert_eq!(
+            diagram.edges[1]
+                .source_element
+                .as_ref()
+                .unwrap()
+                .to_string(),
+            "shapeNote"
+        );
+        assert_eq!(
+            diagram.edges[1]
+                .target_element
+                .as_ref()
+                .unwrap()
+                .to_string(),
+            expected_target
+        );
+        let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+        assert_eq!(
+            again.document.diagrams[0].edges[1].source_element,
+            diagram.edges[1].source_element
+        );
+        assert_eq!(
+            again.document.diagrams[0].edges[1].target_element,
+            diagram.edges[1].target_element
+        );
+        assert_eq!(
+            again.document.diagrams[0].shapes[0].is_horizontal,
+            Some(false)
+        );
+        assert_eq!(
+            again.document.diagrams[0].shapes[0].is_marker_visible,
+            Some(true)
+        );
+    }
+}
+
+#[test]
+fn event_owned_port_shape_remains_preserved() {
+    let source = include_str!("../../../tests/fixtures/bpmn/event-ownership.bpmn");
+    let input = source.replace("<definitions ", "<definitions xmlns:di=\"http://www.omg.org/spec/BPMN/20100524/DI\" xmlns:dc=\"http://www.omg.org/spec/DD/20100524/DC\" ")
+        .replace("</definitions>", "<di:BPMNDiagram id=\"diagram\"><di:BPMNPlane id=\"plane\" bpmnElement=\"tns:process\"><di:BPMNShape id=\"portShape\" bpmnElement=\"tns:output\"><dc:Bounds x=\"0\" y=\"0\" width=\"50\" height=\"50\"/></di:BPMNShape></di:BPMNPlane></di:BPMNDiagram></definitions>");
+    let parsed = prepare_import(input.as_bytes(), "event port").unwrap();
+    assert!(!parsed.report.editable);
+    assert_eq!(export(&parsed).bytes, input.as_bytes());
+}
+
+#[test]
+fn activity_port_association_requires_explicit_di_endpoint() {
+    let source = include_str!("../../../tests/fixtures/bpmn20-schema/data-io.bpmn")
+        .replace("<dataObjectReference id=", "<dataObjectReference name=\"\" id=")
+        .replace("<definitions ", "<definitions xmlns:t=\"urn:io\" xmlns:bd=\"http://www.omg.org/spec/BPMN/20100524/DI\" xmlns:dc=\"http://www.omg.org/spec/DD/20100524/DC\" xmlns:di=\"http://www.omg.org/spec/DD/20100524/DI\" ")
+        .replace("</definitions>", "<bd:BPMNDiagram id=\"diagram\"><bd:BPMNPlane id=\"plane\" bpmnElement=\"t:p\"><bd:BPMNShape id=\"workShape\" bpmnElement=\"t:work\"><dc:Bounds x=\"100\" y=\"0\" width=\"100\" height=\"80\"/></bd:BPMNShape><bd:BPMNShape id=\"dataShape\" bpmnElement=\"t:invoiceRef\"><dc:Bounds x=\"0\" y=\"0\" width=\"50\" height=\"50\"/></bd:BPMNShape><bd:BPMNEdge id=\"inputEdge\" bpmnElement=\"t:inputAssoc\" targetElement=\"t:workShape\"><di:waypoint x=\"50\" y=\"25\"/><di:waypoint x=\"100\" y=\"25\"/></bd:BPMNEdge></bd:BPMNPlane></bd:BPMNDiagram></definitions>");
+    let parsed = prepare_import(source.as_bytes(), "explicit port endpoint").unwrap();
+    assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+    let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+    assert_eq!(
+        again.document.diagrams[0].edges[0]
+            .target_element
+            .as_ref()
+            .unwrap()
+            .to_string(),
+        "workShape"
+    );
+    let mut project = ProjectData::new("missing endpoint".into());
+    project.documents.push(Arc::new(parsed.document.clone()));
+    project.resources = parsed.resources.clone();
+    Arc::make_mut(&mut project.documents[0]).diagrams[0].edges[0].target_element = None;
+    let failure = export_bpmn(&project, parsed.document.id, false).unwrap_err();
+    assert!(
+        failure
+            .report
+            .blocked
+            .iter()
+            .any(|reason| reason.contains("target")),
+        "{:?}",
+        failure.report.blocked
+    );
 }

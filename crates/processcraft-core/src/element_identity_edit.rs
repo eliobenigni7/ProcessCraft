@@ -47,7 +47,7 @@ fn scope_selectors(
         if let Some(io) = &mut node.io_specification {
             io_selectors(io, visit);
         }
-        use crate::bpmn_model::{EventDefinition, NodeDetails};
+        use crate::bpmn_model::NodeDetails;
         match &mut node.details {
             Some(NodeDetails::Gateway { default_flow, .. }) => {
                 if let Some(flow) = default_flow {
@@ -65,6 +65,8 @@ fn scope_selectors(
             Some(NodeDetails::BoundaryEvent { attached_to, .. }) => visit(attached_to),
             Some(NodeDetails::Event {
                 definitions,
+                definition_refs,
+                io,
                 attached_to,
                 ..
             }) => {
@@ -72,54 +74,13 @@ fn scope_selectors(
                     visit(reference);
                 }
                 for definition in definitions {
-                    match definition {
-                        EventDefinition::Message {
-                            message_ref,
-                            operation_ref,
-                            ..
-                        } => {
-                            if let Some(reference) = message_ref {
-                                visit(reference);
-                            }
-                            if let Some(reference) = operation_ref {
-                                visit(reference);
-                            }
-                        }
-                        EventDefinition::Signal { signal_ref, .. } => {
-                            if let Some(reference) = signal_ref {
-                                visit(reference);
-                            }
-                        }
-                        EventDefinition::Error { error_ref, .. } => {
-                            if let Some(reference) = error_ref {
-                                visit(reference);
-                            }
-                        }
-                        EventDefinition::Escalation { escalation_ref, .. } => {
-                            if let Some(reference) = escalation_ref {
-                                visit(reference);
-                            }
-                        }
-                        EventDefinition::Link {
-                            sources, target, ..
-                        } => {
-                            for source in sources {
-                                visit(source);
-                            }
-                            if let Some(reference) = target {
-                                visit(reference);
-                            }
-                        }
-                        EventDefinition::Compensate { activity_ref, .. } => {
-                            if let Some(reference) = activity_ref {
-                                visit(reference);
-                            }
-                        }
-                        EventDefinition::Conditional { .. }
-                        | EventDefinition::Cancel { .. }
-                        | EventDefinition::Terminate { .. }
-                        | EventDefinition::Timer { .. } => {}
-                    }
+                    event_definition_selectors(definition, visit);
+                }
+                for reference in definition_refs {
+                    event_ref_selector(reference, visit);
+                }
+                if let Some(io) = io {
+                    event_io_selectors(io, visit);
                 }
             }
             Some(NodeDetails::SubProcess { content }) => scope_selectors(
@@ -136,6 +97,86 @@ fn scope_selectors(
                 | NodeDetails::CallActivity { .. },
             )
             | None => {}
+        }
+    }
+}
+fn event_ref_selector(
+    reference: &mut crate::bpmn_model::EventReference,
+    visit: &mut impl FnMut(&mut ElementSelector),
+) {
+    if let crate::bpmn_model::EventReference::Local(selector) = reference {
+        visit(selector);
+    }
+}
+fn event_definition_selectors(
+    definition: &mut crate::bpmn_model::EventDefinition,
+    visit: &mut impl FnMut(&mut ElementSelector),
+) {
+    use crate::bpmn_model::EventDefinition;
+    match definition {
+        EventDefinition::Message {
+            message_ref,
+            operation_ref,
+            ..
+        } => {
+            for r in [message_ref, operation_ref].into_iter().flatten() {
+                event_ref_selector(r, visit);
+            }
+        }
+        EventDefinition::Signal { signal_ref, .. } => {
+            if let Some(r) = signal_ref {
+                event_ref_selector(r, visit);
+            }
+        }
+        EventDefinition::Error { error_ref, .. } => {
+            if let Some(r) = error_ref {
+                event_ref_selector(r, visit);
+            }
+        }
+        EventDefinition::Escalation { escalation_ref, .. } => {
+            if let Some(r) = escalation_ref {
+                event_ref_selector(r, visit);
+            }
+        }
+        EventDefinition::Link {
+            sources, target, ..
+        } => {
+            for r in sources {
+                event_ref_selector(r, visit);
+            }
+            if let Some(r) = target {
+                event_ref_selector(r, visit);
+            }
+        }
+        EventDefinition::Compensate { activity_ref, .. } => {
+            if let Some(r) = activity_ref {
+                event_ref_selector(r, visit);
+            }
+        }
+        EventDefinition::Conditional { .. }
+        | EventDefinition::Cancel { .. }
+        | EventDefinition::Terminate { .. }
+        | EventDefinition::Timer { .. } => {}
+    }
+}
+fn event_io_selectors(
+    io: &mut crate::bpmn_model::EventIo,
+    visit: &mut impl FnMut(&mut ElementSelector),
+) {
+    use crate::bpmn_model::EventIo;
+    let set = match io {
+        EventIo::Catch { output_set, .. } => output_set,
+        EventIo::Throw { input_set, .. } => input_set,
+    };
+    if let Some(set) = set {
+        for reference in set
+            .data_refs
+            .iter_mut()
+            .chain(&mut set.optional_refs)
+            .chain(&mut set.while_executing_refs)
+            .chain(&mut set.counterpart_refs)
+        {
+            visit(reference);
         }
     }
 }
@@ -156,6 +197,9 @@ fn io_selectors(
     }
 }
 fn document_selectors(d: &mut BpmnDocument, visit: &mut impl FnMut(&mut ElementSelector)) {
+    for definition in &mut d.root_event_definitions {
+        event_definition_selectors(definition, visit);
+    }
     for process in &mut d.processes {
         if let Some(io) = &mut process.io_specification {
             io_selectors(io, visit);
@@ -223,6 +267,12 @@ fn document_selectors(d: &mut BpmnDocument, visit: &mut impl FnMut(&mut ElementS
         }
         for edge in &mut diagram.edges {
             visit(&mut edge.element);
+            if let Some(value) = &mut edge.source_element {
+                visit(value);
+            }
+            if let Some(value) = &mut edge.target_element {
+                visit(value);
+            }
         }
     }
 }
@@ -317,7 +367,7 @@ fn scope_ids(
         {
             expression_id(expression, visit);
         }
-        use crate::bpmn_model::{EventDefinition, LoopCharacteristics, NodeDetails};
+        use crate::bpmn_model::{LoopCharacteristics, NodeDetails};
         if let Some(characteristics) = &mut node.loop_characteristics {
             match characteristics {
                 LoopCharacteristics::Standard { condition, .. } => {
@@ -354,31 +404,75 @@ fn scope_ids(
                 activation_condition: Some(expression),
                 ..
             }) => expression_id(expression, visit),
-            Some(NodeDetails::Event { definitions, .. }) => {
+            Some(NodeDetails::Event {
+                definitions,
+                properties,
+                io,
+                ..
+            }) => {
                 for definition in definitions {
-                    match definition {
-                        EventDefinition::Conditional { id, expression }
-                        | EventDefinition::Timer { id, expression, .. } => {
-                            optional_identity(id, visit);
-                            expression_id(expression, visit);
-                        }
-                        EventDefinition::Message { id, .. }
-                        | EventDefinition::Signal { id, .. }
-                        | EventDefinition::Error { id, .. }
-                        | EventDefinition::Escalation { id, .. }
-                        | EventDefinition::Link { id, .. }
-                        | EventDefinition::Cancel { id }
-                        | EventDefinition::Compensate { id, .. }
-                        | EventDefinition::Terminate { id } => optional_identity(id, visit),
-                    }
+                    event_definition_ids(definition, visit);
+                }
+                for property in properties {
+                    optional_identity(&mut property.id, visit);
+                    metadata_ids(&mut property.item_aware, visit);
+                }
+                if let Some(io) = io {
+                    event_io_ids(io, visit);
                 }
             }
             _ => {}
         }
     }
 }
+fn event_definition_ids(
+    definition: &mut crate::bpmn_model::EventDefinition,
+    visit: &mut impl FnMut(&mut ElementIdentity),
+) {
+    use crate::bpmn_model::EventDefinition;
+    match definition {
+        EventDefinition::Conditional { id, expression } => {
+            optional_identity(id, visit);
+            expression_id(expression, visit);
+        }
+        EventDefinition::Timer { id, expression, .. } => {
+            optional_identity(id, visit);
+            if let Some(expression) = expression {
+                expression_id(expression, visit);
+            }
+        }
+        EventDefinition::Message { id, .. }
+        | EventDefinition::Signal { id, .. }
+        | EventDefinition::Error { id, .. }
+        | EventDefinition::Escalation { id, .. }
+        | EventDefinition::Link { id, .. }
+        | EventDefinition::Cancel { id }
+        | EventDefinition::Compensate { id, .. }
+        | EventDefinition::Terminate { id } => optional_identity(id, visit),
+    }
+}
+fn event_io_ids(io: &mut crate::bpmn_model::EventIo, visit: &mut impl FnMut(&mut ElementIdentity)) {
+    use crate::bpmn_model::EventIo;
+    let (ports, set) = match io {
+        EventIo::Catch {
+            outputs,
+            output_set,
+        } => (outputs, output_set),
+        EventIo::Throw { inputs, input_set } => (inputs, input_set),
+    };
+    for port in ports {
+        optional_identity(&mut port.id, visit);
+        metadata_ids(&mut port.item_aware, visit);
+    }
+    if let Some(set) = set {
+        optional_identity(&mut set.id, visit);
+    }
+}
 fn document_ids(d: &mut BpmnDocument, visit: &mut impl FnMut(&mut ElementIdentity)) {
     visit(&mut d.definitions_id);
+    for definition in &mut d.root_event_definitions {
+        event_definition_ids(definition, visit);
+    }
     for category in &mut d.categories {
         visit(&mut category.id);
         for value in &mut category.values {
@@ -479,6 +573,10 @@ enum QNameKind {
     Error,
     Process,
     DataStore,
+    Signal,
+    Escalation,
+    Activity,
+    EventDefinition,
 }
 fn optional_qname(
     value: &mut Option<crate::bpmn_model::QNameRef>,
@@ -563,7 +661,7 @@ fn scope_qnames(
                 expression_qnames(value, visit);
             }
         }
-        use crate::bpmn_model::{EventDefinition, LoopCharacteristics, NodeDetails};
+        use crate::bpmn_model::{LoopCharacteristics, NodeDetails};
         if let Some(characteristics) = &mut node.loop_characteristics {
             match characteristics {
                 LoopCharacteristics::Standard { condition, .. } => {
@@ -596,15 +694,24 @@ fn scope_qnames(
                 activation_condition: Some(value),
                 ..
             }) => expression_qnames(value, visit),
-            Some(NodeDetails::Event { definitions, .. }) => {
+            Some(NodeDetails::Event {
+                definitions,
+                definition_refs,
+                properties,
+                io,
+                ..
+            }) => {
                 for definition in definitions {
-                    match definition {
-                        EventDefinition::Conditional { expression, .. }
-                        | EventDefinition::Timer { expression, .. } => {
-                            expression_qnames(expression, visit)
-                        }
-                        _ => {}
-                    }
+                    event_definition_qnames(definition, visit);
+                }
+                for reference in definition_refs {
+                    event_ref_qname(reference, QNameKind::EventDefinition, visit);
+                }
+                for property in properties {
+                    meta_qnames(&mut property.item_aware, visit);
+                }
+                if let Some(io) = io {
+                    event_io_qnames(io, visit);
                 }
             }
             Some(NodeDetails::SubProcess { content }) => scope_qnames(
@@ -618,10 +725,97 @@ fn scope_qnames(
         }
     }
 }
+fn event_ref_qname(
+    reference: &mut crate::bpmn_model::EventReference,
+    kind: QNameKind,
+    visit: &mut impl FnMut(&mut crate::bpmn_model::QNameRef, QNameKind),
+) {
+    if let crate::bpmn_model::EventReference::Qualified(value) = reference {
+        visit(value, kind);
+    }
+}
+fn event_definition_qnames(
+    definition: &mut crate::bpmn_model::EventDefinition,
+    visit: &mut impl FnMut(&mut crate::bpmn_model::QNameRef, QNameKind),
+) {
+    use crate::bpmn_model::EventDefinition;
+    match definition {
+        EventDefinition::Message {
+            message_ref,
+            operation_ref,
+            ..
+        } => {
+            if let Some(r) = message_ref {
+                event_ref_qname(r, QNameKind::Message, visit);
+            }
+            if let Some(r) = operation_ref {
+                event_ref_qname(r, QNameKind::Operation, visit);
+            }
+        }
+        EventDefinition::Signal { signal_ref, .. } => {
+            if let Some(r) = signal_ref {
+                event_ref_qname(r, QNameKind::Signal, visit);
+            }
+        }
+        EventDefinition::Error { error_ref, .. } => {
+            if let Some(r) = error_ref {
+                event_ref_qname(r, QNameKind::Error, visit);
+            }
+        }
+        EventDefinition::Escalation { escalation_ref, .. } => {
+            if let Some(r) = escalation_ref {
+                event_ref_qname(r, QNameKind::Escalation, visit);
+            }
+        }
+        EventDefinition::Link {
+            sources, target, ..
+        } => {
+            for r in sources {
+                event_ref_qname(r, QNameKind::EventDefinition, visit);
+            }
+            if let Some(r) = target {
+                event_ref_qname(r, QNameKind::EventDefinition, visit);
+            }
+        }
+        EventDefinition::Compensate { activity_ref, .. } => {
+            if let Some(r) = activity_ref {
+                event_ref_qname(r, QNameKind::Activity, visit);
+            }
+        }
+        EventDefinition::Conditional { expression, .. } => expression_qnames(expression, visit),
+        EventDefinition::Timer { expression, .. } => {
+            if let Some(expression) = expression {
+                expression_qnames(expression, visit);
+            }
+        }
+        EventDefinition::Cancel { .. } | EventDefinition::Terminate { .. } => {}
+    }
+}
+fn event_io_qnames(
+    io: &mut crate::bpmn_model::EventIo,
+    visit: &mut impl FnMut(&mut crate::bpmn_model::QNameRef, QNameKind),
+) {
+    use crate::bpmn_model::EventIo;
+    let ports = match io {
+        EventIo::Catch { outputs, .. } => outputs,
+        EventIo::Throw { inputs, .. } => inputs,
+    };
+    for port in ports {
+        meta_qnames(&mut port.item_aware, visit);
+    }
+}
 fn document_qnames(
     d: &mut BpmnDocument,
     visit: &mut impl FnMut(&mut crate::bpmn_model::QNameRef, QNameKind),
 ) {
+    for definition in &mut d.root_event_definitions {
+        event_definition_qnames(definition, visit);
+    }
+    for resource in &mut d.event_resources {
+        if let crate::bpmn_model::EventResource::Message { item_ref, .. } = resource {
+            optional_qname(item_ref, QNameKind::Item, visit);
+        }
+    }
     for interface in &mut d.catalog.interfaces {
         for operation in &mut interface.operations {
             visit(&mut operation.in_message_ref, QNameKind::Message);
@@ -659,6 +853,24 @@ fn document_qnames(
         {
             flow_qnames(flow, visit);
         }
+    }
+}
+
+fn event_definition_identity(
+    definition: &crate::bpmn_model::EventDefinition,
+) -> Option<&ElementIdentity> {
+    use crate::bpmn_model::EventDefinition;
+    match definition {
+        EventDefinition::Message { id, .. }
+        | EventDefinition::Signal { id, .. }
+        | EventDefinition::Error { id, .. }
+        | EventDefinition::Escalation { id, .. }
+        | EventDefinition::Conditional { id, .. }
+        | EventDefinition::Link { id, .. }
+        | EventDefinition::Cancel { id }
+        | EventDefinition::Compensate { id, .. }
+        | EventDefinition::Terminate { id }
+        | EventDefinition::Timer { id, .. } => id.as_ref(),
     }
 }
 
@@ -730,6 +942,37 @@ pub(crate) fn set_xml_id(
         .any(|v| matches!(v, EventResource::Error { id, .. } if id.selector() == *selected))
     {
         Some(QNameKind::Error)
+    } else if doc
+        .event_resources
+        .iter()
+        .any(|v| matches!(v, EventResource::Signal { id, .. } if id.selector() == *selected))
+    {
+        Some(QNameKind::Signal)
+    } else if doc
+        .event_resources
+        .iter()
+        .any(|v| matches!(v, EventResource::Escalation { id, .. } if id.selector() == *selected))
+    {
+        Some(QNameKind::Escalation)
+    } else if doc
+        .root_event_definitions
+        .iter()
+        .any(|v| event_definition_identity(v).is_some_and(|id| id.selector() == *selected))
+        || crate::queries::scopes(doc)
+            .iter()
+            .flat_map(|scope| scope.nodes)
+            .any(|node| match &node.details {
+                Some(crate::bpmn_model::NodeDetails::Event { definitions, .. }) => {
+                    definitions.iter().any(|v| {
+                        event_definition_identity(v).is_some_and(|id| id.selector() == *selected)
+                    })
+                }
+                _ => false,
+            })
+    {
+        Some(QNameKind::EventDefinition)
+    } else if crate::queries::find_node(doc, selected).is_some_and(|node| node.kind.is_activity()) {
+        Some(QNameKind::Activity)
     } else if doc.processes.iter().any(|v| v.id.selector() == *selected) {
         Some(QNameKind::Process)
     } else if doc

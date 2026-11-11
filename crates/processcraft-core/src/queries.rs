@@ -72,6 +72,44 @@ pub fn supporting_catalog_fields(
     Some(model_fields(serde_json::to_value(&document.catalog).ok()?))
 }
 
+/// Ordered event catalogs and owned event metadata as bounded scalar fields.
+/// Qualified references retain their namespace and are never dereferenced here.
+pub fn event_fields(project: &ProjectData, document_id: DocumentId) -> Option<Vec<ModelField>> {
+    let document = project.documents.iter().find(|d| d.id == document_id)?;
+    let events: Vec<_> = scopes(document)
+        .into_iter()
+        .flat_map(|scope| {
+            scope
+                .nodes
+                .iter()
+                .filter(|node| {
+                    matches!(
+                        node.kind,
+                        NodeKind::StartEvent
+                            | NodeKind::EndEvent
+                            | NodeKind::IntermediateCatchEvent
+                            | NodeKind::IntermediateThrowEvent
+                            | NodeKind::BoundaryEvent
+                    )
+                })
+                .map(move |node| {
+                    serde_json::json!({"scope":scope.id,"id":node.id,"kind":node.kind,
+                    "name":node.name,"documentation":node.documentation,"details":node.details})
+                })
+        })
+        .collect();
+    Some(model_fields(serde_json::json!({
+        "resources":document.event_resources,"root_definitions":document.root_event_definitions,
+        "events":events
+    })))
+}
+
+/// Independent DI identities, representation references and explicit attributes.
+pub fn diagram_fields(project: &ProjectData, document_id: DocumentId) -> Option<Vec<ModelField>> {
+    let document = project.documents.iter().find(|d| d.id == document_id)?;
+    Some(model_fields(serde_json::to_value(&document.diagrams).ok()?))
+}
+
 /// Read every typed data family, including anonymous declarations and scoped
 /// association expressions. References retain expanded namespace identity.
 pub fn data_fields(project: &ProjectData, document_id: DocumentId) -> Option<Vec<ModelField>> {
@@ -84,6 +122,7 @@ pub fn data_fields(project: &ProjectData, document_id: DocumentId) -> Option<Vec
     let scopes: Vec<_> = scopes(document).into_iter().map(|scope| {
         let nodes: Vec<_> = scope.nodes.iter().filter(|node|
             node.item_aware.is_some() || node.io_specification.is_some()
+                || matches!(&node.details, Some(crate::bpmn_model::NodeDetails::Event { properties, io, .. }) if !properties.is_empty() || io.is_some())
                 || matches!(node.kind, NodeKind::DataObjectReference | NodeKind::DataStoreReference)
         ).map(|node| {
             let reference = match &node.details {
@@ -91,8 +130,13 @@ pub fn data_fields(project: &ProjectData, document_id: DocumentId) -> Option<Vec
                     | crate::bpmn_model::NodeDetails::DataStoreReference { .. }) => serde_json::to_value(&node.details).ok()?,
                 _ => serde_json::Value::Null,
             };
+            let event_data = match &node.details {
+                Some(crate::bpmn_model::NodeDetails::Event { properties, io, .. }) =>
+                    serde_json::json!({"properties":properties,"io":io}),
+                _ => serde_json::Value::Null,
+            };
             Some(serde_json::json!({"id":node.id,"name":node.name,"kind":node.kind,
-                "item_aware":node.item_aware,"io_specification":node.io_specification,"reference":reference}))
+                "item_aware":node.item_aware,"io_specification":node.io_specification,"reference":reference,"event_data":event_data}))
         }).collect::<Option<Vec<_>>>()?;
         Some(serde_json::json!({"id":scope.id,"data_objects":scope.data_objects,
             "data_associations":scope.data_associations,"nodes":nodes}))

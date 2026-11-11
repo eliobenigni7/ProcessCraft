@@ -357,6 +357,7 @@ mod tests {
         document
             .event_resources
             .push(crate::bpmn_model::EventResource::Message {
+                item_ref: None,
                 id: "Message".parse().unwrap(),
                 name: Some("x".repeat(100_000)),
             });

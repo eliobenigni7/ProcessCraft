@@ -1,6 +1,6 @@
 //! Non-blocking diagnostics: incomplete editing remains possible; structural validity is separate.
 use crate::{
-    bpmn_model::{EventDefinition, EventGatewayType, GatewayDirection, NodeDetails},
+    bpmn_model::{EventDefinition, EventGatewayType, EventIo, GatewayDirection, NodeDetails},
     ids::{DocumentId, ElementSelector},
     model::{Capability, FlowKind, NodeKind, ProjectData},
     queries,
@@ -196,7 +196,35 @@ impl ProjectData {
                     );
                 }
             }
-            for scope in queries::scopes(doc) {
+            let scopes = queries::scopes(doc);
+            let target_namespace = doc
+                .definitions
+                .as_ref()
+                .map(|d| d.target_namespace.as_str())
+                .or_else(|| {
+                    doc.provenance
+                        .is_none()
+                        .then_some(crate::model::GENERATED_TARGET_NAMESPACE)
+                });
+            for definition in &doc.root_event_definitions {
+                if matches!(
+                    definition,
+                    EventDefinition::Timer {
+                        kind: None,
+                        expression: None,
+                        ..
+                    }
+                ) {
+                    emit(
+                        definition
+                            .id()
+                            .map_or_else(|| doc.definitions_id.selector(), |id| id.selector()),
+                        "incompleteTimerDefinition",
+                        "Timer definition has no date, duration or cycle (editing advisory); BPMN 2.0.2 §10.5.5, Table 10.101.",
+                    );
+                }
+            }
+            for scope in &scopes {
                 for association in scope.data_associations {
                     if association.transformation.is_none() && association.sources.len() != 1 {
                         emit(
@@ -275,6 +303,109 @@ impl ProjectData {
                     let outs = outgoing
                         .get(&node.id.selector())
                         .map_or(&[][..], Vec::as_slice);
+                    if let Some(NodeDetails::Event {
+                        definitions,
+                        definition_refs,
+                        parallel_multiple,
+                        is_interrupting,
+                        io,
+                        ..
+                    }) = &node.details
+                    {
+                        let resolved: Vec<_> = definition_refs
+                            .iter()
+                            .filter_map(|reference| {
+                                doc.root_event_definitions.iter().find(|definition| {
+                                    definition.id().is_some_and(|id| {
+                                        reference.matches_identity(id, target_namespace)
+                                    })
+                                })
+                            })
+                            .collect();
+                        if definition_refs
+                            .iter()
+                            .any(|reference| reference.is_external(target_namespace))
+                        {
+                            emit(
+                                node.id.selector(),
+                                "externalEventDefinitionUnverified",
+                                "External event definition cannot be checked locally; BPMN 2.0.2 §10.5.1, Tables 10.82–10.83.",
+                            );
+                        }
+                        if *parallel_multiple == Some(true)
+                            && definitions.len() + definition_refs.len() <= 1
+                        {
+                            emit(
+                                node.id.selector(),
+                                "parallelMultipleNotApplicable",
+                                "parallelMultiple is relevant only when a catch event has multiple definitions; BPMN 2.0.2 §10.5.1, Table 10.82.",
+                            );
+                        }
+                        let event_subprocess = scopes.iter().flat_map(|s| s.nodes).any(|owner| {
+                            owner.id.selector() == scope.id.selector()
+                                && owner
+                                    .activity
+                                    .as_ref()
+                                    .is_some_and(|a| a.triggered_by_event == Some(true))
+                        });
+                        if node.kind == NodeKind::StartEvent
+                            && is_interrupting.is_some()
+                            && !event_subprocess
+                        {
+                            emit(
+                                node.id.selector(),
+                                "startInterruptingIgnored",
+                                "isInterrupting applies only to event-subprocess starts and is ignored elsewhere; BPMN 2.0.2 §10.5.2, Table 10.87.",
+                            );
+                        }
+                        let all_definitions = definitions.iter().chain(resolved);
+                        for definition in all_definitions {
+                            if matches!(
+                                definition,
+                                EventDefinition::Timer {
+                                    kind: None,
+                                    expression: None,
+                                    ..
+                                }
+                            ) {
+                                emit(
+                                    node.id.selector(),
+                                    "incompleteTimerDefinition",
+                                    "Timer definition has no date, duration or cycle (editing advisory); BPMN 2.0.2 §10.5.5, Table 10.101.",
+                                );
+                            }
+                            if node.kind == NodeKind::StartEvent
+                                && event_subprocess
+                                && is_interrupting.is_some()
+                                && (matches!(definition, EventDefinition::Compensate { .. })
+                                    || (*is_interrupting == Some(false)
+                                        && matches!(definition, EventDefinition::Error { .. })))
+                            {
+                                emit(
+                                    node.id.selector(),
+                                    "startInterruptingTriggerMismatch",
+                                    "Error starts always interrupt; interruption does not apply to compensation starts; BPMN 2.0.2 §10.5.2, Table 10.87.",
+                                );
+                            }
+                        }
+                        let incomplete_io = match io {
+                            Some(EventIo::Catch {
+                                outputs,
+                                output_set,
+                            }) => !outputs.is_empty() && output_set.is_none(),
+                            Some(EventIo::Throw { inputs, input_set }) => {
+                                !inputs.is_empty() && input_set.is_none()
+                            }
+                            None => false,
+                        };
+                        if incomplete_io {
+                            emit(
+                                node.id.selector(),
+                                "incompleteEventIo",
+                                "Event data ports have no corresponding set (editing advisory); BPMN 2.0.2 §10.5.1, Tables 10.82–10.83.",
+                            );
+                        }
+                    }
                     if let Some(NodeDetails::Event { definitions, .. }) = &node.details {
                         for definition in definitions {
                             if let EventDefinition::Link {

@@ -148,6 +148,16 @@ enum ExportKind {
 #[derive(Deserialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
 enum Query {
+    Events {
+        document_id: processcraft_core::ids::DocumentId,
+        offset: usize,
+        limit: usize,
+    },
+    Diagrams {
+        document_id: processcraft_core::ids::DocumentId,
+        offset: usize,
+        limit: usize,
+    },
     Identities {
         document_id: processcraft_core::ids::DocumentId,
         offset: usize,
@@ -307,9 +317,21 @@ impl ServerHandler for Server {
                 let snapshot = state.session.snapshot();
                 let catalog_query = matches!(
                     &query,
-                    Query::Catalog { .. } | Query::Data { .. } | Query::Identities { .. }
+                    Query::Catalog { .. }
+                        | Query::Data { .. }
+                        | Query::Identities { .. }
+                        | Query::Events { .. }
+                        | Query::Diagrams { .. }
                 );
                 let (items, offset, limit) = match query {
+                    Query::Events { document_id, offset, limit } => (
+                        processcraft_core::queries::event_fields(&snapshot.project, document_id)
+                            .ok_or_else(|| ErrorData::invalid_params("document not found", None))?
+                            .into_iter().map(|row| json!(row)).collect(), offset, limit),
+                    Query::Diagrams { document_id, offset, limit } => (
+                        processcraft_core::queries::diagram_fields(&snapshot.project, document_id)
+                            .ok_or_else(|| ErrorData::invalid_params("document not found", None))?
+                            .into_iter().map(|row| json!(row)).collect(), offset, limit),
                     Query::Identities { document_id, offset, limit } => (
                         processcraft_core::queries::identified_elements(&snapshot.project, document_id)
                             .ok_or_else(|| ErrorData::invalid_params("document not found", None))?

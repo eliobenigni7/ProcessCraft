@@ -64,6 +64,8 @@ fn fixture(docs: usize, nodes: usize, active: usize, resource: usize) -> Project
             });
             if j == 0 && i < active {
                 shapes.push(Shape {
+                    is_horizontal: None,
+                    is_marker_visible: None,
                     is_expanded: None,
                     id: id(&format!("shape_{i}")),
                     element: id(&key),
