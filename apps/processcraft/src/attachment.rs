@@ -97,6 +97,11 @@ enum ExportKind {
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
 enum Query {
+    Data {
+        document_id: processcraft_core::ids::DocumentId,
+        offset: usize,
+        limit: usize,
+    },
     Catalog {
         document_id: processcraft_core::ids::DocumentId,
         offset: usize,
@@ -486,8 +491,14 @@ impl Attachment {
                     Err(e) => return json!({"ok":false,"error":e.to_string()}),
                 };
                 let snapshot = controller.session.snapshot();
-                let catalog_query = matches!(&q, Query::Catalog { .. });
+                let catalog_query = matches!(&q, Query::Catalog { .. } | Query::Data { .. });
                 let (items, offset, limit): (Vec<Value>, usize, usize) = match q {
+                    Query::Data { document_id, offset, limit } => {
+                        let Some(rows) = processcraft_core::queries::data_fields(&snapshot.project, document_id) else {
+                            return json!({"ok":false,"error":"document not found"});
+                        };
+                        (rows.into_iter().map(|row| json!(row)).collect(), offset, limit)
+                    },
                     Query::Catalog { document_id, offset, limit } => {
                         let Some(rows) = processcraft_core::queries::supporting_catalog_fields(&snapshot.project, document_id) else {
                             return json!({"ok":false,"error":"document not found"});

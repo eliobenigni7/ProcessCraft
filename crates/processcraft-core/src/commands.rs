@@ -19,6 +19,30 @@ pub struct Envelope {
 #[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
 #[allow(clippy::large_enum_variant)]
 pub enum Mutation {
+    SetNodeItemAware {
+        document_id: DocumentId,
+        element_id: XmlId,
+        item_aware: Option<crate::bpmn_data::ItemAwareMetadata>,
+    },
+    SetProcessIoSpecification {
+        document_id: DocumentId,
+        process_id: XmlId,
+        io_specification: Option<crate::bpmn_data::IoSpecification>,
+    },
+    SetDataStores {
+        document_id: DocumentId,
+        data_stores: Vec<crate::bpmn_data::DataStore>,
+    },
+    SetScopeDataObjects {
+        document_id: DocumentId,
+        scope_id: XmlId,
+        data_objects: Vec<crate::bpmn_data::DataObject>,
+    },
+    SetScopeDataAssociations {
+        document_id: DocumentId,
+        scope_id: XmlId,
+        data_associations: Vec<crate::bpmn_data::DataAssociation>,
+    },
     SetSupportingCatalog {
         document_id: DocumentId,
         catalog: crate::bpmn_catalog::SupportingCatalog,
@@ -813,7 +837,12 @@ fn nested_flow_mut<'a>(nodes: &'a mut [Node], id: &XmlId, depth: usize) -> Optio
 fn collect_node_ids(node: &Node, ids: &mut std::collections::HashSet<XmlId>, depth: usize) {
     ids.insert(node.id.clone());
     if let Some(io) = &node.io_specification {
-        ids.extend(io.inputs.iter().chain(&io.outputs).map(|p| p.id.clone()));
+        ids.extend(
+            io.inputs
+                .iter()
+                .chain(&io.outputs)
+                .filter_map(|p| p.id.clone()),
+        );
     }
     if depth >= 32 {
         return;
@@ -834,8 +863,13 @@ fn collect_node_ids(node: &Node, ids: &mut std::collections::HashSet<XmlId>, dep
                 .iter()
                 .filter_map(|lane| lane.child_lane_set_id.clone()),
         );
-        ids.extend(content.data_objects.iter().map(|o| o.id.clone()));
-        ids.extend(content.data_associations.iter().map(|a| a.id.clone()));
+        ids.extend(content.data_objects.iter().filter_map(|o| o.id.clone()));
+        ids.extend(
+            content
+                .data_associations
+                .iter()
+                .filter_map(|a| a.id.clone()),
+        );
     }
 }
 fn delete_nested(
@@ -968,6 +1002,37 @@ fn diagram<'a>(d: &'a mut BpmnDocument, id: &XmlId) -> Result<&'a mut Diagram, C
 }
 fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
     match m {
+        Mutation::SetNodeItemAware {
+            document_id,
+            element_id,
+            item_aware,
+        } => node_mut(doc(p, document_id, true)?, &element_id)?.item_aware = item_aware,
+        Mutation::SetProcessIoSpecification {
+            document_id,
+            process_id,
+            io_specification,
+        } => {
+            let process = doc(p, document_id, true)?
+                .processes
+                .iter_mut()
+                .find(|p| p.id == process_id)
+                .ok_or_else(|| invalid("process not found"))?;
+            process.io_specification = io_specification;
+        }
+        Mutation::SetDataStores {
+            document_id,
+            data_stores,
+        } => doc(p, document_id, true)?.data_stores = data_stores,
+        Mutation::SetScopeDataObjects {
+            document_id,
+            scope_id,
+            data_objects,
+        } => *data_parts_mut(doc(p, document_id, true)?, &scope_id)?.0 = data_objects,
+        Mutation::SetScopeDataAssociations {
+            document_id,
+            scope_id,
+            data_associations,
+        } => *data_parts_mut(doc(p, document_id, true)?, &scope_id)?.1 = data_associations,
         Mutation::SetSupportingCatalog {
             document_id,
             catalog,
@@ -1139,6 +1204,9 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             document_id,
             data_store,
         } => {
+            if data_store.id.is_none() {
+                return Err(invalid("Use SetDataStores for a store without an ID"));
+            }
             let d = doc(p, document_id, true)?;
             let index = d
                 .data_stores
@@ -1155,7 +1223,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             let index = d
                 .data_stores
                 .iter()
-                .position(|v| v.id == data_store_id)
+                .position(|v| v.id.as_ref() == Some(&data_store_id))
                 .ok_or_else(|| invalid("data store not found"))?;
             d.data_stores.remove(index);
         }
@@ -1171,6 +1239,11 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             scope_id,
             data_object,
         } => {
+            if data_object.id.is_none() {
+                return Err(invalid(
+                    "Use SetScopeDataObjects for an object without an ID",
+                ));
+            }
             let items = data_parts_mut(doc(p, document_id, true)?, &scope_id)?.0;
             let index = items
                 .iter()
@@ -1186,7 +1259,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             let items = data_parts_mut(doc(p, document_id, true)?, &scope_id)?.0;
             let index = items
                 .iter()
-                .position(|v| v.id == data_object_id)
+                .position(|v| v.id.as_ref() == Some(&data_object_id))
                 .ok_or_else(|| invalid("data object not found"))?;
             items.remove(index);
         }
@@ -1202,6 +1275,11 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             scope_id,
             association,
         } => {
+            if association.id.is_none() {
+                return Err(invalid(
+                    "Use SetScopeDataAssociations for an association without an ID",
+                ));
+            }
             let items = data_parts_mut(doc(p, document_id, true)?, &scope_id)?.1;
             let index = items
                 .iter()
@@ -1217,7 +1295,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             let items = data_parts_mut(doc(p, document_id, true)?, &scope_id)?.1;
             let index = items
                 .iter()
-                .position(|v| v.id == association_id)
+                .position(|v| v.id.as_ref() == Some(&association_id))
                 .ok_or_else(|| invalid("data association not found"))?;
             items.remove(index);
         }
@@ -1830,6 +1908,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                 != metadata.target_namespace.as_str();
             if namespace_changed
                 && (d.catalog.has_qname_refs()
+                    || d.has_data_qname_refs()
                     || d.processes
                         .iter()
                         .any(|p| has_qualified_references(&p.nodes))
@@ -2078,6 +2157,11 @@ pub struct CommandParam {
 }
 macro_rules! descriptor { ($id:literal,$label:literal $(,$name:literal:$ty:literal)* $(,)?) => { CommandDescriptor { id: $id, serde_tag: $id, label: $label, params: &[$(CommandParam {name:$name,value_type:$ty,required:true}),*] } }; }
 static COMMAND_DESCRIPTORS: &[CommandDescriptor] = &[
+    descriptor!("setNodeItemAware", "Set data reference metadata", "document_id":"DocumentId", "element_id":"XmlId", "item_aware":"ItemAwareMetadata|null"),
+    descriptor!("setProcessIoSpecification", "Set process I/O specification", "document_id":"DocumentId", "process_id":"XmlId", "io_specification":"IoSpecification|null"),
+    descriptor!("setDataStores", "Set data stores", "document_id":"DocumentId", "data_stores":"DataStore[]"),
+    descriptor!("setScopeDataObjects", "Set scope data objects", "document_id":"DocumentId", "scope_id":"XmlId", "data_objects":"DataObject[]"),
+    descriptor!("setScopeDataAssociations", "Set scope data associations", "document_id":"DocumentId", "scope_id":"XmlId", "data_associations":"DataAssociation[]"),
     descriptor!("setSupportingCatalog", "Set supporting BPMN catalog", "document_id":"DocumentId", "catalog":"SupportingCatalog"),
     descriptor!("setDefinitionsMetadata", "Set definitions metadata", "document_id":"DocumentId", "metadata":"DefinitionsMetadata"),
     descriptor!("setActivityProperties", "Set activity properties", "document_id":"DocumentId", "element_id":"XmlId", "activity":"ActivityProperties|null"),

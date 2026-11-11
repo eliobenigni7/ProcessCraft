@@ -5,6 +5,7 @@ fn id(s: &str) -> XmlId {
 }
 fn node(name: &str, kind: NodeKind, label: &str) -> Node {
     Node {
+        item_aware: None,
         activity: None,
         io_specification: None,
         loop_characteristics: None,
@@ -22,6 +23,7 @@ fn incomplete_process_is_valid_but_diagnostics_are_anchored() {
     let mut p = ProjectData::new("p".into());
     let mut d = BpmnDocument::new("d".into(), id("defs"));
     d.processes.push(Process {
+        io_specification: None,
         lane_set_id: None,
         groups: vec![],
         data_objects: vec![],
@@ -65,6 +67,7 @@ fn complete_connected_process_has_no_incomplete_warnings() {
         condition: None,
     };
     d.processes.push(Process {
+        io_specification: None,
         lane_set_id: None,
         groups: vec![],
         data_objects: vec![],
@@ -119,6 +122,7 @@ fn nested_gateway_diagnostics_are_advisory_and_anchored() {
     });
     let mut doc = BpmnDocument::new("d".into(), id("defs"));
     doc.processes.push(Process {
+        io_specification: None,
         lane_set_id: None,
         groups: vec![],
         data_objects: vec![],
@@ -160,6 +164,7 @@ fn activity_conditions_are_allowed_but_event_gateway_conditions_are_diagnosed() 
     };
     let mut doc = BpmnDocument::new("d".into(), id("defs"));
     doc.processes.push(Process {
+        io_specification: None,
         lane_set_id: None,
         groups: vec![],
         data_objects: vec![],

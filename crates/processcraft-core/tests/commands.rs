@@ -329,6 +329,115 @@ fn supporting_catalog_validates_references_and_undoes_atomically() {
     assert_eq!(s.snapshot().content_id, after);
 }
 #[test]
+fn expanded_data_preserves_omissions_and_validates_transformation() {
+    use processcraft_core::{
+        bpmn_data::*,
+        bpmn_model::{Expression, ExpressionData, ExpressionKind},
+    };
+    let mut s = project();
+    fixture(&mut s);
+    let object = DataObject {
+        id: None,
+        name: None,
+        is_collection: None,
+        item_aware: Some(ItemAwareMetadata {
+            item_subject_ref: None,
+            data_state: Some(DataState {
+                id: Some(id("state1")),
+                name: None,
+            }),
+        }),
+    };
+    let before = s.snapshot().content_id;
+    apply(
+        &mut s,
+        batch(vec![Mutation::SetScopeDataObjects {
+            document_id: docid(),
+            scope_id: id("procurement"),
+            data_objects: vec![object.clone()],
+        }]),
+    )
+    .unwrap();
+    let after = s.snapshot().content_id;
+    assert!(s.snapshot().project.documents[0].has_expanded_data());
+    let mut duplicate = object;
+    duplicate
+        .item_aware
+        .as_mut()
+        .unwrap()
+        .data_state
+        .as_mut()
+        .unwrap()
+        .id = Some(id("review"));
+    assert!(
+        apply(
+            &mut s,
+            batch(vec![Mutation::SetScopeDataObjects {
+                document_id: docid(),
+                scope_id: id("procurement"),
+                data_objects: vec![duplicate]
+            }])
+        )
+        .is_err()
+    );
+    assert_eq!(s.snapshot().content_id, after);
+    apply(&mut s, Request::Undo).unwrap();
+    assert_eq!(s.snapshot().content_id, before);
+    apply(&mut s, Request::Redo).unwrap();
+    assert_eq!(s.snapshot().content_id, after);
+    let formal = Expression::Structured(ExpressionData {
+        id: None,
+        kind: ExpressionKind::Formal {
+            explicit_type: false,
+            language: None,
+            evaluates_to_type_ref: None,
+        },
+        text: "x".into(),
+        namespaces: vec![(
+            "bpmn".into(),
+            "http://www.omg.org/spec/BPMN/20100524/MODEL".into(),
+        )],
+    });
+    let io = IoSpecification {
+        id: None,
+        inputs: vec![DataPort {
+            id: Some(id("port1")),
+            name: None,
+            item_aware: None,
+            is_collection: None,
+        }],
+        outputs: vec![],
+        input_sets: vec![],
+        output_sets: vec![],
+    };
+    let association = DataAssociation {
+        id: None,
+        owner: id("review"),
+        kind: DataAssociationKind::Input,
+        sources: vec![],
+        target: id("port1"),
+        transformation: Some(formal),
+        assignments: vec![],
+    };
+    apply(
+        &mut s,
+        batch(vec![
+            Mutation::SetNodeIoSpecification {
+                document_id: docid(),
+                element_id: id("review"),
+                io_specification: Some(io),
+            },
+            Mutation::SetScopeDataAssociations {
+                document_id: docid(),
+                scope_id: id("procurement"),
+                data_associations: vec![association],
+            },
+        ]),
+    )
+    .unwrap();
+    assert!(s.snapshot().project.documents[0].has_structured_expressions());
+}
+#[test]
 fn activity_bindings_validate_new_local_refs_and_preserve_legacy() {
     use processcraft_core::{
         bpmn_activity::ActivityProperties,
@@ -361,6 +470,7 @@ fn activity_bindings_validate_new_local_refs_and_preserve_legacy() {
         }],
     });
     let node = Node {
+        item_aware: None,
         id: id("send"),
         name: String::new(),
         documentation: String::new(),
@@ -654,6 +764,7 @@ fn link_and_compensation_events_validate_atomically() {
     let mut s = project();
     fixture(&mut s);
     let node = |name: &str, kind, definition| Node {
+        item_aware: None,
         id: id(name),
         name: String::new(),
         documentation: String::new(),
@@ -736,6 +847,7 @@ fn definitions_namespace_change_rejects_existing_qualified_references() {
         imports: vec![],
     };
     let node = Node {
+        item_aware: None,
         id: id("call"),
         name: String::new(),
         documentation: String::new(),
@@ -1018,6 +1130,7 @@ fn retained_extensions_allow_labels_but_reject_structural_changes() {
         extensions: vec![],
     };
     d.processes.push(Process {
+        io_specification: None,
         lane_set_id: None,
         groups: vec![],
         data_objects: vec![],
@@ -1221,6 +1334,11 @@ fn flow_condition_changes_identity_and_protected_document_rejects_it() {
 fn descriptors_match_protocol_tags() {
     let descriptors = processcraft_core::commands::command_descriptors();
     let expected = [
+        "setNodeItemAware",
+        "setProcessIoSpecification",
+        "setDataStores",
+        "setScopeDataObjects",
+        "setScopeDataAssociations",
         "setSupportingCatalog",
         "setDefinitionsMetadata",
         "setActivityProperties",

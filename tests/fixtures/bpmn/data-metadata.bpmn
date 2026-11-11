@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:tns="urn:data-metadata" xmlns:ext="urn:types" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:b="http://www.omg.org/spec/BPMN/20100524/MODEL" id="defs" targetNamespace="urn:data-metadata">
+  <itemDefinition id="item"/>
+  <dataStore id="store" name="Archive" itemSubjectRef="ext:RemoteType" isUnlimited="true"><dataState id="storeState" name="stored"/></dataStore>
+  <process id="process" isExecutable="false">
+    <dataObject id="object" name="Invoice" itemSubjectRef="tns:item" isCollection="false"><dataState id="objectState" name="draft"/></dataObject>
+    <dataObjectReference name="Invoice reference" id="reference" dataObjectRef="object" itemSubjectRef="tns:item"><dataState name="open"/></dataObjectReference>
+    <dataStoreReference name="Archive reference" id="storeRef" dataStoreRef="tns:store" itemSubjectRef="ext:RemoteType"><dataState name="ready"/></dataStoreReference>
+    <task id="work"><ioSpecification id="io"><dataInput id="input" itemSubjectRef="tns:item" isCollection="false"><dataState name="new"/></dataInput><dataOutput id="output" itemSubjectRef="ext:RemoteType" isCollection="true"/><inputSet id="inSet"><dataInputRefs>input</dataInputRefs></inputSet><outputSet id="outSet"><dataOutputRefs>output</dataOutputRefs></outputSet></ioSpecification><dataInputAssociation id="association"><sourceRef>reference</sourceRef><targetRef>input</targetRef><transformation id="transform" language="urn:expression">ext:value</transformation><assignment id="assignment"><from id="fromExpr">ext:source</from><to id="toExpr" xsi:type="b:tFormalExpression" language="urn:expression">ext:target</to></assignment></dataInputAssociation></task>
+  </process>
+</definitions>

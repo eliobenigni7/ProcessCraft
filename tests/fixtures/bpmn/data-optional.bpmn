@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" id="defs" targetNamespace="urn:data-optional">
+  <dataStore/>
+  <process id="process" isExecutable="false">
+    <ioSpecification><dataInput/><inputSet/><outputSet/></ioSpecification>
+    <dataObject/>
+    <task id="work"><ioSpecification><dataInput id="input"/><dataInput/><inputSet/><outputSet/></ioSpecification><dataInputAssociation><targetRef>input</targetRef><assignment><from>one</from><to>two</to></assignment></dataInputAssociation></task>
+  </process>
+</definitions>

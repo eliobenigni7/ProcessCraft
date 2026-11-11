@@ -67,6 +67,61 @@ fn definitions_text(s: &str) -> Result<(), String> {
     }
     Ok(())
 }
+fn validate_io<'a>(
+    io: &'a crate::bpmn_data::IoSpecification,
+    ids: &mut HashSet<&'a XmlId>,
+    shape_ids: &mut HashSet<&'a XmlId>,
+    element_scope: &mut HashMap<&'a XmlId, &'a XmlId>,
+    scope_id: &'a XmlId,
+) -> Result<(), String> {
+    if let Some(id) = &io.id {
+        add(ids, id)?;
+    }
+    for port in io.inputs.iter().chain(&io.outputs) {
+        if let Some(id) = &port.id {
+            add(ids, id)?;
+            shape_ids.insert(id);
+            element_scope.insert(id, scope_id);
+        }
+        if let Some(name) = &port.name {
+            short(name)?;
+        }
+    }
+    for (sets, ports, other) in [
+        (&io.input_sets, &io.inputs, &io.output_sets),
+        (&io.output_sets, &io.outputs, &io.input_sets),
+    ] {
+        for set in sets {
+            if let Some(id) = &set.id {
+                add(ids, id)?;
+            }
+            if let Some(name) = &set.name {
+                short(name)?;
+            }
+            for refs in [
+                &set.data_refs,
+                &set.optional_refs,
+                &set.while_executing_refs,
+            ] {
+                let mut unique = HashSet::new();
+                if refs.iter().any(|id| {
+                    !unique.insert(id) || !ports.iter().any(|p| p.id.as_ref() == Some(id))
+                }) {
+                    return fail("invalid I/O set port reference");
+                }
+            }
+            let mut unique = HashSet::new();
+            if set
+                .counterpart_refs
+                .iter()
+                .any(|id| !unique.insert(id) || !other.iter().any(|s| s.id.as_ref() == Some(id)))
+            {
+                return fail("invalid I/O set reference");
+            }
+        }
+    }
+    Ok(())
+}
 impl ProjectData {
     pub fn validate(&self) -> Result<(), String> {
         short(&self.name)?;
@@ -348,6 +403,53 @@ fn normalize(v: &mut Value) {
 pub(crate) fn semantic_ids(d: &BpmnDocument) -> HashSet<&XmlId> {
     let mut s = HashSet::new();
     s.insert(&d.definitions_id);
+    let mut metadata = Vec::new();
+    for store in &d.data_stores {
+        metadata.extend(store.item_aware.iter());
+    }
+    for process in &d.processes {
+        if let Some(io) = &process.io_specification {
+            if let Some(id) = &io.id {
+                s.insert(id);
+            }
+            for set in io.input_sets.iter().chain(&io.output_sets) {
+                if let Some(id) = &set.id {
+                    s.insert(id);
+                }
+            }
+            for port in io.inputs.iter().chain(&io.outputs) {
+                if let Some(id) = &port.id {
+                    s.insert(id);
+                }
+                metadata.extend(port.item_aware.iter());
+            }
+        }
+    }
+    for scope in crate::queries::scopes(d) {
+        for object in scope.data_objects {
+            metadata.extend(object.item_aware.iter());
+        }
+        for association in scope.data_associations {
+            for assignment in &association.assignments {
+                if let Some(id) = &assignment.id {
+                    s.insert(id);
+                }
+            }
+        }
+        for node in scope.nodes {
+            metadata.extend(node.item_aware.iter());
+            if let Some(io) = &node.io_specification {
+                for port in io.inputs.iter().chain(&io.outputs) {
+                    metadata.extend(port.item_aware.iter());
+                }
+            }
+        }
+    }
+    for item in metadata {
+        if let Some(id) = item.data_state.as_ref().and_then(|state| state.id.as_ref()) {
+            s.insert(id);
+        }
+    }
     for item in &d.catalog.item_definitions {
         if let Some(id) = &item.id {
             s.insert(id);
@@ -387,7 +489,9 @@ pub(crate) fn semantic_ids(d: &BpmnDocument) -> HashSet<&XmlId> {
         }
     }
     for store in &d.data_stores {
-        s.insert(&store.id);
+        if let Some(id) = &store.id {
+            s.insert(id);
+        }
     }
     let mut pending: Vec<(&[Node], &[Lane], &[Flow])> = Vec::new();
     for p in &d.processes {
@@ -475,10 +579,14 @@ pub(crate) fn semantic_ids(d: &BpmnDocument) -> HashSet<&XmlId> {
         .collect();
     while let Some((nodes, objects, associations)) = data_pending.pop() {
         for o in objects {
-            s.insert(&o.id);
+            if let Some(id) = &o.id {
+                s.insert(id);
+            }
         }
         for a in associations {
-            s.insert(&a.id);
+            if let Some(id) = &a.id {
+                s.insert(id);
+            }
         }
         for node in nodes {
             if let Some(io) = &node.io_specification {
@@ -491,7 +599,9 @@ pub(crate) fn semantic_ids(d: &BpmnDocument) -> HashSet<&XmlId> {
                     }
                 }
                 for port in io.inputs.iter().chain(&io.outputs) {
-                    s.insert(&port.id);
+                    if let Some(id) = &port.id {
+                        s.insert(id);
+                    }
                 }
             }
             if let Some(crate::bpmn_model::NodeDetails::SubProcess { content }) = &node.details {
@@ -649,8 +759,108 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             }
         }
     }
+    let mut item_metadata: Vec<(&crate::bpmn_data::ItemAwareMetadata, Option<bool>)> = Vec::new();
+    for store in &d.data_stores {
+        if let Some(meta) = &store.item_aware {
+            item_metadata.push((meta, None));
+        }
+    }
+    for process in &d.processes {
+        if let Some(io) = &process.io_specification {
+            for port in io.inputs.iter().chain(&io.outputs) {
+                if let Some(meta) = &port.item_aware {
+                    item_metadata.push((meta, Some(port.is_collection.unwrap_or(false))));
+                }
+            }
+        }
+    }
+    for scope in crate::queries::scopes(d) {
+        for object in scope.data_objects {
+            if let Some(meta) = &object.item_aware {
+                item_metadata.push((meta, Some(object.is_collection.unwrap_or(false))));
+            }
+        }
+        for association in scope.data_associations {
+            if association.assignments.len() > 256 {
+                return fail("Data assignment limit exceeded");
+            }
+            for assignment in &association.assignments {
+                if let Some(id) = &assignment.id {
+                    add(&mut ids, id)?;
+                }
+            }
+        }
+        for node in scope.nodes {
+            if let Some(meta) = &node.item_aware {
+                if !matches!(
+                    node.kind,
+                    NodeKind::DataObjectReference | NodeKind::DataStoreReference
+                ) {
+                    return fail("Item-aware metadata requires a data reference");
+                }
+                item_metadata.push((meta, None));
+            }
+            if let Some(io) = &node.io_specification {
+                for port in io.inputs.iter().chain(&io.outputs) {
+                    if let Some(meta) = &port.item_aware {
+                        item_metadata.push((meta, Some(port.is_collection.unwrap_or(false))));
+                    }
+                }
+            }
+        }
+    }
+    for (metadata, collection) in item_metadata {
+        if let Some(state) = &metadata.data_state {
+            if let Some(id) = &state.id {
+                add(&mut ids, id)?;
+            }
+            if let Some(name) = &state.name {
+                definitions_text(name)?;
+            }
+        }
+        if let Some(reference) = &metadata.item_subject_ref {
+            check_qname(reference)?;
+            if local(reference) {
+                let Some(item) = catalog
+                    .item_definitions
+                    .iter()
+                    .find(|item| item.id.as_ref() == Some(&reference.local))
+                else {
+                    return fail("Missing local item definition");
+                };
+                if let Some(value) = collection
+                    && value != item.is_collection.unwrap_or(false)
+                {
+                    return fail("Collection status differs from item definition");
+                }
+            }
+        }
+    }
+    let transformations: Vec<_> = crate::queries::scopes(d)
+        .into_iter()
+        .flat_map(|scope| {
+            scope
+                .data_associations
+                .iter()
+                .filter_map(|association| association.transformation.as_ref())
+        })
+        .collect();
     for expression in d.expressions() {
         use crate::bpmn_model::{Expression, ExpressionKind};
+        let transformation = transformations
+            .iter()
+            .any(|candidate| std::ptr::eq(*candidate, expression));
+        if transformation
+            && !matches!(
+                expression,
+                Expression::Structured(crate::bpmn_model::ExpressionData {
+                    kind: ExpressionKind::Formal { .. },
+                    ..
+                })
+            )
+        {
+            return fail("Data transformation requires a formal expression");
+        }
         if let Expression::Structured(data) = expression {
             if let Some(id) = &data.id {
                 add(&mut ids, id)?;
@@ -698,7 +908,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                 ..
             } = &data.kind
             {
-                if !explicit_type {
+                if !explicit_type && !transformation {
                     return fail(
                         "Formal expression requires an explicit xsi:type in this editable profile",
                     );
@@ -788,8 +998,12 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
         }
     }
     for store in &d.data_stores {
-        add(&mut ids, &store.id)?;
-        short(&store.name)?;
+        if let Some(id) = &store.id {
+            add(&mut ids, id)?;
+        }
+        if let Some(name) = &store.name {
+            short(name)?;
+        }
         if let Some(capacity) = &store.capacity {
             let digits = capacity.strip_prefix(['+', '-']).unwrap_or(capacity);
             if capacity.len() > 16_384
@@ -803,6 +1017,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
     // Each subprocess node owns a distinct flow scope. Iterative traversal bounds depth.
     struct Scope<'a> {
         id: &'a XmlId,
+        parent: Option<&'a XmlId>,
         nodes: &'a [Node],
         lanes: &'a [Lane],
         flows: &'a [Flow],
@@ -819,6 +1034,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             (
                 Scope {
                     id: &p.id,
+                    parent: None,
                     nodes: &p.nodes,
                     lanes: &p.lanes,
                     flows: &p.flows,
@@ -847,6 +1063,12 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             return fail("document element limit exceeded");
         }
         for n in scope.nodes {
+            if let Some(crate::bpmn_model::NodeDetails::DataStoreReference {
+                data_store_ref: Some(crate::bpmn_data::DataStoreRef::Qualified(reference)),
+            }) = &n.details
+            {
+                check_qname(reference)?;
+            }
             match (&n.kind, &n.details) {
                 (
                     NodeKind::SubProcess | NodeKind::AdHocSubProcess | NodeKind::Transaction,
@@ -854,6 +1076,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                 ) => pending.push((
                     Scope {
                         id: &n.id,
+                        parent: Some(scope.id),
                         nodes: &content.nodes,
                         lanes: &content.lanes,
                         flows: &content.flows,
@@ -878,15 +1101,40 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                 (
                     NodeKind::DataObjectReference,
                     Some(crate::bpmn_model::NodeDetails::DataObjectReference { data_object_ref }),
-                ) if data_object_ref
-                    .as_ref()
-                    .is_none_or(|id| scope.objects.iter().any(|o| &o.id == id)) => {}
+                ) if data_object_ref.as_ref().is_none_or(|id| {
+                    if scope.objects.iter().any(|o| o.id.as_ref() == Some(id)) {
+                        return true;
+                    }
+                    let mut parent = scope.parent;
+                    while let Some(scope_id) = parent {
+                        let Some(ancestor) =
+                            scopes.iter().find(|candidate| candidate.id == scope_id)
+                        else {
+                            break;
+                        };
+                        if ancestor.objects.iter().any(|o| o.id.as_ref() == Some(id)) {
+                            return true;
+                        }
+                        parent = ancestor.parent;
+                    }
+                    false
+                }) => {}
                 (
                     NodeKind::DataStoreReference,
                     Some(crate::bpmn_model::NodeDetails::DataStoreReference { data_store_ref }),
                 ) if data_store_ref
                     .as_ref()
-                    .is_none_or(|id| d.data_stores.iter().any(|o| &o.id == id)) => {}
+                    .is_none_or(|reference| match reference {
+                        crate::bpmn_data::DataStoreRef::Legacy(id) => {
+                            d.data_stores.iter().any(|o| o.id.as_ref() == Some(id))
+                        }
+                        crate::bpmn_data::DataStoreRef::Qualified(name) => {
+                            !local(name)
+                                || d.data_stores
+                                    .iter()
+                                    .any(|o| o.id.as_ref() == Some(&name.local))
+                        }
+                    }) => {}
                 (
                     NodeKind::ExclusiveGateway
                     | NodeKind::InclusiveGateway
@@ -968,10 +1216,25 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
     let mut shape_ids = HashSet::new();
     let mut group_ids = HashSet::new();
     let mut element_scope = HashMap::new();
+    for store in &d.data_stores {
+        if let Some(id) = &store.id {
+            shape_ids.insert(id);
+        }
+    }
     for process in &d.processes {
         add(&mut ids, &process.id)?;
         short(&process.name)?;
+        if let Some(io) = &process.io_specification {
+            validate_io(
+                io,
+                &mut ids,
+                &mut shape_ids,
+                &mut element_scope,
+                &process.id,
+            )?;
+        }
     }
+    let scopes_by_id: HashMap<_, _> = scopes.iter().map(|scope| (scope.id, scope)).collect();
     for p in &scopes {
         if let Some(id) = p.lane_set_id {
             add(&mut ids, id)?;
@@ -991,13 +1254,23 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             }
         }
         for object in p.objects {
-            add(&mut ids, &object.id)?;
-            short(&object.name)?;
+            if let Some(id) = &object.id {
+                add(&mut ids, id)?;
+                shape_ids.insert(id);
+                element_scope.insert(id, p.id);
+            }
+            if let Some(name) = &object.name {
+                short(name)?;
+            }
         }
         for association in p.associations {
-            add(&mut ids, &association.id)?;
-            flow_ids.insert(&association.id);
-            element_scope.insert(&association.id, p.id);
+            if let Some(id) = &association.id {
+                add(&mut ids, id)?;
+            }
+            if let Some(id) = &association.id {
+                flow_ids.insert(id);
+                element_scope.insert(id, p.id);
+            }
         }
         for n in p.nodes {
             add(&mut ids, &n.id)?;
@@ -1005,45 +1278,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                 if !n.kind.is_activity() {
                     return fail("I/O specification requires activity");
                 }
-                for port in io.inputs.iter().chain(&io.outputs) {
-                    add(&mut ids, &port.id)?;
-                    short(&port.name)?;
-                }
-                if let Some(id) = &io.id {
-                    add(&mut ids, id)?;
-                }
-                for (sets, ports, other) in [
-                    (&io.input_sets, &io.inputs, &io.output_sets),
-                    (&io.output_sets, &io.outputs, &io.input_sets),
-                ] {
-                    for set in sets {
-                        if let Some(id) = &set.id {
-                            add(&mut ids, id)?;
-                        }
-                        if let Some(name) = &set.name {
-                            short(name)?;
-                        }
-                        for refs in [
-                            &set.data_refs,
-                            &set.optional_refs,
-                            &set.while_executing_refs,
-                        ] {
-                            let mut unique = HashSet::new();
-                            if refs
-                                .iter()
-                                .any(|id| !unique.insert(id) || !ports.iter().any(|p| &p.id == id))
-                            {
-                                return fail("invalid I/O set port reference");
-                            }
-                        }
-                        let mut unique = HashSet::new();
-                        if set.counterpart_refs.iter().any(|id| {
-                            !unique.insert(id) || !other.iter().any(|s| s.id.as_ref() == Some(id))
-                        }) {
-                            return fail("invalid I/O set reference");
-                        }
-                    }
-                }
+                validate_io(io, &mut ids, &mut shape_ids, &mut element_scope, p.id)?;
             }
             short(&n.name)?;
             if let Some(activity) = &n.activity {
@@ -1638,33 +1873,62 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             let Some(io) = &owner.io_specification else {
                 return fail("data association requires activity ports");
             };
-            let local = |id: &XmlId| {
-                p.objects.iter().any(|o| &o.id == id)
-                    || p.nodes.iter().any(|n| {
-                        &n.id == id
-                            && matches!(
-                                n.kind,
-                                NodeKind::DataObjectReference | NodeKind::DataStoreReference
-                            )
-                    })
+            let local = |id: &XmlId, input_source: bool| {
+                if d.data_stores
+                    .iter()
+                    .any(|store| store.id.as_ref() == Some(id))
+                {
+                    return true;
+                }
+                let mut current = Some(p.id);
+                while let Some(scope_id) = current {
+                    let Some(scope) = scopes_by_id.get(scope_id) else {
+                        break;
+                    };
+                    if scope.objects.iter().any(|o| o.id.as_ref() == Some(id))
+                        || scope.nodes.iter().any(|n| {
+                            &n.id == id
+                                && matches!(
+                                    n.kind,
+                                    NodeKind::DataObjectReference | NodeKind::DataStoreReference
+                                )
+                        })
+                        || d.processes
+                            .iter()
+                            .find(|process| &process.id == scope_id)
+                            .and_then(|process| process.io_specification.as_ref())
+                            .is_some_and(|io| {
+                                let ports = if input_source {
+                                    &io.inputs
+                                } else {
+                                    &io.outputs
+                                };
+                                ports.iter().any(|port| port.id.as_ref() == Some(id))
+                            })
+                    {
+                        return true;
+                    }
+                    current = scope.parent;
+                }
+                false
             };
             let mut unique = HashSet::new();
-            if association.sources.is_empty()
-                || association.sources.iter().any(|id| !unique.insert(id))
-            {
+            if association.sources.iter().any(|id| !unique.insert(id)) {
                 return fail("invalid data association sources");
             }
             let valid = match association.kind {
                 DataAssociationKind::Input => {
-                    io.inputs.iter().any(|port| port.id == association.target)
-                        && association.sources.iter().all(local)
+                    io.inputs
+                        .iter()
+                        .any(|port| port.id.as_ref() == Some(&association.target))
+                        && association.sources.iter().all(|id| local(id, true))
                 }
                 DataAssociationKind::Output => {
-                    local(&association.target)
+                    local(&association.target, false)
                         && association
                             .sources
                             .iter()
-                            .all(|id| io.outputs.iter().any(|port| &port.id == id))
+                            .all(|id| io.outputs.iter().any(|port| port.id.as_ref() == Some(id)))
                 }
             };
             if !valid {
@@ -1771,7 +2035,12 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
         }
         for s in &diagram.shapes {
             add(&mut ids, &s.id)?;
-            if !contained.is_empty()
+            let global_store = d
+                .data_stores
+                .iter()
+                .any(|store| store.id.as_ref() == Some(&s.element));
+            if !global_store
+                && !contained.is_empty()
                 && !element_scope
                     .get(&s.element)
                     .is_some_and(|scope| contained.contains(scope))

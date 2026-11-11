@@ -18,6 +18,7 @@ pub fn id(prefix: &str) -> XmlId {
 pub fn blank_document() -> BpmnDocument {
     let mut d = BpmnDocument::new("Untitled process".into(), id("Definitions"));
     let process = Process {
+        io_specification: None,
         lane_set_id: None,
         groups: vec![],
         data_objects: vec![],

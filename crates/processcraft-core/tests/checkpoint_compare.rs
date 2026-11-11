@@ -69,6 +69,7 @@ fn comparison_separates_rename_properties_geometry_and_frozen_context() {
     let mut project = ProjectData::new("Analysis".into());
     let mut document = BpmnDocument::new("Model".into(), "Definitions".parse().unwrap());
     document.processes.push(Process {
+        io_specification: None,
         lane_set_id: None,
         groups: vec![],
         id: "Process".parse().unwrap(),
@@ -77,6 +78,7 @@ fn comparison_separates_rename_properties_geometry_and_frozen_context() {
         data_objects: vec![],
         data_associations: vec![],
         nodes: vec![Node {
+            item_aware: None,
             activity: None,
             id: "Task".parse().unwrap(),
             name: "Before".into(),

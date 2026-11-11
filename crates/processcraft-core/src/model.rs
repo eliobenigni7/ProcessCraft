@@ -207,6 +207,15 @@ impl BpmnDocument {
     pub fn expressions(&self) -> Vec<&crate::bpmn_model::Expression> {
         use crate::bpmn_model::{EventDefinition, LoopCharacteristics, NodeDetails};
         let mut result = Vec::new();
+        for scope in crate::queries::scopes(self) {
+            for association in scope.data_associations {
+                result.extend(association.transformation.iter());
+                for assignment in &association.assignments {
+                    result.push(&assignment.from);
+                    result.push(&assignment.to);
+                }
+            }
+        }
         let mut pending: Vec<(&[Node], &[Flow])> = self
             .processes
             .iter()
@@ -274,6 +283,71 @@ impl BpmnDocument {
             .iter()
             .any(|e| matches!(e, crate::bpmn_model::Expression::Structured(_)))
     }
+    pub fn has_expanded_data(&self) -> bool {
+        use crate::bpmn_data::DataStoreRef;
+        self.data_stores
+            .iter()
+            .any(|s| s.id.is_none() || s.name.is_none() || s.item_aware.is_some())
+            || self.processes.iter().any(|p| p.io_specification.is_some())
+            || crate::queries::scopes(self).iter().any(|scope| {
+                scope
+                    .data_objects
+                    .iter()
+                    .any(|o| o.id.is_none() || o.name.is_none() || o.item_aware.is_some())
+                    || scope.data_associations.iter().any(|a| {
+                        a.id.is_none() || a.transformation.is_some() || !a.assignments.is_empty()
+                    })
+                    || scope.nodes.iter().any(|n| {
+                        n.item_aware.is_some()
+                            || matches!(
+                                &n.details,
+                                Some(crate::bpmn_model::NodeDetails::DataStoreReference {
+                                    data_store_ref: Some(DataStoreRef::Qualified(_))
+                                })
+                            )
+                            || n.io_specification.as_ref().is_some_and(|io| {
+                                io.inputs.iter().chain(&io.outputs).any(|p| {
+                                    p.id.is_none()
+                                        || p.name.is_none()
+                                        || p.item_aware.is_some()
+                                        || p.is_collection.is_some()
+                                })
+                            })
+                    })
+            })
+    }
+    pub fn has_data_qname_refs(&self) -> bool {
+        let has_ref = |meta: &Option<crate::bpmn_data::ItemAwareMetadata>| {
+            meta.as_ref().is_some_and(|m| m.item_subject_ref.is_some())
+        };
+        self.data_stores.iter().any(|s| has_ref(&s.item_aware))
+            || self.processes.iter().any(|p| {
+                p.io_specification.as_ref().is_some_and(|io| {
+                    io.inputs
+                        .iter()
+                        .chain(&io.outputs)
+                        .any(|port| has_ref(&port.item_aware))
+                })
+            })
+            || crate::queries::scopes(self).iter().any(|scope| {
+                scope.data_objects.iter().any(|o| has_ref(&o.item_aware))
+                    || scope.nodes.iter().any(|n| {
+                        has_ref(&n.item_aware)
+                            || matches!(
+                                &n.details,
+                                Some(crate::bpmn_model::NodeDetails::DataStoreReference {
+                                    data_store_ref: Some(_)
+                                })
+                            )
+                            || n.io_specification.as_ref().is_some_and(|io| {
+                                io.inputs
+                                    .iter()
+                                    .chain(&io.outputs)
+                                    .any(|port| has_ref(&port.item_aware))
+                            })
+                    })
+            })
+    }
 }
 /// Attributes of the BPMN definitions element. Optional fields preserve XML omission.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
@@ -331,6 +405,8 @@ impl Capability {
 #[serde(deny_unknown_fields)]
 pub struct Process {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub io_specification: Option<crate::bpmn_data::IoSpecification>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lane_set_id: Option<XmlId>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub groups: Vec<crate::bpmn_model::Group>,
@@ -364,6 +440,8 @@ pub struct FlowContainer {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Node {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub item_aware: Option<crate::bpmn_data::ItemAwareMetadata>,
     pub id: XmlId,
     pub name: String,
     pub documentation: String,

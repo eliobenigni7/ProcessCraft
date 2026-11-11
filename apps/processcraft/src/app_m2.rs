@@ -938,6 +938,7 @@ impl ProcessCraft {
             process_id: p.id.clone(),
             flow_id,
             node: Node {
+                item_aware: None,
                 activity: None,
                 io_specification: None,
                 loop_characteristics: None,
@@ -1285,6 +1286,7 @@ mod tests {
         let lane = controller::id("Lane");
         for id in [&node, &target] {
             p.nodes.push(Node {
+                item_aware: None,
                 activity: None,
                 io_specification: None,
                 loop_characteristics: None,

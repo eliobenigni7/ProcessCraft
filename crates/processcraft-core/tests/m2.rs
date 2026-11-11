@@ -26,6 +26,7 @@ fn fixture() -> (Session, ElementKey) {
     let mut p = ProjectData::new("p".into());
     let mut d = BpmnDocument::new("doc".into(), id("defs"));
     d.processes.push(Process {
+        io_specification: None,
         lane_set_id: None,
         groups: vec![],
         data_objects: vec![],
@@ -34,6 +35,7 @@ fn fixture() -> (Session, ElementKey) {
         name: String::new(),
         documentation: String::new(),
         nodes: vec![Node {
+            item_aware: None,
             details: None,
             loop_characteristics: None,
             io_specification: None,
@@ -268,6 +270,7 @@ fn splice_is_one_undo_and_rejects_branches() {
     let d = Arc::make_mut(&mut p.documents[0]);
     let pr = &mut d.processes[0];
     let node = |name: &str| Node {
+        item_aware: None,
         details: None,
         loop_characteristics: None,
         io_specification: None,
@@ -639,6 +642,7 @@ fn nested_scope_edits_and_cross_scope_flows_are_atomic() {
     let mut project = (*session.snapshot().project).clone();
     let doc = Arc::make_mut(&mut project.documents[0]);
     doc.processes[0].nodes.push(Node {
+        item_aware: None,
         id: id("sub"),
         name: "Sub".into(),
         documentation: String::new(),
@@ -650,6 +654,7 @@ fn nested_scope_edits_and_cross_scope_flows_are_atomic() {
                 data_objects: vec![],
                 data_associations: vec![],
                 nodes: vec![Node {
+                    item_aware: None,
                     id: id("inner"),
                     name: "Inside".into(),
                     documentation: String::new(),
@@ -1038,6 +1043,7 @@ fn typed_data_association_is_scoped_to_owner_ports_and_undoable() {
     use processcraft_core::bpmn_model::NodeDetails;
     let (mut session, key) = fixture();
     let reference = Node {
+        item_aware: None,
         id: id("data_ref"),
         name: "Order".into(),
         documentation: String::new(),
@@ -1052,7 +1058,9 @@ fn typed_data_association_is_scoped_to_owner_ports_and_undoable() {
         contact: String::new(),
     };
     let association = DataAssociation {
-        id: id("data_assoc"),
+        transformation: None,
+        assignments: vec![],
+        id: Some(id("data_assoc")),
         owner: key.xml_id.clone(),
         kind: DataAssociationKind::Input,
         sources: vec![id("data_ref")],
@@ -1065,8 +1073,9 @@ fn typed_data_association_is_scoped_to_owner_ports_and_undoable() {
                 document_id: key.document_id,
                 scope_id: id("process"),
                 data_object: DataObject {
-                    id: id("data_object"),
-                    name: "Order".into(),
+                    item_aware: None,
+                    id: Some(id("data_object")),
+                    name: Some("Order".into()),
                     is_collection: None,
                 },
             },
@@ -1086,8 +1095,10 @@ fn typed_data_association_is_scoped_to_owner_ports_and_undoable() {
                     }],
                     output_sets: vec![processcraft_core::bpmn_data::IoSet::default()],
                     inputs: vec![DataPort {
-                        id: id("input_port"),
-                        name: "Order".into(),
+                        item_aware: None,
+                        is_collection: None,
+                        id: Some(id("input_port")),
+                        name: Some("Order".into()),
                     }],
                     outputs: vec![],
                 }),
@@ -1102,7 +1113,7 @@ fn typed_data_association_is_scoped_to_owner_ports_and_undoable() {
     .unwrap();
     let before = session.snapshot().content_id;
     let mut invalid = association;
-    invalid.id = id("bad_data_assoc");
+    invalid.id = Some(id("bad_data_assoc"));
     invalid.target = id("activity");
     assert!(
         apply(
@@ -1136,6 +1147,202 @@ fn typed_data_association_is_scoped_to_owner_ports_and_undoable() {
             .data_associations
             .is_empty()
     );
+}
+
+#[test]
+fn nested_data_associations_resolve_ancestor_and_global_endpoints() {
+    use processcraft_core::{bpmn_data::*, bpmn_model::NodeDetails};
+    let (session, _) = fixture();
+    let mut project = (*session.snapshot().project).clone();
+    let doc = Arc::make_mut(&mut project.documents[0]);
+    doc.data_stores.push(DataStore {
+        id: Some(id("store")),
+        name: None,
+        capacity: None,
+        is_unlimited: None,
+        item_aware: None,
+    });
+    doc.diagrams.push(Diagram {
+        id: id("diagram"),
+        plane_id: id("plane"),
+        plane: id("process"),
+        shapes: vec![Shape {
+            id: id("store_shape"),
+            element: id("store"),
+            is_expanded: None,
+            bounds: Bounds {
+                x: 0.0,
+                y: 0.0,
+                width: 60.0,
+                height: 60.0,
+            },
+            label: None,
+            style: None,
+        }],
+        edges: vec![],
+    });
+    let port = |name: &str| DataPort {
+        id: Some(id(name)),
+        name: None,
+        is_collection: None,
+        item_aware: None,
+    };
+    let process = &mut doc.processes[0];
+    process.io_specification = Some(IoSpecification {
+        id: None,
+        inputs: vec![port("process_in")],
+        outputs: vec![port("process_out")],
+        input_sets: vec![],
+        output_sets: vec![],
+    });
+    process.data_objects.push(DataObject {
+        id: Some(id("outer_object")),
+        name: None,
+        is_collection: None,
+        item_aware: None,
+    });
+    let reference = Node {
+        id: id("outer_reference"),
+        name: String::new(),
+        documentation: String::new(),
+        kind: NodeKind::DataObjectReference,
+        details: Some(NodeDetails::DataObjectReference {
+            data_object_ref: Some(id("outer_object")),
+        }),
+        item_aware: None,
+        loop_characteristics: None,
+        io_specification: None,
+        activity: None,
+        owner: String::new(),
+        contact: String::new(),
+    };
+    process.nodes.push(reference);
+    let task = Node {
+        id: id("nested_task"),
+        name: String::new(),
+        documentation: String::new(),
+        kind: NodeKind::Task,
+        details: None,
+        item_aware: None,
+        loop_characteristics: None,
+        io_specification: Some(IoSpecification {
+            id: None,
+            inputs: vec![port("task_in")],
+            outputs: vec![port("task_out")],
+            input_sets: vec![],
+            output_sets: vec![],
+        }),
+        activity: None,
+        owner: String::new(),
+        contact: String::new(),
+    };
+    let assoc = |name: &str, kind, sources: Vec<&str>, target: &str| DataAssociation {
+        id: Some(id(name)),
+        owner: id("nested_task"),
+        kind,
+        sources: sources.into_iter().map(id).collect(),
+        target: id(target),
+        transformation: None,
+        assignments: vec![],
+    };
+    let sub = |name: &str, content| Node {
+        id: id(name),
+        name: String::new(),
+        documentation: String::new(),
+        kind: NodeKind::SubProcess,
+        details: Some(NodeDetails::SubProcess {
+            content: Box::new(content),
+        }),
+        item_aware: None,
+        loop_characteristics: None,
+        io_specification: None,
+        activity: None,
+        owner: String::new(),
+        contact: String::new(),
+    };
+    process.nodes.push(sub(
+        "sub_a",
+        FlowContainer {
+            lane_set_id: None,
+            groups: vec![],
+            data_objects: vec![],
+            nodes: vec![task],
+            lanes: vec![],
+            flows: vec![],
+            data_associations: vec![
+                assoc(
+                    "a1",
+                    DataAssociationKind::Input,
+                    vec!["outer_object"],
+                    "task_in",
+                ),
+                assoc(
+                    "a2",
+                    DataAssociationKind::Input,
+                    vec!["outer_reference"],
+                    "task_in",
+                ),
+                assoc(
+                    "a3",
+                    DataAssociationKind::Input,
+                    vec!["process_in"],
+                    "task_in",
+                ),
+                assoc("a4", DataAssociationKind::Input, vec!["store"], "task_in"),
+                assoc(
+                    "a5",
+                    DataAssociationKind::Output,
+                    vec!["task_out"],
+                    "process_out",
+                ),
+                assoc("a6", DataAssociationKind::Output, vec!["task_out"], "store"),
+            ],
+        },
+    ));
+    process.nodes.push(sub(
+        "sub_b",
+        FlowContainer {
+            lane_set_id: None,
+            groups: vec![],
+            data_objects: vec![DataObject {
+                id: Some(id("sibling_object")),
+                name: None,
+                is_collection: None,
+                item_aware: None,
+            }],
+            data_associations: vec![],
+            nodes: vec![],
+            lanes: vec![],
+            flows: vec![],
+        },
+    ));
+    project.validate().unwrap();
+    let mut invalid = project.clone();
+    let doc = Arc::make_mut(&mut invalid.documents[0]);
+    let Some(NodeDetails::SubProcess { content }) = &mut doc.processes[0]
+        .nodes
+        .iter_mut()
+        .find(|n| n.id == id("sub_a"))
+        .unwrap()
+        .details
+    else {
+        unreachable!()
+    };
+    content.data_associations[0].sources = vec![id("sibling_object")];
+    assert!(invalid.validate().is_err());
+    let mut invalid = project.clone();
+    let doc = Arc::make_mut(&mut invalid.documents[0]);
+    let Some(NodeDetails::SubProcess { content }) = &mut doc.processes[0]
+        .nodes
+        .iter_mut()
+        .find(|n| n.id == id("sub_a"))
+        .unwrap()
+        .details
+    else {
+        unreachable!()
+    };
+    content.data_associations[2].sources = vec![id("process_out")];
+    assert!(invalid.validate().is_err());
 }
 
 #[test]
@@ -1373,6 +1580,7 @@ fn descriptive_commands_validate_references_and_undo_atomically() {
     let (mut session, key) = fixture();
     let before = session.snapshot().content_id;
     let annotation = Node {
+        item_aware: None,
         id: id("note"),
         name: "Review note".into(),
         documentation: String::new(),
@@ -1555,6 +1763,7 @@ fn activity_properties_validate_scope_and_kind_and_undo() {
     use processcraft_core::bpmn_activity::ActivityProperties;
     let (mut session, key) = fixture();
     let target = Node {
+        item_aware: None,
         id: id("activity_target"),
         name: "Target".into(),
         documentation: String::new(),

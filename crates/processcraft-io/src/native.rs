@@ -32,6 +32,7 @@ const EXPRESSIONS_CAPABILITY: &str = "bpmn-structured-expressions";
 const EVENT_CAPABILITY: &str = "bpmn-link-cancel-compensation";
 const CATALOG_CAPABILITY: &str = "bpmn-supporting-catalog";
 const EMPTY_ACTIVITY_BINDING_CAPABILITY: &str = "bpmn-empty-namespace-activity-bindings";
+const EXPANDED_DATA_CAPABILITY: &str = "bpmn-expanded-data";
 
 fn has_empty_activity_bindings(document: &BpmnDocument) -> bool {
     use processcraft_core::bpmn_model::NodeDetails;
@@ -293,6 +294,14 @@ pub fn write_bytes(project: &ProjectData) -> Result<Vec<u8>, NativeError> {
     {
         required_capabilities.push(EMPTY_ACTIVITY_BINDING_CAPABILITY.into());
     }
+    if project.documents.iter().any(|d| d.has_expanded_data())
+        || project
+            .checkpoints
+            .iter()
+            .any(|c| c.content.documents.iter().any(|d| d.has_expanded_data()))
+    {
+        required_capabilities.push(EXPANDED_DATA_CAPABILITY.into());
+    }
     let manifest = Manifest {
         format: "processcraft".into(),
         schema: 3,
@@ -486,6 +495,7 @@ fn load_with_limits(
                 && cap != EVENT_CAPABILITY
                 && cap != CATALOG_CAPABILITY
                 && cap != EMPTY_ACTIVITY_BINDING_CAPABILITY
+                && cap != EXPANDED_DATA_CAPABILITY
         })
         || (manifest.schema < 3 && !manifest.required_capabilities.is_empty())
         || (manifest.schema == 3
@@ -622,6 +632,17 @@ fn load_with_limits(
             .any(|cap| cap == EMPTY_ACTIVITY_BINDING_CAPABILITY)
     {
         return Err(err("empty namespace activity bindings require capability"));
+    }
+    if (dto.documents.iter().any(|d| d.has_expanded_data())
+        || frozen
+            .iter()
+            .any(|(_, c)| c.documents.iter().any(|d| d.has_expanded_data())))
+        && !manifest
+            .required_capabilities
+            .iter()
+            .any(|cap| cap == EXPANDED_DATA_CAPABILITY)
+    {
+        return Err(err("expanded data requires capability"));
     }
     for resources in std::iter::once(&dto.resources).chain(frozen.iter().map(|(_, c)| &c.resources))
     {
@@ -807,12 +828,152 @@ mod limit_tests {
     use super::*;
 
     #[test]
+    fn expanded_data_traversal_covers_independent_nested_representations() {
+        use processcraft_core::{
+            bpmn_data::{
+                DataAssignment, DataAssociation, DataAssociationKind, DataObject, DataPort,
+                DataStoreRef, IoSpecification,
+            },
+            bpmn_model::{Expression, ExpressionData, ExpressionKind, NodeDetails, QNameRef},
+            model::{FlowContainer, Node, NodeKind, Process},
+        };
+        let id = |s: &str| s.parse().unwrap();
+        let node = |name: &str, kind, details| Node {
+            item_aware: None,
+            id: id(name),
+            name: String::new(),
+            documentation: String::new(),
+            kind,
+            details,
+            loop_characteristics: None,
+            io_specification: None,
+            activity: None,
+            owner: String::new(),
+            contact: String::new(),
+        };
+        let document = || {
+            let mut d = BpmnDocument::new("document".into(), id("defs"));
+            d.processes.push(Process {
+                io_specification: None,
+                lane_set_id: None,
+                groups: vec![],
+                data_objects: vec![],
+                data_associations: vec![],
+                id: id("process"),
+                name: String::new(),
+                documentation: String::new(),
+                nodes: vec![node("task", NodeKind::Task, None)],
+                lanes: vec![],
+                flows: vec![],
+            });
+            d
+        };
+        let port = |id_value| DataPort {
+            id: id_value,
+            name: Some(String::new()),
+            item_aware: None,
+            is_collection: None,
+        };
+        let association = || DataAssociation {
+            id: Some(id("association")),
+            owner: id("task"),
+            kind: DataAssociationKind::Input,
+            sources: vec![id("source")],
+            target: id("target"),
+            transformation: None,
+            assignments: vec![],
+        };
+        let formal = || {
+            Expression::Structured(ExpressionData {
+                id: Some(id("expression")),
+                kind: ExpressionKind::Formal {
+                    explicit_type: false,
+                    language: None,
+                    evaluates_to_type_ref: None,
+                },
+                text: "x".into(),
+                namespaces: vec![],
+            })
+        };
+        let mut d = document();
+        assert!(!d.has_expanded_data());
+        d.processes[0].io_specification = Some(IoSpecification::default());
+        assert!(d.has_expanded_data());
+        let mut d = document();
+        d.processes[0].data_objects.push(DataObject {
+            id: None,
+            name: Some(String::new()),
+            is_collection: None,
+            item_aware: None,
+        });
+        assert!(d.has_expanded_data());
+        let mut d = document();
+        let mut a = association();
+        a.id = None;
+        d.processes[0].data_associations.push(a);
+        assert!(d.has_expanded_data());
+        let mut d = document();
+        d.processes[0].nodes[0].io_specification = Some(IoSpecification {
+            inputs: vec![port(None)],
+            ..Default::default()
+        });
+        assert!(d.has_expanded_data());
+        let mut d = document();
+        d.processes[0].nodes.push(node(
+            "ref",
+            NodeKind::DataStoreReference,
+            Some(NodeDetails::DataStoreReference {
+                data_store_ref: Some(DataStoreRef::Qualified(QNameRef {
+                    namespace: "urn:external".into(),
+                    local: id("store"),
+                })),
+            }),
+        ));
+        assert!(d.has_expanded_data());
+        let mut d = document();
+        let mut a = association();
+        a.transformation = Some(formal());
+        d.processes[0].data_associations.push(a);
+        assert!(d.has_expanded_data() && d.has_structured_expressions());
+        assert!(
+            matches!(d.expressions()[0], Expression::Structured(ExpressionData { id: Some(value), .. }) if value == &id("expression"))
+        );
+        let mut d = document();
+        let mut a = association();
+        a.assignments.push(DataAssignment {
+            id: None,
+            from: formal(),
+            to: Expression::Legacy("target".into()),
+        });
+        d.processes[0].data_associations.push(a);
+        assert!(d.has_expanded_data() && d.has_structured_expressions());
+        let mut d = document();
+        let mut inner = node("inner", NodeKind::Task, None);
+        inner.io_specification = Some(IoSpecification {
+            outputs: vec![port(None)],
+            ..Default::default()
+        });
+        d.processes[0].nodes.push(node(
+            "sub",
+            NodeKind::SubProcess,
+            Some(NodeDetails::SubProcess {
+                content: Box::new(FlowContainer {
+                    nodes: vec![inner],
+                    ..Default::default()
+                }),
+            }),
+        ));
+        assert!(d.has_expanded_data());
+    }
+
+    #[test]
     fn event_capability_detects_all_variants_in_nested_scopes() {
         use processcraft_core::{
             bpmn_model::{EventDefinition, NodeDetails},
             model::{FlowContainer, Node, NodeKind, Process},
         };
         let node = |id: &str, kind, details| Node {
+            item_aware: None,
             id: id.parse().unwrap(),
             name: String::new(),
             documentation: String::new(),
@@ -859,6 +1020,7 @@ mod limit_tests {
             );
             let mut document = BpmnDocument::new("document".into(), "defs".parse().unwrap());
             document.processes.push(Process {
+                io_specification: None,
                 id: "process".parse().unwrap(),
                 name: String::new(),
                 documentation: String::new(),

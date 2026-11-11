@@ -597,6 +597,16 @@ fn known_reference(ns: Option<&str>, element: &str, attr: &str) -> bool {
                 | ("errorEventDefinition", "errorRef")
                 | ("escalationEventDefinition", "escalationRef")
                 | ("compensateEventDefinition", "activityRef")
+                | (
+                    "dataObject"
+                        | "dataObjectReference"
+                        | "dataStore"
+                        | "dataStoreReference"
+                        | "dataInput"
+                        | "dataOutput"
+                        | "property",
+                    "itemSubjectRef"
+                )
         ),
         _ => false,
     }

@@ -137,7 +137,7 @@ pub enum NodeDetails {
         data_object_ref: Option<XmlId>,
     },
     DataStoreReference {
-        data_store_ref: Option<XmlId>,
+        data_store_ref: Option<crate::bpmn_data::DataStoreRef>,
     },
     SubProcess {
         content: Box<crate::model::FlowContainer>,

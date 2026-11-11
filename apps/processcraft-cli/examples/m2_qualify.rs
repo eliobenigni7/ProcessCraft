@@ -47,6 +47,7 @@ fn fixture(docs: usize, nodes: usize, active: usize, resource: usize) -> Project
         for i in 0..count {
             let key = format!("node_{i}");
             ns.push(Node {
+                item_aware: None,
                 activity: None,
                 io_specification: None,
                 loop_characteristics: None,
@@ -75,6 +76,7 @@ fn fixture(docs: usize, nodes: usize, active: usize, resource: usize) -> Project
             }
         }
         d.processes.push(Process {
+            io_specification: None,
             lane_set_id: None,
             groups: vec![],
             data_objects: vec![],

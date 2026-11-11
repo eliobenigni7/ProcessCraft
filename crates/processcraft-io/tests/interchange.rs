@@ -541,7 +541,17 @@ fn choreography_task_and_data_references_round_trip() {
         include_bytes!("../../../tests/fixtures/bpmn20-schema/choreography.bpmn").as_slice(),
         include_bytes!("../../../tests/fixtures/bpmn20-schema/data.bpmn").as_slice(),
     ] {
-        let parsed = prepare_import(fixture, "fixture").unwrap();
+        let input = std::str::from_utf8(fixture)
+            .unwrap()
+            .replace(
+                "<dataObjectReference id=",
+                "<dataObjectReference name=\"\" id=",
+            )
+            .replace(
+                "<dataStoreReference id=",
+                "<dataStoreReference name=\"\" id=",
+            );
+        let parsed = prepare_import(input.as_bytes(), "fixture").unwrap();
         assert!(parsed.report.editable);
         let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
         assert!(again.report.editable);
@@ -575,8 +585,11 @@ fn advanced_data_metadata_stays_preserved() {
 
 #[test]
 fn data_io_sets_ports_and_associations_round_trip() {
-    let bytes = include_bytes!("../../../tests/fixtures/bpmn20-schema/data-io.bpmn");
-    let parsed = prepare_import(bytes, "data I/O").unwrap();
+    let bytes = include_str!("../../../tests/fixtures/bpmn20-schema/data-io.bpmn").replace(
+        "<dataObjectReference id=",
+        "<dataObjectReference name=\"\" id=",
+    );
+    let parsed = prepare_import(bytes.as_bytes(), "data I/O").unwrap();
     assert!(parsed.report.editable);
     let p = &parsed.document.processes[0];
     assert_eq!(p.data_associations.len(), 2);
@@ -1340,7 +1353,10 @@ fn activity_unqualified_operation_with_loop_and_documentation_roundtrips() {
 
 #[test]
 fn unqualified_activity_operation_with_io_and_data_associations_roundtrips() {
-    let source = include_str!("../../../tests/fixtures/bpmn20-schema/data-io.bpmn");
+    let source = include_str!("../../../tests/fixtures/bpmn20-schema/data-io.bpmn").replace(
+        "<dataObjectReference id=",
+        "<dataObjectReference name=\"\" id=",
+    );
     let input = source.replace("<task id=\"work\" name=\"Review\">", "<b:serviceTask xmlns:b=\"http://www.omg.org/spec/BPMN/20100524/MODEL\" xmlns=\"\" id=\"work\" name=\"Review\" operationRef=\"ExternalOperation\">")
         .replace("</task>", "</b:serviceTask>")
         .replace("<ioSpecification id=", "<b:ioSpecification xmlns=\"http://www.omg.org/spec/BPMN/20100524/MODEL\" id=")
@@ -1377,5 +1393,157 @@ fn activity_binding_to_wrong_local_kind_never_becomes_editable() {
             assert!(!parsed.report.editable);
             assert_eq!(export(&parsed).bytes, input.as_bytes());
         }
+    }
+}
+
+#[test]
+fn item_aware_metadata_transformations_and_assignments_roundtrip() {
+    let input = include_bytes!("../../../tests/fixtures/bpmn/data-metadata.bpmn");
+    let parsed = prepare_import(input, "data metadata").unwrap();
+    assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+    let process = &parsed.document.processes[0];
+    assert_eq!(
+        process.data_objects[0]
+            .item_aware
+            .as_ref()
+            .unwrap()
+            .item_subject_ref
+            .as_ref()
+            .unwrap()
+            .namespace,
+        "urn:data-metadata"
+    );
+    assert_eq!(process.data_associations[0].assignments.len(), 1);
+    assert!(process.data_associations[0].transformation.is_some());
+    let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+    assert!(again.report.editable);
+    assert_eq!(parsed.document.data_stores, again.document.data_stores);
+    assert_eq!(
+        process.data_objects,
+        again.document.processes[0].data_objects
+    );
+    assert_eq!(
+        process.data_associations,
+        again.document.processes[0].data_associations
+    );
+    assert_eq!(parsed.document.expressions(), again.document.expressions());
+}
+
+#[test]
+fn data_elements_allow_optional_xml_ids_and_process_io() {
+    let input = include_bytes!("../../../tests/fixtures/bpmn/data-optional.bpmn");
+    let parsed = prepare_import(input, "optional data ids").unwrap();
+    assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+    let process = &parsed.document.processes[0];
+    assert!(parsed.document.data_stores[0].id.is_none());
+    assert!(process.data_objects[0].id.is_none());
+    assert!(
+        process.io_specification.as_ref().unwrap().inputs[0]
+            .id
+            .is_none()
+    );
+    assert!(process.data_associations[0].id.is_none());
+    let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+    assert_eq!(parsed.document.data_stores, again.document.data_stores);
+    assert_eq!(
+        process.data_objects,
+        again.document.processes[0].data_objects
+    );
+    assert_eq!(
+        process.io_specification,
+        again.document.processes[0].io_specification
+    );
+    assert_eq!(
+        process.data_associations,
+        again.document.processes[0].data_associations
+    );
+}
+
+#[test]
+fn data_store_qualified_and_no_namespace_references_keep_identity() {
+    let source = include_str!("../../../tests/fixtures/bpmn/data-metadata.bpmn");
+    for replacement in [
+        "<dataStoreReference name=\"Archive reference\" id=\"storeRef\" dataStoreRef=\"ext:ExternalStore\" itemSubjectRef=\"ext:RemoteType\"><dataState name=\"ready\"/></dataStoreReference>",
+        "<b:dataStoreReference xmlns=\"\" name=\"Archive reference\" id=\"storeRef\" dataStoreRef=\"ExternalStore\" itemSubjectRef=\"RemoteType\"><b:dataState name=\"ready\"/></b:dataStoreReference>",
+    ] {
+        let input = source.replace("<dataStoreReference name=\"Archive reference\" id=\"storeRef\" dataStoreRef=\"tns:store\" itemSubjectRef=\"ext:RemoteType\"><dataState name=\"ready\"/></dataStoreReference>", replacement);
+        let parsed = prepare_import(input.as_bytes(), "store ref").unwrap();
+        assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+        let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+        assert_eq!(
+            parsed.document.processes[0].nodes[1].details,
+            again.document.processes[0].nodes[1].details
+        );
+        assert_eq!(
+            parsed.document.processes[0].nodes[1].item_aware,
+            again.document.processes[0].nodes[1].item_aware
+        );
+    }
+}
+
+#[test]
+fn unnamed_data_reference_stays_preserved_until_shared_name_presence_is_supported() {
+    let source = include_str!("../../../tests/fixtures/bpmn/data-metadata.bpmn");
+    let input = source.replace(" name=\"Invoice reference\"", "");
+    let parsed = prepare_import(input.as_bytes(), "unnamed reference").unwrap();
+    assert!(!parsed.report.editable);
+    assert_eq!(export(&parsed).bytes, input.as_bytes());
+}
+
+#[test]
+fn unsupported_data_state_metadata_and_invalid_assignments_are_preserved() {
+    let source = include_str!("../../../tests/fixtures/bpmn/data-metadata.bpmn");
+    for input in [
+        source.replace("<dataState id=\"storeState\" name=\"stored\"/>", "<dataState id=\"storeState\" name=\"stored\"><documentation>note</documentation></dataState>"),
+        source.replace("<to id=\"toExpr\" xsi:type=\"b:tFormalExpression\" language=\"urn:expression\">ext:target</to>", ""),
+        source.replace("<transformation id=\"transform\"", "<transformation xsi:type=\"b:tExpression\" id=\"transform\""),
+    ] {
+        if let Ok(parsed) = prepare_import(input.as_bytes(), "unsupported data") {
+            assert!(!parsed.report.editable);
+            assert_eq!(export(&parsed).bytes, input.as_bytes());
+        }
+    }
+}
+
+#[test]
+fn subprocess_io_is_never_silently_discarded() {
+    let input = br#"<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" id="defs" targetNamespace="urn:test"><process id="p" isExecutable="false"><subProcess id="sub"><ioSpecification><dataInput id="input"/><inputSet/><outputSet/></ioSpecification><task id="inner"/></subProcess></process></definitions>"#;
+    let parsed = prepare_import(input, "subprocess io").unwrap();
+    if parsed.report.editable {
+        assert!(
+            parsed.document.processes[0].nodes[0]
+                .io_specification
+                .is_some()
+        );
+        let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+        assert_eq!(
+            parsed.document.processes[0].nodes[0].io_specification,
+            again.document.processes[0].nodes[0].io_specification
+        );
+    } else {
+        assert_eq!(export(&parsed).bytes, input);
+    }
+}
+
+#[test]
+fn definitions_without_process_graph_roundtrip() {
+    let inputs: &[&[u8]] = &[
+        include_bytes!("../../../tests/fixtures/bpmn/root-only.bpmn"),
+        br#"<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" id="defs" targetNamespace="urn:empty"/>"#,
+        br#"<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" id="defs" targetNamespace="urn:roots"><message id="m"/><category id="c"/></definitions>"#,
+    ];
+    for input in inputs {
+        let parsed = prepare_import(input, "definitions only").unwrap();
+        assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+        assert!(parsed.document.processes.is_empty());
+        let output = export(&parsed);
+        let again = prepare_import(&output.bytes, "again").unwrap();
+        assert!(again.report.editable);
+        assert_eq!(parsed.document.data_stores, again.document.data_stores);
+        assert_eq!(
+            parsed.document.event_resources,
+            again.document.event_resources
+        );
+        assert_eq!(parsed.document.categories, again.document.categories);
     }
 }

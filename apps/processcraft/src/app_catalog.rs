@@ -29,10 +29,10 @@ impl QNameDraft {
         })
     }
 }
-fn id_string(id: &Option<XmlId>) -> Option<String> {
+pub(super) fn id_string(id: &Option<XmlId>) -> Option<String> {
     id.as_ref().map(ToString::to_string)
 }
-fn id_build(id: &Option<String>) -> Result<Option<XmlId>, String> {
+pub(super) fn id_build(id: &Option<String>) -> Result<Option<XmlId>, String> {
     id.as_ref()
         .map(|s| {
             s.parse()
@@ -208,7 +208,7 @@ impl CatalogDraft {
         })
     }
 }
-fn optional_text(ui: &mut egui::Ui, label: &str, value: &mut Option<String>) {
+pub(super) fn optional_text(ui: &mut egui::Ui, label: &str, value: &mut Option<String>) {
     let mut present = value.is_some();
     let checkbox = ui.checkbox(&mut present, label);
     if present {
@@ -218,7 +218,7 @@ fn optional_text(ui: &mut egui::Ui, label: &str, value: &mut Option<String>) {
         *value = None;
     }
 }
-fn text(ui: &mut egui::Ui, label: &str, value: &mut String) {
+pub(super) fn text(ui: &mut egui::Ui, label: &str, value: &mut String) {
     let l = ui.label(label);
     ui.text_edit_singleline(value).labelled_by(l.id);
 }
@@ -236,7 +236,7 @@ pub(super) fn optional_qname(ui: &mut egui::Ui, label: &str, value: &mut Option<
         *value = None;
     }
 }
-fn optional_bool(ui: &mut egui::Ui, label: &str, value: &mut Option<bool>) {
+pub(super) fn optional_bool(ui: &mut egui::Ui, label: &str, value: &mut Option<bool>) {
     egui::ComboBox::from_label(label)
         .selected_text(match value {
             None => "Default",

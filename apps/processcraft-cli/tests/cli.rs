@@ -744,6 +744,7 @@ fn layout_file_preview_apply_and_stale_guard() {
         processcraft_core::model::BpmnDocument::new("Model".into(), "defs".parse().unwrap());
     let document_id = doc.id.to_string();
     doc.processes.push(processcraft_core::model::Process {
+        io_specification: None,
         lane_set_id: None,
         groups: vec![],
         data_objects: vec![],
@@ -752,6 +753,7 @@ fn layout_file_preview_apply_and_stale_guard() {
         name: String::new(),
         documentation: String::new(),
         nodes: vec![processcraft_core::model::Node {
+            item_aware: None,
             activity: None,
             io_specification: None,
             loop_characteristics: None,

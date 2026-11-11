@@ -4,19 +4,17 @@ use crate::{
     model::*,
 };
 
-/// Scalar catalog fields use JSON Pointer paths so bounded pages never need to
-/// flatten or truncate a large operation's error-reference list into one item.
+/// Scalar model fields use JSON Pointer paths so bounded pages do not need to
+/// truncate large nested reference lists or lose absent values.
 #[derive(Clone, Debug, serde::Serialize)]
-pub struct CatalogField {
+pub struct ModelField {
     pub path: String,
     pub value: serde_json::Value,
 }
+pub type CatalogField = ModelField;
 
-pub fn supporting_catalog_fields(
-    project: &ProjectData,
-    document_id: DocumentId,
-) -> Option<Vec<CatalogField>> {
-    fn fields(value: serde_json::Value, path: String, out: &mut Vec<CatalogField>) {
+fn model_fields(value: serde_json::Value) -> Vec<ModelField> {
+    fn fields(value: serde_json::Value, path: String, out: &mut Vec<ModelField>) {
         match value {
             serde_json::Value::Object(object) if !object.is_empty() => {
                 for (key, value) in object {
@@ -29,17 +27,50 @@ pub fn supporting_catalog_fields(
                     fields(value, format!("{path}/{index}"), out);
                 }
             }
-            value => out.push(CatalogField { path, value }),
+            value => out.push(ModelField { path, value }),
         }
     }
-    let document = project.documents.iter().find(|d| d.id == document_id)?;
     let mut result = Vec::new();
-    fields(
-        serde_json::to_value(&document.catalog).ok()?,
-        String::new(),
-        &mut result,
-    );
-    Some(result)
+    fields(value, String::new(), &mut result);
+    result
+}
+
+pub fn supporting_catalog_fields(
+    project: &ProjectData,
+    document_id: DocumentId,
+) -> Option<Vec<CatalogField>> {
+    let document = project.documents.iter().find(|d| d.id == document_id)?;
+    Some(model_fields(serde_json::to_value(&document.catalog).ok()?))
+}
+
+/// Read every typed data family, including anonymous declarations and scoped
+/// association expressions. References retain expanded namespace identity.
+pub fn data_fields(project: &ProjectData, document_id: DocumentId) -> Option<Vec<ModelField>> {
+    let document = project.documents.iter().find(|d| d.id == document_id)?;
+    let processes: Vec<_> = document
+        .processes
+        .iter()
+        .map(|p| serde_json::json!({"id":p.id,"io_specification":p.io_specification}))
+        .collect();
+    let scopes: Vec<_> = scopes(document).into_iter().map(|scope| {
+        let nodes: Vec<_> = scope.nodes.iter().filter(|node|
+            node.item_aware.is_some() || node.io_specification.is_some()
+                || matches!(node.kind, NodeKind::DataObjectReference | NodeKind::DataStoreReference)
+        ).map(|node| {
+            let reference = match &node.details {
+                Some(crate::bpmn_model::NodeDetails::DataObjectReference { .. }
+                    | crate::bpmn_model::NodeDetails::DataStoreReference { .. }) => serde_json::to_value(&node.details).ok()?,
+                _ => serde_json::Value::Null,
+            };
+            Some(serde_json::json!({"id":node.id,"name":node.name,"kind":node.kind,
+                "item_aware":node.item_aware,"io_specification":node.io_specification,"reference":reference}))
+        }).collect::<Option<Vec<_>>>()?;
+        Some(serde_json::json!({"id":scope.id,"data_objects":scope.data_objects,
+            "data_associations":scope.data_associations,"nodes":nodes}))
+    }).collect::<Option<Vec<_>>>()?;
+    Some(model_fields(
+        serde_json::json!({"data_stores":document.data_stores,"processes":processes,"scopes":scopes}),
+    ))
 }
 
 /// One semantic scope; subprocess contents remain separate from their parent.
@@ -114,8 +145,12 @@ pub fn element_name<'a>(document: &'a BpmnDocument, id: &XmlId) -> Option<&'a st
         if scope.id == id {
             return Some(scope.name);
         }
-        if let Some(object) = scope.data_objects.iter().find(|o| &o.id == id) {
-            return Some(&object.name);
+        if let Some(object) = scope
+            .data_objects
+            .iter()
+            .find(|o| o.id.as_ref() == Some(id))
+        {
+            return Some(object.name.as_deref().unwrap_or(""));
         }
         if let Some(node) = scope.nodes.iter().find(|n| &n.id == id) {
             return Some(&node.name);

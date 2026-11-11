@@ -66,6 +66,46 @@ pub fn activity_reference_issues(
 }
 use crate::bpmn_model::EventResource as EventDefinitionResource;
 
+fn io_incomplete(io: &crate::bpmn_data::IoSpecification) -> bool {
+    if io.input_sets.is_empty() || io.output_sets.is_empty() {
+        return true;
+    }
+    for (sets, ports, other) in [
+        (&io.input_sets, &io.inputs, &io.output_sets),
+        (&io.output_sets, &io.outputs, &io.input_sets),
+    ] {
+        if ports.iter().any(|port| {
+            port.id
+                .as_ref()
+                .is_none_or(|id| !sets.iter().any(|set| set.data_refs.contains(id)))
+        }) {
+            return true;
+        }
+        for set in sets {
+            if set
+                .optional_refs
+                .iter()
+                .chain(&set.while_executing_refs)
+                .any(|id| !set.data_refs.contains(id))
+            {
+                return true;
+            }
+            if set.counterpart_refs.iter().any(|id| {
+                !other.iter().any(|counterpart| {
+                    counterpart.id.as_ref() == Some(id)
+                        && set
+                            .id
+                            .as_ref()
+                            .is_some_and(|own| counterpart.counterpart_refs.contains(own))
+                })
+            }) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum DiagnosticSeverity {
@@ -142,7 +182,25 @@ impl ProjectData {
                 );
             }
             let process_ids: HashSet<_> = doc.processes.iter().map(|p| &p.id).collect();
+            for process in &doc.processes {
+                if process.io_specification.as_ref().is_some_and(io_incomplete) {
+                    emit(
+                        &process.id,
+                        "incompleteIoSpecification",
+                        "I/O sets or port membership are incomplete; BPMN 2.0.2 §10.4.1, Tables 10.61–10.62.",
+                    );
+                }
+            }
             for scope in queries::scopes(doc) {
+                for association in scope.data_associations {
+                    if association.transformation.is_none() && association.sources.len() != 1 {
+                        emit(
+                            association.id.as_ref().unwrap_or(scope.id),
+                            "dataAssociationSourceCount",
+                            "A data association without transformation should have one source; BPMN 2.0.2 §10.4.1.",
+                        );
+                    }
+                }
                 if !scope.data_objects.is_empty()
                     || !scope.data_associations.is_empty()
                     || scope.nodes.iter().any(|n| n.io_specification.is_some())
@@ -162,6 +220,27 @@ impl ProjectData {
                 let mut has_start = false;
                 let mut has_end = false;
                 for node in scope.nodes {
+                    if let Some(io) = &node.io_specification {
+                        if io_incomplete(io) {
+                            emit(
+                                &node.id,
+                                "incompleteIoSpecification",
+                                "I/O sets or port membership are incomplete; BPMN 2.0.2 §10.4.1, Tables 10.61–10.62.",
+                            );
+                        }
+                        if matches!(
+                            node.kind,
+                            NodeKind::SubProcess
+                                | NodeKind::AdHocSubProcess
+                                | NodeKind::Transaction
+                        ) {
+                            emit(
+                                &node.id,
+                                "subprocessDirectIoUnverified",
+                                "Embedded subprocess I/O requires review of the direct versus multi-instance mapping; BPMN 2.0.2 §10.4.1.",
+                            );
+                        }
+                    }
                     if let Some(activity) = &node.activity {
                         for issue in activity_reference_issues(doc, activity) {
                             emit(

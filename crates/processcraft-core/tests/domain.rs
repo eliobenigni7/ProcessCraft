@@ -10,6 +10,7 @@ fn sample() -> ProjectData {
     let mut p = ProjectData::new("Project".into());
     let mut d = BpmnDocument::new("Document".into(), id("defs"));
     d.processes.push(Process {
+        io_specification: None,
         lane_set_id: None,
         groups: vec![],
         data_objects: vec![],
@@ -18,6 +19,7 @@ fn sample() -> ProjectData {
         name: String::new(),
         documentation: String::new(),
         nodes: vec![Node {
+            item_aware: None,
             activity: None,
             io_specification: None,
             loop_characteristics: None,

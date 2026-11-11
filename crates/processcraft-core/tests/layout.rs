@@ -12,6 +12,7 @@ fn id(s: &str) -> XmlId {
 fn fixture() -> BpmnDocument {
     let mut d = BpmnDocument::new("Example".into(), id("defs"));
     d.processes.push(Process {
+        io_specification: None,
         lane_set_id: None,
         groups: vec![],
         data_objects: vec![],
@@ -22,6 +23,7 @@ fn fixture() -> BpmnDocument {
         nodes: ["a", "b", "c", "d"]
             .iter()
             .map(|s| Node {
+                item_aware: None,
                 activity: None,
                 id: id(s),
                 name: s.to_string(),
@@ -359,6 +361,7 @@ fn maximum_shape_count_is_bounded_and_above_limits_refused() {
     for i in 4..400 {
         let node_id = id(&format!("node_{i}"));
         d.processes[0].nodes.push(Node {
+            item_aware: None,
             activity: None,
             id: node_id.clone(),
             name: String::new(),

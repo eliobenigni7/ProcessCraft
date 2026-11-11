@@ -23,13 +23,15 @@ impl BindingDraft {
 }
 
 #[derive(Clone, Copy)]
-enum ExpressionDefault {
+pub(super) enum ExpressionDefault {
     Base,
     SequenceFlow,
+    ImplicitFormal,
 }
 
 pub(super) struct ExpressionDraft {
     slot: String,
+    default: ExpressionDefault,
     id: Option<String>,
     formal: bool,
     explicit_type: bool,
@@ -49,6 +51,7 @@ impl ExpressionDraft {
         use processcraft_core::bpmn_model::{Expression, ExpressionKind};
         let mut draft = Self {
             slot: slot.into(),
+            default,
             id: None,
             formal: false,
             explicit_type: false,
@@ -63,6 +66,9 @@ impl ExpressionDraft {
                 String::new(),
                 "http://www.omg.org/spec/BPMN/20100524/MODEL".into(),
             ));
+            if matches!(default, ExpressionDefault::ImplicitFormal) {
+                draft.formal = true;
+            }
             if matches!(default, ExpressionDefault::SequenceFlow) {
                 draft.formal = true;
                 draft.explicit_type = true;
@@ -118,7 +124,13 @@ impl ExpressionDraft {
         } else {
             None
         };
-        if self.formal && !self.explicit_type {
+        if matches!(self.default, ExpressionDefault::ImplicitFormal) && !self.formal {
+            return Err("This expression requires a formal expression.".into());
+        }
+        if self.formal
+            && !self.explicit_type
+            && !matches!(self.default, ExpressionDefault::ImplicitFormal)
+        {
             return Err("Formal expressions require an explicit type in this context.".into());
         }
         let kind = if self.formal {
@@ -152,7 +164,7 @@ fn optional_metadata_text(ui: &mut egui::Ui, label: &str, value: &mut Option<Str
     }
 }
 
-fn expression_ui(
+pub(super) fn expression_ui(
     ui: &mut egui::Ui,
     label: &str,
     value: &mut processcraft_core::bpmn_model::Expression,
@@ -185,10 +197,12 @@ fn expression_ui(
                 ui.selectable_value(&mut current.formal, true, "Formal");
             });
         if current.formal && !was_formal {
-            current.explicit_type = true;
-            if !current.namespaces.iter().any(|(prefix, uri)| {
-                !prefix.is_empty() && uri == "http://www.w3.org/2001/XMLSchema-instance"
-            }) {
+            current.explicit_type = !matches!(current.default, ExpressionDefault::ImplicitFormal);
+            if current.explicit_type
+                && !current.namespaces.iter().any(|(prefix, uri)| {
+                    !prefix.is_empty() && uri == "http://www.w3.org/2001/XMLSchema-instance"
+                })
+            {
                 let mut prefix = "xsi".to_owned();
                 while current
                     .namespaces
@@ -202,7 +216,26 @@ fn expression_ui(
                     .push((prefix, "http://www.w3.org/2001/XMLSchema-instance".into()));
             }
         }
-        ui.checkbox(&mut current.explicit_type, "Explicit expression type");
+        if ui
+            .checkbox(&mut current.explicit_type, "Explicit expression type")
+            .changed()
+            && current.explicit_type
+            && !current.namespaces.iter().any(|(prefix, uri)| {
+                !prefix.is_empty() && uri == "http://www.w3.org/2001/XMLSchema-instance"
+            })
+        {
+            let mut prefix = "xsi".to_owned();
+            while current
+                .namespaces
+                .iter()
+                .any(|(existing, _)| existing == &prefix)
+            {
+                prefix.push('_');
+            }
+            current
+                .namespaces
+                .push((prefix, "http://www.w3.org/2001/XMLSchema-instance".into()));
+        }
         if current.formal {
             optional_metadata_text(ui, "Language", &mut current.language);
             let mut present = current.type_reference.is_some();
@@ -268,7 +301,7 @@ fn expression_ui(
     changed
 }
 
-fn optional_expression_ui(
+pub(super) fn optional_expression_ui(
     ui: &mut egui::Ui,
     label: &str,
     value: &mut Option<processcraft_core::bpmn_model::Expression>,
@@ -278,7 +311,7 @@ fn optional_expression_ui(
     optional_expression_ui_with_default(ui, label, value, multiline, draft, ExpressionDefault::Base)
 }
 
-fn optional_expression_ui_with_default(
+pub(super) fn optional_expression_ui_with_default(
     ui: &mut egui::Ui,
     label: &str,
     value: &mut Option<processcraft_core::bpmn_model::Expression>,
@@ -359,9 +392,14 @@ impl ProcessCraft {
                         .is_some_and(|n| {
                             n.kind == processcraft_core::model::NodeKind::TextAnnotation
                         });
+                    let data_object_reference = snap.project.documents.get(self.doc)
+                        .and_then(|d| processcraft_core::queries::find_node(d, selected))
+                        .is_some_and(|n| n.kind == processcraft_core::model::NodeKind::DataObjectReference);
                     let label = side.label(
                         egui::RichText::new(if annotation {
                             "Annotation text"
+                        } else if data_object_reference {
+                            "Reference name"
                         } else {
                             "Name"
                         })
@@ -375,6 +413,9 @@ impl ProcessCraft {
                     };
                     if response.labelled_by(label.id).changed() {
                         self.draft_dirty = true;
+                    }
+                    if data_object_reference {
+                        side.label(egui::RichText::new("The diagram label uses the referenced data object's name and this reference's state.").small().color(palette.muted));
                     }
                     if self.is_node || self.is_flow {
                         let label = side.label(
@@ -462,6 +503,7 @@ impl ProcessCraft {
                     }
                     side.add_space(8.0);
                     self.catalog_ui(side, editable);
+                    self.data_ui(side, editable);
                     if side
                         .add_enabled_ui(self.draft_dirty, |ui| {
                             widgets::primary_button(ui, "Apply properties")
@@ -1193,6 +1235,46 @@ mod expression_draft_tests {
                 explicit_type: false
             }
         ));
+    }
+
+    #[test]
+    fn transformation_promotes_as_implicit_formal() {
+        use processcraft_core::bpmn_model::{Expression, ExpressionData, ExpressionKind};
+        let draft = ExpressionDraft::new(
+            "Transformation",
+            &"body".into(),
+            ExpressionDefault::ImplicitFormal,
+        );
+        assert!(matches!(
+            draft.build().unwrap().kind,
+            ExpressionKind::Formal {
+                explicit_type: false,
+                ..
+            }
+        ));
+        let data = ExpressionData {
+            id: None,
+            kind: ExpressionKind::Formal {
+                explicit_type: false,
+                language: None,
+                evaluates_to_type_ref: None,
+            },
+            text: "body".into(),
+            namespaces: vec![(
+                String::new(),
+                "http://www.omg.org/spec/BPMN/20100524/MODEL".into(),
+            )],
+        };
+        assert_eq!(
+            ExpressionDraft::new(
+                "Transformation",
+                &Expression::Structured(data.clone()),
+                ExpressionDefault::ImplicitFormal
+            )
+            .build()
+            .unwrap(),
+            data
+        );
     }
 
     #[test]

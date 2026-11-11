@@ -198,4 +198,35 @@ fn definitions_metadata_uses_discovered_mcp_command_and_exact_history() {
         }
     }
     assert!(seen > 2);
+    let stores = json!([{"id":null,"name":null,"capacity":"184467440737095516161234","is_unlimited":false,
+        "item_aware":{"item_subject_ref":{"namespace":"urn:processcraft:test","local":"ResultType"},
+            "data_state":{"id":"AnonymousStoreState","name":""}}}]);
+    let updated = call(
+        json!({"jsonrpc":"2.0","id":100,"method":"tools/call","params":{"name":"apply","arguments":{
+            "sessionId":session,"requestId":"data","expectedGeneration":7,"request":{"type":"batch","mutations":[{
+                "type":"setDataStores","document_id":document_id,"data_stores":stores
+            }]}
+        }}}),
+    );
+    assert_eq!(updated["result"]["structuredContent"]["ok"], true);
+    let page = call(
+        json!({"jsonrpc":"2.0","id":101,"method":"tools/call","params":{"name":"query","arguments":{
+            "kind":"data","document_id":document_id,"offset":0,"limit":100
+        }}}),
+    );
+    let page = &page["result"]["structuredContent"];
+    assert_eq!(page["generation"], 8);
+    let values = page["items"].as_array().unwrap();
+    for (path, value) in [
+        ("/data_stores/0/id", Value::Null),
+        ("/data_stores/0/name", Value::Null),
+        ("/data_stores/0/capacity", json!("184467440737095516161234")),
+        ("/data_stores/0/item_aware/data_state/name", json!("")),
+    ] {
+        assert!(
+            values
+                .iter()
+                .any(|row| row["path"] == path && row["value"] == value)
+        );
+    }
 }

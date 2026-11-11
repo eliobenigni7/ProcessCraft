@@ -21,6 +21,7 @@ fn sample(tiled: bool) -> BpmnDocument {
     for (i, name) in labels.iter().enumerate() {
         let node = id(&format!("node{i}"));
         nodes.push(Node {
+            item_aware: None,
             activity: None,
             io_specification: None,
             loop_characteristics: None,
@@ -51,6 +52,7 @@ fn sample(tiled: bool) -> BpmnDocument {
         });
     }
     d.processes.push(Process {
+        io_specification: None,
         lane_set_id: None,
         groups: vec![],
         data_objects: vec![],

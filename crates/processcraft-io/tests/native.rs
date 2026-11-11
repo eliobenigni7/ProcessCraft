@@ -18,6 +18,38 @@ fn project() -> ProjectData {
     ));
     p
 }
+
+#[test]
+fn immutable_pre_identity_migration_archive_preserves_identity() {
+    use sha2::{Digest, Sha256};
+    let bytes =
+        include_bytes!("../../../tests/fixtures/native/identity-baseline-2f0f770.processcraft");
+    let hex = |bytes: &[u8]| bytes.iter().map(|b| format!("{b:02x}")).collect::<String>();
+    assert_eq!(
+        hex(&Sha256::digest(bytes)),
+        "ad1881afb88c8b077f16b095bbd57f0fcfc338b36f06cc80f49e3b30c0e6968b"
+    );
+    let loaded = load_bytes(bytes).unwrap();
+    let expected = "58b43fc92f74014e1683d0f5b91c0a8493a5bf9b5512179a80224f65f712ab97";
+    assert_eq!(hex(&loaded.source_content_identity), expected);
+    assert_eq!(hex(&loaded.project.content_identity().unwrap()), expected);
+    assert_eq!(
+        loaded.project.checkpoints[0].content.name,
+        "Synthetic compatibility baseline"
+    );
+    let doc = &loaded.project.documents[0];
+    assert!(processcraft_core::queries::find_node(doc, &"task".parse().unwrap()).is_some());
+    assert_eq!(hex(&loaded.project.content_identity().unwrap()), expected);
+    let saved = write_bytes(&loaded.project).unwrap();
+    assert_eq!(
+        hex(&load_bytes(&saved)
+            .unwrap()
+            .project
+            .content_identity()
+            .unwrap()),
+        expected
+    );
+}
 fn entries(bytes: &[u8]) -> Vec<(String, Vec<u8>)> {
     let mut z = ZipArchive::new(Cursor::new(bytes)).unwrap();
     (0..z.len())
@@ -64,6 +96,153 @@ fn native_round_trip_preserves_content() {
 }
 
 #[test]
+fn expanded_data_capability_covers_live_and_checkpoint_documents() {
+    use processcraft_core::{
+        bpmn_data::{DataState, DataStore, ItemAwareMetadata},
+        bpmn_model::QNameRef,
+        ids::CheckpointId,
+        model::{BpmnDocument, Checkpoint, FrozenProject},
+    };
+    let mut p = project();
+    let mut doc = BpmnDocument::new("document".into(), "defs".parse().unwrap());
+    doc.data_stores.push(DataStore {
+        id: Some("store".parse().unwrap()),
+        name: Some("Store".into()),
+        capacity: None,
+        is_unlimited: None,
+        item_aware: None,
+    });
+    p.documents.push(Arc::new(doc));
+    let legacy_identity = p.content_identity().unwrap();
+    let legacy = write_bytes(&p).unwrap();
+    let legacy_entries = entries(&legacy);
+    let manifest: serde_json::Value = serde_json::from_slice(
+        &legacy_entries
+            .iter()
+            .find(|(n, _)| n == "manifest.json")
+            .unwrap()
+            .1,
+    )
+    .unwrap();
+    assert_eq!(
+        manifest["required_capabilities"],
+        serde_json::json!(["comments", "checkpoints"])
+    );
+    assert_eq!(
+        load_bytes(&legacy)
+            .unwrap()
+            .project
+            .content_identity()
+            .unwrap(),
+        legacy_identity
+    );
+    Arc::make_mut(&mut p.documents[0]).data_stores[0].item_aware = Some(ItemAwareMetadata {
+        item_subject_ref: Some(QNameRef {
+            namespace: "urn:external".into(),
+            local: "Item".parse().unwrap(),
+        }),
+        data_state: Some(DataState {
+            id: Some("state".parse().unwrap()),
+            name: Some("Ready".into()),
+        }),
+    });
+    let bytes = write_bytes(&p).unwrap();
+    let mut archived = entries(&bytes);
+    let manifest: serde_json::Value = serde_json::from_slice(
+        &archived
+            .iter()
+            .find(|(n, _)| n == "manifest.json")
+            .unwrap()
+            .1,
+    )
+    .unwrap();
+    assert!(
+        manifest["required_capabilities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|c| c == "bpmn-expanded-data")
+    );
+    assert_eq!(
+        load_bytes(&bytes).unwrap().project.documents[0].data_stores,
+        p.documents[0].data_stores
+    );
+    edit_json(&mut archived, "manifest.json", |v| {
+        v["required_capabilities"] = serde_json::json!(["comments", "checkpoints"])
+    });
+    assert!(
+        load_bytes(&archive(&archived))
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("expanded data requires capability")
+    );
+    p.checkpoints.push(Checkpoint {
+        id: CheckpointId::new(),
+        name: "Before".into(),
+        created_unix_ms: 0,
+        content: FrozenProject::capture(&p),
+    });
+    Arc::make_mut(&mut p.documents[0]).data_stores[0].item_aware = None;
+    let bytes = write_bytes(&p).unwrap();
+    let mut archived = entries(&bytes);
+    assert_eq!(
+        load_bytes(&bytes).unwrap().project.checkpoints[0]
+            .content
+            .documents[0]
+            .data_stores,
+        p.checkpoints[0].content.documents[0].data_stores
+    );
+    edit_json(&mut archived, "manifest.json", |v| {
+        v["required_capabilities"] = serde_json::json!(["comments", "checkpoints"])
+    });
+    assert!(
+        load_bytes(&archive(&archived))
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("expanded data requires capability")
+    );
+    p.checkpoints.clear();
+    Arc::make_mut(&mut p.documents[0]).data_stores[0].id = None;
+    let bytes = write_bytes(&p).unwrap();
+    let mut archived = entries(&bytes);
+    assert_eq!(
+        load_bytes(&bytes).unwrap().project.documents[0].data_stores[0].id,
+        None
+    );
+    edit_json(&mut archived, "manifest.json", |v| {
+        v["required_capabilities"] = serde_json::json!(["comments", "checkpoints"])
+    });
+    assert!(
+        load_bytes(&archive(&archived))
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("expanded data requires capability")
+    );
+    let store = &mut Arc::make_mut(&mut p.documents[0]).data_stores[0];
+    store.id = Some("store".parse().unwrap());
+    store.name = None;
+    let bytes = write_bytes(&p).unwrap();
+    let mut archived = entries(&bytes);
+    assert_eq!(
+        load_bytes(&bytes).unwrap().project.documents[0].data_stores[0].name,
+        None
+    );
+    edit_json(&mut archived, "manifest.json", |v| {
+        v["required_capabilities"] = serde_json::json!(["comments", "checkpoints"])
+    });
+    assert!(
+        load_bytes(&archive(&archived))
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("expanded data requires capability")
+    );
+}
+
+#[test]
 fn historical_unresolved_activity_bindings_round_trip_without_new_capabilities() {
     use processcraft_core::{
         bpmn_activity::ActivityProperties,
@@ -80,6 +259,7 @@ fn historical_unresolved_activity_bindings_round_trip_without_new_capabilities()
         })
     };
     doc.processes.push(Process {
+        io_specification: None,
         id: "process".parse().unwrap(),
         name: String::new(),
         documentation: String::new(),
@@ -88,6 +268,7 @@ fn historical_unresolved_activity_bindings_round_trip_without_new_capabilities()
         data_objects: vec![],
         data_associations: vec![],
         nodes: vec![Node {
+            item_aware: None,
             id: "task".parse().unwrap(),
             name: String::new(),
             documentation: String::new(),
@@ -414,6 +595,7 @@ fn structured_expression_capability_covers_live_and_checkpoint_documents() {
     };
     let mut p = project();
     let node = |id: &str| Node {
+        item_aware: None,
         id: id.parse().unwrap(),
         name: String::new(),
         documentation: String::new(),
@@ -427,6 +609,7 @@ fn structured_expression_capability_covers_live_and_checkpoint_documents() {
     };
     let mut doc = BpmnDocument::new("document".into(), "defs".parse().unwrap());
     doc.processes.push(Process {
+        io_specification: None,
         id: "process".parse().unwrap(),
         name: String::new(),
         documentation: String::new(),
@@ -577,6 +760,7 @@ fn compensation_event_capability_covers_live_and_checkpoint_documents() {
         cancel_activity: None,
     };
     doc.processes.push(Process {
+        io_specification: None,
         id: "process".parse().unwrap(),
         name: String::new(),
         documentation: String::new(),
@@ -585,6 +769,7 @@ fn compensation_event_capability_covers_live_and_checkpoint_documents() {
         data_objects: vec![],
         data_associations: vec![],
         nodes: vec![Node {
+            item_aware: None,
             id: "event".parse().unwrap(),
             name: String::new(),
             documentation: String::new(),
@@ -848,6 +1033,7 @@ fn schema_two_round_trips_dictionary_entries() {
     });
     let mut doc = BpmnDocument::new("document".into(), "defs".parse().unwrap());
     doc.processes.push(Process {
+        io_specification: None,
         lane_set_id: None,
         groups: vec![],
         data_objects: vec![],

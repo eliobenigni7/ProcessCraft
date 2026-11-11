@@ -125,6 +125,14 @@ pub enum ImageFormat {
 
 #[derive(Subcommand)]
 pub enum Query {
+    /// Read scoped data declarations, ports and associations as bounded field pages.
+    Data {
+        document_id: String,
+        #[arg(long, default_value_t = 0)]
+        offset: usize,
+        #[arg(long, default_value_t = 50)]
+        limit: usize,
+    },
     /// Read supporting catalog values as bounded JSON Pointer pages.
     Catalog {
         document_id: String,

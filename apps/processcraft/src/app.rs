@@ -179,6 +179,7 @@ pub struct ProcessCraft {
     expression_draft: Option<inspector::ExpressionDraft>,
     catalog_draft: Option<catalog::CatalogDraft>,
     binding_draft: Option<inspector::BindingDraft>,
+    data_draft: Option<data::DataDraft>,
     association_direction: Option<processcraft_core::bpmn_model::AssociationDirection>,
     connection_kind: FlowKind,
     owner: String,
@@ -268,6 +269,7 @@ impl Default for ProcessCraft {
             expression_draft: None,
             catalog_draft: None,
             binding_draft: None,
+            data_draft: None,
             association_direction: None,
             connection_kind: FlowKind::Sequence,
             owner: String::new(),
@@ -320,7 +322,13 @@ impl ProcessCraft {
         self.theme.apply(ctx);
     }
     fn select(&mut self, id: Option<XmlId>) {
-        if self.draft_dirty && !self.commit_draft() {
+        if (self.draft_dirty
+            || self.expression_draft.is_some()
+            || self.catalog_draft.is_some()
+            || self.binding_draft.is_some()
+            || self.data_draft.is_some())
+            && !self.commit_draft()
+        {
             return;
         }
         self.multi = id.clone().into_iter().collect();
@@ -435,6 +443,10 @@ impl ProcessCraft {
         );
     }
     fn commit_draft(&mut self) -> bool {
+        if self.data_draft.is_some() {
+            self.ctl.error = "Apply or cancel the data draft first.".into();
+            return false;
+        }
         if self.binding_draft.is_some() {
             self.ctl.error = "Apply or cancel the activity reference draft first.".into();
             return false;
@@ -603,6 +615,7 @@ impl ProcessCraft {
             || self.expression_draft.is_some()
             || self.catalog_draft.is_some()
             || self.binding_draft.is_some()
+            || self.data_draft.is_some()
             || self.m3.has_draft()
             || self.draft_dirty
             || self.dictionary_draft_changed(&self.ctl.session.snapshot().project)
@@ -645,12 +658,7 @@ impl ProcessCraft {
             self.ctl.error = "Finish the current operation before continuing.".into();
             return;
         }
-        if self.ctl.session.snapshot().dirty
-            || self.draft_dirty
-            || self.collaboration.has_draft()
-            || self.m3.has_draft()
-            || self.dictionary_draft_changed(&self.ctl.session.snapshot().project)
-        {
+        if self.ctl.session.snapshot().dirty || self.has_drafts() {
             self.confirm = Some(action);
         } else {
             self.execute(action);
@@ -662,6 +670,14 @@ impl ProcessCraft {
             return None;
         }
         self.confirm.take()
+    }
+    fn discard_property_drafts(&mut self) {
+        self.expression_draft = None;
+        self.catalog_draft = None;
+        self.binding_draft = None;
+        self.data_draft = None;
+        self.definitions_dirty = false;
+        self.draft_dirty = false;
     }
     fn execute(&mut self, action: &'static str) {
         if self.transition_blocked() {
@@ -676,7 +692,7 @@ impl ProcessCraft {
         match action {
             "new" => {
                 self.ctl = Controller::default();
-                self.draft_dirty = false;
+                self.discard_property_drafts();
                 self.dictionary_selected = None;
                 self.dictionary_name.clear();
                 self.dictionary_description.clear();
@@ -709,7 +725,7 @@ impl ProcessCraft {
             {
                 self.attachment = None;
             }
-            self.draft_dirty = false;
+            self.discard_property_drafts();
             self.dictionary_selected = None;
             self.dictionary_name.clear();
             self.dictionary_description.clear();
@@ -880,6 +896,7 @@ impl ProcessCraft {
                 document_id: d.id,
                 process_id: p.id.clone(),
                 element: Node {
+                    item_aware: None,
                     activity: None,
                     io_specification: None,
                     loop_characteristics: None,
@@ -1308,10 +1325,7 @@ impl eframe::App for ProcessCraft {
                     let prepared = *prepared;
                     if session != self.ctl.session.id()
                         || generation != self.ctl.session.snapshot().generation
-                        || self.draft_dirty
-                        || self.collaboration.has_draft()
-                        || self.m3.has_draft()
-                        || self.dictionary_draft_changed(&self.ctl.session.snapshot().project)
+                        || self.has_drafts()
                     {
                         self.ctl.error =
                             "Import cancelled because the project changed during preparation."
@@ -1453,11 +1467,7 @@ impl eframe::App for ProcessCraft {
         if !self.allow_close
             && self.ctl.can_transition()
             && ctx.input(|i| i.viewport().close_requested())
-            && (self.ctl.session.snapshot().dirty
-                || self.draft_dirty
-                || self.collaboration.has_draft()
-                || self.m3.has_draft()
-                || self.dictionary_draft_changed(&self.ctl.session.snapshot().project))
+            && (self.ctl.session.snapshot().dirty || self.has_drafts())
         {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             self.confirm = Some("close");
@@ -1586,7 +1596,7 @@ impl eframe::App for ProcessCraft {
                                                 self.doc = 0;
                                                 self.process_id = None;
                                                 self.diagram_id = None;
-                                                self.draft_dirty = false;
+                                                self.discard_property_drafts();
                                                 self.select(None);
                                                 self.render_key.clear();
                                                 self.recovery_visible = false;
@@ -1772,6 +1782,7 @@ mod tests {
         let node: XmlId = "Node".parse().unwrap();
         let shape: XmlId = "Shape".parse().unwrap();
         doc.processes[0].nodes.push(Node {
+            item_aware: None,
             activity: None,
             io_specification: None,
             loop_characteristics: None,
@@ -2232,6 +2243,8 @@ mod m2;
 mod canvas;
 #[path = "app_catalog.rs"]
 mod catalog;
+#[path = "app_data.rs"]
+mod data;
 #[path = "app_inspector.rs"]
 mod inspector;
 #[path = "app_shell.rs"]

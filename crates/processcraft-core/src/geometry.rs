@@ -66,6 +66,41 @@ pub fn hit_shape(
         | NodeKind::InclusiveGateway
         | NodeKind::ComplexGateway
         | NodeKind::EventBasedGateway => dx / rx + dy / ry <= 1.0,
+        NodeKind::DataObjectReference => {
+            let fold = bounds.width.min(bounds.height).min(12.0);
+            let px = point.x - bounds.x;
+            let py = point.y - bounds.y;
+            px >= -t
+                && py >= -t
+                && px <= bounds.width + t
+                && py <= bounds.height + t
+                && px - py <= bounds.width - fold + t * std::f64::consts::SQRT_2
+        }
+        NodeKind::DataStoreReference => {
+            let px = point.x - bounds.x;
+            let py = point.y - bounds.y;
+            if px < -t || px > bounds.width + t || py < -t || py > bounds.height + t {
+                false
+            } else if bounds.width == 0.0 {
+                true
+            } else {
+                // Invert the cubic x coordinate of the cylinder's top and bottom arcs.
+                let x = (px / bounds.width).clamp(0.0, 1.0);
+                let (mut lo, mut hi) = (0.0, 1.0);
+                for _ in 0..32 {
+                    let m = (lo + hi) / 2.0;
+                    if m * m * (3.0 - 2.0 * m) < x {
+                        lo = m;
+                    } else {
+                        hi = m;
+                    }
+                }
+                let u = (lo + hi) / 2.0;
+                let r = (bounds.height * 0.12).min(10.0);
+                let top = r * (1.0 - 3.99 * u * (1.0 - u));
+                py >= top - t && py <= bounds.height - top + t
+            }
+        }
         _ => dx <= rx && dy <= ry,
     })
 }
@@ -337,6 +372,35 @@ pub fn prepare_move(
         let Some(node) = crate::queries::find_node(document, &parent_shape.element) else {
             continue;
         };
+        let (dx, dy) = (
+            parent.bounds.x - parent_shape.bounds.x,
+            parent.bounds.y - parent_shape.bounds.y,
+        );
+        if let Some(io) = &node.io_specification {
+            for id in io
+                .inputs
+                .iter()
+                .chain(&io.outputs)
+                .filter_map(|port| port.id.as_ref())
+            {
+                for shape in diagram.shapes.iter().filter(|shape| &shape.element == id) {
+                    let mut translated = shape.bounds.clone();
+                    translated.x += dx;
+                    translated.y += dy;
+                    if let Some(existing) = bounds.iter().find(|b| b.shape_id == shape.id) {
+                        if existing.bounds != translated {
+                            return Err("conflicting parent and port moves");
+                        }
+                    } else {
+                        bounds.push(ShapeBounds {
+                            diagram_id: diagram_id.clone(),
+                            shape_id: shape.id.clone(),
+                            bounds: translated,
+                        });
+                    }
+                }
+            }
+        }
         let Some(crate::bpmn_model::NodeDetails::SubProcess { content }) = &node.details else {
             continue;
         };
@@ -356,7 +420,19 @@ pub fn prepare_move(
                 .nodes
                 .iter()
                 .map(|n| &n.id)
-                .chain(scope.lanes.iter().map(|l| &l.id));
+                .chain(scope.lanes.iter().map(|l| &l.id))
+                .chain(
+                    scope
+                        .nodes
+                        .iter()
+                        .filter_map(|node| node.io_specification.as_ref())
+                        .flat_map(|io| {
+                            io.inputs
+                                .iter()
+                                .chain(&io.outputs)
+                                .filter_map(|port| port.id.as_ref())
+                        }),
+                );
             for id in ids {
                 for shape in diagram.shapes.iter().filter(|shape| &shape.element == id) {
                     nested_translated.insert(shape.element.clone());
@@ -429,10 +505,13 @@ pub fn prepare_move(
         .collect();
     for scope in &scopes {
         for association in scope.data_associations {
+            let Some(association_id) = association.id.as_ref() else {
+                continue;
+            };
             if !diagram
                 .edges
                 .iter()
-                .any(|edge| edge.element == association.id)
+                .any(|edge| &edge.element == association_id)
             {
                 continue;
             }
@@ -453,12 +532,15 @@ pub fn prepare_move(
             let visible = |id: &XmlId| diagram.shapes.iter().any(|shape| &shape.element == id);
             let owner_io = crate::queries::find_node(document, &association.owner)
                 .and_then(|node| node.io_specification.as_ref());
-            let input_port = owner_io
-                .is_some_and(|io| io.inputs.iter().any(|port| port.id == association.target));
+            let input_port = owner_io.is_some_and(|io| {
+                io.inputs
+                    .iter()
+                    .any(|port| port.id.as_ref() == Some(&association.target))
+            });
             let output_port = owner_io.is_some_and(|io| {
                 io.outputs
                     .iter()
-                    .any(|port| port.id == association.sources[0])
+                    .any(|port| port.id.as_ref() == Some(&association.sources[0]))
             });
             if (association.kind == crate::bpmn_data::DataAssociationKind::Input
                 && !visible(&association.target)
@@ -496,7 +578,7 @@ pub fn prepare_move(
                 }
                 continue;
             }
-            connections.push((&association.id, source, target));
+            connections.push((association_id, source, target));
         }
     }
     if let Some(collaboration) = &document.collaboration {
@@ -626,7 +708,21 @@ pub fn prepare_move(
                                 })
                             })
                     };
-                !contains(source) && !contains(target)
+                let owns_port = |target: &XmlId| {
+                    scopes
+                        .iter()
+                        .flat_map(|scope| scope.nodes.iter())
+                        .any(|node| {
+                            node.id == s.element
+                                && node.io_specification.as_ref().is_some_and(|io| {
+                                    io.inputs
+                                        .iter()
+                                        .chain(&io.outputs)
+                                        .any(|port| port.id.as_ref() == Some(target))
+                                })
+                        })
+                };
+                !contains(source) && !contains(target) && !owns_port(source) && !owns_port(target)
             })
             .map(|s| {
                 bounds

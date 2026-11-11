@@ -9,6 +9,7 @@ fn id(s: &str) -> XmlId {
 fn fixture() -> BpmnDocument {
     let mut d = BpmnDocument::new("Example".into(), id("defs"));
     d.processes.push(Process {
+        io_specification: None,
         lane_set_id: None,
         groups: vec![],
         data_objects: vec![],
@@ -17,6 +18,7 @@ fn fixture() -> BpmnDocument {
         name: String::new(),
         documentation: String::new(),
         nodes: vec![Node {
+            item_aware: None,
             activity: None,
             details: None,
             loop_characteristics: None,
@@ -984,7 +986,9 @@ fn data_store_and_association_are_drawn_in_scene_and_viewport() {
     d.processes[0].nodes[0].kind = NodeKind::DataStoreReference;
     d.processes[0].nodes[0].name = "Archive".into();
     d.processes[0].data_associations.push(DataAssociation {
-        id: id("assoc"),
+        id: Some(id("assoc")),
+        transformation: None,
+        assignments: vec![],
         owner: id("task"),
         kind: DataAssociationKind::Input,
         sources: vec![id("task")],
@@ -1092,8 +1096,9 @@ fn data_object_collection_marker_comes_from_referenced_definition() {
         data_object_ref: Some(id("data")),
     });
     d.processes[0].data_objects.push(DataObject {
-        id: id("data"),
-        name: String::new(),
+        id: Some(id("data")),
+        name: Some(String::new()),
+        item_aware: None,
         is_collection: Some(false),
     });
     let single = build(&d, Appearance::Light).scene.to_svg();
@@ -1602,4 +1607,300 @@ fn compensation_boundary_and_throw_render_distinct_markers() {
     assert_valid_event_document(&d);
     let throwing = build(&d, Appearance::Light).scene.to_svg();
     assert_ne!(boundary, throwing);
+}
+
+#[test]
+fn data_reference_state_and_collection_share_scene_and_viewport() {
+    use processcraft_core::{
+        bpmn_data::{DataObject, DataState, ItemAwareMetadata},
+        bpmn_model::NodeDetails,
+    };
+    use processcraft_render::{BpmnViewport, Viewport};
+    let mut d = fixture();
+    let node = &mut d.processes[0].nodes[0];
+    node.kind = NodeKind::DataObjectReference;
+    node.name.clear();
+    node.details = Some(NodeDetails::DataObjectReference {
+        data_object_ref: Some(id("data")),
+    });
+    node.item_aware = Some(ItemAwareMetadata {
+        item_subject_ref: None,
+        data_state: Some(DataState {
+            id: Some(id("state")),
+            name: Some("Approved".into()),
+        }),
+    });
+    d.processes[0].data_objects.push(DataObject {
+        id: Some(id("data")),
+        name: Some("Order".into()),
+        is_collection: Some(true),
+        item_aware: None,
+    });
+    d.diagrams[0].shapes[0].bounds = Bounds {
+        x: 0.0,
+        y: 0.0,
+        width: 100.0,
+        height: 80.0,
+    };
+    assert_valid_event_document(&d);
+    let scene = build(&d, Appearance::Light);
+    let svg = scene.scene.to_svg();
+    assert!(svg.contains("Order") && svg.contains("Approved"));
+    assert!(scene.hit_test(99.0, 1.0, 0.0).is_none());
+    assert!(scene.hit_test(50.0, 40.0, 0.0).is_some());
+    let viewport = BpmnViewport::build(
+        &d,
+        &id("diagram"),
+        Appearance::Light,
+        &mut TextEngine::new(),
+        "Noto Sans",
+        Viewport {
+            x: 0.0,
+            y: 0.0,
+            width: 120.0,
+            height: 100.0,
+            zoom: 1.0,
+        },
+    )
+    .unwrap();
+    assert!(viewport.hit_test(99.0, 1.0, 0.0).is_none());
+    assert!(viewport.hit_test(50.0, 40.0, 0.0).is_some());
+    d.processes[0].nodes[0].item_aware = None;
+    let no_state = BpmnViewport::build(
+        &d,
+        &id("diagram"),
+        Appearance::Light,
+        &mut TextEngine::new(),
+        "Noto Sans",
+        Viewport {
+            x: 0.0,
+            y: 0.0,
+            width: 120.0,
+            height: 100.0,
+            zoom: 1.0,
+        },
+    )
+    .unwrap();
+    assert_ne!(viewport.pixels.data(), no_state.pixels.data());
+}
+
+#[test]
+fn process_data_ports_render_direction_collection_state_and_hits() {
+    use processcraft_core::bpmn_data::{
+        DataPort, DataState, IoSet, IoSpecification, ItemAwareMetadata,
+    };
+    use processcraft_render::{BpmnViewport, Viewport};
+    let mut d = fixture();
+    let port = |name: &str| DataPort {
+        id: Some(id(name)),
+        name: Some(name.into()),
+        item_aware: Some(ItemAwareMetadata {
+            item_subject_ref: None,
+            data_state: Some(DataState {
+                id: None,
+                name: Some("Ready".into()),
+            }),
+        }),
+        is_collection: Some(true),
+    };
+    d.processes[0].io_specification = Some(IoSpecification {
+        id: None,
+        inputs: vec![port("input")],
+        outputs: vec![port("output")],
+        input_sets: vec![IoSet {
+            data_refs: vec![id("input")],
+            ..Default::default()
+        }],
+        output_sets: vec![IoSet {
+            data_refs: vec![id("output")],
+            ..Default::default()
+        }],
+    });
+    d.diagrams[0].shapes[0].element = id("input");
+    d.diagrams[0].shapes[0].bounds = Bounds {
+        x: 0.0,
+        y: 0.0,
+        width: 100.0,
+        height: 80.0,
+    };
+    assert_valid_event_document(&d);
+    let input = build(&d, Appearance::Light);
+    let svg = input.scene.to_svg();
+    assert!(svg.contains("input") && svg.contains("Ready"));
+    assert!(input.hit_test(99.0, 1.0, 0.0).is_none());
+    let viewport = BpmnViewport::build(
+        &d,
+        &id("diagram"),
+        Appearance::Light,
+        &mut TextEngine::new(),
+        "Noto Sans",
+        Viewport {
+            x: 0.0,
+            y: 0.0,
+            width: 120.0,
+            height: 100.0,
+            zoom: 1.0,
+        },
+    )
+    .unwrap();
+    assert!(viewport.hit_test(50.0, 40.0, 0.0).is_some());
+    assert!(viewport.hit_test(99.0, 1.0, 0.0).is_none());
+    d.processes[0].io_specification.as_mut().unwrap().outputs[0].name = Some("input".into());
+    d.diagrams[0].shapes[0].element = id("output");
+    assert_valid_event_document(&d);
+    let output = build(&d, Appearance::Light).scene.to_svg();
+    assert_ne!(svg, output);
+}
+
+#[test]
+fn global_data_store_shape_uses_cylinder_state_and_viewport_hits() {
+    use processcraft_core::bpmn_data::{DataState, DataStore, ItemAwareMetadata};
+    use processcraft_render::{BpmnViewport, Viewport};
+    let mut d = fixture();
+    d.data_stores.push(DataStore {
+        id: Some(id("store")),
+        name: Some("Archive".into()),
+        capacity: None,
+        is_unlimited: None,
+        item_aware: Some(ItemAwareMetadata {
+            item_subject_ref: None,
+            data_state: Some(DataState {
+                id: None,
+                name: Some("Ready".into()),
+            }),
+        }),
+    });
+    d.diagrams[0].shapes[0].element = id("store");
+    d.diagrams[0].shapes[0].bounds = Bounds {
+        x: 0.0,
+        y: 0.0,
+        width: 100.0,
+        height: 80.0,
+    };
+    assert_valid_event_document(&d);
+    let scene = build(&d, Appearance::Light);
+    assert!(scene.diagnostics.iter().all(|d| !d.contains("Unknown")));
+    let svg = scene.scene.to_svg();
+    assert!(svg.contains("Archive") && svg.contains("Ready"));
+    assert!(scene.hit_test(0.0, 0.0, 0.0).is_none());
+    assert!(scene.hit_test(50.0, 40.0, 0.0).is_some());
+    let viewport = BpmnViewport::build(
+        &d,
+        &id("diagram"),
+        Appearance::Light,
+        &mut TextEngine::new(),
+        "Noto Sans",
+        Viewport {
+            x: 0.0,
+            y: 0.0,
+            width: 120.0,
+            height: 100.0,
+            zoom: 1.0,
+        },
+    )
+    .unwrap();
+    assert!(viewport.hit_test(0.0, 0.0, 0.0).is_none());
+    assert!(viewport.hit_test(50.0, 40.0, 0.0).is_some());
+}
+
+#[test]
+fn nested_reference_resolves_ancestor_data_object_and_hides_when_collapsed() {
+    use processcraft_core::{bpmn_data::DataObject, bpmn_model::NodeDetails, model::FlowContainer};
+    let mut d = fixture();
+    d.processes[0].data_objects.push(DataObject {
+        id: Some(id("ancestor_data")),
+        name: Some("Ancestor Order".into()),
+        is_collection: Some(true),
+        item_aware: None,
+    });
+    let mut child = d.processes[0].nodes[0].clone();
+    child.id = id("nested_ref");
+    child.name.clear();
+    child.kind = NodeKind::DataObjectReference;
+    child.details = Some(NodeDetails::DataObjectReference {
+        data_object_ref: Some(id("ancestor_data")),
+    });
+    let parent = &mut d.processes[0].nodes[0];
+    parent.id = id("sub");
+    parent.name.clear();
+    parent.kind = NodeKind::SubProcess;
+    parent.details = Some(NodeDetails::SubProcess {
+        content: Box::new(FlowContainer {
+            lane_set_id: None,
+            groups: vec![],
+            data_objects: vec![],
+            data_associations: vec![],
+            nodes: vec![child],
+            lanes: vec![],
+            flows: vec![],
+        }),
+    });
+    let shape = &mut d.diagrams[0].shapes[0];
+    shape.element = id("sub");
+    shape.is_expanded = Some(true);
+    shape.bounds = Bounds {
+        x: 0.0,
+        y: 0.0,
+        width: 300.0,
+        height: 200.0,
+    };
+    let mut child_shape = shape.clone();
+    child_shape.id = id("nested_shape");
+    child_shape.element = id("nested_ref");
+    child_shape.is_expanded = None;
+    child_shape.bounds = Bounds {
+        x: 40.0,
+        y: 40.0,
+        width: 130.0,
+        height: 80.0,
+    };
+    d.diagrams[0].shapes.push(child_shape);
+    assert_valid_event_document(&d);
+    let expanded = build(&d, Appearance::Light);
+    assert!(expanded.scene.to_svg().contains("Ancestor Order"));
+    assert!(
+        expanded
+            .hits
+            .iter()
+            .any(|h| h.key.xml_id == id("nested_ref"))
+    );
+    d.diagrams[0].shapes[0].is_expanded = Some(false);
+    let collapsed = build(&d, Appearance::Light);
+    assert!(!collapsed.scene.to_svg().contains("Ancestor Order"));
+    assert!(
+        !collapsed
+            .hits
+            .iter()
+            .any(|h| h.key.xml_id == id("nested_ref"))
+    );
+}
+
+#[test]
+fn data_store_reference_displays_its_own_name_including_empty() {
+    use processcraft_core::{
+        bpmn_data::{DataStore, DataStoreRef},
+        bpmn_model::NodeDetails,
+    };
+    let mut d = fixture();
+    d.data_stores.push(DataStore {
+        id: Some(id("store")),
+        name: Some("Declaration Name".into()),
+        capacity: None,
+        is_unlimited: None,
+        item_aware: None,
+    });
+    let node = &mut d.processes[0].nodes[0];
+    node.kind = NodeKind::DataStoreReference;
+    node.name = "Reference Name".into();
+    node.details = Some(NodeDetails::DataStoreReference {
+        data_store_ref: Some(DataStoreRef::Legacy(id("store"))),
+    });
+    assert_valid_event_document(&d);
+    let svg = build(&d, Appearance::Light).scene.to_svg();
+    assert!(svg.contains("Reference Name"));
+    assert!(!svg.contains("Declaration Name"));
+    d.processes[0].nodes[0].name.clear();
+    assert_valid_event_document(&d);
+    let svg = build(&d, Appearance::Light).scene.to_svg();
+    assert!(!svg.contains("Reference Name") && !svg.contains("Declaration Name"));
 }

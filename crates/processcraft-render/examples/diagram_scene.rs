@@ -76,6 +76,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     .enumerate()
     {
         nodes.push(Node {
+            item_aware: None,
             activity: None,
             io_specification: None,
             loop_characteristics: None,
@@ -167,6 +168,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         });
     }
     d.processes.push(Process {
+        io_specification: None,
         lane_set_id: None,
         groups: vec![],
         data_objects: vec![],

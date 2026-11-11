@@ -438,6 +438,27 @@ fn query_project(path: &Path, query: Query) -> Result<(), Error> {
     let loaded = native::load_bytes(&read(path)?).map_err(|e| error(3, e))?;
     let project = &loaded.project;
     let result = match query {
+        Query::Data {
+            document_id,
+            offset,
+            limit,
+        } => {
+            let document: DocumentId = document_id.parse().map_err(|e| error(2, e))?;
+            let rows = queries::data_fields(project, document)
+                .ok_or_else(|| error(3, "document not found"))?;
+            let total = rows.len();
+            let mut page = bounded_page(
+                rows.into_iter()
+                    .skip(offset)
+                    .take(limit)
+                    .map(|row| json!(row)),
+                total,
+                offset,
+                limit,
+            )?;
+            page["contentId"] = json!(project.content_identity().map_err(|e| error(3, e))?);
+            page
+        }
         Query::Catalog {
             document_id,
             offset,

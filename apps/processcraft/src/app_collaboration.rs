@@ -524,13 +524,13 @@ impl ProcessCraft {
                 .find(|s| self.process_id.as_ref().is_none_or(|id| s.id == id));
             if let Some(scope) = scope { ui.label(format!("Scope: {}", if scope.name.is_empty() { "Unnamed scope" } else { scope.name })); }
             for store in &doc.data_stores {
-                ui.label(format!("Store: {}", store.name))
-                    .on_hover_text(store.id.to_string());
+                ui.label(format!("Store: {}", store.name.as_deref().unwrap_or("Unnamed")))
+                    .on_hover_text(store.id.as_ref().map_or("No ID".into(), ToString::to_string));
             }
             if let Some(scope) = scope {
                 for object in scope.data_objects {
-                    ui.label(format!("Object: {}", object.name))
-                        .on_hover_text(object.id.to_string());
+                    ui.label(format!("Object: {}", object.name.as_deref().unwrap_or("Unnamed")))
+                        .on_hover_text(object.id.as_ref().map_or("No ID".into(), ToString::to_string));
                 }
             }
             let label = ui.label("Definition name");
@@ -558,8 +558,9 @@ impl ProcessCraft {
                         Mutation::CreateDataStore {
                             document_id: doc.id,
                             data_store: processcraft_core::bpmn_data::DataStore {
-                                id: controller::id("DataStore"),
-                                name: self.collaboration.data_name.clone(),
+                                item_aware: None,
+                                id: Some(controller::id("DataStore")),
+                                name: Some(self.collaboration.data_name.clone()),
                                 capacity: None,
                                 is_unlimited: None,
                             },
@@ -573,8 +574,9 @@ impl ProcessCraft {
                             document_id: doc.id,
                             scope_id: scope.id.clone(),
                             data_object: processcraft_core::bpmn_data::DataObject {
-                                id: controller::id("DataObject"),
-                                name: self.collaboration.data_name.clone(),
+                                item_aware: None,
+                                id: Some(controller::id("DataObject")),
+                                name: Some(self.collaboration.data_name.clone()),
                                 is_collection: None,
                             },
                         }
@@ -603,17 +605,15 @@ impl ProcessCraft {
             let targets: Vec<_> = if self.collaboration.reference_store {
                 doc.data_stores
                     .iter()
-                    .map(|v| (&v.id, v.name.as_str()))
+                    .filter_map(|v| v.id.as_ref().map(|id| (id, v.name.as_deref().unwrap_or("Unnamed"))))
                     .collect()
             } else {
-                scope
-                    .map(|s| {
-                        s.data_objects
-                            .iter()
-                            .map(|v| (&v.id, v.name.as_str()))
-                            .collect()
-                    })
-                    .unwrap_or_default()
+                scope.map(|s| {
+                    let ancestors = super::data::ancestor_data_candidates(doc, s.id).2;
+                    processcraft_core::queries::scopes(doc).into_iter().flat_map(|candidate| candidate.data_objects.iter()).filter_map(|value| {
+                        value.id.as_ref().filter(|id| s.data_objects.iter().any(|object| object.id.as_ref() == Some(*id)) || ancestors.contains(*id)).map(|id| (id, value.name.as_deref().unwrap_or("Unnamed")))
+                    }).collect()
+                }).unwrap_or_default()
             };
             egui::ComboBox::from_id_salt("data_reference_target")
                 .selected_text(
@@ -660,7 +660,7 @@ impl ProcessCraft {
                         (
                             NodeKind::DataStoreReference,
                             processcraft_core::bpmn_model::NodeDetails::DataStoreReference {
-                                data_store_ref: Some(target),
+                                data_store_ref: Some(processcraft_core::bpmn_data::DataStoreRef::Legacy(target)),
                             },
                         )
                     } else {
@@ -675,6 +675,7 @@ impl ProcessCraft {
                         document_id: doc.id,
                         process_id: scope.id.clone(),
                         element: Node {
+                            item_aware: None,
                             id: node_id.clone(),
                             name: self.collaboration.reference_name.clone(),
                             documentation: String::new(),
@@ -773,43 +774,29 @@ impl ProcessCraft {
                     self.collaboration.io_dirty = true;
                     self.collaboration.document = Some(doc.id);
                 }
+                let (ancestor_inputs, ancestor_outputs, _) = super::data::ancestor_data_candidates(doc, scope.id);
+                let ancestor_ids = if self.collaboration.io_output { &ancestor_outputs } else { &ancestor_inputs };
+                let mut candidates: Vec<(XmlId, String)> = doc.data_stores.iter().filter_map(|store| store.id.as_ref().map(|id| (id.clone(), format!("Store · {} · {id}", store.name.as_deref().unwrap_or("Unnamed"))))).collect();
+                for candidate in processcraft_core::queries::scopes(doc) {
+                    for object in candidate.data_objects {
+                        if let Some(id) = &object.id && (candidate.id == scope.id || ancestor_ids.contains(id)) { candidates.push((id.clone(), format!("Object · {} · {id}", object.name.as_deref().unwrap_or("Unnamed")))); }
+                    }
+                    for node in candidate.nodes.iter().filter(|node| matches!(node.kind, NodeKind::DataObjectReference | NodeKind::DataStoreReference) && (candidate.id == scope.id || ancestor_ids.contains(&node.id))) {
+                        candidates.push((node.id.clone(), format!("Reference · {} · {}", node.name, node.id)));
+                    }
+                }
+                for process in &doc.processes {
+                    if let Some(io) = &process.io_specification {
+                        let ports = if self.collaboration.io_output { &io.outputs } else { &io.inputs };
+                        for port in ports { if let Some(id) = &port.id && (&process.id == scope.id || ancestor_ids.contains(id)) { candidates.push((id.clone(), format!("Process port · {} · {id}", port.name.as_deref().unwrap_or("Unnamed")))); } }
+                    }
+                }
                 egui::ComboBox::from_id_salt("io_reference")
-                    .selected_text(
-                        self.collaboration
-                            .io_reference
-                            .as_ref()
-                            .and_then(|id| scope.nodes.iter().find(|n| &n.id == id))
-                            .map_or("No data association", |n| n.name.as_str()),
-                    )
+                    .selected_text(self.collaboration.io_reference.as_ref().and_then(|id| candidates.iter().find(|(candidate, _)| candidate == id)).map_or("No data association", |(_, label)| label.as_str()))
                     .show_ui(ui, |ui| {
-                        if ui
-                            .selectable_value(
-                                &mut self.collaboration.io_reference,
-                                None,
-                                "No data association",
-                            )
-                            .changed()
-                        {
-                            self.collaboration.io_dirty = true;
-                            self.collaboration.document = Some(doc.id);
-                        }
-                        for node in scope.nodes.iter().filter(|n| {
-                            matches!(
-                                n.kind,
-                                NodeKind::DataObjectReference | NodeKind::DataStoreReference
-                            )
-                        }) {
-                            if ui
-                                .selectable_value(
-                                    &mut self.collaboration.io_reference,
-                                    Some(node.id.clone()),
-                                    &node.name,
-                                )
-                                .changed()
-                            {
-                                self.collaboration.io_dirty = true;
-                                self.collaboration.document = Some(doc.id);
-                            }
+                        if ui.selectable_value(&mut self.collaboration.io_reference, None, "No data association").changed() { self.collaboration.io_dirty = true; self.collaboration.document = Some(doc.id); }
+                        for (id, label) in &candidates {
+                            if ui.selectable_value(&mut self.collaboration.io_reference, Some(id.clone()), label).changed() { self.collaboration.io_dirty = true; self.collaboration.document = Some(doc.id); }
                         }
                     });
                 ui.label("An association edge is added when both shapes are in the current scope diagram.");
@@ -831,11 +818,13 @@ impl ProcessCraft {
                         if io.output_sets.is_empty() {
                             io.output_sets.push(Default::default());
                         }
+                        let port_id = controller::id("DataPort");
                         let port = processcraft_core::bpmn_data::DataPort {
-                            id: controller::id("DataPort"),
-                            name: self.collaboration.io_name.clone(),
+                            item_aware: None,
+                            is_collection: None,
+                            id: Some(port_id.clone()),
+                            name: Some(self.collaboration.io_name.clone()),
                         };
-                        let port_id = port.id.clone();
                         if self.collaboration.io_output {
                             io.output_sets[0].data_refs.push(port_id.clone());
                             io.outputs.push(port);
@@ -867,7 +856,9 @@ impl ProcessCraft {
                                 document_id: doc.id,
                                 scope_id: scope.id.clone(),
                                 association: processcraft_core::bpmn_data::DataAssociation {
-                                    id: assoc_id.clone(),
+                                    transformation: None,
+                                    assignments: Vec::new(),
+                                    id: Some(assoc_id.clone()),
                                     owner: node.id.clone(),
                                     kind,
                                     sources,

@@ -548,11 +548,13 @@ fn data_geometry_session() -> processcraft_core::commands::Session {
     let doc = std::sync::Arc::make_mut(&mut project.documents[0]);
     let process = &mut doc.processes[0];
     process.data_objects.push(DataObject {
-        id: "data_object".parse().unwrap(),
-        name: "Order".into(),
+        id: Some("data_object".parse().unwrap()),
+        name: Some("Order".into()),
         is_collection: None,
+        item_aware: None,
     });
     process.nodes.push(Node {
+        item_aware: None,
         id: "data_ref".parse().unwrap(),
         name: "Order".into(),
         documentation: String::new(),
@@ -574,12 +576,16 @@ fn data_geometry_session() -> processcraft_core::commands::Session {
         .io_specification = Some(IoSpecification {
         id: None,
         inputs: vec![DataPort {
-            id: "input_port".parse().unwrap(),
-            name: String::new(),
+            id: Some("input_port".parse().unwrap()),
+            name: Some(String::new()),
+            item_aware: None,
+            is_collection: None,
         }],
         outputs: vec![DataPort {
-            id: "output_port".parse().unwrap(),
-            name: String::new(),
+            id: Some("output_port".parse().unwrap()),
+            name: Some(String::new()),
+            item_aware: None,
+            is_collection: None,
         }],
         input_sets: vec![IoSet {
             data_refs: vec!["input_port".parse().unwrap()],
@@ -605,7 +611,9 @@ fn data_geometry_session() -> processcraft_core::commands::Session {
         ),
     ] {
         process.data_associations.push(DataAssociation {
-            id: id.parse().unwrap(),
+            id: Some(id.parse().unwrap()),
+            transformation: None,
+            assignments: vec![],
             owner: "review".parse().unwrap(),
             kind,
             sources: vec![source.parse().unwrap()],
@@ -783,4 +791,162 @@ fn semantic_hits_cover_all_event_and_gateway_shapes() {
         assert!(hit_shape(kind, &b, &p(5.0, 5.0), 0.0, 1.0).unwrap());
         assert!(hit_shape(kind, &b, &p(11.0, 5.0), 2.0, 2.0).unwrap());
     }
+}
+
+#[test]
+fn data_artifact_hits_follow_fold_and_cylinder() {
+    let object = rect(0.0, 0.0, 40.0, 50.0);
+    assert!(
+        !hit_shape(
+            NodeKind::DataObjectReference,
+            &object,
+            &p(39.0, 1.0),
+            0.0,
+            1.0
+        )
+        .unwrap()
+    );
+    assert!(
+        hit_shape(
+            NodeKind::DataObjectReference,
+            &object,
+            &p(30.0, 5.0),
+            0.0,
+            1.0
+        )
+        .unwrap()
+    );
+    assert!(
+        hit_shape(
+            NodeKind::DataObjectReference,
+            &object,
+            &p(39.0, 1.0),
+            8.0,
+            1.0
+        )
+        .unwrap()
+    );
+    let store = rect(0.0, 0.0, 40.0, 50.0);
+    assert!(!hit_shape(NodeKind::DataStoreReference, &store, &p(0.0, 0.0), 0.0, 1.0).unwrap());
+    assert!(
+        hit_shape(
+            NodeKind::DataStoreReference,
+            &store,
+            &p(20.0, 25.0),
+            0.0,
+            1.0
+        )
+        .unwrap()
+    );
+}
+
+#[test]
+fn moving_activity_translates_visible_port_and_repairs_association() {
+    use processcraft_core::{
+        commands::{Request, Session, ShapeBounds},
+        model::Shape,
+    };
+    let initial = data_geometry_session();
+    let mut project = (*initial.snapshot().project).clone();
+    let doc = std::sync::Arc::make_mut(&mut project.documents[0]);
+    let diagram = doc
+        .diagrams
+        .iter_mut()
+        .find(|d| d.id.to_string() == "diagram")
+        .unwrap();
+    diagram.shapes.push(Shape {
+        id: "input_shape".parse().unwrap(),
+        element: "input_port".parse().unwrap(),
+        is_expanded: None,
+        bounds: rect(42.0, 0.0, 10.0, 10.0),
+        label: None,
+        style: None,
+    });
+    diagram
+        .edges
+        .iter_mut()
+        .find(|e| e.id.to_string() == "input_edge")
+        .unwrap()
+        .waypoints = vec![p(60.0, 5.0), p(52.0, 5.0)];
+    project.validate().unwrap();
+    let mut session = Session::new(project).unwrap();
+    let before = session.snapshot();
+    let diagram_id = "diagram".parse().unwrap();
+    let prepared = prepare_move(
+        &before.project.documents[0],
+        &diagram_id,
+        vec![ShapeBounds {
+            diagram_id: diagram_id.clone(),
+            shape_id: "shape_review".parse().unwrap(),
+            bounds: rect(32.0, 3.0, 10.0, 10.0),
+        }],
+    )
+    .unwrap();
+    apply_session(&mut session, prepared.request);
+    let after = session.snapshot();
+    let diagram = after.project.documents[0]
+        .diagrams
+        .iter()
+        .find(|d| d.id == diagram_id)
+        .unwrap();
+    assert_eq!(
+        diagram
+            .shapes
+            .iter()
+            .find(|s| s.id.to_string() == "input_shape")
+            .unwrap()
+            .bounds
+            .x,
+        44.0
+    );
+    assert_eq!(
+        coords(
+            &diagram
+                .edges
+                .iter()
+                .find(|e| e.id.to_string() == "input_edge")
+                .unwrap()
+                .waypoints
+        )
+        .last(),
+        Some(&(54.0, 8.0))
+    );
+    apply_session(&mut session, Request::Undo);
+    assert_eq!(session.snapshot().content_id, before.content_id);
+    apply_session(&mut session, Request::Redo);
+    assert_eq!(session.snapshot().content_id, after.content_id);
+}
+
+#[test]
+fn global_data_store_association_moves_and_restores_route() {
+    use processcraft_core::{bpmn_data::DataStore, commands::Session};
+    let initial = data_geometry_session();
+    let mut project = (*initial.snapshot().project).clone();
+    let doc = std::sync::Arc::make_mut(&mut project.documents[0]);
+    doc.data_stores.push(DataStore {
+        id: Some("global_store".parse().unwrap()),
+        name: Some("Archive".into()),
+        capacity: None,
+        is_unlimited: None,
+        item_aware: None,
+    });
+    doc.processes[0].data_associations[0].sources[0] = "global_store".parse().unwrap();
+    doc.processes[0].data_associations[1].target = "global_store".parse().unwrap();
+    doc.diagrams
+        .iter_mut()
+        .find(|d| d.id.to_string() == "diagram")
+        .unwrap()
+        .shapes
+        .iter_mut()
+        .find(|s| s.id.to_string() == "shape_data")
+        .unwrap()
+        .element = "global_store".parse().unwrap();
+    project.validate().unwrap();
+    assert_geometry_history(
+        Session::new(project).unwrap(),
+        "shape_data",
+        rect(62.0, 3.0, 10.0, 10.0),
+        "input_edge",
+        true,
+    );
 }

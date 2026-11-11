@@ -3,7 +3,7 @@ use processcraft_core::{
     bpmn_collaboration::{
         Choreography, ChoreographyActivity, ConversationKind, ConversationLink, ConversationNode,
     },
-    bpmn_data::{DataAssociation, DataObject},
+    bpmn_data::{DataAssociation, DataObject, DataPort},
     bpmn_model::{
         AssociationDirection, EventDefinition, EventGatewayType, LoopCharacteristics, NodeDetails,
     },
@@ -22,6 +22,7 @@ struct SemanticIndex<'a> {
     conversation_links: Vec<&'a ConversationLink>,
     data_associations: Vec<&'a DataAssociation>,
     data_objects: Vec<&'a DataObject>,
+    ports: Vec<(&'a DataPort, bool)>,
     choreographies: Vec<&'a Choreography>,
 }
 impl<'a> SemanticIndex<'a> {
@@ -36,8 +37,15 @@ impl<'a> SemanticIndex<'a> {
             conversation_links: Vec::new(),
             data_associations: Vec::new(),
             data_objects: Vec::new(),
+            ports: Vec::new(),
             choreographies: document.choreographies.iter().collect(),
         };
+        for process in &document.processes {
+            if let Some(io) = &process.io_specification {
+                result.ports.extend(io.inputs.iter().map(|p| (p, false)));
+                result.ports.extend(io.outputs.iter().map(|p| (p, true)));
+            }
+        }
         let mut stack: Vec<_> = document
             .processes
             .iter()
@@ -73,13 +81,26 @@ impl<'a> SemanticIndex<'a> {
                         .map(|n| &n.id)
                         .chain(lanes.iter().map(|l| &l.id))
                         .chain(flows.iter().map(|f| &f.id))
-                        .chain(associations.iter().map(|a| &a.id)),
+                        .chain(associations.iter().filter_map(|a| a.id.as_ref())),
                 ) {
                     result.parents.insert(id.clone(), parent.clone());
                 }
             }
             for node in nodes {
                 result.nodes.push((node, depth));
+                if let Some(io) = &node.io_specification {
+                    for (port, output) in io
+                        .inputs
+                        .iter()
+                        .map(|p| (p, false))
+                        .chain(io.outputs.iter().map(|p| (p, true)))
+                    {
+                        result.ports.push((port, output));
+                        if let Some(id) = &port.id {
+                            result.parents.insert(id.clone(), node.id.clone());
+                        }
+                    }
+                }
             }
             for node in nodes.iter().rev() {
                 if let Some(NodeDetails::SubProcess { content }) = &node.details {
@@ -162,13 +183,19 @@ impl<'a> SemanticIndex<'a> {
         self.data_objects
             .iter()
             .copied()
-            .find(|item| &item.id == id)
+            .find(|item| item.id.as_ref() == Some(id))
     }
     fn data_association(&self, id: &XmlId) -> Option<&'a DataAssociation> {
         self.data_associations
             .iter()
             .copied()
-            .find(|item| &item.id == id)
+            .find(|item| item.id.as_ref() == Some(id))
+    }
+    fn port(&self, id: &XmlId) -> Option<(&'a DataPort, bool)> {
+        self.ports
+            .iter()
+            .copied()
+            .find(|(port, _)| port.id.as_ref() == Some(id))
     }
     fn conversation(&self, id: &XmlId) -> Option<&'a ConversationNode> {
         self.conversations
@@ -208,6 +235,8 @@ pub enum HitGeometry {
     Ellipse(Bounds),
     Diamond(Bounds),
     Hexagon(Bounds),
+    DataObject(Bounds),
+    DataStore(Bounds),
     Edge(Vec<Point>),
 }
 #[derive(Clone, Debug)]
@@ -239,6 +268,15 @@ impl HitRegion {
                     dx + dy <= 1.0
                 }
             }
+            HitGeometry::DataObject(b) | HitGeometry::DataStore(b) => {
+                let kind = if matches!(self.geometry, HitGeometry::DataObject(_)) {
+                    NodeKind::DataObjectReference
+                } else {
+                    NodeKind::DataStoreReference
+                };
+                processcraft_core::geometry::hit_shape(kind, b, &Point { x, y }, tolerance, 1.0)
+                    .unwrap_or(false)
+            }
             HitGeometry::Hexagon(b) => {
                 let x = (x - b.x) / b.width;
                 let y = (y - b.y) / b.height;
@@ -265,6 +303,36 @@ impl HitRegion {
         }
     }
 }
+fn data_label(
+    node: Option<&processcraft_core::model::Node>,
+    name: &str,
+    semantics: &SemanticIndex<'_>,
+) -> String {
+    let Some(node) = node else {
+        return name.to_owned();
+    };
+    let base = match &node.details {
+        Some(NodeDetails::DataObjectReference {
+            data_object_ref: Some(id),
+        }) => semantics
+            .data_object(id)
+            .map(|object| object.name.as_deref().unwrap_or(""))
+            .unwrap_or(name),
+        _ => name,
+    };
+    match node
+        .item_aware
+        .as_ref()
+        .and_then(|item| item.data_state.as_ref())
+        .and_then(|state| state.name.as_deref())
+        .filter(|name| !name.is_empty())
+    {
+        Some(state) if !base.is_empty() => format!("{base} [{state}]"),
+        Some(state) => format!("[{state}]"),
+        None => base.to_owned(),
+    }
+}
+
 /// Document-only scene. Coordinates in hit regions remain in absolute document space.
 #[derive(Clone, Debug)]
 pub struct BpmnScene {
@@ -486,7 +554,15 @@ impl BpmnScene {
                 continue;
             }
             let node = semantics.node(&shape.element).map(|(node, _)| node);
-            let kind = node.map(|node| node.kind);
+            let port = semantics.port(&shape.element);
+            let store = document
+                .data_stores
+                .iter()
+                .find(|store| store.id.as_ref() == Some(&shape.element));
+            let kind = node
+                .map(|node| node.kind)
+                .or(port.map(|_| NodeKind::DataObjectReference))
+                .or(store.map(|_| NodeKind::DataStoreReference));
             let conversation = semantics.conversation(&shape.element);
             let choreography = semantics.choreography(&shape.element);
             let details = node.and_then(|node| node.details.as_ref());
@@ -494,6 +570,8 @@ impl BpmnScene {
                 .map(|(_, activity)| activity.name.as_str())
                 .or_else(|| conversation.map(|node| node.name.as_str()))
                 .or_else(|| node.map(|node| node.name.as_str()))
+                .or_else(|| port.map(|(port, _)| port.name.as_deref().unwrap_or("")))
+                .or_else(|| store.map(|store| store.name.as_deref().unwrap_or("")))
                 .or_else(|| {
                     semantics
                         .lane(&shape.element)
@@ -510,6 +588,34 @@ impl BpmnScene {
                 diagnostics.push(format!("Unknown shape element {}", shape.element));
                 continue;
             };
+            let display_name = if let Some((port, _)) = port {
+                match port
+                    .item_aware
+                    .as_ref()
+                    .and_then(|item| item.data_state.as_ref())
+                    .and_then(|state| state.name.as_deref())
+                    .filter(|name| !name.is_empty())
+                {
+                    Some(state) if !name.is_empty() => format!("{name} [{state}]"),
+                    Some(state) => format!("[{state}]"),
+                    None => name.to_owned(),
+                }
+            } else if let Some(store) = store {
+                match store
+                    .item_aware
+                    .as_ref()
+                    .and_then(|item| item.data_state.as_ref())
+                    .and_then(|state| state.name.as_deref())
+                    .filter(|state| !state.is_empty())
+                {
+                    Some(state) if !name.is_empty() => format!("{name} [{state}]"),
+                    Some(state) => format!("[{state}]"),
+                    None => name.to_owned(),
+                }
+            } else {
+                data_label(node, name, &semantics)
+            };
+            let name = display_name.as_str();
             if matches!(kind, Some(NodeKind::BoundaryEvent)) {
                 let attached = match details {
                     Some(NodeDetails::BoundaryEvent { attached_to, .. }) => Some(attached_to),
@@ -517,20 +623,10 @@ impl BpmnScene {
                     _ => None,
                 };
                 if attached.is_none_or(|id| {
-                    !semantics.nodes.iter().any(|(n, _)| {
-                        &n.id == id
-                            && matches!(
-                                n.kind,
-                                NodeKind::Task
-                                    | NodeKind::UserTask
-                                    | NodeKind::ManualTask
-                                    | NodeKind::ServiceTask
-                                    | NodeKind::SendTask
-                                    | NodeKind::ReceiveTask
-                                    | NodeKind::ScriptTask
-                                    | NodeKind::BusinessRuleTask
-                            )
-                    })
+                    !semantics
+                        .nodes
+                        .iter()
+                        .any(|(n, _)| &n.id == id && n.kind.is_activity())
                 }) {
                     diagnostics.push(format!(
                         "Boundary event {} has no valid attached activity",
@@ -591,6 +687,7 @@ impl BpmnScene {
                 default_fill,
             );
             let mut path = PathBuilder::new();
+            let fold = w.min(h).min(12.0);
             match kind {
                 Some(
                     NodeKind::StartEvent
@@ -634,8 +731,8 @@ impl BpmnScene {
                     &mut path,
                     &[
                         (x, y),
-                        (x + w - 12.0, y),
-                        (x + w, y + 12.0),
+                        (x + w - fold, y),
+                        (x + w, y + fold),
                         (x + w, y + h),
                         (x, y + h),
                     ],
@@ -835,8 +932,8 @@ impl BpmnScene {
                     &mut scene,
                     &[
                         (x, y),
-                        (x + w - 12.0, y),
-                        (x + w, y + 12.0),
+                        (x + w - fold, y),
+                        (x + w, y + fold),
                         (x + w, y + h),
                         (x, y + h),
                         (x, y),
@@ -906,9 +1003,9 @@ impl BpmnScene {
                     lines(
                         &mut scene,
                         &[
-                            (x + w - 12.0, y),
-                            (x + w - 12.0, y + 12.0),
-                            (x + w, y + 12.0),
+                            (x + w - fold, y),
+                            (x + w - fold, y + fold),
+                            (x + w, y + fold),
                         ],
                         stroke,
                         1.0,
@@ -1036,6 +1133,34 @@ impl BpmnScene {
                 lines(&mut scene, &pts, stroke, 1.0)?;
                 lines(&mut scene, &[(cx - 3.0, cy), (cx + 3.0, cy)], stroke, 1.0)?;
                 lines(&mut scene, &[(cx, cy - 3.0), (cx, cy + 3.0)], stroke, 1.0)?;
+            }
+            if let Some((port, output)) = port {
+                let r = w.min(h) * 0.12;
+                let (ax, ay) = (x + w * 0.3, y + h * 0.3);
+                let arrow = [
+                    (ax - r, ay - r * 0.45),
+                    (ax, ay - r * 0.45),
+                    (ax, ay - r),
+                    (ax + r, ay),
+                    (ax, ay + r),
+                    (ax, ay + r * 0.45),
+                    (ax - r, ay + r * 0.45),
+                    (ax - r, ay - r * 0.45),
+                ];
+                marker_polygon(&mut scene, &arrow, stroke, output)?;
+                if port.is_collection == Some(true) {
+                    for offset in [-4.0_f32, 0.0, 4.0] {
+                        lines(
+                            &mut scene,
+                            &[
+                                (x + w / 2.0 + offset, y + h - 12.0),
+                                (x + w / 2.0 + offset, y + h - 4.0),
+                            ],
+                            stroke,
+                            1.2,
+                        )?;
+                    }
+                }
             }
             if let Some(NodeDetails::DataObjectReference {
                 data_object_ref: Some(id),
@@ -1205,6 +1330,8 @@ impl BpmnScene {
                         | NodeKind::ComplexGateway
                         | NodeKind::EventBasedGateway,
                     ) => HitGeometry::Diamond(b.clone()),
+                    Some(NodeKind::DataObjectReference) => HitGeometry::DataObject(b.clone()),
+                    Some(NodeKind::DataStoreReference) => HitGeometry::DataStore(b.clone()),
                     _ if conversation.is_some() => HitGeometry::Hexagon(b.clone()),
                     _ => HitGeometry::Shape(b.clone()),
                 },
@@ -2373,7 +2500,15 @@ impl BpmnViewport {
                 continue;
             }
             let node = semantics.node(&shape.element).map(|(node, _)| node);
-            let kind = node.map(|node| node.kind);
+            let port = semantics.port(&shape.element);
+            let store = document
+                .data_stores
+                .iter()
+                .find(|store| store.id.as_ref() == Some(&shape.element));
+            let kind = node
+                .map(|node| node.kind)
+                .or(port.map(|_| NodeKind::DataObjectReference))
+                .or(store.map(|_| NodeKind::DataStoreReference));
             let conversation = semantics.conversation(&shape.element);
             let choreography = semantics.choreography(&shape.element);
             let mut name = semantics
@@ -2381,6 +2516,8 @@ impl BpmnViewport {
                 .or_else(|| choreography.map(|(_, activity)| activity.name.as_str()))
                 .or_else(|| conversation.map(|node| node.name.as_str()))
                 .or_else(|| node.map(|node| node.name.as_str()))
+                .or_else(|| port.map(|(port, _)| port.name.as_deref().unwrap_or("")))
+                .or_else(|| store.map(|store| store.name.as_deref().unwrap_or("")))
                 .or_else(|| {
                     semantics
                         .lane(&shape.element)
@@ -2394,6 +2531,34 @@ impl BpmnViewport {
                 }
             }
             let Some(name) = name else { continue };
+            let display_name = if let Some((port, _)) = port {
+                match port
+                    .item_aware
+                    .as_ref()
+                    .and_then(|item| item.data_state.as_ref())
+                    .and_then(|state| state.name.as_deref())
+                    .filter(|name| !name.is_empty())
+                {
+                    Some(state) if !name.is_empty() => format!("{name} [{state}]"),
+                    Some(state) => format!("[{state}]"),
+                    None => name.to_owned(),
+                }
+            } else if let Some(store) = store {
+                match store
+                    .item_aware
+                    .as_ref()
+                    .and_then(|item| item.data_state.as_ref())
+                    .and_then(|state| state.name.as_deref())
+                    .filter(|state| !state.is_empty())
+                {
+                    Some(state) if !name.is_empty() => format!("{name} [{state}]"),
+                    Some(state) => format!("[{state}]"),
+                    None => name.to_owned(),
+                }
+            } else {
+                data_label(node, name, &semantics)
+            };
+            let name = display_name.as_str();
             if shape.label.is_none() && !built.hits.iter().any(|h| h.diagram_element_id == shape.id)
             {
                 continue;
@@ -2791,7 +2956,9 @@ impl BpmnViewport {
                 HitGeometry::Shape(b)
                 | HitGeometry::Ellipse(b)
                 | HitGeometry::Diamond(b)
-                | HitGeometry::Hexagon(b) => {
+                | HitGeometry::Hexagon(b)
+                | HitGeometry::DataObject(b)
+                | HitGeometry::DataStore(b) => {
                     b.x += view.x;
                     b.y += view.y;
                 }

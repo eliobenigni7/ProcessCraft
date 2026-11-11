@@ -148,6 +148,11 @@ enum ExportKind {
 #[derive(Deserialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
 enum Query {
+    Data {
+        document_id: processcraft_core::ids::DocumentId,
+        offset: usize,
+        limit: usize,
+    },
     Catalog {
         document_id: processcraft_core::ids::DocumentId,
         offset: usize,
@@ -295,8 +300,12 @@ impl ServerHandler for Server {
                 let query: Query = serde_json::from_value(args)
                     .map_err(|e| ErrorData::invalid_params(e.to_string(), None))?;
                 let snapshot = state.session.snapshot();
-                let catalog_query = matches!(&query, Query::Catalog { .. });
+                let catalog_query = matches!(&query, Query::Catalog { .. } | Query::Data { .. });
                 let (items, offset, limit) = match query {
+                    Query::Data { document_id, offset, limit } => (
+                        processcraft_core::queries::data_fields(&snapshot.project, document_id)
+                            .ok_or_else(|| ErrorData::invalid_params("document not found", None))?
+                            .into_iter().map(|row| json!(row)).collect(), offset, limit),
                     Query::Catalog { document_id, offset, limit } => (
                         processcraft_core::queries::supporting_catalog_fields(&snapshot.project, document_id)
                             .ok_or_else(|| ErrorData::invalid_params("document not found", None))?

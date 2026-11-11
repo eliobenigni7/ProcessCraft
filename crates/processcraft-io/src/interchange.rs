@@ -93,6 +93,9 @@ fn is_expression(name: &str) -> bool {
             | "loopCardinality"
             | "completionCondition"
             | "activationCondition"
+            | "transformation"
+            | "from"
+            | "to"
     )
 }
 fn tree(bytes: &[u8]) -> Option<Elem> {
@@ -179,6 +182,15 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                                 | ("resourceParameter", "type")
                                 | ("serviceTask" | "sendTask" | "receiveTask", "operationRef")
                                 | ("sendTask" | "receiveTask", "messageRef")
+                                | (
+                                    "dataObject"
+                                        | "dataObjectReference"
+                                        | "dataStore"
+                                        | "dataStoreReference"
+                                        | "dataInput"
+                                        | "dataOutput",
+                                    "itemSubjectRef"
+                                )
                         )
                     {
                         let (resolved, local) = r.resolver().resolve_element(QName(value.trim()));
@@ -217,7 +229,6 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                             | (B, "callActivity", "calledElement")
                             | (B, "participant", "processRef")
                             | (B, "group", "categoryValueRef")
-                            | (B, "dataStoreReference", "dataStoreRef")
                             | (B, "choreographyTask", "initiatingParticipantRef")
                             | (
                                 B,
@@ -330,6 +341,9 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                                 | "loopCardinality"
                                 | "completionCondition"
                                 | "activationCondition"
+                                | "transformation"
+                                | "from"
+                                | "to"
                                 | "script"
                         )
                     {
@@ -356,6 +370,9 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                             | "loopCardinality"
                             | "completionCondition"
                             | "activationCondition"
+                            | "transformation"
+                            | "from"
+                            | "to"
                             | "script"
                             | "text"
                     )
@@ -391,6 +408,9 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                             | "loopCardinality"
                             | "completionCondition"
                             | "activationCondition"
+                            | "transformation"
+                            | "from"
+                            | "to"
                             | "script"
                             | "text"
                     )
@@ -828,6 +848,50 @@ fn loop_characteristics(e: &Elem) -> Option<LoopCharacteristics> {
         _ => None,
     }
 }
+fn parse_item_aware(e: &Elem) -> Option<Option<processcraft_core::bpmn_data::ItemAwareMetadata>> {
+    use processcraft_core::bpmn_data::{DataState, ItemAwareMetadata};
+    let mut state = None;
+    for child in &e.children {
+        if child.ns == B && child.name == "dataState" {
+            if state.is_some() || !attrs(child, &["id", "name"]) || !child.children.is_empty() {
+                return None;
+            }
+            state = Some(DataState {
+                id: optional_id(child)?,
+                name: child.attrs.get("name").cloned(),
+            });
+        } else if child.ns != B || child.name != "documentation" {
+            return None;
+        }
+    }
+    let item_subject_ref = e.catalog_qnames.get("itemSubjectRef").cloned();
+    if item_subject_ref.is_none() && state.is_none() {
+        Some(None)
+    } else {
+        Some(Some(ItemAwareMetadata {
+            item_subject_ref,
+            data_state: state,
+        }))
+    }
+}
+fn item_documentation(e: &Elem) -> Option<String> {
+    let mut doc = None;
+    for child in &e.children {
+        if child.ns == B && child.name == "dataState" {
+            continue;
+        }
+        if child.ns != B
+            || child.name != "documentation"
+            || !child.attrs.is_empty()
+            || !child.children.is_empty()
+            || doc.is_some()
+        {
+            return None;
+        }
+        doc = Some(child.text.clone());
+    }
+    Some(doc.unwrap_or_default())
+}
 fn parse_io_specification(e: &Elem) -> Option<processcraft_core::bpmn_data::IoSpecification> {
     use processcraft_core::bpmn_data::{DataPort, IoSet, IoSpecification};
     if !attrs(e, &["id"]) {
@@ -843,11 +907,14 @@ fn parse_io_specification(e: &Elem) -> Option<processcraft_core::bpmn_data::IoSp
         }
         match child.name.as_str() {
             "dataInput" | "dataOutput"
-                if attrs(child, &["id", "name"]) && child.children.is_empty() =>
+                if attrs(child, &["id", "name", "itemSubjectRef", "isCollection"])
+                    && !child.children.iter().any(|c| c.name == "documentation") =>
             {
                 let port = DataPort {
-                    id: id(child, "id")?,
-                    name: value(child, "name"),
+                    id: optional_id(child)?,
+                    name: child.attrs.get("name").cloned(),
+                    item_aware: parse_item_aware(child)?,
+                    is_collection: optional_bool(child.attrs.get("isCollection"))?,
                 };
                 if child.name == "dataInput" {
                     io.inputs.push(port);
@@ -915,22 +982,54 @@ fn parse_data_association(
     };
     let mut sources = Vec::new();
     let mut target = None;
+    let mut transformation = None;
+    let mut assignments = Vec::new();
     for child in &e.children {
-        if child.ns != B || !child.attrs.is_empty() || !child.children.is_empty() {
+        if child.ns != B {
             return None;
         }
         match child.name.as_str() {
-            "sourceRef" if target.is_none() => sources.push(child.text.trim().parse().ok()?),
-            "targetRef" if target.is_none() => target = Some(child.text.trim().parse().ok()?),
+            "sourceRef"
+                if target.is_none() && child.attrs.is_empty() && child.children.is_empty() =>
+            {
+                sources.push(child.text.trim().parse().ok()?)
+            }
+            "targetRef"
+                if target.is_none() && child.attrs.is_empty() && child.children.is_empty() =>
+            {
+                target = Some(child.text.trim().parse().ok()?)
+            }
+            "transformation"
+                if target.is_some() && transformation.is_none() && assignments.is_empty() =>
+            {
+                transformation = Some(parse_expression(child, true)?)
+            }
+            "assignment"
+                if target.is_some()
+                    && attrs(child, &["id"])
+                    && child.children.len() == 2
+                    && assignments.len() < 256 =>
+            {
+                if child.children[0].name != "from" || child.children[1].name != "to" {
+                    return None;
+                }
+                assignments.push(processcraft_core::bpmn_data::DataAssignment {
+                    id: optional_id(child)?,
+                    from: parse_expression(&child.children[0], false)?,
+                    to: parse_expression(&child.children[1], false)?,
+                });
+            }
             _ => return None,
         }
     }
     Some(DataAssociation {
-        id: id(e, "id")?,
+        id: optional_id(e)?,
         owner: owner.clone(),
         kind,
         sources,
         target: target?,
+        transformation,
+        assignments,
     })
 }
 fn activity_io(
@@ -1208,6 +1307,7 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
         return None;
     }
     let mut p = Process {
+        io_specification: None,
         lane_set_id: None,
         groups: vec![],
         data_objects: vec![],
@@ -1248,6 +1348,24 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
         }
         if n.ns != B {
             return None;
+        }
+        if n.name == "ioSpecification" {
+            if e.name == "process" {
+                if p.io_specification.is_some() {
+                    return None;
+                }
+                p.io_specification = Some(parse_io_specification(n)?);
+            }
+            continue;
+        }
+        if matches!(
+            e.name.as_str(),
+            "subProcess" | "adHocSubProcess" | "transaction"
+        ) && matches!(
+            n.name.as_str(),
+            "dataInputAssociation" | "dataOutputAssociation"
+        ) {
+            continue;
         }
         if n.name == "laneSet" {
             if seen_lane_set {
@@ -1298,6 +1416,7 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
                 }
             }
             p.nodes.push(Node {
+                item_aware: None,
                 id: id(n, "id")?,
                 name: text,
                 documentation: doc,
@@ -1337,14 +1456,17 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
             continue;
         }
         if n.name == "dataObject" {
-            if !attrs(n, &["id", "name", "isCollection"]) || !n.children.is_empty() {
+            if !attrs(n, &["id", "name", "isCollection", "itemSubjectRef"])
+                || n.children.iter().any(|c| c.name != "dataState")
+            {
                 return None;
             }
             p.data_objects
                 .push(processcraft_core::bpmn_data::DataObject {
-                    id: id(n, "id")?,
-                    name: value(n, "name"),
+                    id: optional_id(n)?,
+                    name: n.attrs.get("name").cloned(),
                     is_collection: optional_bool(n.attrs.get("isCollection"))?,
+                    item_aware: parse_item_aware(n)?,
                 });
             continue;
         }
@@ -1353,30 +1475,42 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
             "dataObjectReference" | "dataStoreReference"
         ) {
             let object = n.name == "dataObjectReference";
+            // The shared Node model cannot yet distinguish omitted name from an explicit empty name.
+            if !n.attrs.contains_key("name") {
+                return None;
+            }
             if !attrs(
                 n,
                 if object {
-                    &["id", "name", "dataObjectRef"]
+                    &["id", "name", "dataObjectRef", "itemSubjectRef"]
                 } else {
-                    &["id", "name", "dataStoreRef"]
+                    &["id", "name", "dataStoreRef", "itemSubjectRef"]
                 },
             ) {
                 return None;
             }
-            let reference = n
-                .attrs
-                .get(if object {
-                    "dataObjectRef"
-                } else {
-                    "dataStoreRef"
-                })
-                .map(|v| v.parse())
-                .transpose()
-                .ok()?;
+            let object_reference = if object {
+                n.attrs
+                    .get("dataObjectRef")
+                    .map(|v| v.parse())
+                    .transpose()
+                    .ok()?
+            } else {
+                None
+            };
+            let store_reference = if object {
+                None
+            } else {
+                n.catalog_qnames
+                    .get("dataStoreRef")
+                    .cloned()
+                    .map(processcraft_core::bpmn_data::DataStoreRef::Qualified)
+            };
             p.nodes.push(Node {
+                item_aware: parse_item_aware(n)?,
                 id: id(n, "id")?,
                 name: value(n, "name"),
-                documentation: documentation(n)?,
+                documentation: item_documentation(n)?,
                 kind: if object {
                     NodeKind::DataObjectReference
                 } else {
@@ -1384,11 +1518,11 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
                 },
                 details: Some(if object {
                     NodeDetails::DataObjectReference {
-                        data_object_ref: reference,
+                        data_object_ref: object_reference,
                     }
                 } else {
                     NodeDetails::DataStoreReference {
-                        data_store_ref: reference,
+                        data_store_ref: store_reference,
                     }
                 }),
                 owner: String::new(),
@@ -1418,6 +1552,7 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
             let (io, associations) = activity_io(n)?;
             p.data_associations.extend(associations);
             p.nodes.push(Node {
+                item_aware: None,
                 id: id(n, "id")?,
                 name: value(n, "name"),
                 documentation: doc,
@@ -1474,8 +1609,11 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
                 Some(lp) => Some(loop_characteristics(lp)?),
                 None => None,
             };
+            let (io, associations) = activity_io(n)?;
+            p.data_associations.extend(associations);
             let child = parse_container(n, depth + 1, target_namespace)?;
             p.nodes.push(Node {
+                item_aware: None,
                 id: child.id,
                 name: child.name,
                 documentation: child.documentation,
@@ -1498,7 +1636,7 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
                 owner: String::new(),
                 contact: String::new(),
                 activity: activity_properties(n)?,
-                io_specification: None,
+                io_specification: io,
                 loop_characteristics: lp,
             });
             continue;
@@ -1680,6 +1818,7 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
             };
             p.data_associations.extend(associations);
             p.nodes.push(Node {
+                item_aware: None,
                 id: id(n, "id")?,
                 name: value(n, "name"),
                 documentation,
@@ -2157,14 +2296,19 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                 });
             }
             (B, "dataStore") => {
-                if !attrs(e, &["id", "name", "capacity", "isUnlimited"]) || !e.children.is_empty() {
+                if !attrs(
+                    e,
+                    &["id", "name", "capacity", "isUnlimited", "itemSubjectRef"],
+                ) || e.children.iter().any(|c| c.name != "dataState")
+                {
                     return None;
                 }
                 d.data_stores.push(processcraft_core::bpmn_data::DataStore {
-                    id: id(e, "id")?,
-                    name: value(e, "name"),
+                    id: optional_id(e)?,
+                    name: e.attrs.get("name").cloned(),
                     capacity: e.attrs.get("capacity").cloned(),
                     is_unlimited: optional_bool(e.attrs.get("isUnlimited"))?,
+                    item_aware: parse_item_aware(e)?,
                 });
             }
             (B, "error" | "escalation") => {
@@ -2329,13 +2473,6 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
             }
             _ => return None,
         }
-    }
-    if d.processes.is_empty()
-        && d.collaboration.is_none()
-        && d.choreographies.is_empty()
-        && d.catalog.is_empty()
-    {
-        return None;
     }
     // Every flow and lane reference is validated in its owning scope.
     let all_scopes = scopes(&d)?;
@@ -2643,6 +2780,131 @@ fn write_lanes(
         xml.push_str("</lane>");
     }
 }
+fn write_item_attributes(
+    xml: &mut String,
+    metadata: Option<&processcraft_core::bpmn_data::ItemAwareMetadata>,
+) {
+    if let Some(q) = metadata.and_then(|m| m.item_subject_ref.as_ref()) {
+        write_catalog_qname_attribute(xml, "itemSubjectRef", q, "pc_item");
+    }
+}
+fn write_item_state(
+    xml: &mut String,
+    metadata: Option<&processcraft_core::bpmn_data::ItemAwareMetadata>,
+    restore_default: bool,
+) {
+    if let Some(state) = metadata.and_then(|m| m.data_state.as_ref()) {
+        xml.push_str("<dataState");
+        if restore_default {
+            xml.push_str(&format!(" xmlns=\"{B}\""));
+        }
+        if let Some(id) = &state.id {
+            xml.push_str(&format!(" id=\"{id}\""));
+        }
+        if let Some(name) = &state.name {
+            xml.push_str(&format!(" name=\"{}\"", esc(name)));
+        }
+        xml.push_str("/>");
+    }
+}
+fn write_io_specification(
+    xml: &mut String,
+    io: &processcraft_core::bpmn_data::IoSpecification,
+    unqualified: bool,
+) {
+    xml.push_str("<ioSpecification");
+    if unqualified {
+        xml.push_str(&format!(" xmlns=\"{B}\""));
+    }
+    if let Some(id) = &io.id {
+        xml.push_str(&format!(" id=\"{}\"", id));
+    }
+    xml.push('>');
+    for (tag, ports) in [("dataInput", &io.inputs), ("dataOutput", &io.outputs)] {
+        for port in ports {
+            let unqualified_item = port
+                .item_aware
+                .as_ref()
+                .and_then(|m| m.item_subject_ref.as_ref())
+                .is_some_and(|q| q.namespace.is_empty());
+            let element = if unqualified_item {
+                format!("pc_data:{tag}")
+            } else {
+                tag.to_string()
+            };
+            xml.push_str(&format!("<{element}"));
+            if unqualified_item {
+                xml.push_str(&format!(" xmlns:pc_data=\"{B}\" xmlns=\"\""));
+            }
+            if let Some(id) = &port.id {
+                xml.push_str(&format!(" id=\"{id}\""));
+            }
+            if let Some(name) = &port.name {
+                xml.push_str(&format!(" name=\"{}\"", esc(name)));
+            }
+            if let Some(value) = port.is_collection {
+                xml.push_str(&format!(" isCollection=\"{value}\""));
+            }
+            write_item_attributes(xml, port.item_aware.as_ref());
+            xml.push('>');
+            write_item_state(xml, port.item_aware.as_ref(), unqualified_item);
+            xml.push_str(&format!("</{element}>"));
+        }
+    }
+    for (input, sets) in [(true, &io.input_sets), (false, &io.output_sets)] {
+        let tag = if input { "inputSet" } else { "outputSet" };
+        for set in sets {
+            xml.push_str(&format!("<{tag}"));
+            if let Some(id) = &set.id {
+                xml.push_str(&format!(" id=\"{}\"", id));
+            }
+            if let Some(name) = &set.name {
+                xml.push_str(&format!(" name=\"{}\"", esc(name)));
+            }
+            xml.push('>');
+            for (name, values) in [
+                (
+                    if input {
+                        "dataInputRefs"
+                    } else {
+                        "dataOutputRefs"
+                    },
+                    &set.data_refs,
+                ),
+                (
+                    if input {
+                        "optionalInputRefs"
+                    } else {
+                        "optionalOutputRefs"
+                    },
+                    &set.optional_refs,
+                ),
+                (
+                    if input {
+                        "whileExecutingInputRefs"
+                    } else {
+                        "whileExecutingOutputRefs"
+                    },
+                    &set.while_executing_refs,
+                ),
+                (
+                    if input {
+                        "outputSetRefs"
+                    } else {
+                        "inputSetRefs"
+                    },
+                    &set.counterpart_refs,
+                ),
+            ] {
+                for value in values {
+                    xml.push_str(&format!("<{name}>{value}</{name}>"));
+                }
+            }
+            xml.push_str(&format!("</{tag}>"));
+        }
+    }
+    xml.push_str("</ioSpecification>");
+}
 fn write_data_association(
     xml: &mut String,
     a: &processcraft_core::bpmn_data::DataAssociation,
@@ -2652,19 +2914,32 @@ fn write_data_association(
         processcraft_core::bpmn_data::DataAssociationKind::Input => "dataInputAssociation",
         processcraft_core::bpmn_data::DataAssociationKind::Output => "dataOutputAssociation",
     };
-    xml.push_str(&format!(
-        "<{tag}{} id=\"{}\">",
-        if restore_default {
-            format!(" xmlns=\"{B}\"")
-        } else {
-            String::new()
-        },
-        a.id
-    ));
+    xml.push_str(&format!("<{tag}"));
+    if restore_default {
+        xml.push_str(&format!(" xmlns=\"{B}\""));
+    }
+    if let Some(id) = &a.id {
+        xml.push_str(&format!(" id=\"{id}\""));
+    }
+    xml.push('>');
     for source in &a.sources {
         xml.push_str(&format!("<sourceRef>{source}</sourceRef>"));
     }
-    xml.push_str(&format!("<targetRef>{}</targetRef></{tag}>", a.target));
+    xml.push_str(&format!("<targetRef>{}</targetRef>", a.target));
+    if let Some(expression) = &a.transformation {
+        write_expression(xml, "transformation", expression, false);
+    }
+    for assignment in &a.assignments {
+        xml.push_str("<assignment");
+        if let Some(id) = &assignment.id {
+            xml.push_str(&format!(" id=\"{id}\""));
+        }
+        xml.push('>');
+        write_expression(xml, "from", &assignment.from, false);
+        write_expression(xml, "to", &assignment.to, false);
+        xml.push_str("</assignment>");
+    }
+    xml.push_str(&format!("</{tag}>"));
 }
 // Recursive scope serialization shares the same document namespace and ID allocation.
 #[allow(clippy::too_many_arguments)]
@@ -2679,15 +2954,33 @@ fn write_scope(
     namespace: &str,
 ) {
     for o in objects {
-        xml.push_str(&format!(
-            "<dataObject id=\"{}\" name=\"{}\"",
-            o.id,
-            esc(&o.name)
-        ));
+        let unqualified = o
+            .item_aware
+            .as_ref()
+            .and_then(|m| m.item_subject_ref.as_ref())
+            .is_some_and(|q| q.namespace.is_empty());
+        let tag = if unqualified {
+            "pc_data:dataObject"
+        } else {
+            "dataObject"
+        };
+        xml.push_str(&format!("<{tag}"));
+        if unqualified {
+            xml.push_str(&format!(" xmlns:pc_data=\"{B}\" xmlns=\"\""));
+        }
+        if let Some(id) = &o.id {
+            xml.push_str(&format!(" id=\"{id}\""));
+        }
+        if let Some(name) = &o.name {
+            xml.push_str(&format!(" name=\"{}\"", esc(name)));
+        }
+        write_item_attributes(xml, o.item_aware.as_ref());
         if let Some(value) = o.is_collection {
             xml.push_str(&format!(" isCollection=\"{}\"", value));
         }
-        xml.push_str("/>");
+        xml.push('>');
+        write_item_state(xml, o.item_aware.as_ref(), unqualified);
+        xml.push_str(&format!("</{tag}>"));
     }
     for n in nodes
         .iter()
@@ -2725,7 +3018,18 @@ fn write_scope(
             .as_ref()
             .map(|a| [a.message_ref.as_ref(), a.operation_ref.as_ref()])
             .unwrap_or([None, None]);
-        let unqualified = refs.iter().flatten().any(|q| q.namespace.is_empty());
+        let store_ref = match &n.details {
+            Some(NodeDetails::DataStoreReference {
+                data_store_ref: Some(processcraft_core::bpmn_data::DataStoreRef::Qualified(q)),
+            }) => Some(q),
+            _ => None,
+        };
+        let unqualified = refs.iter().flatten().any(|q| q.namespace.is_empty())
+            || n.item_aware
+                .as_ref()
+                .and_then(|m| m.item_subject_ref.as_ref())
+                .is_some_and(|q| q.namespace.is_empty())
+            || store_ref.is_some_and(|q| q.namespace.is_empty());
         let mut expressions = Vec::new();
         if let Some(lp) = &n.loop_characteristics {
             match lp {
@@ -2740,6 +3044,13 @@ fn write_scope(
                     expressions.extend(cardinality.iter());
                     expressions.extend(completion_condition.iter());
                 }
+            }
+        }
+        for association in associations.iter().filter(|a| a.owner == n.id) {
+            expressions.extend(association.transformation.iter());
+            for assignment in &association.assignments {
+                expressions.push(&assignment.from);
+                expressions.push(&assignment.to);
             }
         }
         let contexts: Vec<_> = expressions
@@ -2855,6 +3166,7 @@ fn write_scope(
                 xml.push_str(&format!(" cancelActivity=\"{}\"", cancel));
             }
         }
+        write_item_attributes(xml, n.item_aware.as_ref());
         if let Some(a) = &n.activity {
             if let Some(v) = a.is_for_compensation {
                 xml.push_str(&format!(" isForCompensation=\"{}\"", v));
@@ -2922,12 +3234,16 @@ fn write_scope(
                 data_object_ref: Some(id),
             }) => xml.push_str(&format!(" dataObjectRef=\"{}\"", id)),
             Some(NodeDetails::DataStoreReference {
-                data_store_ref: Some(id),
-            }) => xml.push_str(&format!(
-                " xmlns:tns=\"{}\" dataStoreRef=\"tns:{}\"",
-                esc(namespace),
-                id
-            )),
+                data_store_ref: Some(reference),
+            }) => match reference {
+                processcraft_core::bpmn_data::DataStoreRef::Legacy(id) => xml.push_str(&format!(
+                    " xmlns:tns=\"{}\" dataStoreRef=\"tns:{id}\"",
+                    esc(namespace)
+                )),
+                processcraft_core::bpmn_data::DataStoreRef::Qualified(q) => {
+                    write_catalog_qname_attribute(xml, "dataStoreRef", q, "pc_store")
+                }
+            },
             _ => {}
         }
         if let Some(NodeDetails::CallActivity { called_element }) = &n.details {
@@ -2949,77 +3265,9 @@ fn write_scope(
         if matches!(n.kind, NodeKind::TextAnnotation) {
             xml.push_str(&format!("<text>{}</text>", esc(&n.name)));
         }
+        write_item_state(xml, n.item_aware.as_ref(), unqualified);
         if let Some(io) = &n.io_specification {
-            xml.push_str("<ioSpecification");
-            if unqualified {
-                xml.push_str(&format!(" xmlns=\"{B}\""));
-            }
-            if let Some(id) = &io.id {
-                xml.push_str(&format!(" id=\"{}\"", id));
-            }
-            xml.push('>');
-            for (tag, ports) in [("dataInput", &io.inputs), ("dataOutput", &io.outputs)] {
-                for port in ports {
-                    xml.push_str(&format!(
-                        "<{tag} id=\"{}\" name=\"{}\"/>",
-                        port.id,
-                        esc(&port.name)
-                    ));
-                }
-            }
-            for (input, sets) in [(true, &io.input_sets), (false, &io.output_sets)] {
-                let tag = if input { "inputSet" } else { "outputSet" };
-                for set in sets {
-                    xml.push_str(&format!("<{tag}"));
-                    if let Some(id) = &set.id {
-                        xml.push_str(&format!(" id=\"{}\"", id));
-                    }
-                    if let Some(name) = &set.name {
-                        xml.push_str(&format!(" name=\"{}\"", esc(name)));
-                    }
-                    xml.push('>');
-                    for (name, values) in [
-                        (
-                            if input {
-                                "dataInputRefs"
-                            } else {
-                                "dataOutputRefs"
-                            },
-                            &set.data_refs,
-                        ),
-                        (
-                            if input {
-                                "optionalInputRefs"
-                            } else {
-                                "optionalOutputRefs"
-                            },
-                            &set.optional_refs,
-                        ),
-                        (
-                            if input {
-                                "whileExecutingInputRefs"
-                            } else {
-                                "whileExecutingOutputRefs"
-                            },
-                            &set.while_executing_refs,
-                        ),
-                        (
-                            if input {
-                                "outputSetRefs"
-                            } else {
-                                "inputSetRefs"
-                            },
-                            &set.counterpart_refs,
-                        ),
-                    ] {
-                        for value in values {
-                            xml.push_str(&format!("<{name}>{value}</{name}>"));
-                        }
-                    }
-                    xml.push_str(&format!("</{tag}>"));
-                }
-            }
-            xml.push_str("</ioSpecification>");
+            write_io_specification(xml, io, unqualified);
         }
         for association in associations.iter().filter(|a| {
             a.owner == n.id
@@ -3609,18 +3857,36 @@ fn export_document(
         xml.push_str("</category>");
     }
     for store in &document.data_stores {
-        xml.push_str(&format!(
-            "<dataStore id=\"{}\" name=\"{}\"",
-            store.id,
-            esc(&store.name)
-        ));
+        let unqualified = store
+            .item_aware
+            .as_ref()
+            .and_then(|m| m.item_subject_ref.as_ref())
+            .is_some_and(|q| q.namespace.is_empty());
+        let tag = if unqualified {
+            "pc_data:dataStore"
+        } else {
+            "dataStore"
+        };
+        xml.push_str(&format!("<{tag}"));
+        if unqualified {
+            xml.push_str(&format!(" xmlns:pc_data=\"{B}\" xmlns=\"\""));
+        }
+        if let Some(id) = &store.id {
+            xml.push_str(&format!(" id=\"{id}\""));
+        }
+        if let Some(name) = &store.name {
+            xml.push_str(&format!(" name=\"{}\"", esc(name)));
+        }
+        write_item_attributes(&mut xml, store.item_aware.as_ref());
         if let Some(capacity) = &store.capacity {
             xml.push_str(&format!(" capacity=\"{}\"", esc(capacity)));
         }
         if let Some(unlimited) = store.is_unlimited {
             xml.push_str(&format!(" isUnlimited=\"{}\"", unlimited));
         }
-        xml.push_str("/>");
+        xml.push('>');
+        write_item_state(&mut xml, store.item_aware.as_ref(), unqualified);
+        xml.push_str(&format!("</{tag}>"));
     }
     for resource in &document.event_resources {
         let (tag, id, name) = match resource {
@@ -3758,6 +4024,9 @@ fn export_document(
             esc(&p.name)
         ));
         write_doc(&mut xml, &p.documentation);
+        if let Some(io) = &p.io_specification {
+            write_io_specification(&mut xml, io, false);
+        }
         if let Some(lane_set_id) = lane_set_ids.get(&p.id) {
             xml.push_str(&format!("<laneSet id=\"{}\">", lane_set_id));
             write_lanes(&mut xml, &p.lanes, None, &lane_set_ids);
