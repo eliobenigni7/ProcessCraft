@@ -1306,19 +1306,20 @@ impl ProcessCraft {
                                     "Association",
                                 );
                             });
-                        let names: Vec<_> = p.nodes.iter().map(|n| n.name.as_deref().unwrap_or("Unnamed element")).collect();
+                        let names: Vec<_> = p.nodes.iter().map(|n| (Some(n.id.selector()), n.name.as_deref().unwrap_or("Unnamed element"))).collect();
+                        let chosen = |id: &Option<processcraft_core::ids::ElementSelector>| names.iter().find(|(n, _)| n == id).map_or("Choose", |(_, name)| *name);
                         egui::ComboBox::from_label("Source")
-                            .selected_text(names.get(self.source).copied().unwrap_or("Choose"))
+                            .selected_text(chosen(&self.source))
                             .show_ui(side, |ui| {
-                                for (i, n) in names.iter().enumerate() {
-                                    ui.selectable_value(&mut self.source, i, *n);
+                                for (id, n) in &names {
+                                    ui.selectable_value(&mut self.source, id.clone(), *n);
                                 }
                             });
                         egui::ComboBox::from_label("Target")
-                            .selected_text(names.get(self.target).copied().unwrap_or("Choose"))
+                            .selected_text(chosen(&self.target))
                             .show_ui(side, |ui| {
-                                for (i, n) in names.iter().enumerate() {
-                                    ui.selectable_value(&mut self.target, i, *n);
+                                for (id, n) in &names {
+                                    ui.selectable_value(&mut self.target, id.clone(), *n);
                                 }
                             });
                         if side

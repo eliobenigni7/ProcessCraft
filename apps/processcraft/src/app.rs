@@ -239,13 +239,14 @@ pub struct ProcessCraft {
     render_failed: bool,
     hits: Vec<processcraft_render::HitRegion>,
     drag: Option<DragGesture>,
+    canvas: canvas::CanvasState,
     confirm: Option<&'static str>,
     after_save: Option<&'static str>,
     after_save_ready: Option<bool>,
     allow_close: bool,
     draft_dirty: bool,
-    source: usize,
-    target: usize,
+    source: Option<ElementSelector>,
+    target: Option<ElementSelector>,
     lane: usize,
 }
 impl Default for ProcessCraft {
@@ -369,13 +370,14 @@ impl Default for ProcessCraft {
             render_failed: false,
             hits: vec![],
             drag: None,
+            canvas: Default::default(),
             confirm: None,
             after_save: None,
             after_save_ready: None,
             allow_close: false,
             draft_dirty: false,
-            source: 0,
-            target: 0,
+            source: None,
+            target: None,
             lane: 0,
         }
     }
@@ -1565,30 +1567,63 @@ impl ProcessCraft {
         } else {
             None
         };
+        let selected_shape = self.selected.as_ref().and_then(|id| {
+            let node = p.nodes.iter().find(|n| &n.id == id)?;
+            let shape = diagram.shapes.iter().find(|s| &s.element == id)?;
+            Some((node.kind, shape))
+        });
         if kind == NodeKind::BoundaryEvent
-            && !self
-                .selected
-                .as_ref()
-                .is_some_and(|id| p.nodes.iter().any(|n| &n.id == id && n.kind.is_activity()))
+            && !selected_shape.is_some_and(|(selected, _)| selected.is_activity())
         {
             self.ctl.error =
-                "Select an activity in this scope before adding a boundary event.".into();
+                "Select an activity first, then add a boundary event to attach it.".into();
             return;
         }
+        // bpmn.io-style append: a flow node added while one flow node is selected follows it.
+        let flow_target = !matches!(
+            kind,
+            NodeKind::StartEvent
+                | NodeKind::BoundaryEvent
+                | NodeKind::TextAnnotation
+                | NodeKind::DataObjectReference
+                | NodeKind::DataStoreReference
+        );
+        let append = selected_shape.filter(|(source, _)| {
+            flow_target
+                && self.multi.len() == 1
+                && !matches!(
+                    source,
+                    NodeKind::EndEvent
+                        | NodeKind::TextAnnotation
+                        | NodeKind::DataObjectReference
+                        | NodeKind::DataStoreReference
+                )
+        });
         let parent = diagram
             .shapes
             .iter()
             .find(|s| &s.element == p.id && s.is_expanded == Some(true));
-        let (x, y) = if let Some(parent) = parent {
+        let (x, y) = if kind == NodeKind::BoundaryEvent
+            && let Some((_, activity)) = selected_shape
+        {
+            let a = &activity.bounds;
+            (
+                a.x + a.width * 0.75 - width / 2.0,
+                a.y + a.height - height / 2.0,
+            )
+        } else if let Some((_, source)) = append {
+            let s = &source.bounds;
+            let center = (s.x + s.width + 80.0 + width / 2.0, s.y + s.height / 2.0);
+            let b = canvas::vacant_bounds(&diagram.shapes, center, width, height);
+            (b.x, b.y)
+        } else if let Some(parent) = parent {
             (
                 parent.bounds.x + 40.0 + (p.nodes.len() % 2) as f64 * 140.0,
                 parent.bounds.y + 55.0 + (p.nodes.len() / 2) as f64 * 90.0,
             )
         } else {
-            (
-                self.camera.0 + 100.0 + (p.nodes.len() % 5) as f64 * 130.0,
-                self.camera.1 + 100.0 + (p.nodes.len() / 5) as f64 * 100.0,
-            )
+            let b = canvas::vacant_bounds(&diagram.shapes, self.viewport_center(), width, height);
+            (b.x, b.y)
         };
         let shape = Shape {
             di_metadata: None,
@@ -1625,32 +1660,79 @@ impl ProcessCraft {
             },
             style: None,
         };
-        if self.ctl.mutate(vec![
-            Mutation::CreateElement {
-                document_id: d.id,
-                process_id: p.id.selector(),
-                element: Node {
-                    flow_metadata: None,
-                    base_extras: None,
-                    item_aware: None,
-                    activity: None,
-                    io_specification: None,
-                    loop_characteristics: None,
-                    details,
-                    id: eid.clone(),
-                    name: (kind != NodeKind::TextAnnotation).then(|| label.into()),
-                    documentation: String::new().into(),
-                    kind,
-                    owner: String::new(),
-                    contact: String::new(),
+        let append_flow = append.map(|(_, source)| {
+            let flow = controller::id("Flow");
+            [
+                Mutation::CreateFlow {
+                    document_id: d.id,
+                    process_id: Some(p.id.selector()),
+                    flow: Flow {
+                        message_ref: None,
+                        flow_metadata: None,
+                        base_extras: None,
+                        association_direction: None,
+                        id: flow.clone().into(),
+                        kind: FlowKind::Sequence,
+                        source: Some(processcraft_core::bpmn_activity::ModelReference::Local(
+                            source.element.clone(),
+                        )),
+                        target: Some(processcraft_core::bpmn_activity::ModelReference::Local(
+                            eid.selector(),
+                        )),
+                        name: Some(String::new()),
+                        documentation: String::new().into(),
+                        condition: None,
+                    },
                 },
-            },
-            Mutation::CreateShape {
-                document_id: d.id,
-                diagram_id: diagram.id.selector(),
-                shape,
-            },
-        ]) {
+                Mutation::CreateEdge {
+                    document_id: d.id,
+                    diagram_id: diagram.id.selector(),
+                    edge: Edge {
+                        di_metadata: None,
+                        message_visible_kind: None,
+                        label_visibility: Some(DiLabelVisibility::Explicit),
+                        source_element: None,
+                        target_element: None,
+                        id: controller::id("Edge").into(),
+                        element: flow.into(),
+                        waypoints: canvas::elbow_route(&source.bounds, &shape.bounds),
+                        label: Some(Label::default()),
+                        style: None,
+                    },
+                },
+            ]
+        });
+        if self.ctl.mutate(
+            [
+                Mutation::CreateElement {
+                    document_id: d.id,
+                    process_id: p.id.selector(),
+                    element: Node {
+                        flow_metadata: None,
+                        base_extras: None,
+                        item_aware: None,
+                        activity: None,
+                        io_specification: None,
+                        loop_characteristics: None,
+                        details,
+                        id: eid.clone(),
+                        name: (kind != NodeKind::TextAnnotation).then(|| label.into()),
+                        documentation: String::new().into(),
+                        kind,
+                        owner: String::new(),
+                        contact: String::new(),
+                    },
+                },
+                Mutation::CreateShape {
+                    document_id: d.id,
+                    diagram_id: diagram.id.selector(),
+                    shape,
+                },
+            ]
+            .into_iter()
+            .chain(append_flow.into_iter().flatten())
+            .collect(),
+        ) {
             self.select(Some(eid.selector()));
         }
     }
@@ -1965,63 +2047,67 @@ impl ProcessCraft {
         ) else {
             return;
         };
-        let waypoints = vec![
-            Point {
-                x: a.bounds.x + a.bounds.width,
-                y: a.bounds.y + a.bounds.height / 2.0,
-            },
-            Point {
-                x: b.bounds.x,
-                y: b.bounds.y + b.bounds.height / 2.0,
-            },
-        ];
         self.ctl.mutate(vec![Mutation::Reroute {
             document_id: d.id,
             diagram_id: diagram.id.selector(),
             edge_id: edge.id.selector(),
-            waypoints,
+            waypoints: canvas::elbow_route(&a.bounds, &b.bounds),
         }]);
-        self.ctl.error = "Direct path applied; check for overlaps.".into();
     }
     fn connect(&mut self) {
+        let (Some(a), Some(b)) = (self.source.clone(), self.target.clone()) else {
+            self.ctl.error = "Choose a source and a target.".into();
+            return;
+        };
+        self.connect_elements(a, b, Some(self.connection_kind));
+    }
+    /// Connect two nodes of one process scope; `kind: None` picks association for annotations.
+    fn connect_elements(
+        &mut self,
+        a: ElementSelector,
+        b: ElementSelector,
+        kind: Option<FlowKind>,
+    ) -> bool {
         let snap = self.ctl.session.snapshot();
         let Some(d) = snap.project.documents.get(self.doc) else {
-            return;
+            return false;
         };
-        let (Some(p), Some(diagram)) = (
-            processcraft_core::queries::scopes(d)
-                .into_iter()
-                .find(|p| self.process_id.as_ref().is_none_or(|id| p.id == id)),
-            d.diagrams
-                .iter()
-                .find(|d| self.diagram_id.as_ref().is_none_or(|id| &d.id == id)),
-        ) else {
-            return;
-        };
-        let (Some(a), Some(b)) = (p.nodes.get(self.source), p.nodes.get(self.target)) else {
-            return;
-        };
-        if a.id == b.id {
+        if a == b {
             self.ctl.error = "Choose two different nodes.".into();
-            return;
+            return false;
         }
-        let (Some(sa), Some(sb)) = (
-            diagram.shapes.iter().find(|s| s.element == a.id),
-            diagram.shapes.iter().find(|s| s.element == b.id),
-        ) else {
-            return;
+        let Some(diagram) = d
+            .diagrams
+            .iter()
+            .find(|d| self.diagram_id.as_ref().is_none_or(|id| &d.id == id))
+        else {
+            return false;
         };
+        let Some(p) = processcraft_core::queries::scopes(d)
+            .into_iter()
+            .find(|p| p.nodes.iter().any(|n| n.id == a) && p.nodes.iter().any(|n| n.id == b))
+        else {
+            self.ctl.error = "Both elements must be in the same process to connect them; use Collaboration for message flows.".into();
+            return false;
+        };
+        let (Some(sa), Some(sb)) = (
+            diagram.shapes.iter().find(|s| s.element == a),
+            diagram.shapes.iter().find(|s| s.element == b),
+        ) else {
+            return false;
+        };
+        let kind = kind.unwrap_or_else(|| {
+            if p.nodes
+                .iter()
+                .any(|n| (n.id == a || n.id == b) && n.kind == NodeKind::TextAnnotation)
+            {
+                FlowKind::Association
+            } else {
+                FlowKind::Sequence
+            }
+        });
         let eid = controller::id("Flow");
-        let points = vec![
-            Point {
-                x: sa.bounds.x + sa.bounds.width,
-                y: sa.bounds.y + sa.bounds.height / 2.0,
-            },
-            Point {
-                x: sb.bounds.x,
-                y: sb.bounds.y + sb.bounds.height / 2.0,
-            },
-        ];
+        let points = canvas::elbow_route(&sa.bounds, &sb.bounds);
         self.ctl.mutate(vec![
             Mutation::CreateFlow {
                 document_id: d.id,
@@ -2032,14 +2118,10 @@ impl ProcessCraft {
                     base_extras: None,
                     association_direction: None,
                     id: eid.clone().into(),
-                    kind: self.connection_kind,
-                    source: Some(processcraft_core::bpmn_activity::ModelReference::Local(
-                        a.id.selector(),
-                    )),
-                    target: Some(processcraft_core::bpmn_activity::ModelReference::Local(
-                        b.id.selector(),
-                    )),
-                    name: (self.connection_kind != FlowKind::Association).then(String::new),
+                    kind,
+                    source: Some(processcraft_core::bpmn_activity::ModelReference::Local(a)),
+                    target: Some(processcraft_core::bpmn_activity::ModelReference::Local(b)),
+                    name: (kind != FlowKind::Association).then(String::new),
                     documentation: String::new().into(),
                     condition: None,
                 },
@@ -2060,8 +2142,7 @@ impl ProcessCraft {
                     style: None,
                 },
             },
-        ]);
-        self.ctl.error = "Connection uses a direct path; check for overlaps.".into();
+        ])
     }
     fn delete(&mut self) {
         if !self.commit_draft() {
@@ -2308,18 +2389,7 @@ impl eframe::App for ProcessCraft {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             self.confirm = Some("close");
         }
-        if ctx.input_mut(|i| {
-            i.consume_key(egui::Modifiers::CTRL, egui::Key::Plus)
-                || i.consume_key(egui::Modifiers::CTRL, egui::Key::Equals)
-        }) {
-            ctx.set_zoom_factor(2.0);
-        }
-        if ctx.input_mut(|i| {
-            i.consume_key(egui::Modifiers::CTRL, egui::Key::Minus)
-                || i.consume_key(egui::Modifiers::CTRL, egui::Key::Num0)
-        }) {
-            ctx.set_zoom_factor(1.0);
-        }
+        self.canvas_shortcuts(&ctx);
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::S)) {
             self.save(false);
         }
