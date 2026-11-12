@@ -35,6 +35,48 @@ fn unknown_attributes_force_exact_preservation() {
         Capability::PreservedSource { .. }
     ));
     assert_eq!(export(&b).bytes, input.as_bytes());
+    // The limitation names the element that blocked editing.
+    assert!(
+        b.report.limitations[0].contains("<task id=\"task\">"),
+        "{:?}",
+        b.report.limitations
+    );
+}
+#[test]
+fn tool_style_di_references_and_modeler_attributes_stay_editable() {
+    // Unprefixed bpmnElement with no default namespace (the minimal.bpmn fixture).
+    let minimal = include_str!("../../../tests/fixtures/bpmn/minimal.bpmn");
+    // Unprefixed bpmnElement with default namespace = BPMN MODEL (Signavio/Bizagi style),
+    // plus a prefixed root attribute.
+    let signavio = FLAT.replace("\"tns:", "\"").replace(
+        "xmlns:tns=\"urn:test\"",
+        "xmlns:tns=\"urn:test\" xmlns:modeler=\"http://camunda.org/schema/modeler/1.0\" modeler:executionPlatform=\"Camunda Platform\"",
+    );
+    // bpmn.io default namespace = targetNamespace plus Camunda Modeler root attributes and a
+    // collaboration-level text annotation whose shape follows the flow-node shapes.
+    let camunda = r#"<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:modeler="http://camunda.org/schema/modeler/1.0" xmlns="http://bpmn.io/schema/bpmn" id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.17.0" modeler:executionPlatform="Camunda Platform" modeler:executionPlatformVersion="7.20.0"><bpmn:collaboration id="C1"><bpmn:participant id="P1" processRef="Process_1"/><bpmn:textAnnotation id="TA1"><bpmn:text>note</bpmn:text></bpmn:textAnnotation></bpmn:collaboration><bpmn:process id="Process_1" isExecutable="true"><bpmn:task id="Task_1" name="Check"/></bpmn:process><bpmndi:BPMNDiagram id="D1"><bpmndi:BPMNPlane id="Plane_1" bpmnElement="C1"><bpmndi:BPMNShape id="P1_di" bpmnElement="P1" isHorizontal="true"><dc:Bounds x="0" y="0" width="600" height="200"/></bpmndi:BPMNShape><bpmndi:BPMNShape id="Task_1_di" bpmnElement="Task_1"><dc:Bounds x="100" y="60" width="100" height="80"/></bpmndi:BPMNShape><bpmndi:BPMNShape id="TA1_di" bpmnElement="TA1"><dc:Bounds x="300" y="20" width="100" height="30"/></bpmndi:BPMNShape></bpmndi:BPMNPlane></bpmndi:BPMNDiagram></bpmn:definitions>"#;
+    for (name, input) in [
+        ("minimal", minimal.to_owned()),
+        ("signavio", signavio),
+        ("camunda", camunda.to_owned()),
+    ] {
+        let b = prepare_import(input.as_bytes(), name).unwrap();
+        assert!(b.report.editable, "{name}: {:?}", b.report.limitations);
+        let again = prepare_import(&export(&b).bytes, "again").unwrap();
+        assert!(
+            again.report.editable,
+            "{name}: {:?}",
+            again.report.limitations
+        );
+    }
+    // A prefixed reference outside the targetNamespace is still refused, with a reason.
+    let foreign = FLAT.replace(
+        "bpmnElement=\"tns:task\"",
+        "xmlns:o=\"urn:other\" bpmnElement=\"o:task\"",
+    );
+    let b = prepare_import(foreign.as_bytes(), "foreign").unwrap();
+    assert!(!b.report.editable);
+    assert!(b.report.limitations[0].contains("outside the targetNamespace"));
 }
 #[test]
 fn documentation_labels_and_multiple_diagrams_round_trip() {

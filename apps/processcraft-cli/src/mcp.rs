@@ -248,7 +248,10 @@ fn tools() -> Vec<Tool> {
     let save = schema(
         json!({"type":"object","properties":{"sessionId":{"type":"string"},"requestId":{"type":"string"},"expectedGeneration":{"type":"integer","minimum":0},"path":{"type":"string"},"overwrite":{"type":"boolean"}},"required":["sessionId","requestId","expectedGeneration","path","overwrite"],"additionalProperties":false}),
     );
-    let query = schema(serde_json::to_value(schemars::schema_for!(Query)).expect("query schema"));
+    // MCP requires an object-typed inputSchema; the generated tagged enum is a bare oneOf.
+    let mut query = serde_json::to_value(schemars::schema_for!(Query)).expect("query schema");
+    query["type"] = json!("object");
+    let query = schema(query);
     let export =
         schema(serde_json::to_value(schemars::schema_for!(Export)).expect("export schema"));
     let reconcile =
@@ -288,7 +291,9 @@ fn tools() -> Vec<Tool> {
 }
 impl ServerHandler for Server {
     fn get_info(&self) -> ServerConfig {
-        ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
+        ServerConfig::new(ServerCapabilities::builder().enable_tools().build()).with_server_info(
+            rmcp::model::Implementation::new("processcraft", env!("CARGO_PKG_VERSION")),
+        )
     }
     async fn list_tools(
         &self,
@@ -494,13 +499,16 @@ impl ServerHandler for Server {
                                 .file
                                 .as_ref()
                                 .is_some_and(|f| f.target() == parsed.path);
-                            if !same && parsed.path.exists() && !parsed.overwrite {
-                                json!({"ok":false,"status":"overwriteRequiresAuthorization"})
-                            } else if let Some(grant) = state
+                            // Authorize before touching the path, so existence never leaks
+                            // outside the write roots.
+                            let grant = state
                                 .write
                                 .iter()
-                                .find_map(|root| root.grant(&parsed.path, Access::Write).ok())
+                                .find_map(|root| root.grant(&parsed.path, Access::Write).ok());
+                            if grant.is_some() && !same && parsed.path.exists() && !parsed.overwrite
                             {
+                                json!({"ok":false,"status":"overwriteRequiresAuthorization"})
+                            } else if let Some(grant) = grant {
                                 let project = state.session.snapshot().project;
                                 let outcome = if let Some(file) = state.file.as_mut() {
                                     if same {
@@ -559,17 +567,17 @@ impl ServerHandler for Server {
                             json!({"ok":false,"status":"manualInvestigationRequired","manualInvestigationRequired":true})
                         } else {
                             let snapshot = state.session.snapshot();
+                            let grant = state
+                                .write
+                                .iter()
+                                .find_map(|root| root.grant(&parsed.path, Access::Write).ok());
                             if parsed.expected_generation != snapshot.generation {
                                 json!({"ok":false,"status":"generationConflict"})
                             } else if let Some(pending) = &state.pending {
                                 pending.blocked()
-                            } else if parsed.path.exists() && !parsed.overwrite {
+                            } else if grant.is_some() && parsed.path.exists() && !parsed.overwrite {
                                 json!({"ok":false,"status":"overwriteRequiresAuthorization"})
-                            } else if let Some(grant) = state
-                                .write
-                                .iter()
-                                .find_map(|root| root.grant(&parsed.path, Access::Write).ok())
-                            {
+                            } else if let Some(grant) = grant {
                                 if state
                                     .file
                                     .as_ref()

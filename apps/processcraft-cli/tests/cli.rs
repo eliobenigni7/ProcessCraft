@@ -266,8 +266,78 @@ fn bpmn_limitations_are_reported_without_validation_failure() {
         String::from_utf8_lossy(&result.stderr)
     );
     let data: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
-    assert_eq!(data["semanticEditsAllowed"], false);
+    // The real prepared-import outcome is reported, not a fixed preserved-source claim.
+    assert_eq!(data["capability"], "editable");
+    assert_eq!(data["semanticEditsAllowed"], true);
     assert!(!data["limitations"].as_array().unwrap().is_empty());
+    // Format is sniffed from content: BPMN XML under a native name is still BPMN.
+    let misnamed = t.path("misnamed.processcraft");
+    fs::copy(&source, &misnamed).unwrap();
+    let result = cli(&["info".as_ref(), misnamed.as_os_str()], &t.0);
+    let data: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
+    assert_eq!(data["format"], "bpmn");
+    // import-bpmn writes a ZIP package, so a .bpmn output name is refused.
+    let result = cli(
+        &[
+            "import-bpmn".as_ref(),
+            source.as_os_str(),
+            "--out".as_ref(),
+            t.path("out.bpmn").as_os_str(),
+        ],
+        &t.0,
+    );
+    assert_eq!(result.status.code(), Some(2));
+    assert!(!t.path("out.bpmn").exists());
+}
+
+#[test]
+fn info_lists_document_and_diagram_ids_with_hex_content_id() {
+    let t = Temp::new();
+    let source = t.path("source.bpmn");
+    fs::write(&source, r#"<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" id="defs" targetNamespace="urn:test"><process id="p" isExecutable="false"><task id="task" name="Review"/></process><bpmndi:BPMNDiagram id="d"><bpmndi:BPMNPlane id="plane" bpmnElement="p"><bpmndi:BPMNShape id="s" bpmnElement="task"><dc:Bounds x="0" y="0" width="100" height="80"/></bpmndi:BPMNShape></bpmndi:BPMNPlane></bpmndi:BPMNDiagram></definitions>"#).unwrap();
+    let project = t.path("p.processcraft");
+    let imported = cli(
+        &[
+            "import-bpmn".as_ref(),
+            source.as_os_str(),
+            "--out".as_ref(),
+            project.as_os_str(),
+        ],
+        &t.0,
+    );
+    let imported: serde_json::Value = serde_json::from_slice(&imported.stdout).unwrap();
+    // Unprefixed bpmnElement values name local IDs even without a default namespace.
+    assert_eq!(imported["editable"], true, "{imported}");
+    let info = cli(&["info".as_ref(), project.as_os_str()], &t.0);
+    let info: serde_json::Value = serde_json::from_slice(&info.stdout).unwrap();
+    assert_eq!(info["documents"][0]["id"], imported["documentId"]);
+    assert_eq!(info["documents"][0]["diagrams"][0], "d");
+    let content = info["contentId"].as_str().unwrap();
+    assert!(content.len() == 64 && content.bytes().all(|b| b.is_ascii_hexdigit()));
+    // The scale range is checked before render diagnostics.
+    let result = cli(
+        &[
+            "export-image".as_ref(),
+            project.as_os_str(),
+            "--document-id".as_ref(),
+            imported["documentId"].as_str().unwrap().as_ref(),
+            "--diagram-id".as_ref(),
+            "d".as_ref(),
+            "--format".as_ref(),
+            "svg".as_ref(),
+            "--out".as_ref(),
+            t.path("x.svg").as_os_str(),
+            "--scale".as_ref(),
+            "0".as_ref(),
+        ],
+        &t.0,
+    );
+    assert_eq!(result.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&result.stderr).contains("--scale"));
+    // Missing inputs name the path.
+    let missing = t.path("nope.processcraft");
+    let result = cli(&["info".as_ref(), missing.as_os_str()], &t.0);
+    assert!(String::from_utf8_lossy(&result.stderr).contains("nope.processcraft"));
 }
 
 #[test]
@@ -377,9 +447,12 @@ fn mcp_stdio_uses_real_handshake_and_shared_schema() {
         serde_json::json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}),
     );
     assert_eq!(initialized["id"], 1);
+    assert_eq!(initialized["result"]["serverInfo"]["name"], "processcraft");
     let listed =
         call(serde_json::json!({"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}));
     let tools = listed["result"]["tools"].as_array().unwrap();
+    // MCP requires every inputSchema to be an object schema.
+    assert!(tools.iter().all(|v| v["inputSchema"]["type"] == "object"));
     let apply = tools.iter().find(|v| v["name"] == "apply").unwrap();
     assert!(apply["inputSchema"]["$defs"].is_object());
     let reconcile = tools.iter().find(|v| v["name"] == "reconcile").unwrap();
@@ -435,6 +508,17 @@ fn mcp_stdio_uses_real_handshake_and_shared_schema() {
         "pathNotAuthorized"
     );
     assert!(!outside.exists());
+    // An existing file outside the roots must not be distinguishable from a missing one.
+    let other = Temp::new();
+    let existing = other.path("existing.processcraft");
+    fs::write(&existing, b"x").unwrap();
+    let hidden = call(
+        serde_json::json!({"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"save","arguments":{"sessionId":session,"requestId":"existing-outside","expectedGeneration":1,"path":existing,"overwrite":false}}}),
+    );
+    assert_eq!(
+        hidden["result"]["structuredContent"]["status"],
+        "pathNotAuthorized"
+    );
     let saved = call(
         serde_json::json!({"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"save","arguments":{"sessionId":session,"requestId":"save-1","expectedGeneration":1,"path":target,"overwrite":false}}}),
     );

@@ -626,11 +626,23 @@ fn activity_reference_attributes_retain_expanded_names_and_check_local_ids() {
         };
         let local = source("t:Known");
         assert_eq!(import_bpmn(&local).unwrap().export_source(), local);
-        assert_eq!(
-            import_bpmn(&source("t:Missing")).unwrap_err().kind,
-            ImportErrorKind::Reference,
-            "{element}@{attribute}"
-        );
+        if attribute == "calledElement" {
+            // An unresolved calledElement is an engine deployment key (Camunda process ID).
+            let missing = import_bpmn(&source("t:Missing")).unwrap();
+            assert!(
+                missing
+                    .report()
+                    .limitations
+                    .iter()
+                    .any(|l| l.starts_with("External QName targets"))
+            );
+        } else {
+            assert_eq!(
+                import_bpmn(&source("t:Missing")).unwrap_err().kind,
+                ImportErrorKind::Reference,
+                "{element}@{attribute}"
+            );
+        }
         let external = source("e:Known");
         let imported = import_bpmn(&external).unwrap();
         assert!(

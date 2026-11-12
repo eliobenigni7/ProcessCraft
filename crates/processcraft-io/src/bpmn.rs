@@ -149,12 +149,13 @@ pub fn import_bpmn(bytes: &[u8]) -> Result<PreservedBpmn, ImportError> {
     let mut ids = HashSet::new();
     let mut target_namespace = None;
     let mut references = Vec::new();
+    let mut called_elements: Vec<ExpandedName> = Vec::new();
     let mut metadata_bytes = 0usize;
     let mut report = CapabilityReport {
         mode: ImportMode::PreservedSource,
         semantic_edits_allowed: false,
         limitations: vec![
-            "M0 preserves all accepted imports as read-only original XML bytes; semantic edits are unavailable",
+            "Structural import retains the original XML bytes; semantic editability is decided by the qualified interchange profile",
             "Structural checks cover known IDs, references and DI numbers; this is not complete BPMN XSD or semantic validation",
             "No rendering or visual compatibility is qualified by this importer",
             "M0 refuses whitespace-containing namespace names rather than normalizing namespace identity",
@@ -364,12 +365,19 @@ pub fn import_bpmn(bytes: &[u8]) -> Result<PreservedBpmn, ImportError> {
                         if modeled && known_reference(ns, local, key) {
                             let idref = idref_reference(ns, local, key);
                             let resolved = resolve_reference(&reader, &value, idref)?;
-                            push_reference(
-                                &mut references,
-                                &resolved,
-                                !idref,
-                                &mut metadata_bytes,
-                            )?;
+                            if local == "callActivity" && key == "calledElement" {
+                                // Engines resolve calledElement as a deployment key (for
+                                // example a Camunda process ID), so it may name nothing here.
+                                account(&mut metadata_bytes, &resolved)?;
+                                called_elements.push(resolved.clone());
+                            } else {
+                                push_reference(
+                                    &mut references,
+                                    &resolved,
+                                    !idref,
+                                    &mut metadata_bytes,
+                                )?;
+                            }
                             report.qname_values.insert(resolved);
                         }
                         if modeled
@@ -479,7 +487,11 @@ pub fn import_bpmn(bytes: &[u8]) -> Result<PreservedBpmn, ImportError> {
     if !seen_root || !stack.is_empty() {
         return Err(xml("incomplete XML document"));
     }
-    let mut unresolved_external = false;
+    let mut unresolved_external = called_elements.iter().any(|reference| {
+        reference.namespace_uri.as_deref().unwrap_or("")
+            != target_namespace.as_deref().unwrap_or("")
+            || !ids.contains(&reference.local_name)
+    });
     for (reference, external_allowed) in references {
         let outside = if external_allowed {
             target_namespace.as_ref().map_or_else(

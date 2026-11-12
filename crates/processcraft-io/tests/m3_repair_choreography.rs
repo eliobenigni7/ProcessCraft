@@ -76,7 +76,7 @@ fn choreography_loop_type_accepts_each_enum_value_and_refuses_others() {
     assert!(!imported.report.editable);
     // The refusal now names the attribute and the offending value.
     assert_eq!(imported.report.limitations.len(), 2);
-    assert!(imported.report.limitations[0].starts_with("Unsupported or ambiguous content"));
+    assert!(imported.report.limitations[0].starts_with("Semantic editing disabled"));
     assert!(imported.report.limitations[1].contains("loopType \"Bogus\""));
     assert_eq!(&*imported.resources[0].bytes, bogus.as_bytes());
 }
