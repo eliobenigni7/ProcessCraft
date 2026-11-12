@@ -723,7 +723,7 @@ impl ProcessCraft {
                     for (scope, node) in processcraft_core::queries::scopes(document).into_iter().flat_map(|scope| scope.nodes.iter().map(move |node| (scope.name, node))).skip(self.m3.reference_page*100).take(100) { ui.label(format!("{} / {} · {} · {}",scope,node_kind_label(node.kind),node.name.as_deref().unwrap_or(""),node.documentation.plain_text().unwrap_or("Structured documentation"))); }
                 });
             }
-            ui.collapsing(format!("Frozen dictionary · {} entries",checkpoint.content.dictionary_entries.len()), |ui| { for entry in checkpoint.content.dictionary_entries.iter().skip(self.m3.reference_page*100).take(100) { ui.label(format!("{:?} · {} · {}",entry.kind,entry.name,entry.description)); } });
+            ui.collapsing(format!("Frozen dictionary · {} entries",checkpoint.content.dictionary_entries.len()), |ui| { for entry in checkpoint.content.dictionary_entries.iter().skip(self.m3.reference_page*100).take(100) { ui.label(format!("{} · {} · {}",super::m2::dictionary_kind_label(entry.kind),entry.name,entry.description)); } });
             ui.collapsing(format!("Frozen comments · {}",checkpoint.content.comments.len()), |ui| {
                 for comment in checkpoint.content.comments.iter().skip(self.m3.reference_page*100).take(100) { ui.strong(&comment.author); ui.label(format!("{} / {}",comment.target.document_id,comment.target.xml_id)); ui.label(&comment.text); ui.separator(); }
             });
@@ -1125,11 +1125,14 @@ impl ProcessCraft {
                             )
                             .map(|(action, link)| {
                                 format!(
-                                    "{action} · {} / {} · {:?} → {:?}",
+                                    "{action} · {} / {} · {} → {}",
                                     link.source.document_id,
                                     link.source.xml_id,
-                                    link.kind,
-                                    link.target
+                                    super::m2::dictionary_kind_label(link.kind),
+                                    match &link.target {
+                                        DictionaryTarget::Literal(text) => text.clone(),
+                                        DictionaryTarget::Entry(id) => format!("entry {id}"),
+                                    }
                                 )
                             });
                         for label in navigation

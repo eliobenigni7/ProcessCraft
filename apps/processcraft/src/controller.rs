@@ -1,5 +1,5 @@
 use processcraft_core::{
-    commands::{ChangeSet, Envelope, Mutation, Request, Session},
+    commands::{ChangeSet, CommandError, Envelope, Mutation, Request, Session},
     ids::XmlId,
     model::*,
 };
@@ -56,6 +56,38 @@ pub fn blank_project() -> ProjectData {
     p.documents.push(Arc::new(blank_document()));
     p
 }
+/// Human text for command failures shown in the UI (never Debug output).
+pub fn command_error_text(e: &CommandError) -> String {
+    match e {
+        CommandError::InvalidParams(message) => message.clone(),
+        CommandError::GenerationConflict => "the model changed in the meantime; try again".into(),
+        CommandError::SessionMismatch => "the project was replaced; try again".into(),
+        CommandError::CapabilityDenied => "this model is read-only for structural edits".into(),
+        CommandError::NothingToUndo => "nothing to undo".into(),
+        CommandError::NothingToRedo => "nothing to redo".into(),
+    }
+}
+/// Result of opening a project file off the UI thread: the file is read once and bound to
+/// the editing session created from its content.
+pub struct OpenedProject {
+    pub session: Session,
+    pub file: FileSession,
+    pub migration: bool,
+}
+pub fn load_project(path: &std::path::Path) -> Result<OpenedProject, String> {
+    let grant = FileGrant::new(path, Access::Write).map_err(|e| e.to_string())?;
+    let (mut file, loaded) = FileSession::open(String::new(), grant)
+        .map_err(|e| format!("Could not open project: {e}"))?;
+    let session = Session::new(loaded.project)
+        .map_err(|e| format!("Invalid project: {}", command_error_text(&e)))?;
+    file.rebind_session(session.id())
+        .map_err(|e| format!("Could not open project: {e}"))?;
+    Ok(OpenedProject {
+        session,
+        file,
+        migration: loaded.requires_save_as_or_backup,
+    })
+}
 struct SaveContext {
     job: uuid::Uuid,
     session_id: String,
@@ -95,6 +127,9 @@ pub struct Controller {
     pub file: Option<FileSession>,
     pub migration: bool,
     pub error: String,
+    /// Transient success text shown in the status bar; `error` is reserved for problems.
+    pub info: String,
+    pub info_at: std::time::Instant,
     pub uncertain: bool,
     pending: Option<std::sync::mpsc::Receiver<SaveResult>>,
     unmatched: Vec<SaveResult>,
@@ -103,14 +138,16 @@ pub struct Controller {
 }
 impl Default for Controller {
     fn default() -> Self {
-        let mut session = Session::new(blank_project()).unwrap();
-        session.mark_unsaved();
+        // An untouched new project is clean: nothing to save and nothing to recover.
+        let session = Session::new(blank_project()).unwrap();
         Self {
             session,
             last_save_report: None,
             file: None,
             migration: false,
             error: String::new(),
+            info: String::new(),
+            info_at: std::time::Instant::now(),
             uncertain: false,
             pending: None,
             unmatched: Vec::new(),
@@ -136,7 +173,7 @@ impl Controller {
         match self.session.apply(env, request) {
             Ok(changes) => Some(changes),
             Err(e) => {
-                self.error = format!("Change could not be applied: {e:?}");
+                self.error = format!("Change could not be applied: {}", command_error_text(&e));
                 None
             }
         }
@@ -154,43 +191,15 @@ impl Controller {
         self.apply_changes_at_generation(generation, Request::Batch { mutations })
             .is_some()
     }
-    pub fn open(&mut self, path: PathBuf) {
-        let grant = match FileGrant::new(&path, Access::Write) {
-            Ok(g) => g,
-            Err(e) => {
-                self.error = e.to_string();
-                return;
-            }
-        };
-        let temporary = Session::new(blank_project()).unwrap();
-        match FileSession::open(temporary.id(), grant) {
-            Ok((file, loaded)) => match Session::new(loaded.project) {
-                Ok(session) => {
-                    // FileSession receipts must carry the active session identity; reopen with that identity.
-                    drop(file);
-                    match FileGrant::new(&path, Access::Write)
-                        .and_then(|g| FileSession::open(session.id(), g))
-                    {
-                        Ok((file, reloaded))
-                            if reloaded.project.content_identity().ok()
-                                == Some(session.snapshot().content_id) =>
-                        {
-                            self.session = session;
-                            self.file = Some(file);
-                            self.migration = reloaded.requires_save_as_or_backup;
-                            self.error.clear();
-                        }
-                        Ok(_) => {
-                            self.error =
-                                "The project changed while opening. Please try again.".into()
-                        }
-                        Err(e) => self.error = e.to_string(),
-                    }
-                }
-                Err(e) => self.error = format!("Invalid project: {e:?}"),
-            },
-            Err(e) => self.error = format!("Could not open project: {e}"),
-        }
+    pub fn adopt(&mut self, opened: OpenedProject) {
+        self.session = opened.session;
+        self.file = Some(opened.file);
+        self.migration = opened.migration;
+        self.error.clear();
+    }
+    pub fn notify(&mut self, message: impl Into<String>) {
+        self.info = message.into();
+        self.info_at = std::time::Instant::now();
     }
     pub fn reconcile(&mut self) {
         let Some(file) = &mut self.file else { return };
@@ -199,7 +208,8 @@ impl Controller {
                 self.session.mark_saved(receipt.saved_content_id);
                 self.uncertain = false;
                 self.migration = false;
-                self.error = "Save confirmed.".into();
+                self.error.clear();
+                self.notify("Save confirmed.");
             }
             Ok(None) => {
                 self.uncertain = false;
@@ -282,6 +292,9 @@ impl Controller {
                 if let Some(receipt) = result.saved {
                     self.session.mark_saved(receipt.saved_content_id);
                     self.migration = false;
+                    if self.error.is_empty() {
+                        self.notify("Saved.");
+                    }
                     Some(true)
                 } else {
                     Some(false)
@@ -607,6 +620,9 @@ mod lifecycle {
             std::env::temp_dir().join(format!("processcraft-forged-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir(&dir).unwrap();
         let mut ctl = Controller::default();
+        assert!(ctl.mutate(vec![Mutation::RenameProject {
+            name: "edited".into()
+        }]));
         assert!(ctl.save(Some(dir.join("test.pc"))));
         let mut result = ctl
             .pending
@@ -622,6 +638,40 @@ mod lifecycle {
         assert!(ctl.session.snapshot().dirty);
         assert_eq!(ctl.unmatched.len(), 1);
         assert!(!ctl.can_transition());
+        drop(ctl);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
+    fn untouched_new_project_is_clean_and_errors_are_human() {
+        let mut ctl = Controller::default();
+        assert!(!ctl.session.snapshot().dirty);
+        assert!(!ctl.apply(Request::Undo));
+        assert_eq!(ctl.error, "Change could not be applied: nothing to undo");
+    }
+    #[cfg(windows)]
+    #[test]
+    fn loaded_project_is_bound_to_its_session() {
+        let dir = std::env::temp_dir().join(format!("processcraft-load-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir(&dir).unwrap();
+        let path = dir.join("test.processcraft");
+        let mut ctl = Controller::default();
+        assert!(ctl.save(Some(path.clone())));
+        while ctl.poll_save().is_none() {
+            std::thread::yield_now();
+        }
+        drop(ctl);
+        let opened = load_project(&path).unwrap();
+        let mut ctl = Controller::default();
+        ctl.adopt(opened);
+        assert!(!ctl.session.snapshot().dirty);
+        assert!(ctl.mutate(vec![Mutation::RenameProject { name: "x".into() }]));
+        assert!(ctl.save(None));
+        let mut saved = None;
+        while saved.is_none() {
+            saved = ctl.poll_save();
+            std::thread::yield_now();
+        }
+        assert_eq!(saved, Some(true), "{}", ctl.error);
         drop(ctl);
         std::fs::remove_dir_all(dir).unwrap();
     }

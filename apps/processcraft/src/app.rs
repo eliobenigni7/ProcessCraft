@@ -31,6 +31,47 @@ fn recovery_age(ms: u64) -> String {
         format!("{} days ago", minutes / 1440)
     }
 }
+/// Suggested file name stem for a project name (Windows-safe, never empty).
+fn file_stem(name: &str) -> String {
+    let stem: String = name
+        .chars()
+        .map(|c| {
+            if c.is_control() || r#"<>:"/\|?*"#.contains(c) {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect();
+    let stem = stem.trim().trim_end_matches('.');
+    if stem.is_empty() {
+        "project".into()
+    } else {
+        stem.into()
+    }
+}
+/// A recovery snapshot of an untouched new project holds nothing worth restoring.
+fn is_pristine_project(project: &ProjectData) -> bool {
+    let [document] = project.documents.as_slice() else {
+        return false;
+    };
+    project.name == "Untitled project"
+        && project.dictionary_entries.is_empty()
+        && project.comments.is_empty()
+        && project.description.is_empty()
+        && project.resources.is_empty()
+        && project.checkpoints.is_empty()
+        && document.collaboration.is_none()
+        && document.choreographies.is_empty()
+        && document
+            .processes
+            .iter()
+            .all(|p| p.nodes.is_empty() && p.lanes.is_empty() && p.flows.is_empty())
+        && document
+            .diagrams
+            .iter()
+            .all(|d| d.shapes.is_empty() && d.edges.is_empty())
+}
 fn node_kind_label(kind: NodeKind) -> &'static str {
     match kind {
         NodeKind::Task => "Task",
@@ -228,6 +269,12 @@ pub struct ProcessCraft {
     create_anonymous: bool,
     renderer: crate::jobs::Renderer,
     recovery: crate::jobs::RecoveryWriter,
+    diagnostics: crate::jobs::DiagnosticsWorker,
+    /// Context of the running UI, used to wake it when background work finishes.
+    repaint: egui::Context,
+    settings: crate::settings::Settings,
+    /// Path chosen from Open recent, opened once any unsaved-changes prompt is resolved.
+    pending_open: Option<std::path::PathBuf>,
     recovery_records: Vec<processcraft_io::recovery::RecoveryRecord>,
     recovery_visible: bool,
     recovery_generation: Option<(String, u64)>,
@@ -254,8 +301,17 @@ impl Default for ProcessCraft {
         let mut ctl = Controller::default();
         let recovery_records =
             match processcraft_io::recovery::RecoveryStore::new(crate::jobs::recovery_location())
-                .and_then(|s| s.list())
-            {
+                .and_then(|store| {
+                    let mut records = store.list()?;
+                    // Snapshots of an untouched new project are noise: drop them instead of offering them.
+                    records.retain(|record| {
+                        let pristine = store
+                            .open(record)
+                            .is_ok_and(|project| is_pristine_project(&project));
+                        !(pristine && store.discard(record).is_ok())
+                    });
+                    Ok(records)
+                }) {
                 Ok(records) => records,
                 Err(e) => {
                     ctl.error = format!("Could not list recovery snapshots: {e}");
@@ -359,6 +415,10 @@ impl Default for ProcessCraft {
             create_anonymous: false,
             renderer: crate::jobs::Renderer::new(),
             recovery: crate::jobs::RecoveryWriter::new(),
+            diagnostics: crate::jobs::DiagnosticsWorker::new(),
+            repaint: egui::Context::default(),
+            settings: crate::settings::Settings::default(),
+            pending_open: None,
             recovery_records,
             recovery_visible: true,
             recovery_generation: None,
@@ -398,6 +458,22 @@ fn empty_definitions_metadata() -> processcraft_core::model::DefinitionsMetadata
 impl ProcessCraft {
     pub fn apply_theme(&self, ctx: &egui::Context) {
         self.theme.apply(ctx);
+    }
+    pub fn apply_settings(&mut self, settings: crate::settings::Settings) {
+        self.theme = if settings.dark {
+            Theme::Dark
+        } else {
+            Theme::Light
+        };
+        self.left_width = settings.left_width.unwrap_or(self.left_width);
+        self.right_width = settings.right_width.unwrap_or(self.right_width);
+        self.show_left = settings.show_left.unwrap_or(self.show_left);
+        self.show_right = settings.show_right.unwrap_or(self.show_right);
+        self.settings = settings;
+    }
+    fn remember_recent(&mut self, path: &std::path::Path) {
+        self.settings.remember(path);
+        self.settings.save();
     }
     fn select(&mut self, id: Option<ElementSelector>) {
         if (self.draft_dirty
@@ -1413,9 +1489,11 @@ impl ProcessCraft {
                 self.select(None);
             }
             "open" => {
-                let path = rfd::FileDialog::new()
-                    .add_filter("ProcessCraft", &["processcraft", "pc"])
-                    .pick_file();
+                let path = self.pending_open.take().or_else(|| {
+                    rfd::FileDialog::new()
+                        .add_filter("ProcessCraft", &["processcraft", "pc"])
+                        .pick_file()
+                });
                 self.open_selected_path(path);
             }
             "close" => {}
@@ -1429,22 +1507,31 @@ impl ProcessCraft {
             self.ctl.error = "Finish the current operation before opening.".into();
             return;
         }
-        let old_session = self.ctl.session.id();
-        self.ctl.open(path);
-        if self.ctl.session.id() != old_session {
-            #[cfg(windows)]
-            {
-                self.attachment = None;
-            }
-            self.discard_property_drafts();
-            self.dictionary_selected = None;
-            self.dictionary_name.clear();
-            self.dictionary_description.clear();
-            self.doc = 0;
-            self.process_id = None;
-            self.diagram_id = None;
-            self.select(None);
+        // Read and parse off the UI thread; the result is adopted in `poll_effects`.
+        self.effects.open(
+            self.repaint.clone(),
+            path,
+            self.ctl.session.id(),
+            self.ctl.session.snapshot().generation,
+        );
+    }
+    fn adopt_opened(&mut self, opened: crate::controller::OpenedProject) {
+        #[cfg(windows)]
+        {
+            self.attachment = None;
         }
+        let path = opened.file.target().to_path_buf();
+        self.ctl.adopt(opened);
+        self.remember_recent(&path);
+        self.discard_property_drafts();
+        self.dictionary_selected = None;
+        self.dictionary_name.clear();
+        self.dictionary_description.clear();
+        self.doc = 0;
+        self.process_id = None;
+        self.diagram_id = None;
+        self.select(None);
+        self.render_key.clear();
     }
     fn save(&mut self, force_as: bool) -> bool {
         if self.collaboration.has_draft() {
@@ -1469,7 +1556,10 @@ impl ProcessCraft {
         {
             if let Some(path) = rfd::FileDialog::new()
                 .add_filter("ProcessCraft", &["processcraft"])
-                .set_file_name("project.processcraft")
+                .set_file_name(format!(
+                    "{}.processcraft",
+                    file_stem(&self.ctl.session.snapshot().project.name)
+                ))
                 .save_file()
             {
                 self.ctl.save(Some(path))
@@ -2192,11 +2282,254 @@ impl ProcessCraft {
         }
     }
 }
+/// Centered modal dialog; returns the content result and whether Escape (or a click on the
+/// backdrop) asked to close it.
+fn modal<R>(
+    ctx: &egui::Context,
+    id: &str,
+    title: &str,
+    add: impl FnOnce(&mut egui::Ui) -> R,
+) -> (R, bool) {
+    let response = egui::Modal::new(egui::Id::unique(id)).show(ctx, |ui| {
+        ui.set_max_width(480.0);
+        ui.heading(title);
+        ui.add_space(6.0);
+        add(ui)
+    });
+    let close = response.should_close();
+    (response.inner, close)
+}
+impl ProcessCraft {
+    fn dialogs_ui(&mut self, ctx: &egui::Context) {
+        if let Some(lost) = &self.export_lost {
+            let details = format!(
+                "Target: {} · session: {} · operation: {} · SHA-256: {} · {} bytes",
+                lost.path.display(),
+                lost.session,
+                lost.operation,
+                lost.digest
+                    .iter()
+                    .map(|b| format!("{b:02x}"))
+                    .collect::<String>(),
+                lost.bytes.len()
+            );
+            let (close, _) = modal(ctx, "export_lost", "Export outcome unknown", |ui| {
+                ui.label("The export worker stopped and the write outcome cannot be established automatically. Inspect the destination before exporting there again.");
+                ui.label(&details);
+                ui.button("Close").clicked()
+            });
+            if close {
+                self.export_lost = None;
+                self.ctl.error = format!("Export outcome unknown. {details}");
+            }
+        }
+        if let Some(pending) = &self.export_uncertain {
+            let message = format!(
+                "{}; destination: {}; stage: {}; backup: {}",
+                pending.error,
+                pending.path.display(),
+                pending.stage.display(),
+                pending.backup.display()
+            );
+            // Not dismissable: dropping it would lose the only handle able to settle the write.
+            let (check, _) = modal(ctx, "export_uncertain", "Export outcome uncertain", |ui| {
+                ui.label(message);
+                ui.label("Inspect the destination and retained files, then check the outcome.");
+                ui.button("Check export outcome").clicked()
+            });
+            if check && let Some(pending) = self.export_uncertain.take() {
+                self.effects.reconcile(ctx.clone(), pending);
+            }
+        }
+        if let Some((_, report, extension)) = &self.export_ready {
+            let report = report.clone();
+            let extension = *extension;
+            let ((cancel, accept), close) = modal(ctx, "export_ready", "Review export", |ui| {
+                if report.is_empty() {
+                    ui.label("Export is ready.");
+                } else {
+                    ui.label("Review and accept these export notes:");
+                    egui::ScrollArea::vertical()
+                        .max_height(300.0)
+                        .show(ui, |ui| {
+                            for note in &report {
+                                ui.label(note);
+                            }
+                        });
+                }
+                ui.horizontal(|ui| {
+                    (
+                        ui.button("Cancel").clicked(),
+                        ui.button("Accept and choose destination…").clicked(),
+                    )
+                })
+                .inner
+            });
+            if cancel || close {
+                self.export_ready = None;
+            } else if accept
+                && let Some(path) = rfd::FileDialog::new()
+                    .add_filter(extension, &[extension])
+                    .set_file_name(format!("diagram.{extension}"))
+                    .save_file()
+            {
+                if self.ctl.is_saving() {
+                    self.ctl.error = "Wait for the project save to finish before exporting.".into();
+                } else {
+                    match processcraft_io::FileGrant::new(&path, processcraft_io::Access::Write)
+                        .and_then(|grant| {
+                            if self
+                                .ctl
+                                .file
+                                .as_ref()
+                                .map(|file| file.same_target(&grant))
+                                .transpose()?
+                                .unwrap_or(false)
+                            {
+                                return Err(std::io::Error::other(
+                                    "Choose a destination other than the open project file.",
+                                ));
+                            }
+                            Ok(grant)
+                        }) {
+                        Ok(grant) => {
+                            if let Some((bytes, _, _)) = self.export_ready.take() {
+                                self.effects.write(
+                                    ctx.clone(),
+                                    grant,
+                                    bytes,
+                                    self.ctl.session.id(),
+                                );
+                            }
+                        }
+                        Err(error) => {
+                            self.ctl.error = format!("Cannot use export destination: {error}")
+                        }
+                    }
+                }
+            }
+        }
+        if self.recovery_visible && !self.recovery_records.is_empty() {
+            let records = self.recovery_records.clone();
+            let ((restore, discard, later), close) =
+                modal(ctx, "recovery", "Recover unsaved work", |ui| {
+                    ui.label(
+                        "Recovered work opens as an unsaved project. Choose Save As to keep it.",
+                    );
+                    let mut restore = None;
+                    let mut discard = None;
+                    for record in &records {
+                        ui.horizontal(|ui| {
+                            ui.label(format!(
+                                "{} · {} · revision {}",
+                                record
+                                    .origin
+                                    .original_path
+                                    .as_ref()
+                                    .and_then(|p| p.file_name())
+                                    .map_or("Unsaved project".into(), |n| n
+                                        .to_string_lossy()
+                                        .into_owned()),
+                                recovery_age(record.written_unix_ms),
+                                record.generation
+                            ));
+                            if ui.button("Restore").clicked() {
+                                restore = Some(record.clone());
+                            }
+                            if ui.button("Discard recovery").clicked() {
+                                discard = Some(record.clone());
+                            }
+                        });
+                    }
+                    (restore, discard, ui.button("Later").clicked())
+                });
+            if later || close {
+                self.recovery_visible = false;
+            }
+            if let Some(record) = restore
+                && self.can_restore_recovery()
+            {
+                match processcraft_io::recovery::RecoveryStore::new(crate::jobs::recovery_location())
+                    .and_then(|s| s.open(&record))
+                {
+                    Ok(project) => match processcraft_core::commands::Session::new(project) {
+                        Ok(mut session) => {
+                            session.mark_unsaved();
+                            #[cfg(windows)]
+                            {
+                                self.attachment = None;
+                            }
+                            self.ctl = Controller::default();
+                            self.ctl.session = session;
+                            self.doc = 0;
+                            self.process_id = None;
+                            self.diagram_id = None;
+                            self.discard_property_drafts();
+                            self.select(None);
+                            self.render_key.clear();
+                            self.recovery_visible = false;
+                        }
+                        Err(e) => {
+                            self.ctl.error = format!(
+                                "Cannot recover project: {}",
+                                controller::command_error_text(&e)
+                            )
+                        }
+                    },
+                    Err(e) => self.ctl.error = format!("Cannot recover project: {e}"),
+                }
+            }
+            if let Some(record) = discard {
+                match processcraft_io::recovery::RecoveryStore::new(crate::jobs::recovery_location())
+                    .and_then(|s| s.discard(&record))
+                {
+                    Ok(()) => self.recovery_records.retain(|r| r.id != record.id),
+                    Err(e) => self.ctl.error = format!("Cannot discard recovery: {e}"),
+                }
+            }
+        }
+        if let Some(action) = self.confirm {
+            let ((save, discard, cancel), close) = modal(ctx, "unsaved", "Unsaved changes", |ui| {
+                ui.label("Save changes before continuing?");
+                ui.horizontal(|ui| {
+                    (
+                        ui.button("Save").clicked(),
+                        ui.button("Discard").clicked(),
+                        ui.button("Cancel").clicked(),
+                    )
+                })
+                .inner
+            });
+            if save && self.save(false) {
+                self.confirm = None;
+                self.after_save = Some(action);
+            } else if discard && let Some(action) = self.discard_transition() {
+                if action == "close" {
+                    self.allow_close = true;
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                } else {
+                    self.execute(action);
+                }
+            } else if cancel || close {
+                self.confirm = None;
+            }
+        }
+    }
+}
 impl eframe::App for ProcessCraft {
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        self.settings.dark = self.theme == Theme::Dark;
+        self.settings.left_width = Some(self.left_width);
+        self.settings.right_width = Some(self.right_width);
+        self.settings.show_left = Some(self.show_left);
+        self.settings.show_right = Some(self.show_right);
+        self.settings.save();
+    }
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         ui.painter()
             .rect_filled(ui.max_rect(), 0.0, ui.visuals().panel_fill);
         let ctx = ui.ctx().clone();
+        self.repaint = ctx.clone();
         #[cfg(windows)]
         if self.attachment.is_some() {
             {
@@ -2244,9 +2577,10 @@ impl eframe::App for ProcessCraft {
                         || generation != self.ctl.session.snapshot().generation
                         || self.has_drafts()
                     {
-                        self.ctl.error =
-                            "Import cancelled because the project changed during preparation."
-                                .into();
+                        self.ctl.error = "Import cancelled: the model was edited (or an edit was \
+                            left unapplied) while the BPMN file was being prepared. Apply or \
+                            discard pending edits, then import again."
+                            .into();
                     } else {
                         let id = prepared.document.id;
                         let mut mutations: Vec<_> = prepared
@@ -2276,8 +2610,23 @@ impl eframe::App for ProcessCraft {
                     report,
                     extension,
                 } => self.export_ready = Some((bytes, report, extension)),
-                crate::effects::ResultValue::Written(message)
-                | crate::effects::ResultValue::Failed(message) => self.ctl.error = message,
+                crate::effects::ResultValue::Opened {
+                    session,
+                    generation,
+                    opened,
+                } => {
+                    if session != self.ctl.session.id()
+                        || generation != self.ctl.session.snapshot().generation
+                    {
+                        self.ctl.error = "Open cancelled: the current project was edited while \
+                            the file was loading. Open it again to replace the project."
+                            .into();
+                    } else {
+                        self.adopt_opened(*opened);
+                    }
+                }
+                crate::effects::ResultValue::Written(message) => self.ctl.notify(message),
+                crate::effects::ResultValue::Failed(message) => self.ctl.error = message,
                 crate::effects::ResultValue::Indeterminate(message) => {
                     self.export_uncertain = Some(message)
                 }
@@ -2307,9 +2656,16 @@ impl eframe::App for ProcessCraft {
             self.ctl.error = "Wait for the interchange operation to finish.".into();
         }
         let snapshot = self.ctl.session.snapshot();
+        // Validation runs off the UI thread and only while Problems is visible.
         let problem_key = (self.ctl.session.id(), snapshot.generation);
-        if self.problem_key.as_ref() != Some(&problem_key) {
-            self.problems = snapshot.project.diagnostics();
+        if let Some((key, problems)) = self.diagnostics.poll()
+            && self.problem_key.as_ref() == Some(&key)
+        {
+            self.problems = problems;
+        }
+        if self.shell.problems && self.problem_key.as_ref() != Some(&problem_key) {
+            self.diagnostics
+                .submit(problem_key.clone(), snapshot.project.clone(), ctx.clone());
             self.problem_key = Some(problem_key);
         }
         let now = std::time::Instant::now();
@@ -2356,11 +2712,17 @@ impl eframe::App for ProcessCraft {
             .is_some_and(|a| a.has_pending_save());
         #[cfg(not(windows))]
         let attachment_save_pending = false;
-        if !attachment_save_pending
-            && let Some(success) = self.ctl.poll_save()
-            && self.after_save.is_some()
-        {
-            self.after_save_ready = Some(success);
+        if !attachment_save_pending && let Some(success) = self.ctl.poll_save() {
+            if success && let Some(path) = self.ctl.file.as_ref().map(|f| f.target().to_path_buf())
+            {
+                self.remember_recent(&path);
+            }
+            if self.after_save.is_some() {
+                self.after_save_ready = Some(success);
+            }
+        }
+        if let Some(rect) = ctx.input(|i| i.viewport().inner_rect) {
+            self.settings.window = Some([rect.width(), rect.height()]);
         }
         if let Some((action, proceed)) = self.take_ready_transition() {
             if proceed {
@@ -2399,159 +2761,8 @@ impl eframe::App for ProcessCraft {
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::N)) {
             self.new_or_open("new");
         }
-        if let Some(lost) = &self.export_lost {
-            egui::Window::new("Export outcome unknown").collapsible(false).show(&ctx, |ui| {
-                ui.label("The export worker stopped and the write outcome cannot be established automatically. Inspect the destination and retained artifacts; this operation cannot be safely retried or dismissed.");
-                ui.label(format!("Target: {} · session: {} · operation: {} · SHA-256: {:02x?} · {} bytes", lost.path.display(), lost.session, lost.operation, lost.digest, lost.bytes.len()));
-            });
-        }
-        if let Some(pending) = &self.export_uncertain {
-            let message = format!(
-                "{}; destination: {}; stage: {}; backup: {}",
-                pending.error,
-                pending.path.display(),
-                pending.stage.display(),
-                pending.backup.display()
-            );
-            egui::Window::new("Export outcome uncertain")
-                .collapsible(false)
-                .show(&ctx, |ui| {
-                    ui.label(message);
-                    ui.label("Inspect the destination and retained files, then check the outcome.");
-                    if ui.button("Check export outcome").clicked()
-                        && let Some(pending) = self.export_uncertain.take()
-                    {
-                        self.effects.reconcile(ctx.clone(), pending);
-                    }
-                });
-        }
-        if let Some((_, report, extension)) = &self.export_ready {
-            let report = report.clone();
-            let extension = *extension;
-            egui::Window::new("Review export").collapsible(false).show(&ctx, |ui| {
-                if report.is_empty() { ui.label("Export is ready."); } else { ui.label("Review and accept these export notes:"); for note in &report { ui.label(note); } }
-                ui.horizontal(|ui| {
-                    if ui.button("Cancel").clicked() { self.export_ready = None; }
-                    if ui.button("Accept and choose destination…").clicked() && let Some(path) = rfd::FileDialog::new().add_filter(extension, &[extension]).set_file_name(format!("diagram.{extension}")).save_file() {
-                        if self.ctl.is_saving() { self.ctl.error = "Wait for the project save to finish before exporting.".into(); }
-                        else {
-                            match processcraft_io::FileGrant::new(&path, processcraft_io::Access::Write).and_then(|grant| {
-                                if self.ctl.file.as_ref().map(|file| file.same_target(&grant)).transpose()?.unwrap_or(false) {
-                                    return Err(std::io::Error::other("Choose a destination other than the open project file."));
-                                }
-                                Ok(grant)
-                            }) {
-                                Ok(grant) => if let Some((bytes, _, _)) = self.export_ready.take() { self.effects.write(ctx.clone(), grant, bytes, self.ctl.session.id()); },
-                                Err(error) => self.ctl.error = format!("Cannot use export destination: {error}"),
-                            }
-                        }
-                    }
-                });
-            });
-        }
         self.workbench_ui(ui);
-        if self.recovery_visible && !self.recovery_records.is_empty() {
-            egui::Window::new("Recover unsaved work")
-                .collapsible(false)
-                .show(&ctx, |ui| {
-                    ui.label(
-                        "Recovered work opens as an unsaved project. Choose Save As to keep it.",
-                    );
-                    for record in self.recovery_records.clone() {
-                        ui.horizontal(|ui| {
-                            ui.label(format!(
-                                "{} · {} · revision {}",
-                                record
-                                    .origin
-                                    .original_path
-                                    .as_ref()
-                                    .and_then(|p| p.file_name())
-                                    .map_or("Unsaved project".into(), |n| n
-                                        .to_string_lossy()
-                                        .into_owned()),
-                                recovery_age(record.written_unix_ms),
-                                record.generation
-                            ));
-                            if ui.button("Restore").clicked() && self.can_restore_recovery() {
-                                match processcraft_io::recovery::RecoveryStore::new(
-                                    crate::jobs::recovery_location(),
-                                )
-                                .and_then(|s| s.open(&record))
-                                {
-                                    Ok(project) => {
-                                        match processcraft_core::commands::Session::new(project) {
-                                            Ok(mut session) => {
-                                                session.mark_unsaved();
-                                                #[cfg(windows)]
-                                                {
-                                                    self.attachment = None;
-                                                }
-                                                self.ctl = Controller::default();
-                                                self.ctl.session = session;
-                                                self.doc = 0;
-                                                self.process_id = None;
-                                                self.diagram_id = None;
-                                                self.discard_property_drafts();
-                                                self.select(None);
-                                                self.render_key.clear();
-                                                self.recovery_visible = false;
-                                            }
-                                            Err(e) => {
-                                                self.ctl.error =
-                                                    format!("Cannot recover project: {e:?}")
-                                            }
-                                        }
-                                    }
-                                    Err(e) => {
-                                        self.ctl.error = format!("Cannot recover project: {e}")
-                                    }
-                                }
-                            }
-                            if ui.button("Discard recovery").clicked() {
-                                match processcraft_io::recovery::RecoveryStore::new(
-                                    crate::jobs::recovery_location(),
-                                )
-                                .and_then(|s| s.discard(&record))
-                                {
-                                    Ok(()) => self.recovery_records.retain(|r| r.id != record.id),
-                                    Err(e) => {
-                                        self.ctl.error = format!("Cannot discard recovery: {e}")
-                                    }
-                                }
-                            }
-                        });
-                    }
-                    if ui.button("Later").clicked() {
-                        self.recovery_visible = false;
-                    }
-                });
-        }
-        if let Some(action) = self.confirm {
-            egui::Window::new("Unsaved changes")
-                .collapsible(false)
-                .show(&ctx, |ui| {
-                    ui.label("Save changes before continuing?");
-                    ui.horizontal(|ui| {
-                        if ui.button("Save").clicked() && self.save(false) {
-                            self.confirm = None;
-                            self.after_save = Some(action);
-                        }
-                        if ui.button("Discard").clicked()
-                            && let Some(action) = self.discard_transition()
-                        {
-                            if action == "close" {
-                                self.allow_close = true;
-                                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                            } else {
-                                self.execute(action);
-                            }
-                        }
-                        if ui.button("Cancel").clicked() {
-                            self.confirm = None;
-                        }
-                    });
-                });
-        }
+        self.dialogs_ui(&ctx);
     }
 }
 
@@ -2559,6 +2770,18 @@ impl eframe::App for ProcessCraft {
 mod tests {
     use super::*;
 
+    #[test]
+    fn untouched_projects_are_pristine_and_file_names_are_safe() {
+        let mut project = controller::blank_project();
+        assert!(is_pristine_project(&project));
+        project.name = "Renamed".into();
+        assert!(!is_pristine_project(&project));
+        assert_eq!(file_stem("Order: Q1/Q2?"), "Order_ Q1_Q2_");
+        assert_eq!(file_stem("  ..."), "project");
+        let app = ProcessCraft::default();
+        assert!(!app.ctl.session.snapshot().dirty);
+        assert!(!app.has_drafts());
+    }
     #[test]
     fn pool_creation_uses_the_selected_collaboration_plane() {
         let mut app = ProcessCraft::default();
