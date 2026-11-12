@@ -406,7 +406,7 @@ impl ProcessCraft {
                         document_id: id,
                         diagram_id: diagram.id.selector(),
                         shape: Shape {
-                            label_visibility: None,
+                            label_visibility: Some(DiLabelVisibility::Explicit),
                             is_horizontal: None,
                             is_marker_visible: None,
                             id: controller::id("ConversationShape").into(),
@@ -418,7 +418,7 @@ impl ProcessCraft {
                                 width: 120.0,
                                 height: 70.0,
                             },
-                            label: None,
+                            label: Some(Label::default()),
                             style: None,
                         },
                     });
@@ -580,7 +580,7 @@ impl ProcessCraft {
                     document_id: id,
                     diagram_id: diagram.id.selector(),
                     edge: Edge {
-                        label_visibility: None,
+                        label_visibility: Some(DiLabelVisibility::Explicit),
                         source_element: None,
                         target_element: None,
                         id: controller::id("ConversationEdge").into(),
@@ -595,7 +595,7 @@ impl ProcessCraft {
                                 y: b.bounds.y + b.bounds.height / 2.0,
                             },
                         ],
-                        label: None,
+                        label: Some(Label::default()),
                         style: None,
                     },
                 });
@@ -785,7 +785,7 @@ impl ProcessCraft {
                         mutations.push(Mutation::CreateShape {
                             document_id: doc.id,
                             diagram_id: diagram.id.selector(),
-                            shape: Shape { label_visibility: None,  is_horizontal: None, is_marker_visible: None,
+                            shape: Shape { label_visibility: Some(DiLabelVisibility::Explicit),  is_horizontal: None, is_marker_visible: None,
                                 id: controller::id("DataShape").into(),
                                 element: node_id.into(),
                                 is_expanded: None,
@@ -795,7 +795,7 @@ impl ProcessCraft {
                                     width: 50.0,
                                     height: 70.0,
                                 },
-                                label: None,
+                                label: Some(Label::default()),
                                 style: None,
                             },
                         });
@@ -974,11 +974,11 @@ impl ProcessCraft {
                                 mutations.push(Mutation::CreateEdge {
                                     document_id: doc.id,
                                     diagram_id: diagram.id.selector(),
-                                    edge: Edge { label_visibility: None,  source_element: None, target_element: None,
+                                    edge: Edge { label_visibility: Some(DiLabelVisibility::Explicit),  source_element: None, target_element: None,
                                         id: controller::id("DataAssociationEdge").into(),
                                         element: assoc_id.into(),
                                         waypoints,
-                                        label: None,
+                                        label: Some(Label::default()),
                                         style: None,
                                     },
                                 });
@@ -1095,7 +1095,7 @@ impl ProcessCraft {
                                 document_id: doc.id,
                                 diagram_id: diagram.id.selector(),
                                 shape: Shape {
-                                    label_visibility: None,
+                                    label_visibility: Some(DiLabelVisibility::Explicit),
                                     is_horizontal: None,
                                     is_marker_visible: None,
                                     id: controller::id("GroupShape").into(),
@@ -1107,7 +1107,7 @@ impl ProcessCraft {
                                         width: 260.0,
                                         height: 160.0,
                                     },
-                                    label: None,
+                                    label: Some(Label::default()),
                                     style: None,
                                 },
                             });
@@ -1143,7 +1143,7 @@ impl ProcessCraft {
                         if self.collaboration.root_name.trim().is_empty() || self.collaboration.root_first.trim().is_empty() || self.collaboration.root_second.trim().is_empty() || self.collaboration.root_task.trim().is_empty() { self.ctl.error = "Enter a choreography, two participants, and a first task.".into(); return; }
                         let root = controller::id("Choreography"); let diagram = controller::id("ChoreographyDiagram"); let task = controller::id("ChoreographyTask"); let first = controller::id("Participant"); let second = controller::id("Participant");
                         let choreography = processcraft_core::bpmn_collaboration::Choreography { base: None,  id:root.clone().into(), name:Some(self.collaboration.root_name.clone()), participants:vec![Participant {base: None,id:first.clone().into(),name:Some(self.collaboration.root_first.clone()),process:None},Participant {base: None,id:second.clone().into(),name:Some(self.collaboration.root_second.clone()),process:None}],message_flows:vec![],activities:vec![processcraft_core::bpmn_collaboration::ChoreographyActivity{base: None,id:task.clone().into(),name:Some(self.collaboration.root_task.clone()),participant_refs:vec![first.clone().into(),second.into()],initiating_participant:first.into(),message_flow_refs:vec![]}],sequence_flows:vec![] };
-                        let diagram_value = Diagram { documentation: None, label_styles: Vec::new(), resolution: None,  name:None, id:diagram.clone().into(),plane_id:controller::id("ChoreographyPlane").into(),plane:root.clone().into(),shapes:vec![Shape{ label_visibility: None, is_horizontal: None, is_marker_visible: None,id:controller::id("ChoreographyShape").into(),element:task.into(),is_expanded:None,bounds:Bounds{x:80.0,y:80.0,width:180.0,height:100.0},label:None,style:None}],edges:vec![] };
+                        let diagram_value = Diagram { documentation: None, label_styles: Vec::new(), resolution: None,  name:None, id:diagram.clone().into(),plane_id:controller::id("ChoreographyPlane").into(),plane:root.clone().into(),shapes:vec![Shape{ label_visibility: Some(DiLabelVisibility::Explicit), is_horizontal: None, is_marker_visible: None,id:controller::id("ChoreographyShape").into(),element:task.into(),is_expanded:None,bounds:Bounds{x:80.0,y:80.0,width:180.0,height:100.0},label:Some(Label::default()),style:None}],edges:vec![] };
                         if self.commit_draft() && self.ctl.mutate(vec![Mutation::CreateChoreography {document_id:doc.id,choreography},Mutation::CreateDiagram {document_id:doc.id,diagram:diagram_value}]) {
                             self.diagram_id = Some(diagram.into()); self.process_id = None;
                             self.collaboration.root_name.clear(); self.collaboration.root_first.clear(); self.collaboration.root_second.clear(); self.collaboration.root_task.clear(); self.collaboration.root_dirty = false;
@@ -1180,7 +1180,7 @@ impl ProcessCraft {
                     let node_id = controller::id("ChoreographyTask");
                     let mut mutations = vec![Mutation::CreateChoreographyActivity { document_id:doc.id,choreography_id:choreo.id.selector(),activity:processcraft_core::bpmn_collaboration::ChoreographyActivity {base: None,id:node_id.clone().into(),name:Some(self.collaboration.choreography_name.clone()),participant_refs:vec![first.clone(),second],initiating_participant:first,message_flow_refs:vec![]}}];
                     if let Some(diagram) = doc.diagrams.iter().find(|d| self.diagram_id.as_ref().is_none_or(|id| &d.id == id) && d.plane == choreo.id) {
-                        mutations.push(Mutation::CreateShape { document_id:doc.id,diagram_id:diagram.id.selector(),shape:Shape{ label_visibility: None, is_horizontal: None, is_marker_visible: None,id:controller::id("ChoreographyShape").into(),element:node_id.into(),is_expanded:None,bounds:Bounds{x:self.camera.0+120.0,y:self.camera.1+80.0+choreo.activities.len() as f64*90.0,width:160.0,height:100.0},label:None,style:None}});
+                        mutations.push(Mutation::CreateShape { document_id:doc.id,diagram_id:diagram.id.selector(),shape:Shape{ label_visibility: Some(DiLabelVisibility::Explicit), is_horizontal: None, is_marker_visible: None,id:controller::id("ChoreographyShape").into(),element:node_id.into(),is_expanded:None,bounds:Bounds{x:self.camera.0+120.0,y:self.camera.1+80.0+choreo.activities.len() as f64*90.0,width:160.0,height:100.0},label:Some(Label::default()),style:None}});
                     }
                     if self.commit_draft() && self.ctl.mutate(mutations) { self.collaboration.choreography_name.clear(); self.collaboration.choreography_first = None; self.collaboration.choreography_second = None; self.collaboration.choreography_dirty = false; }
                 }

@@ -1341,7 +1341,7 @@ pub struct Style {
     pub stroke: Option<String>,
     pub font: Option<String>,
 }
-#[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Label {
     #[serde(default, skip_serializing_if = "Option::is_none")]

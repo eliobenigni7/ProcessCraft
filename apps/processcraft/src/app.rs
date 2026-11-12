@@ -1126,7 +1126,7 @@ impl ProcessCraft {
             )
         };
         let shape = Shape {
-            label_visibility: None,
+            label_visibility: Some(DiLabelVisibility::Explicit),
             is_horizontal: None,
             is_marker_visible: None,
             is_expanded: subprocess.then_some(true),
@@ -1151,7 +1151,7 @@ impl ProcessCraft {
                     style: None,
                 })
             } else {
-                None
+                Some(Label::default())
             },
             style: None,
         };
@@ -1236,7 +1236,7 @@ impl ProcessCraft {
             document_id: d.id,
             diagram_id: diagram.id.selector(),
             shape: Shape {
-                label_visibility: None,
+                label_visibility: Some(DiLabelVisibility::Explicit),
                 is_horizontal: None,
                 is_marker_visible: None,
                 is_expanded: None,
@@ -1248,7 +1248,7 @@ impl ProcessCraft {
                     width: 700.0,
                     height: 350.0,
                 },
-                label: None,
+                label: Some(Label::default()),
                 style: None,
             },
         });
@@ -1289,7 +1289,7 @@ impl ProcessCraft {
                 document_id: d.id,
                 diagram_id: diagram.id.selector(),
                 shape: Shape {
-                    label_visibility: None,
+                    label_visibility: Some(DiLabelVisibility::Explicit),
                     is_horizontal: None,
                     is_marker_visible: None,
                     is_expanded: None,
@@ -1301,7 +1301,7 @@ impl ProcessCraft {
                         width: 600.0,
                         height: 150.0,
                     },
-                    label: None,
+                    label: Some(Label::default()),
                     style: None,
                 },
             },
@@ -1511,13 +1511,13 @@ impl ProcessCraft {
                 document_id: d.id,
                 diagram_id: diagram.id.selector(),
                 edge: Edge {
-                    label_visibility: None,
+                    label_visibility: Some(DiLabelVisibility::Explicit),
                     source_element: None,
                     target_element: None,
                     id: controller::id("Edge").into(),
                     element: eid.into(),
                     waypoints: points,
-                    label: None,
+                    label: Some(Label::default()),
                     style: None,
                 },
             },
@@ -1943,6 +1943,31 @@ impl eframe::App for ProcessCraft {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn new_task_has_explicit_label_and_exports_in_memory() {
+        let mut app = ProcessCraft::default();
+        app.add(NodeKind::Task);
+        let snapshot = app.ctl.session.snapshot();
+        let document = &snapshot.project.documents[0];
+        let task = app.selected.as_ref().expect("new task selected");
+        let shape = document.diagrams[0]
+            .shapes
+            .iter()
+            .find(|shape| &shape.element == task)
+            .expect("task shape");
+        assert!(matches!(
+            shape.label_visibility,
+            Some(DiLabelVisibility::Explicit)
+        ));
+        assert!(shape.label.is_some());
+        let exported =
+            processcraft_io::interchange::export_bpmn(&snapshot.project, document.id, true)
+                .expect("new diagram exports");
+        let xml = String::from_utf8(exported.bytes).unwrap();
+        assert!(xml.contains("BPMNLabel"));
+    }
+
     #[test]
     fn discard_keeps_confirmation_and_draft_while_export_is_pending() {
         let mut app = ProcessCraft::default();

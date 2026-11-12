@@ -107,6 +107,103 @@ fn project_links_require_acknowledgement() {
             .is_empty()
     );
 }
+
+#[test]
+fn node_and_folder_omissions_require_acknowledgement_without_mutation() {
+    let mut imported = prepare_import(FLAT.as_bytes(), "native fields").unwrap();
+    imported.document.folder = Some("workspace_folder".parse().unwrap());
+    imported.document.processes[0].nodes[0].owner = "Owner".into();
+    imported.document.processes[0].nodes[0].contact = "Contact".into();
+    let mut project = ProjectData::new("native fields".into());
+    project.folders.push(processcraft_core::model::Folder {
+        id: "workspace_folder".parse().unwrap(),
+        name: "Workspace".into(),
+        parent: None,
+    });
+    project.documents.push(Arc::new(imported.document.clone()));
+    project.resources = imported.resources;
+    let before = project.content_identity().unwrap();
+    let failure = export_bpmn(&project, imported.document.id, false).unwrap_err();
+    assert!(
+        failure
+            .report
+            .blocked
+            .iter()
+            .any(|value| value.contains("acknowledgement"))
+    );
+    assert!(
+        failure
+            .report
+            .omitted
+            .iter()
+            .any(|value| value.contains("owner and contact"))
+    );
+    assert!(
+        failure
+            .report
+            .omitted
+            .iter()
+            .any(|value| value.contains("folder"))
+    );
+    let exported = export_bpmn(&project, imported.document.id, true).unwrap();
+    assert!(
+        exported
+            .report
+            .omitted
+            .iter()
+            .any(|value| value.contains("owner and contact"))
+    );
+    assert!(
+        exported
+            .report
+            .omitted
+            .iter()
+            .any(|value| value.contains("folder"))
+    );
+    assert_eq!(project.content_identity().unwrap(), before);
+    assert_eq!(
+        project.documents[0].folder.as_ref().unwrap().to_string(),
+        "workspace_folder"
+    );
+    assert_eq!(project.documents[0].processes[0].nodes[0].owner, "Owner");
+    assert_eq!(
+        project.documents[0].processes[0].nodes[0].contact,
+        "Contact"
+    );
+}
+
+#[test]
+fn preserved_source_folder_omission_requires_acknowledgement() {
+    let input = FLAT.replace("<task id=", "<task custom=\"unknown\" id=");
+    let mut imported = prepare_import(input.as_bytes(), "preserved").unwrap();
+    assert!(!imported.report.editable);
+    imported.document.folder = Some("workspace_folder".parse().unwrap());
+    let mut project = ProjectData::new("preserved".into());
+    project.folders.push(processcraft_core::model::Folder {
+        id: "workspace_folder".parse().unwrap(),
+        name: "Workspace".into(),
+        parent: None,
+    });
+    project.documents.push(Arc::new(imported.document.clone()));
+    project.resources = imported.resources;
+    let failure = export_bpmn(&project, imported.document.id, false).unwrap_err();
+    assert!(
+        failure
+            .report
+            .omitted
+            .iter()
+            .any(|value| value.contains("folder"))
+    );
+    let output = export_bpmn(&project, imported.document.id, true).unwrap();
+    assert_eq!(output.bytes, input.as_bytes());
+    assert!(
+        output
+            .report
+            .omitted
+            .iter()
+            .any(|value| value.contains("folder"))
+    );
+}
 #[test]
 fn lane_and_formal_condition_survive_edit_export_reimport() {
     let input = include_bytes!("../../../tests/fixtures/bpmn/m2-flat-lanes.bpmn");
@@ -1740,6 +1837,66 @@ fn process_is_executable_omission_and_explicit_values_survive() {
 }
 
 #[test]
+fn legacy_implicit_and_explicit_hidden_di_labels_export_distinctly() {
+    use processcraft_core::model::DiLabelVisibility;
+    let mut imported = prepare_import(FLAT.as_bytes(), "legacy diagram labels").unwrap();
+    let diagram = &mut imported.document.diagrams[0];
+    diagram.shapes[0].label_visibility = None;
+    diagram.shapes[0].label = None;
+    diagram.edges[0].label_visibility = Some(DiLabelVisibility::Explicit);
+    diagram.edges[0].label = None;
+    let mut project = ProjectData::new("legacy diagram labels".into());
+    project.documents.push(Arc::new(imported.document.clone()));
+    project.resources = imported.resources;
+    let before = project.content_identity().unwrap();
+    let bytes = processcraft_io::native::write_bytes(&project).unwrap();
+    let reopened = processcraft_io::native::load_bytes(&bytes).unwrap().project;
+    assert_eq!(reopened.content_identity().unwrap(), before);
+    let output = export_bpmn(&reopened, imported.document.id, false).unwrap();
+    assert!(
+        output
+            .report
+            .transformed
+            .iter()
+            .any(|entry| entry.contains("implicit diagram labels"))
+    );
+    assert_eq!(reopened.content_identity().unwrap(), before);
+    let again = prepare_import(&output.bytes, "again").unwrap();
+    let label = again.document.diagrams[0].shapes[0].label.as_ref().unwrap();
+    assert!(label.id.is_none() && label.bounds.is_none() && label.style_ref.is_none());
+    assert!(again.document.diagrams[0].edges[0].label.is_none());
+    assert_eq!(
+        again.document.diagrams[0].edges[0].label_visibility,
+        Some(DiLabelVisibility::Explicit)
+    );
+}
+
+#[test]
+fn legacy_implicit_di_label_keeps_existing_geometry() {
+    use processcraft_core::model::{Bounds, Label};
+    let mut imported = prepare_import(FLAT.as_bytes(), "legacy label geometry").unwrap();
+    let shape = &mut imported.document.diagrams[0].shapes[0];
+    shape.label_visibility = None;
+    shape.label = Some(Label {
+        id: None,
+        bounds: Some(Bounds {
+            x: 12.0,
+            y: 34.0,
+            width: 56.0,
+            height: 20.0,
+        }),
+        style: None,
+        style_ref: None,
+    });
+    let output = export(&imported);
+    let again = prepare_import(&output.bytes, "again").unwrap();
+    let label = again.document.diagrams[0].shapes[0].label.as_ref().unwrap();
+    assert!(label.id.is_none());
+    assert_eq!(label.bounds.as_ref().unwrap().x, 12.0);
+    assert_eq!(label.bounds.as_ref().unwrap().width, 56.0);
+}
+
+#[test]
 fn legacy_annotation_edit_and_undo_export_correct_body() {
     use processcraft_core::bpmn_model::NodeDetails;
     use processcraft_core::commands::{Envelope, Mutation, Request, Session};
@@ -2503,4 +2660,248 @@ fn definitions_declarations_and_required_unknown_extension_policy() {
     let protected = prepare_import(required.as_bytes(), "unknown required extension").unwrap();
     assert!(!protected.report.editable);
     assert_eq!(export(&protected).bytes, required.as_bytes());
+}
+
+#[test]
+fn anonymous_metadata_stays_on_its_typed_owner() {
+    let source = include_str!("../../../tests/fixtures/bpmn/anonymous-common-metadata.bpmn");
+    let parsed = prepare_import(source.as_bytes(), "anonymous metadata").unwrap();
+    assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+    let catalog = &parsed.document.catalog;
+    assert!(catalog.item_definitions[0].id.is_none());
+    assert!(catalog.interfaces[0].id.is_none());
+    assert!(
+        catalog.interfaces[0]
+            .operations
+            .iter()
+            .all(|op| op.id.is_none() && op.base.is_some())
+    );
+    assert_ne!(
+        catalog.interfaces[0].operations[0].base,
+        catalog.interfaces[0].operations[1].base
+    );
+    let first = &catalog.interfaces[0].operations[0]
+        .base
+        .as_ref()
+        .unwrap()
+        .documentation[0]
+        .content;
+    let second = &catalog.interfaces[0].operations[1]
+        .base
+        .as_ref()
+        .unwrap()
+        .documentation[0]
+        .content;
+    let text = |body: &processcraft_core::bpmn_xml::MixedXml| match body {
+        processcraft_core::bpmn_xml::MixedXml::Structured(content) => {
+            match content.nodes.as_slice() {
+                [processcraft_core::bpmn_xml::XmlNode::Text { text }] => text.clone(),
+                _ => panic!("plain documentation expected"),
+            }
+        }
+        _ => panic!("structured documentation expected"),
+    };
+    assert_eq!(text(first), "operation one");
+    assert_eq!(text(second), "operation two");
+    assert!(parsed.document.processes[2].lane_set_base.is_some());
+    assert!(
+        parsed.document.processes[1].lanes[0]
+            .child_lane_set_base
+            .is_some()
+    );
+    let task = parsed.document.processes[0]
+        .nodes
+        .iter()
+        .find(|node| node.id.to_string() == "task")
+        .unwrap();
+    let Some(processcraft_core::bpmn_model::LoopCharacteristics::Standard {
+        id: Some(loop_id),
+        base: Some(_),
+        ..
+    }) = &task.loop_characteristics
+    else {
+        panic!("loop identity and metadata expected")
+    };
+    assert_eq!(loop_id.xml_id().unwrap().to_string(), "loop");
+    let output = export(&parsed).bytes;
+    let again = prepare_import(&output, "again").unwrap();
+    assert!(again.report.editable);
+    assert_eq!(again.document.catalog, parsed.document.catalog);
+    assert_eq!(
+        again.document.processes[2].lane_set_base,
+        parsed.document.processes[2].lane_set_base
+    );
+}
+
+#[test]
+fn anonymous_owner_foreign_context_and_sibling_order_roundtrip() {
+    let source = include_str!("../../../tests/fixtures/bpmn/anonymous-common-metadata.bpmn")
+        .replace("<resourceParameter name=\"first\"><documentation>parameter first</documentation>", "<resourceParameter xmlns:v=\"urn:vendor\" v:flag=\"v:first\" name=\"first\"><documentation>before<v:detail data-processcraft-internal-context=\"5b5d\" ref=\"v:item\"/>after<!--note--><?inspect inert?></documentation><extensionElements><v:payload ref=\"v:first\"/></extensionElements>")
+        .replace("<resourceParameter name=\"second\"><documentation>parameter second</documentation>", "<resourceParameter xmlns:v=\"urn:other\" v:flag=\"v:second\" name=\"second\"><documentation>second<v:detail/>tail</documentation><extensionElements/>");
+    let parsed = prepare_import(source.as_bytes(), "anonymous scopes").unwrap();
+    assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+    let parameters = &parsed.document.catalog.resources[0].parameters;
+    assert_ne!(parameters[0].base, parameters[1].base);
+    let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+    assert_eq!(again.document.catalog.resources[0].parameters, *parameters);
+    let mut reordered = parsed;
+    let base = reordered.document.catalog.resources[0].parameters[0]
+        .base
+        .as_mut()
+        .unwrap();
+    base.namespaces.reverse();
+    if let processcraft_core::bpmn_xml::MixedXml::Structured(content) =
+        &mut base.documentation[0].content
+    {
+        content.namespaces.reverse();
+    }
+    assert!(
+        prepare_import(&export(&reordered).bytes, "reordered contexts")
+            .unwrap()
+            .report
+            .editable
+    );
+}
+
+#[test]
+fn anonymous_unreferenced_process_and_task_keep_metadata_without_xml_ids() {
+    let source = br#"<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" targetNamespace="urn:anonymous"><process><documentation>process note</documentation><task><documentation>task note</documentation></task></process></definitions>"#;
+    let parsed = prepare_import(source, "anonymous graph").unwrap();
+    assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+    assert!(parsed.document.processes[0].id.xml_id().is_none());
+    assert!(parsed.document.processes[0].nodes[0].id.xml_id().is_none());
+    let output = export(&parsed).bytes;
+    let xml = std::str::from_utf8(&output).unwrap();
+    assert!(!xml.contains(" id="));
+    let again = prepare_import(&output, "again").unwrap();
+    assert!(again.report.editable);
+    assert!(again.document.processes[0].nodes[0].id.xml_id().is_none());
+}
+
+#[test]
+fn anonymous_owner_keeps_empty_default_namespace_with_foreign_attributes() {
+    let source = br#"<b:definitions xmlns:b="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:v="urn:vendor" targetNamespace="urn:anonymous"><b:process id="process"><b:task v:flag="v:opaque"><b:documentation>before<v:detail ref="v:item"/>after</b:documentation><b:extensionElements><v:payload/></b:extensionElements></b:task></b:process></b:definitions>"#;
+    let parsed = prepare_import(source, "anonymous scoped owner").unwrap();
+    assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+    assert!(parsed.document.processes[0].nodes[0].id.xml_id().is_none());
+    let output = export(&parsed).bytes;
+    let xml = std::str::from_utf8(&output).unwrap();
+    assert!(!xml.contains("data-processcraft-internal-context"));
+    let again = prepare_import(&output, "again").unwrap();
+    assert!(again.report.editable);
+    assert_eq!(
+        again.document.processes[0].nodes[0].base_extras,
+        parsed.document.processes[0].nodes[0].base_extras
+    );
+}
+
+#[test]
+fn anonymous_script_and_annotation_mixed_bodies_are_not_executed_or_given_ids() {
+    let source = br#"<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:v="urn:vendor" targetNamespace="urn:anonymous"><process><scriptTask><script>before<v:code expr="v:value"/>after</script></scriptTask><textAnnotation><text>before<v:note/>after</text></textAnnotation></process></definitions>"#;
+    let parsed = prepare_import(source, "anonymous bodies").unwrap();
+    assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+    let output = export(&parsed).bytes;
+    assert!(!std::str::from_utf8(&output).unwrap().contains(" id="));
+    let again = prepare_import(&output, "again").unwrap();
+    assert!(again.report.editable);
+    assert_eq!(
+        again.document.processes[0].nodes[0].activity,
+        parsed.document.processes[0].nodes[0].activity
+    );
+    assert_eq!(
+        again.document.processes[0].nodes[1].details,
+        parsed.document.processes[0].nodes[1].details
+    );
+}
+
+#[test]
+fn anonymous_namespace_fixture_roundtrips() {
+    let source = include_bytes!("../../../tests/fixtures/bpmn/anonymous-metadata-namespaces.bpmn");
+    let parsed = prepare_import(source, "anonymous namespaces").unwrap();
+    assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+    let output = export(&parsed).bytes;
+    assert!(
+        !std::str::from_utf8(&output)
+            .unwrap()
+            .contains("data-processcraft-internal-context")
+    );
+    assert!(prepare_import(&output, "again").unwrap().report.editable);
+}
+
+#[test]
+fn internal_context_marker_collision_on_definitions_stays_source_protected() {
+    let source = br#"<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" data-processcraft-internal-context="5b5d" targetNamespace="urn:anonymous"><process/></definitions>"#;
+    let parsed = prepare_import(source, "marker collision").unwrap();
+    assert!(!parsed.report.editable);
+    assert_eq!(export(&parsed).bytes, source);
+}
+
+#[test]
+fn referenced_anonymous_data_port_requires_an_explicit_xml_id() {
+    use processcraft_core::ids::ElementIdentity;
+    let source = include_bytes!("../../../tests/fixtures/bpmn/anonymous-common-metadata.bpmn");
+    let mut parsed = prepare_import(source, "anonymous referenced port").unwrap();
+    let identity = ElementIdentity::anonymous();
+    let process = &mut parsed.document.processes[0];
+    let task = process
+        .nodes
+        .iter_mut()
+        .find(|node| node.id.to_string() == "task")
+        .unwrap();
+    task.io_specification.as_mut().unwrap().inputs[1].id = Some(identity.clone());
+    process.data_associations[0].target = identity.selector();
+    let mut project = ProjectData::new("anonymous port".into());
+    project.documents.push(Arc::new(parsed.document.clone()));
+    project.resources = parsed.resources;
+    let failure = export_bpmn(&project, parsed.document.id, false).unwrap_err();
+    assert!(
+        failure
+            .report
+            .blocked
+            .iter()
+            .any(|reason| reason.contains("Assign an XML ID")),
+        "{:?}",
+        failure.report.blocked
+    );
+}
+
+#[test]
+fn anonymous_event_property_output_and_set_keep_separate_metadata() {
+    let source = include_str!("../../../tests/fixtures/bpmn/anonymous-common-metadata.bpmn").replace(
+        "<intermediateCatchEvent id=\"event\"><timerEventDefinition>",
+        "<intermediateCatchEvent id=\"event\"><property><documentation>property one</documentation></property><property><documentation>property two</documentation></property><dataOutput><documentation>event output</documentation></dataOutput><outputSet><documentation>event set</documentation></outputSet><timerEventDefinition>",
+    );
+    let parsed = prepare_import(source.as_bytes(), "anonymous event fields").unwrap();
+    assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+    let event = parsed.document.processes[0]
+        .nodes
+        .iter()
+        .find(|node| node.id.to_string() == "event")
+        .unwrap();
+    let Some(processcraft_core::bpmn_model::NodeDetails::Event { properties, io, .. }) =
+        &event.details
+    else {
+        panic!("event expected")
+    };
+    assert_eq!(properties.len(), 2);
+    assert_ne!(properties[0].base, properties[1].base);
+    let Some(processcraft_core::bpmn_model::EventIo::Catch {
+        outputs,
+        output_set: Some(set),
+    }) = io
+    else {
+        panic!("event output expected")
+    };
+    assert!(outputs[0].id.is_none() && outputs[0].base.is_some());
+    assert!(set.id.is_none() && set.base.is_some());
+    let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+    assert_eq!(
+        again.document.processes[0]
+            .nodes
+            .iter()
+            .find(|node| node.id.to_string() == "event")
+            .unwrap()
+            .details,
+        event.details
+    );
 }

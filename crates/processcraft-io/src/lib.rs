@@ -14,6 +14,7 @@ pub use project::{FileSession, Operation, ProjectSaveOutcome, SaveReceipt};
 
 pub mod automation_ledger;
 pub mod interchange;
+pub mod interchange_compare;
 pub mod local_ipc;
 pub mod root_grants;
 pub mod strict_json;

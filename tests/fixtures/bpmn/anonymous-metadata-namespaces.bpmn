@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<b:definitions xmlns:b="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:v="urn:vendor" targetNamespace="urn:anonymous">
+ <b:process id="process"><b:task v:flag="v:opaque"><b:documentation>before<v:detail ref="v:item"/>after</b:documentation><b:extensionElements><v:payload/></b:extensionElements></b:task><b:scriptTask><b:script>before<v:code expr="v:value"/>after</b:script></b:scriptTask><b:textAnnotation><b:text>before<v:note/>after</b:text></b:textAnnotation></b:process>
+</b:definitions>

@@ -1225,7 +1225,7 @@ impl ProcessCraft {
                             {
                                 let diagram = diagram.expect("enabled only with matching diagram");
                                 let shape = Shape {
-                                    label_visibility: None,
+                                    label_visibility: Some(DiLabelVisibility::Explicit),
                                     is_horizontal: None,
                                     is_marker_visible: None,
                                     id: crate::controller::id("DataPortShape").into(),
@@ -1237,7 +1237,7 @@ impl ProcessCraft {
                                         width: 36.0,
                                         height: 48.0,
                                     },
-                                    label: None,
+                                    label: Some(Label::default()),
                                     style: None,
                                 };
                                 if self.commit_draft() {
@@ -1287,7 +1287,7 @@ impl ProcessCraft {
                             {
                                 let diagram = diagram.expect("enabled only with matching diagram");
                                 let shape = Shape {
-                                    label_visibility: None,
+                                    label_visibility: Some(DiLabelVisibility::Explicit),
                                     is_horizontal: None,
                                     is_marker_visible: None,
                                     id: crate::controller::id("DataStoreShape").into(),
@@ -1299,7 +1299,7 @@ impl ProcessCraft {
                                         width: 50.0,
                                         height: 65.0,
                                     },
-                                    label: None,
+                                    label: Some(Label::default()),
                                     style: None,
                                 };
                                 if self.commit_draft() {

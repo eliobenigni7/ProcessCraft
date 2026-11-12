@@ -3183,3 +3183,102 @@ fn diagram_label_style_identity_rename_updates_local_reference_and_undo() {
     apply(&mut s, Request::Undo).unwrap();
     assert_eq!(s.snapshot().content_id, before);
 }
+
+#[test]
+fn loop_identity_rename_preserves_checkpoint_and_undo_redo() {
+    use processcraft_core::{
+        bpmn_model::{LoopCharacteristics, QNameRef},
+        ids::CheckpointId,
+    };
+    let mut s = project();
+    fixture(&mut s);
+    let loop_value = LoopCharacteristics::Standard {
+        id: Some(id("loop_id")),
+        base: None,
+        test_before: false,
+        condition: None,
+        maximum: None,
+    };
+    let relation = DefinitionsRelationship {
+        id: Some(id("relation_loop")),
+        base: None,
+        relationship_type: "trace".into(),
+        direction: None,
+        sources: vec![QNameRef {
+            namespace: GENERATED_TARGET_NAMESPACE.into(),
+            local: id("loop_id"),
+        }],
+        targets: vec![QNameRef {
+            namespace: "urn:external".into(),
+            local: id("loop_id"),
+        }],
+    };
+    let checkpoint = CheckpointId::new();
+    apply(
+        &mut s,
+        batch(vec![
+            Mutation::SetNodeLoop {
+                document_id: docid(),
+                element_id: id("review"),
+                loop_characteristics: Some(loop_value),
+            },
+            Mutation::SetDefinitionsRelationships {
+                document_id: docid(),
+                relationships: vec![relation],
+            },
+            Mutation::CreateCheckpoint {
+                id: checkpoint,
+                name: "Before loop rename".into(),
+                created_unix_ms: 42,
+            },
+        ]),
+    )
+    .unwrap();
+    let before = s.snapshot().content_id;
+    let change = apply(
+        &mut s,
+        batch(vec![Mutation::SetElementXmlId {
+            document_id: docid(),
+            element_id: id("loop_id"),
+            xml_id: Some(id("loop_new")),
+        }]),
+    )
+    .unwrap();
+    let after = s.snapshot().content_id;
+    assert_ne!(before, after);
+    let snapshot = s.snapshot();
+    let doc = &snapshot.project.documents[0];
+    let node = processcraft_core::queries::find_node(doc, &id("review")).unwrap();
+    let loop_id = node.loop_characteristics.as_ref().unwrap().id().unwrap();
+    assert_eq!(loop_id.selector(), change.selector_mappings[0].to);
+    assert_eq!(loop_id.xml_id(), Some(&id("loop_new")));
+    assert_eq!(
+        doc.relationships[0].sources[0].local,
+        id::<processcraft_core::ids::XmlId>("loop_new")
+    );
+    assert_eq!(
+        doc.relationships[0].targets[0].local,
+        id::<processcraft_core::ids::XmlId>("loop_id")
+    );
+    let frozen = &snapshot.project.checkpoints[0].content.documents[0];
+    assert_eq!(
+        processcraft_core::queries::find_node(frozen, &id("review"))
+            .unwrap()
+            .loop_characteristics
+            .as_ref()
+            .unwrap()
+            .id()
+            .unwrap()
+            .xml_id(),
+        Some(&id("loop_id"))
+    );
+    let undo = apply(&mut s, Request::Undo).unwrap();
+    assert_eq!(s.snapshot().content_id, before);
+    assert_eq!(
+        undo.selector_mappings[0].to,
+        id::<processcraft_core::ids::ElementSelector>("loop_id")
+    );
+    let redo = apply(&mut s, Request::Redo).unwrap();
+    assert_eq!(s.snapshot().content_id, after);
+    assert_eq!(redo.selector_mappings[0].to, change.selector_mappings[0].to);
+}

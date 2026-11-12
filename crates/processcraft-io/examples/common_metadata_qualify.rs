@@ -19,6 +19,40 @@ fn fields(project: &ProjectData) -> BTreeMap<String, serde_json::Value> {
         .map(|field| (field.path, field.value))
         .collect()
 }
+fn xml_fields(project: &ProjectData) -> Result<BTreeMap<String, serde_json::Value>, String> {
+    fn flatten(
+        value: serde_json::Value,
+        path: String,
+        fields: &mut BTreeMap<String, serde_json::Value>,
+    ) {
+        match value {
+            serde_json::Value::Object(object) if !object.is_empty() => {
+                for (key, value) in object {
+                    flatten(
+                        value,
+                        format!("{path}/{}", key.replace('~', "~0").replace('/', "~1")),
+                        fields,
+                    );
+                }
+            }
+            serde_json::Value::Array(array) if !array.is_empty() => {
+                for (index, value) in array.into_iter().enumerate() {
+                    flatten(value, format!("{path}/{index}"), fields);
+                }
+            }
+            value => {
+                fields.insert(path, value);
+            }
+        }
+    }
+    let mut result = BTreeMap::new();
+    flatten(
+        processcraft_io::interchange_compare::xml_model_value(&project.documents[0])?,
+        String::new(),
+        &mut result,
+    );
+    Ok(result)
+}
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let input = PathBuf::from(
         std::env::args_os()
@@ -50,6 +84,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if reopened.content_identity()? != before || fields(&reopened) != expected {
         return Err("native identity or model fields changed".into());
     }
+    let expected_xml = xml_fields(&reopened)?;
     let exported = interchange::export_bpmn(&reopened, id, false)
         .map_err(|error| format!("export refused: {:?}", error.report.blocked))?;
     let again = interchange::prepare_import(&exported.bytes, "Reimported qualification")?;
@@ -60,12 +95,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     comparison.documents.push(Arc::new(again.document));
     comparison.resources = again.resources;
     comparison.validate()?;
-    let actual = fields(&comparison);
-    let paths: std::collections::BTreeSet<_> = expected.keys().chain(actual.keys()).collect();
+    let actual = xml_fields(&comparison)?;
+    let paths: std::collections::BTreeSet<_> = expected_xml.keys().chain(actual.keys()).collect();
     let differences: Vec<_> = paths
         .into_iter()
-        .filter(|path| expected.get(*path) != actual.get(*path))
-        .map(|path| json!({"path":path,"before":expected.get(path),"after":actual.get(path)}))
+        .filter(|path| expected_xml.get(*path) != actual.get(*path))
+        .map(|path| json!({"path":path,"before":expected_xml.get(path),"after":actual.get(path),
+            "beforePresent":expected_xml.contains_key(path),"afterPresent":actual.contains_key(path)}))
         .collect();
     std::fs::create_dir(&output)?;
     std::fs::write(output.join("input.bpmn"), source)?;
@@ -74,7 +110,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     std::fs::write(
         output.join("comparison.json"),
         serde_json::to_vec_pretty(&json!({
-            "nativeIdentityPreserved":true,"fieldDifferences":differences
+            "nativeIdentityPreserved":true,"xmlComparisonNormalization":["import-local IDs use assigned XML IDs or exact typed owner paths", "namespace declaration order and representation-only text boundaries", "legacy representations and excluded native-only workspace fields"],
+            "fieldDifferences":differences
         }))?,
     )?;
     if !differences.is_empty() {
@@ -85,7 +122,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .into());
     }
     println!(
-        "Native identity and all modeled fields preserved: {}",
+        "Native identity and XML-representable modeled fields preserved: {}",
         output.display()
     );
     Ok(())
