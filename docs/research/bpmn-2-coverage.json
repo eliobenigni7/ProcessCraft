@@ -1,6 +1,6 @@
 {
-  "implementation_evidence_commit": "a2498fafa4bebfe8785d5a4fce7e31027d5738fa",
-  "implementation_evidence_tree": "45d92c34917ea0a4a18cfb53ea401fa8afbbf870",
+  "implementation_evidence_commit": "a69472b251de88a221a873476fa5cb51e60560db",
+  "implementation_evidence_tree": "100cada0dd4910463cb2b7ae42d6f89c59583569",
   "profiles": {
     "descriptive artifacts": {
       "elements": [
@@ -101,12 +101,22 @@
     "choreography": {
       "elements": [
         "choreography",
-        "choreographyTask"
+        "choreographyTask",
+        "subChoreography",
+        "callChoreography",
+        "globalChoreographyTask"
       ],
       "evidence": [
-        "tests/fixtures/bpmn20-schema/choreography.bpmn"
+        "crates/processcraft-core/tests/choreography_graph.rs",
+        "crates/processcraft-core/tests/choreography_graph_commands.rs",
+        "crates/processcraft-io/tests/interchange.rs:nested_choreography_graph_round_trips",
+        "crates/processcraft-io/tests/interchange.rs:choreography_boundary_event_io_round_trips_and_owner_order_is_stable",
+        "crates/processcraft-io/tests/interchange.rs:sub_choreography_plane_round_trips_and_excludes_sibling_scope",
+        "apps/processcraft-cli/tests/definitions_mcp.rs:choreography_graph_commands_use_stdio_generation_pages_and_history",
+        "tests/fixtures/bpmn/choreography-graph/manifest.md",
+        "scripts/qualify_choreography_graph.py"
       ],
-      "limit": "Simple tasks, local participants and message flows; fixture and CLI/XSD checks only; gateways/events not covered."
+      "limit": "Bounded ordered Task/Sub/Call/Global graphs, selected event/gateway contexts, exact namespace references and event-owned I/O. Full semantic, DI, native interaction and consumer qualification remain incomplete. Table 8.45 excludes process Activities, Data Objects and Data Associations as choreography flowElements; event-owned associations are a separate child context."
     },
     "data": {
       "elements": [
@@ -17976,13 +17986,25 @@
       "abstract": null,
       "substitution_group": "flowElement",
       "coverage": {
-        "model": "unverified",
+        "model": "partial",
         "edit": "unverified",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
+        "import": "partial",
+        "export": "partial",
         "validate": "unverified"
-      }
+      },
+      "profile": "choreography",
+      "evidence": [
+        "crates/processcraft-core/tests/choreography_graph.rs",
+        "crates/processcraft-core/tests/choreography_graph_commands.rs",
+        "crates/processcraft-io/tests/interchange.rs:nested_choreography_graph_round_trips",
+        "crates/processcraft-io/tests/interchange.rs:choreography_boundary_event_io_round_trips_and_owner_order_is_stable",
+        "crates/processcraft-io/tests/interchange.rs:sub_choreography_plane_round_trips_and_excludes_sibling_scope",
+        "apps/processcraft-cli/tests/definitions_mcp.rs:choreography_graph_commands_use_stdio_generation_pages_and_history",
+        "tests/fixtures/bpmn/choreography-graph/manifest.md",
+        "scripts/qualify_choreography_graph.py"
+      ],
+      "limitations": "Bounded ordered Task/Sub/Call/Global graphs, selected event/gateway contexts, exact namespace references and event-owned I/O. Full semantic, DI, native interaction and consumer qualification remain incomplete. Table 8.45 excludes process Activities, Data Objects and Data Associations as choreography flowElements; event-owned associations are a separate child context."
     },
     {
       "schema": "Semantic.xsd",
@@ -18420,9 +18442,16 @@
       },
       "profile": "choreography",
       "evidence": [
-        "tests/fixtures/bpmn20-schema/choreography.bpmn"
+        "crates/processcraft-core/tests/choreography_graph.rs",
+        "crates/processcraft-core/tests/choreography_graph_commands.rs",
+        "crates/processcraft-io/tests/interchange.rs:nested_choreography_graph_round_trips",
+        "crates/processcraft-io/tests/interchange.rs:choreography_boundary_event_io_round_trips_and_owner_order_is_stable",
+        "crates/processcraft-io/tests/interchange.rs:sub_choreography_plane_round_trips_and_excludes_sibling_scope",
+        "apps/processcraft-cli/tests/definitions_mcp.rs:choreography_graph_commands_use_stdio_generation_pages_and_history",
+        "tests/fixtures/bpmn/choreography-graph/manifest.md",
+        "scripts/qualify_choreography_graph.py"
       ],
-      "limitations": "Simple tasks, local participants and message flows; fixture and CLI/XSD checks only; gateways/events not covered."
+      "limitations": "Bounded ordered Task/Sub/Call/Global graphs, selected event/gateway contexts, exact namespace references and event-owned I/O. Full semantic, DI, native interaction and consumer qualification remain incomplete. Table 8.45 excludes process Activities, Data Objects and Data Associations as choreography flowElements; event-owned associations are a separate child context."
     },
     {
       "schema": "Semantic.xsd",
@@ -18601,9 +18630,16 @@
       },
       "profile": "choreography",
       "evidence": [
-        "tests/fixtures/bpmn20-schema/choreography.bpmn"
+        "crates/processcraft-core/tests/choreography_graph.rs",
+        "crates/processcraft-core/tests/choreography_graph_commands.rs",
+        "crates/processcraft-io/tests/interchange.rs:nested_choreography_graph_round_trips",
+        "crates/processcraft-io/tests/interchange.rs:choreography_boundary_event_io_round_trips_and_owner_order_is_stable",
+        "crates/processcraft-io/tests/interchange.rs:sub_choreography_plane_round_trips_and_excludes_sibling_scope",
+        "apps/processcraft-cli/tests/definitions_mcp.rs:choreography_graph_commands_use_stdio_generation_pages_and_history",
+        "tests/fixtures/bpmn/choreography-graph/manifest.md",
+        "scripts/qualify_choreography_graph.py"
       ],
-      "limitations": "Simple tasks, local participants and message flows; fixture and CLI/XSD checks only; gateways/events not covered."
+      "limitations": "Bounded ordered Task/Sub/Call/Global graphs, selected event/gateway contexts, exact namespace references and event-owned I/O. Full semantic, DI, native interaction and consumer qualification remain incomplete. Table 8.45 excludes process Activities, Data Objects and Data Associations as choreography flowElements; event-owned associations are a separate child context."
     },
     {
       "schema": "Semantic.xsd",
@@ -22543,13 +22579,25 @@
       "abstract": null,
       "substitution_group": "choreography",
       "coverage": {
-        "model": "unverified",
+        "model": "partial",
         "edit": "unverified",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
+        "import": "partial",
+        "export": "partial",
         "validate": "unverified"
-      }
+      },
+      "profile": "choreography",
+      "evidence": [
+        "crates/processcraft-core/tests/choreography_graph.rs",
+        "crates/processcraft-core/tests/choreography_graph_commands.rs",
+        "crates/processcraft-io/tests/interchange.rs:nested_choreography_graph_round_trips",
+        "crates/processcraft-io/tests/interchange.rs:choreography_boundary_event_io_round_trips_and_owner_order_is_stable",
+        "crates/processcraft-io/tests/interchange.rs:sub_choreography_plane_round_trips_and_excludes_sibling_scope",
+        "apps/processcraft-cli/tests/definitions_mcp.rs:choreography_graph_commands_use_stdio_generation_pages_and_history",
+        "tests/fixtures/bpmn/choreography-graph/manifest.md",
+        "scripts/qualify_choreography_graph.py"
+      ],
+      "limitations": "Bounded ordered Task/Sub/Call/Global graphs, selected event/gateway contexts, exact namespace references and event-owned I/O. Full semantic, DI, native interaction and consumer qualification remain incomplete. Table 8.45 excludes process Activities, Data Objects and Data Associations as choreography flowElements; event-owned associations are a separate child context."
     },
     {
       "schema": "Semantic.xsd",
@@ -27994,13 +28042,25 @@
       "abstract": null,
       "substitution_group": "flowElement",
       "coverage": {
-        "model": "unverified",
+        "model": "partial",
         "edit": "unverified",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
+        "import": "partial",
+        "export": "partial",
         "validate": "unverified"
-      }
+      },
+      "profile": "choreography",
+      "evidence": [
+        "crates/processcraft-core/tests/choreography_graph.rs",
+        "crates/processcraft-core/tests/choreography_graph_commands.rs",
+        "crates/processcraft-io/tests/interchange.rs:nested_choreography_graph_round_trips",
+        "crates/processcraft-io/tests/interchange.rs:choreography_boundary_event_io_round_trips_and_owner_order_is_stable",
+        "crates/processcraft-io/tests/interchange.rs:sub_choreography_plane_round_trips_and_excludes_sibling_scope",
+        "apps/processcraft-cli/tests/definitions_mcp.rs:choreography_graph_commands_use_stdio_generation_pages_and_history",
+        "tests/fixtures/bpmn/choreography-graph/manifest.md",
+        "scripts/qualify_choreography_graph.py"
+      ],
+      "limitations": "Bounded ordered Task/Sub/Call/Global graphs, selected event/gateway contexts, exact namespace references and event-owned I/O. Full semantic, DI, native interaction and consumer qualification remain incomplete. Table 8.45 excludes process Activities, Data Objects and Data Associations as choreography flowElements; event-owned associations are a separate child context."
     },
     {
       "schema": "Semantic.xsd",

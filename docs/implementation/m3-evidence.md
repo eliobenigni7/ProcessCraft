@@ -343,6 +343,8 @@ The follow-up also requires acknowledgement before omitting artifact owner/conta
 
 ## Scoped choreography graph checkpoint (M3 remains incomplete)
 
+Source checkpoint: `a69472b251de88a221a873476fa5cb51e60560db`. The following bounded evidence qualifies this source; the partial closure does not complete M3.
+
 This wave adds ordered root and nested choreography graphs, Task/Sub/Call activity details, Global roots, loop presence, namespace-aware participant/message/call/attachment references and event-owned I/O associations. Legacy native graphs retain their exact representation until explicit promotion; XML comparison alone bridges legacy and graph storage. Cross-owner association storage is canonicalized only for XML comparison, retaining each event's child order. Native model identity, source QName namespace, explicit default presence and ordered flow elements remain observable. Combined graph/XML depth is checked against the native reader budget before accepting or writing a project, including checkpoints.
 
 Shared commands expose generation-guarded scoped CRUD, ordering, artifact and event-association operations with Undo/Redo. Three real stdio MCP tests passed, including graph promotion, missing/stale-generation rejection, anonymous native identity, bounded model-field pages and exact history. CLI and MCP layout preview can address the actual expanded SubChoreography representation. Scoped desktop editors cover activity references, loops, Call mappings, event definitions and I/O associations, gateways, artifacts and identities. Fresh choreography creation uses graph mode; historical documents still require explicit promotion.
