@@ -247,7 +247,22 @@ for declaration in declarations:
             "Bounded common metadata and DI label profiles; all inherited owners, external QName/style resolution, "
             "arbitrary vendor semantics, native interaction and independent consumer qualification remain open."
         )
-result = {"implementation_evidence_commit": "6f5fd4ca56a790c9dea919a6b39ec8ecd1994de9", "implementation_evidence_tree": "92f43e200e60d388a342c52e22ea2a49fc8a8b35", "profiles": profiles, "cmof_declarations": cmof, "version": "2.0.2", "coverage_policy": "unverified means no construct-level evidence recorded; raw retention is not modeling support", "sources": sources, "declarations": declarations,
+# Bounded activity/callable/correlation fixtures; not family-wide completion.
+activity_elements = {"globalTask", "globalManualTask", "globalUserTask", "globalScriptTask", "globalBusinessRuleTask", "callableElement", "ioBinding", "resourceRole", "resourceParameterBinding", "resourceAssignmentExpression", "correlationProperty", "correlationPropertyRetrievalExpression", "correlationSubscription", "correlationPropertyBinding", "correlationKey", "complexBehaviorDefinition", "implicitThrowEvent"}
+for declaration in declarations:
+    if (declaration["schema"] == "Semantic.xsd" and declaration["kind"] == "element"
+            and declaration["name"] in activity_elements):
+        declaration["coverage"].update({k: "partial" for k in ("model", "edit", "import", "export", "validate")})
+        declaration["evidence"] = [
+            "crates/processcraft-io/tests/interchange.rs:activity_correlation_and_callable_fixtures_roundtrip_with_values",
+            "crates/processcraft-io/tests/interchange.rs:multi_instance_behavior_qnames_preserve_empty_namespace_and_shadowed_prefixes",
+            "scripts/qualify_activity_metadata.py",
+        ]
+        declaration["limitations"] = (
+            "Selected callable, role, correlation and loop metadata only; all subtype/context paths, "
+            "native interaction, DI, external consumers and complete semantics remain unverified."
+        )
+result = {"implementation_evidence_commit": "a2498fafa4bebfe8785d5a4fce7e31027d5738fa", "implementation_evidence_tree": "45d92c34917ea0a4a18cfb53ea401fa8afbbf870", "profiles": profiles, "cmof_declarations": cmof, "version": "2.0.2", "coverage_policy": "unverified means no construct-level evidence recorded; raw retention is not modeling support", "sources": sources, "declarations": declarations,
           "conformance": {"status": "not_assessed", "note": "OMG PDF conformance classes and semantic constraints require separate clause-by-clause mapping; XSD declarations do not establish conformance."}}
 serialized = json.dumps(result, indent=2, ensure_ascii=False) + "\n"
 if "--check" in sys.argv:

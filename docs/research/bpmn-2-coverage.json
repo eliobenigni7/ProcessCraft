@@ -1,6 +1,6 @@
 {
-  "implementation_evidence_commit": "6f5fd4ca56a790c9dea919a6b39ec8ecd1994de9",
-  "implementation_evidence_tree": "92f43e200e60d388a342c52e22ea2a49fc8a8b35",
+  "implementation_evidence_commit": "a2498fafa4bebfe8785d5a4fce7e31027d5738fa",
+  "implementation_evidence_tree": "45d92c34917ea0a4a18cfb53ea401fa8afbbf870",
   "profiles": {
     "descriptive artifacts": {
       "elements": [
@@ -17810,13 +17810,19 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:activity_correlation_and_callable_fixtures_roundtrip_with_values",
+        "crates/processcraft-io/tests/interchange.rs:multi_instance_behavior_qnames_preserve_empty_namespace_and_shadowed_prefixes",
+        "scripts/qualify_activity_metadata.py"
+      ],
+      "limitations": "Selected callable, role, correlation and loop metadata only; all subtype/context paths, native interaction, DI, external consumers and complete semantics remain unverified."
     },
     {
       "schema": "Semantic.xsd",
@@ -18870,13 +18876,19 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:activity_correlation_and_callable_fixtures_roundtrip_with_values",
+        "crates/processcraft-io/tests/interchange.rs:multi_instance_behavior_qnames_preserve_empty_namespace_and_shadowed_prefixes",
+        "scripts/qualify_activity_metadata.py"
+      ],
+      "limitations": "Selected callable, role, correlation and loop metadata only; all subtype/context paths, native interaction, DI, external consumers and complete semantics remain unverified."
     },
     {
       "schema": "Semantic.xsd",
@@ -19490,13 +19502,19 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:activity_correlation_and_callable_fixtures_roundtrip_with_values",
+        "crates/processcraft-io/tests/interchange.rs:multi_instance_behavior_qnames_preserve_empty_namespace_and_shadowed_prefixes",
+        "scripts/qualify_activity_metadata.py"
+      ],
+      "limitations": "Selected callable, role, correlation and loop metadata only; all subtype/context paths, native interaction, DI, external consumers and complete semantics remain unverified."
     },
     {
       "schema": "Semantic.xsd",
@@ -19578,13 +19596,19 @@
       "abstract": null,
       "substitution_group": "rootElement",
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:activity_correlation_and_callable_fixtures_roundtrip_with_values",
+        "crates/processcraft-io/tests/interchange.rs:multi_instance_behavior_qnames_preserve_empty_namespace_and_shadowed_prefixes",
+        "scripts/qualify_activity_metadata.py"
+      ],
+      "limitations": "Selected callable, role, correlation and loop metadata only; all subtype/context paths, native interaction, DI, external consumers and complete semantics remain unverified."
     },
     {
       "schema": "Semantic.xsd",
@@ -19666,13 +19690,19 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:activity_correlation_and_callable_fixtures_roundtrip_with_values",
+        "crates/processcraft-io/tests/interchange.rs:multi_instance_behavior_qnames_preserve_empty_namespace_and_shadowed_prefixes",
+        "scripts/qualify_activity_metadata.py"
+      ],
+      "limitations": "Selected callable, role, correlation and loop metadata only; all subtype/context paths, native interaction, DI, external consumers and complete semantics remain unverified."
     },
     {
       "schema": "Semantic.xsd",
@@ -19754,13 +19784,19 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:activity_correlation_and_callable_fixtures_roundtrip_with_values",
+        "crates/processcraft-io/tests/interchange.rs:multi_instance_behavior_qnames_preserve_empty_namespace_and_shadowed_prefixes",
+        "scripts/qualify_activity_metadata.py"
+      ],
+      "limitations": "Selected callable, role, correlation and loop metadata only; all subtype/context paths, native interaction, DI, external consumers and complete semantics remain unverified."
     },
     {
       "schema": "Semantic.xsd",
@@ -19842,13 +19878,19 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:activity_correlation_and_callable_fixtures_roundtrip_with_values",
+        "crates/processcraft-io/tests/interchange.rs:multi_instance_behavior_qnames_preserve_empty_namespace_and_shadowed_prefixes",
+        "scripts/qualify_activity_metadata.py"
+      ],
+      "limitations": "Selected callable, role, correlation and loop metadata only; all subtype/context paths, native interaction, DI, external consumers and complete semantics remain unverified."
     },
     {
       "schema": "Semantic.xsd",
@@ -22429,13 +22471,19 @@
       "abstract": null,
       "substitution_group": "rootElement",
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:activity_correlation_and_callable_fixtures_roundtrip_with_values",
+        "crates/processcraft-io/tests/interchange.rs:multi_instance_behavior_qnames_preserve_empty_namespace_and_shadowed_prefixes",
+        "scripts/qualify_activity_metadata.py"
+      ],
+      "limitations": "Selected callable, role, correlation and loop metadata only; all subtype/context paths, native interaction, DI, external consumers and complete semantics remain unverified."
     },
     {
       "schema": "Semantic.xsd",
@@ -22605,13 +22653,19 @@
       "abstract": null,
       "substitution_group": "rootElement",
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:activity_correlation_and_callable_fixtures_roundtrip_with_values",
+        "crates/processcraft-io/tests/interchange.rs:multi_instance_behavior_qnames_preserve_empty_namespace_and_shadowed_prefixes",
+        "scripts/qualify_activity_metadata.py"
+      ],
+      "limitations": "Selected callable, role, correlation and loop metadata only; all subtype/context paths, native interaction, DI, external consumers and complete semantics remain unverified."
     },
     {
       "schema": "Semantic.xsd",
@@ -22649,13 +22703,19 @@
       "abstract": null,
       "substitution_group": "rootElement",
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:activity_correlation_and_callable_fixtures_roundtrip_with_values",
+        "crates/processcraft-io/tests/interchange.rs:multi_instance_behavior_qnames_preserve_empty_namespace_and_shadowed_prefixes",
+        "scripts/qualify_activity_metadata.py"
+      ],
+      "limitations": "Selected callable, role, correlation and loop metadata only; all subtype/context paths, native interaction, DI, external consumers and complete semantics remain unverified."
     },
     {
       "schema": "Semantic.xsd",
@@ -22715,13 +22775,19 @@
       "abstract": null,
       "substitution_group": "rootElement",
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:activity_correlation_and_callable_fixtures_roundtrip_with_values",
+        "crates/processcraft-io/tests/interchange.rs:multi_instance_behavior_qnames_preserve_empty_namespace_and_shadowed_prefixes",
+        "scripts/qualify_activity_metadata.py"
+      ],
+      "limitations": "Selected callable, role, correlation and loop metadata only; all subtype/context paths, native interaction, DI, external consumers and complete semantics remain unverified."
     },
     {
       "schema": "Semantic.xsd",
@@ -22759,13 +22825,19 @@
       "abstract": null,
       "substitution_group": "rootElement",
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:activity_correlation_and_callable_fixtures_roundtrip_with_values",
+        "crates/processcraft-io/tests/interchange.rs:multi_instance_behavior_qnames_preserve_empty_namespace_and_shadowed_prefixes",
+        "scripts/qualify_activity_metadata.py"
+      ],
+      "limitations": "Selected callable, role, correlation and loop metadata only; all subtype/context paths, native interaction, DI, external consumers and complete semantics remain unverified."
     },
     {
       "schema": "Semantic.xsd",
@@ -22966,13 +23038,19 @@
       "abstract": null,
       "substitution_group": "flowElement",
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:activity_correlation_and_callable_fixtures_roundtrip_with_values",
+        "crates/processcraft-io/tests/interchange.rs:multi_instance_behavior_qnames_preserve_empty_namespace_and_shadowed_prefixes",
+        "scripts/qualify_activity_metadata.py"
+      ],
+      "limitations": "Selected callable, role, correlation and loop metadata only; all subtype/context paths, native interaction, DI, external consumers and complete semantics remain unverified."
     },
     {
       "schema": "Semantic.xsd",
@@ -23448,13 +23526,19 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:activity_correlation_and_callable_fixtures_roundtrip_with_values",
+        "crates/processcraft-io/tests/interchange.rs:multi_instance_behavior_qnames_preserve_empty_namespace_and_shadowed_prefixes",
+        "scripts/qualify_activity_metadata.py"
+      ],
+      "limitations": "Selected callable, role, correlation and loop metadata only; all subtype/context paths, native interaction, DI, external consumers and complete semantics remain unverified."
     },
     {
       "schema": "Semantic.xsd",
@@ -26659,13 +26743,19 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:activity_correlation_and_callable_fixtures_roundtrip_with_values",
+        "crates/processcraft-io/tests/interchange.rs:multi_instance_behavior_qnames_preserve_empty_namespace_and_shadowed_prefixes",
+        "scripts/qualify_activity_metadata.py"
+      ],
+      "limitations": "Selected callable, role, correlation and loop metadata only; all subtype/context paths, native interaction, DI, external consumers and complete semantics remain unverified."
     },
     {
       "schema": "Semantic.xsd",
@@ -26848,13 +26938,19 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:activity_correlation_and_callable_fixtures_roundtrip_with_values",
+        "crates/processcraft-io/tests/interchange.rs:multi_instance_behavior_qnames_preserve_empty_namespace_and_shadowed_prefixes",
+        "scripts/qualify_activity_metadata.py"
+      ],
+      "limitations": "Selected callable, role, correlation and loop metadata only; all subtype/context paths, native interaction, DI, external consumers and complete semantics remain unverified."
     },
     {
       "schema": "Semantic.xsd",
@@ -26914,13 +27010,19 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:activity_correlation_and_callable_fixtures_roundtrip_with_values",
+        "crates/processcraft-io/tests/interchange.rs:multi_instance_behavior_qnames_preserve_empty_namespace_and_shadowed_prefixes",
+        "scripts/qualify_activity_metadata.py"
+      ],
+      "limitations": "Selected callable, role, correlation and loop metadata only; all subtype/context paths, native interaction, DI, external consumers and complete semantics remain unverified."
     },
     {
       "schema": "Semantic.xsd",
