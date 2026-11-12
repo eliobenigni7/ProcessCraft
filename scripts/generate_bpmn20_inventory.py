@@ -236,6 +236,8 @@ for declaration in declarations:
             declaration["coverage"]["render"] = "partial"
         declaration["evidence"] = [
             "crates/processcraft-io/tests/interchange.rs:process_documentation_mixed_order_and_namespaces_roundtrip",
+            "crates/processcraft-io/tests/interchange.rs:anonymous_metadata_stays_on_its_typed_owner",
+            "crates/processcraft-io/tests/interchange.rs:anonymous_owner_foreign_context_and_sibling_order_roundtrip",
             "crates/processcraft-io/tests/interchange.rs:script_and_annotation_mixed_xml_roundtrip_inertly",
             "crates/processcraft-io/tests/interchange.rs:definitions_declarations_and_required_unknown_extension_policy",
             "crates/processcraft-io/tests/interchange.rs:diagram_label_style_and_empty_label_roundtrip",
@@ -245,7 +247,7 @@ for declaration in declarations:
             "Bounded common metadata and DI label profiles; all inherited owners, external QName/style resolution, "
             "arbitrary vendor semantics, native interaction and independent consumer qualification remain open."
         )
-result = {"implementation_evidence_commit": "5f12202ffe4f0a924d593c41048bb818594bc88e", "implementation_evidence_tree": "a28e6c94d73fd7f09d3f0026e87b72fd0a582f6f", "profiles": profiles, "cmof_declarations": cmof, "version": "2.0.2", "coverage_policy": "unverified means no construct-level evidence recorded; raw retention is not modeling support", "sources": sources, "declarations": declarations,
+result = {"implementation_evidence_commit": "6f5fd4ca56a790c9dea919a6b39ec8ecd1994de9", "implementation_evidence_tree": "92f43e200e60d388a342c52e22ea2a49fc8a8b35", "profiles": profiles, "cmof_declarations": cmof, "version": "2.0.2", "coverage_policy": "unverified means no construct-level evidence recorded; raw retention is not modeling support", "sources": sources, "declarations": declarations,
           "conformance": {"status": "not_assessed", "note": "OMG PDF conformance classes and semantic constraints require separate clause-by-clause mapping; XSD declarations do not establish conformance."}}
 serialized = json.dumps(result, indent=2, ensure_ascii=False) + "\n"
 if "--check" in sys.argv:
