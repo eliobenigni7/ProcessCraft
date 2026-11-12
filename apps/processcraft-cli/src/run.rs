@@ -37,12 +37,28 @@ fn grant(p: &Path, access: Access) -> Result<FileGrant, Error> {
             } else {
                 1
             },
-            e,
+            format!("{}: {e}", p.display()),
         )
     })
 }
 fn read(p: &Path) -> Result<Vec<u8>, Error> {
-    grant(p, Access::ReadOnly)?.read().map_err(|e| error(1, e))
+    grant(p, Access::ReadOnly)?
+        .read()
+        .map_err(|e| error(1, format!("{}: {e}", p.display())))
+}
+/// Reads a file that must be a native project, refusing BPMN XML by content, not name.
+fn read_native(p: &Path) -> Result<Vec<u8>, Error> {
+    let bytes = read(p)?;
+    if is_xml(&bytes) {
+        return Err(error(
+            2,
+            format!(
+                "{}: is BPMN XML, not a .processcraft project; convert it with import-bpmn first",
+                p.display()
+            ),
+        ));
+    }
+    Ok(bytes)
 }
 fn emit(v: &Value) {
     println!("{}", serde_json::to_string(v).expect("serializable JSON"));
@@ -51,13 +67,49 @@ fn bpmn_path(p: &Path) -> bool {
     p.extension()
         .is_some_and(|e| e.eq_ignore_ascii_case("bpmn"))
 }
+/// Native projects are ZIP packages; anything starting like XML is treated as BPMN.
+fn is_xml(bytes: &[u8]) -> bool {
+    let bytes = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(bytes);
+    bytes
+        .iter()
+        .find(|b| !b.is_ascii_whitespace())
+        .is_some_and(|b| *b == b'<')
+}
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+fn diagram_ids(document: &processcraft_core::model::BpmnDocument) -> Vec<Value> {
+    document
+        .diagrams
+        .iter()
+        .map(|d| json!(d.id.selector()))
+        .collect()
+}
 fn inspect(p: &Path, validate: bool) -> Result<(), Error> {
     let bytes = read(p)?;
-    if bpmn_path(p) {
+    if is_xml(&bytes) {
         let imported = bpmn::import_bpmn(&bytes).map_err(|e| error(3, e))?;
         let r = imported.report();
+        let name = p
+            .file_stem()
+            .and_then(|n| n.to_str())
+            .unwrap_or("Imported BPMN");
+        let prepared =
+            processcraft_io::interchange::prepare_import(&bytes, name).map_err(|e| error(3, e))?;
+        let editable = prepared.report.editable;
+        let diagrams = diagram_ids(&prepared.document);
+        let mut limitations = prepared.report.limitations;
+        limitations.extend(r.limitations.iter().map(|l| l.to_string()));
+        if validate {
+            let mut project = ProjectData::new(name.to_owned());
+            project
+                .documents
+                .push(std::sync::Arc::new(prepared.document));
+            project.resources = prepared.resources;
+            project.validate().map_err(|e| error(3, e))?;
+        }
         emit(
-            &json!({"format":"bpmn", "valid":true, "capability":"preservedSource", "semanticEditsAllowed":r.semantic_edits_allowed, "elementCount":r.element_count, "diagramCount":r.diagram_count, "limitations":r.limitations}),
+            &json!({"format":"bpmn", "valid":true, "validation":if validate {"structural import checks and core invariants of the prepared import"} else {"not requested"}, "capability":if editable {"editable"} else {"preservedSource"}, "semanticEditsAllowed":editable, "elementCount":r.element_count, "diagramCount":r.diagram_count, "diagrams":diagrams, "limitations":limitations}),
         );
     } else {
         let loaded = native::load_bytes(&bytes)
@@ -66,8 +118,14 @@ fn inspect(p: &Path, validate: bool) -> Result<(), Error> {
         let session = Session::new(loaded.project)
             .map_err(|e| error(3, format!("invalid project: {e:?}")))?;
         let s = session.snapshot();
+        let documents: Vec<_> = s
+            .project
+            .documents
+            .iter()
+            .map(|d| json!({"id":d.id, "name":d.name, "diagrams":diagram_ids(d)}))
+            .collect();
         emit(
-            &json!({"format":"processcraft", "valid":true, "validation":if validate {"native codec and core structural invariants"} else {"not requested"}, "projectId":s.project.id, "name":s.project.name, "documents":s.project.documents.len(), "contentId":s.content_id, "requiresSaveAsOrBackup":loaded.requires_save_as_or_backup, "warnings":[]}),
+            &json!({"format":"processcraft", "valid":true, "validation":if validate {"native codec and core structural invariants"} else {"not requested"}, "projectId":s.project.id, "name":s.project.name, "documentCount":s.project.documents.len(), "documents":documents, "contentId":hex(&s.content_id), "requiresSaveAsOrBackup":loaded.requires_save_as_or_backup, "warnings":[]}),
         );
     }
     Ok(())
@@ -166,11 +224,8 @@ fn run(
     let request = parse_batch(&batch_bytes)?;
     let out = path(&out)?;
     let (mut session, mut file, same) = if let Some(input) = input {
-        if bpmn_path(&input) {
-            return Err(error(2, "BPMN imports are read-only and cannot be run"));
-        }
         let input = path(&input)?;
-        let initial = native::load_bytes(&read(&input)?).map_err(|e| error(3, e))?;
+        let initial = native::load_bytes(&read_native(&input)?).map_err(|e| error(3, e))?;
         let core = Session::new(initial.project).map_err(|e| error(3, format!("{e:?}")))?;
         let (file, loaded) =
             FileSession::open(core.id(), grant(&input, Access::Write)?).map_err(|e| {
@@ -456,7 +511,7 @@ fn query_project(path: &Path, query: Query) -> Result<(), Error> {
         ids::{DictionaryEntryId, DocumentId, ElementSelector},
         queries,
     };
-    let loaded = native::load_bytes(&read(path)?).map_err(|e| error(3, e))?;
+    let loaded = native::load_bytes(&read_native(path)?).map_err(|e| error(3, e))?;
     let project = &loaded.project;
     let result = match query {
         Query::Model {
@@ -650,7 +705,7 @@ fn layout_preview_file(
         return Err(error(4, "output exists; --overwrite is required"));
     }
     distinct_files(input, out)?;
-    let project = native::load_bytes(&read(input)?)
+    let project = native::load_bytes(&read_native(input)?)
         .map_err(|e| error(3, e))?
         .project;
     let session = Session::new(project).map_err(|e| error(3, format!("{e:?}")))?;
@@ -710,7 +765,7 @@ fn layout_apply_file(
     Check.deserialize(&mut check).map_err(|e| error(2, e))?;
     check.end().map_err(|e| error(2, e))?;
     let mut file: FileLayoutProposal = serde_json::from_slice(&bytes).map_err(|e| error(2, e))?;
-    let loaded = native::load_bytes(&read(input)?).map_err(|e| error(3, e))?;
+    let loaded = native::load_bytes(&read_native(input)?).map_err(|e| error(3, e))?;
     let mut session = Session::new(loaded.project).map_err(|e| error(3, format!("{e:?}")))?;
     let snapshot = session.snapshot();
     if file.base_content_id != snapshot.content_id {
@@ -760,6 +815,15 @@ fn layout_apply_file(
 }
 
 fn import_bpmn_cli(input: &Path, out: &Path, overwrite: bool) -> Result<(), Error> {
+    if bpmn_path(out) {
+        return Err(error(
+            2,
+            format!(
+                "{}: import-bpmn writes a .processcraft package (ZIP), not BPMN XML; choose a .processcraft output",
+                out.display()
+            ),
+        ));
+    }
     if out.exists() && !overwrite {
         return Err(error(4, "output exists; --overwrite is required"));
     }
@@ -806,7 +870,7 @@ fn export_bpmn_cli(
         return Err(error(4, "output exists; --overwrite is required"));
     }
     distinct_files(input, out)?;
-    let loaded = native::load_bytes(&read(input)?).map_err(|e| error(3, e))?;
+    let loaded = native::load_bytes(&read_native(input)?).map_err(|e| error(3, e))?;
     let id = document_id.parse().map_err(|e| error(2, e))?;
     let result = processcraft_io::interchange::export_bpmn(&loaded.project, id, acknowledge)
         .map_err(|e| {
@@ -874,11 +938,15 @@ fn export_image_cli(
     acknowledge_diagnostics: bool,
 ) -> Result<(), Error> {
     use processcraft_render::{Appearance, ExportFormat, ExportOptions, TextEngine};
+    // Mirrors the renderer's limit so a bad scale is reported before diagnostics.
+    if !scale.is_finite() || !(0.125..=8.0).contains(&scale) {
+        return Err(error(2, "--scale must be finite within 0.125..8"));
+    }
     if out.exists() && !overwrite {
         return Err(error(4, "output exists; --overwrite is required"));
     }
     distinct_files(input, out)?;
-    let loaded = native::load_bytes(&read(input)?).map_err(|e| error(3, e))?;
+    let loaded = native::load_bytes(&read_native(input)?).map_err(|e| error(3, e))?;
     let id = document_id.parse().map_err(|e| error(2, e))?;
     let diagram = diagram_id.parse().map_err(|e| error(2, e))?;
     let doc = loaded
@@ -899,7 +967,9 @@ fn export_image_cli(
     if !diagnostics.is_empty() && !acknowledge_diagnostics {
         return Err(error(
             3,
-            format!("export diagnostics require acknowledgement: {diagnostics:?}"),
+            format!(
+                "export diagnostics require acknowledgement (pass --acknowledge-diagnostics): {diagnostics:?}"
+            ),
         ));
     }
     let output = processcraft_render::export_diagram(

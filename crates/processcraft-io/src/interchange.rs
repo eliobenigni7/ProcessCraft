@@ -42,7 +42,13 @@ pub fn prepare_import(bytes: &[u8], source_name: &str) -> Result<PreparedImport,
         .parse()
         .expect("generated ID");
     let resource = Resource::new(rid.clone(), "application/xml".into(), Arc::from(bytes));
+    REFUSAL.with(|r| r.take());
+    leave();
     let initial = parse_profile(bytes);
+    if initial.is_none() {
+        refused::<()>(|| "content outside the qualified profile".into());
+    }
+    leave();
     let projected = initial.and_then(|document| {
         let check = (document.has_semantic_common_metadata_features()
             || document.has_di_choreography_features()
@@ -55,8 +61,14 @@ pub fn prepare_import(bytes: &[u8], source_name: &str) -> Result<PreparedImport,
                         .any(|a| a.loop_type.is_some() || a.details.is_some())
             }))
         .then(|| export_document(&document, std::slice::from_ref(&resource), true));
-        if let Some(Err(_)) = check {
-            None
+        if let Some(Err(failure)) = check {
+            // The export check re-parses its own output; its breadcrumbs are not the reason.
+            REFUSAL.with(|r| r.take());
+            leave();
+            refused(|| {
+                let detail = failure.report.blocked.join("; ");
+                format!("the qualified model does not re-export losslessly: {detail}")
+            })
         } else {
             Some(document)
         }
@@ -85,7 +97,12 @@ pub fn prepare_import(bytes: &[u8], source_name: &str) -> Result<PreparedImport,
             limitations: if editable {
                 vec!["Qualified BPMN subset; original source retained".into()]
             } else {
-                let mut limitations = vec!["Unsupported or ambiguous content retained byte-for-byte; semantic editing disabled".into()];
+                let reason = REFUSAL
+                    .with(|r| r.take())
+                    .unwrap_or_else(|| "content outside the qualified profile".into());
+                let mut limitations = vec![format!(
+                    "Semantic editing disabled ({reason}); source retained byte-for-byte"
+                )];
                 limitations.extend(invalid_choreography_loop_types(bytes));
                 limitations
             },
@@ -115,6 +132,33 @@ fn invalid_choreography_loop_types(bytes: &[u8]) -> Vec<String> {
         }
     }
     found
+}
+thread_local! {
+    /// First (innermost) reason the editable projection was refused, or the element being read.
+    static REFUSAL: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+    static CURRENT: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+}
+/// Records why import fell back to preserved source; the first recorded reason wins.
+fn refused<T>(reason: impl FnOnce() -> String) -> Option<T> {
+    let reason = match CURRENT.with(|c| c.borrow().clone()) {
+        Some(at) => format!("{} at {at}", reason()),
+        None => reason(),
+    };
+    REFUSAL.with(|r| {
+        r.borrow_mut().get_or_insert(reason);
+    });
+    None
+}
+/// Marks the element whose qualification is in progress, for refusal messages.
+fn at(e: &Elem) {
+    let label = match e.attrs.get("id") {
+        Some(id) => format!("<{} id=\"{id}\">", e.name),
+        None => format!("<{}>", e.name),
+    };
+    CURRENT.with(|c| *c.borrow_mut() = Some(label));
+}
+fn leave() {
+    CURRENT.with(|c| c.borrow_mut().take());
 }
 #[derive(Default)]
 struct Elem {
@@ -674,6 +718,7 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                         .map(|(prefix, _)| prefix.to_owned()),
                     ..Elem::default()
                 };
+                at(&item);
                 item.namespaces = stack
                     .last()
                     .map(|parent| parent.namespaces.clone())
@@ -918,16 +963,23 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                             item.attrs.insert(key.into(), value);
                             continue;
                         }
-                        let (resolved, local) = r.resolver().resolve_element(QName(value.trim()));
-                        let namespace = match resolved {
-                            ResolveResult::Bound(uri) => uri.0,
-                            ResolveResult::Unbound => "",
-                            ResolveResult::Unknown(_) => return None,
-                        };
-                        if Some(namespace) != target_namespace.as_deref() {
-                            return None;
+                        // An unprefixed reference names a local ID whatever the default
+                        // namespace is (bpmn.io, Signavio and Bizagi all rely on this).
+                        if value.trim().contains(':') {
+                            let (resolved, _) = r.resolver().resolve_element(QName(value.trim()));
+                            if !matches!(resolved, ResolveResult::Bound(uri)
+                                if Some(uri.0) == target_namespace.as_deref())
+                            {
+                                return refused(|| {
+                                    format!("{key} \"{value}\" is outside the targetNamespace")
+                                });
+                            }
                         }
-                        value = local.as_ref().to_string();
+                        value = value
+                            .trim()
+                            .rsplit_once(':')
+                            .map_or(value.trim(), |(_, local)| local)
+                            .to_string();
                     }
                     item.attrs.insert(key.into(), value);
                 }
@@ -2397,9 +2449,8 @@ fn activity_io(
             _ => {}
         }
     }
-    if !associations.is_empty() && io.is_none() {
-        return None;
-    }
+    // bpmn.io never writes an ioSpecification; its associations target the activity's
+    // `__targetRef_placeholder` property or carry no source at all.
     Some((io, associations))
 }
 fn parse_event(
@@ -2778,6 +2829,7 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
             .map(|q| event_reference(q, target_namespace));
     }
     for n in &e.children {
+        at(n);
         if e.name == "process" && n.ns == B {
             match n.name.as_str() {
                 "supportedInterfaceRef" if attrs(n, &[]) && n.children.is_empty() => {
@@ -4796,6 +4848,7 @@ fn event_definition_resources_valid(document: &BpmnDocument, definition: &EventD
 }
 fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
     let mut root = tree(bytes)?;
+    leave();
     let mut pending_metadata = BTreeMap::new();
     extract_owner_metadata(&mut root, &mut pending_metadata)?;
     let target_namespace = root.attrs.get("targetNamespace")?.clone();
@@ -4813,8 +4866,9 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
         (!supported_di && !e.foreign_attributes.is_empty())
             || e.children.iter().any(has_foreign_attributes)
     }
-    if root.children.iter().any(has_foreign_attributes) {
-        return None;
+    if let Some(owner) = root.children.iter().find(|e| has_foreign_attributes(e)) {
+        at(owner);
+        return refused(|| "extension attributes inside this element".into());
     }
     if root.ns != B
         || root.name != "definitions"
@@ -4833,14 +4887,17 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
             .iter()
             .any(|name| root.attrs.get(*name).is_some_and(|value| value.len() > 16_384))
     {
-        return None;
+        return refused(|| "unsupported <definitions> attributes".into());
     }
     let mut d = BpmnDocument::new(String::new(), element_identity(&root)?);
     d.definitions = Some(DefinitionsMetadata {
+        // Foreign attributes are always prefixed; the default namespace is not their context.
         namespaces: if root.foreign_attributes.is_empty() {
             Vec::new()
         } else {
-            xml_namespaces(&root)
+            let mut bindings = xml_namespaces(&root);
+            bindings.retain(|binding| !binding.prefix.is_empty());
+            bindings
         },
         foreign_attributes: root.foreign_attributes.clone(),
         target_namespace: root.attrs.get("targetNamespace")?.clone(),
@@ -4855,6 +4912,7 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
     let mut root_phase = 0;
     let mut imported_order = Vec::new();
     for e in &root.children {
+        at(e);
         let phase = match (e.ns.as_str(), e.name.as_str()) {
             (B, "import") => 0,
             (B, "extension") => 1,
@@ -5244,6 +5302,7 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                     });
                 }
                 for item in &plane.children[plane_offset..] {
+                    at(item);
                     if item.ns != BD
                         || !di_attrs(
                             item,
@@ -5417,35 +5476,22 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
         }
     }
     d.root_order = Some(imported_order);
+    leave();
     if d.root_event_definitions
         .iter()
         .any(|definition| !event_definition_resources_valid(&d, definition))
     {
-        return None;
+        return refused(|| "unresolved root event definition resource".into());
     }
     // Every flow and lane reference is validated in its owning scope.
     let all_scopes = scopes(&d)?;
     for p in &all_scopes {
         for node in p.nodes {
+            let node_label = || format!("<{:?} id=\"{}\">", node.kind, node.id);
             if node.activity.as_ref().is_some_and(|activity| {
                 !processcraft_core::validation::activity_reference_issues(&d, activity).is_empty()
             }) {
-                return None;
-            }
-            if let Some(NodeDetails::CallActivity {
-                called_element: Some(called_element),
-            }) = &node.details
-                && called_element.namespace == target_namespace
-                && !d
-                    .processes
-                    .iter()
-                    .any(|process| process.id.xml_id() == Some(&called_element.local))
-                && !d.global_tasks.iter().any(|task| {
-                    task.id.as_ref().and_then(ElementIdentity::xml_id)
-                        == Some(&called_element.local)
-                })
-            {
-                return None;
+                return refused(|| format!("unresolved activity reference at {}", node_label()));
             }
             if node.details.is_some()
                 && !matches!(
@@ -5461,30 +5507,25 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                 )
                 && !supported_event_details(node)
             {
-                return None;
+                return refused(|| format!("unsupported details at {}", node_label()));
             }
             if let Some(NodeDetails::Event {
                 definitions,
                 definition_refs,
                 ..
             }) = &node.details
-            {
-                if definitions
+                && (definitions
                     .iter()
                     .any(|definition| !event_definition_resources_valid(&d, definition))
-                {
-                    return None;
-                }
-                for reference in definition_refs {
-                    if let EventReference::Local(selector) = reference
-                        && !d.root_event_definitions.iter().any(|definition| {
+                    || definition_refs.iter().any(|reference| {
+                        matches!(reference, EventReference::Local(selector)
+                        if !d.root_event_definitions.iter().any(|definition| {
                             event_definition_identity(definition)
                                 .is_some_and(|id| id.selector() == *selector)
-                        })
-                    {
-                        return None;
-                    }
-                }
+                        }))
+                    }))
+            {
+                return refused(|| format!("unresolved event definition at {}", node_label()));
             }
             if let Some(NodeDetails::Event {
                 attached_to: Some(target),
@@ -5492,7 +5533,7 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
             }) = &node.details
                 && matches!(target, EventReference::Local(selector) if !p.nodes.iter().any(|n| n.id == *selector && n.kind.is_activity()))
             {
-                return None;
+                return refused(|| format!("attachedToRef outside its scope at {}", node_label()));
             }
         }
         for lane in p.lanes {
@@ -5501,7 +5542,9 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                 .iter()
                 .any(|id| !p.nodes.iter().any(|n| &n.id == id))
             {
-                return None;
+                return refused(|| {
+                    format!("lane {} references a node outside its process", lane.id)
+                });
             }
         }
         for f in p.flows {
@@ -5515,11 +5558,13 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                                         flow.kind == FlowKind::Sequence && flow.id == *selector
                                     })))
                         {
-                            return None;
+                            return refused(|| {
+                                format!("flow {} has an endpoint outside its scope", f.id)
+                            });
                         }
                     }
                     Some(EventReference::Qualified(_)) if f.kind == FlowKind::Association => {}
-                    _ => return None,
+                    _ => return refused(|| format!("flow {} has an unsupported endpoint", f.id)),
                 }
             }
         }
@@ -5531,7 +5576,7 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
             .iter()
             .any(|shape| activity_ports.contains(&shape.element))
         {
-            return None;
+            return refused(|| "a diagram shape targets an activity data port".into());
         }
         let choreography_scopes = processcraft_core::queries::choreography_scopes(&d);
         if let Some(first) = choreography_scopes
@@ -5570,19 +5615,29 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                         || scope.data_associations.iter().any(|a| a.id.as_ref().is_some_and(|id| id == &e.element))
                         || scope.artifacts.iter().any(|a| matches!(a, CollaborationArtifact::Association(f) if f.id == e.element)))
             }) {
-                return None;
+                return refused(|| "a choreography diagram element has no qualified model element".into());
             }
             continue;
         }
         if let Some(collaboration) = &d.collaboration
             && collaboration.id == dia.plane
         {
+            use processcraft_core::bpmn_collaboration::CollaborationArtifact;
+            let artifacts = collaboration
+                .extras
+                .as_ref()
+                .map_or(&[][..], |extras| &extras.artifacts[..]);
             if dia.shapes.iter().any(|s| {
                 !collaboration.participants.iter().any(|p| p.id == s.element)
                     && !collaboration
                         .conversation_nodes
                         .iter()
                         .any(|n| n.id == s.element)
+                    && !artifacts.iter().any(|a| match a {
+                        CollaborationArtifact::Group(g) => g.id == s.element,
+                        CollaborationArtifact::TextAnnotation(n) => n.id == s.element,
+                        CollaborationArtifact::Association(_) => false,
+                    })
                     && !all_scopes.iter().any(|p| {
                         p.nodes.iter().any(|n| n.id == s.element)
                             || p.lanes.iter().any(|l| l.id == s.element)
@@ -5594,6 +5649,9 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                         .conversation_links
                         .iter()
                         .any(|f| f.id == e.element)
+                    && !artifacts.iter().any(
+                        |a| matches!(a, CollaborationArtifact::Association(f) if f.id == e.element),
+                    )
                     && !all_scopes.iter().any(|p| {
                         p.flows.iter().any(|f| f.id == e.element)
                             || p.data_associations
@@ -5601,7 +5659,9 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                                 .any(|a| a.id.as_ref().is_some_and(|id| id.selector() == e.element))
                     })
             }) {
-                return None;
+                return refused(|| {
+                    "a collaboration diagram element has no qualified model element".into()
+                });
             }
             continue;
         }
@@ -5631,12 +5691,14 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                         .any(|a| a.id.as_ref().is_some_and(|id| id.selector() == e.element))
             })
         }) {
-            return None;
+            return refused(|| "a process diagram element has no qualified model element".into());
         }
     }
     let mut validation = ProjectData::new("validation".into());
     validation.documents.push(Arc::new(d.clone()));
-    validation.validate().ok()?;
+    if let Err(error) = validation.validate() {
+        return refused(|| format!("model validation failed: {error}"));
+    }
     processcraft_core::metadata_visit::visit_base_metadata_mut(&mut d, |owner, base| {
         if let Some(id) = owner.and_then(ElementIdentity::xml_id)
             && let Some(pending) = pending_metadata.remove(&id.to_string())
@@ -5667,7 +5729,9 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
         || has_unconsumed_flow_metadata(&root)
         || collect_owner_metadata(&d).is_err()
     {
-        return None;
+        return refused(|| {
+            "documentation or extension metadata on an owner without a qualified writer".into()
+        });
     }
     Some(d)
 }
@@ -9568,15 +9632,9 @@ fn export_document(
             }
         }
         for binding in &definitions.namespaces {
-            if binding.prefix.is_empty() {
-                if binding.uri != B {
-                    report.blocked.push(
-                        "Definitions default namespace cannot preserve foreign attribute context"
-                            .into(),
-                    );
-                    return Err(ExportFailure { report });
-                }
-            } else if binding.prefix != "xml" {
+            // Foreign attributes are always prefixed, so the source default namespace
+            // (bpmn.io writes its targetNamespace there) is not part of their context.
+            if !binding.prefix.is_empty() && binding.prefix != "xml" {
                 xml.push_str(&format!(
                     " xmlns:{}=\"{}\"",
                     binding.prefix,
