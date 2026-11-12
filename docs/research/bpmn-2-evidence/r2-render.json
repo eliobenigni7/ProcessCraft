@@ -1,0 +1,164 @@
+{
+ "family": "r2-render",
+ "cells": [
+  {
+   "path": "/schema/complexType[@name=BPMNEdge]/complexContent/extension/attribute[@name=sourceElement]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "render",
+   "state": "not_applicable",
+   "note": "BPMN 2.0.2 section 12.3.3 BPMNEdge (printed p.410): sourceElement/targetElement are DI references to the BPMNShape/BPMNEdge an edge connects to; the depiction is defined by the waypoints, no notation of their own."
+  },
+  {
+   "path": "/schema/complexType[@name=BPMNEdge]/complexContent/extension/attribute[@name=targetElement]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "render",
+   "state": "not_applicable",
+   "note": "BPMN 2.0.2 section 12.3.3 BPMNEdge (printed p.410): sourceElement/targetElement are DI references to the BPMNShape/BPMNEdge an edge connects to; the depiction is defined by the waypoints, no notation of their own."
+  },
+  {
+   "path": "/schema/complexType[@name=BPMNPlane]/complexContent/extension/attribute[@name=bpmnElement]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/m3r2_render.rs:plane_bpmn_element_scopes_nested_children",
+    "crates/processcraft-render/tests/m3_di.rs:diagram_renders_with_plane_and_shapes"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tCallableElement]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "not_applicable",
+   "note": "BPMN 2.0.2 Table 10.24 (printed p.186): name is the descriptive name of a CallableElement (Process/Global Task); it has no shape of its own, a Process is shown through its Pool/Lane labels (section 9.2 Pool)."
+  },
+  {
+   "path": "/schema/complexType[@name=tCategory]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/m3r2_render.rs:group_label_is_category_name_and_value"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tChoreographyActivity]/complexContent/extension/attribute[@name=initiatingParticipantRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/m3r2_render.rs:choreography_initiating_participant_selects_top_band"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tCollaboration]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "not_applicable",
+   "note": "BPMN 2.0.2 Table 9.1 (printed p.108): Collaboration name is a descriptive name; a Collaboration is drawn as a diagram of Pools and has no shape or label of its own."
+  },
+  {
+   "path": "/schema/complexType[@name=tGateway]/complexContent/extension/attribute[@name=gatewayDirection]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "not_applicable",
+   "note": "BPMN 2.0.2 Table 8.46 (printed p.89): gatewayDirection only adds constraints on incoming/outgoing Sequence Flows; Gateway notation (section 10.6) defines markers by gateway type only, no direction marker."
+  },
+  {
+   "path": "/schema/complexType[@name=tGlobalChoreographyTask]/complexContent/extension/attribute[@name=initiatingParticipantRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "not_applicable",
+   "note": "BPMN 2.0.2 section 11.5.4 / Table 11.5 (printed p.335) and Table 12.30: a GlobalChoreographyTask has no Flow Elements and no standalone shape; only the calling Call Choreography is drawn."
+  },
+  {
+   "path": "/schema/complexType[@name=tInclusiveGateway]/complexContent/extension/attribute[@name=default]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/m3r2_render.rs:inclusive_gateway_default_flow_draws_slash"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tInputSet]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "not_applicable",
+   "note": "BPMN 2.0.2 Table 10.61 (printed p.218): InputSet name is a descriptive name of a data-set grouping; no notation is defined."
+  },
+  {
+   "path": "/schema/complexType[@name=tLaneSet]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "not_applicable",
+   "note": "BPMN 2.0.2 Table 10.134 (printed p.307): 'A LaneSet is not visually displayed on a BPMN diagram. Consequently, the name of the LaneSet is not displayed as well.'"
+  },
+  {
+   "path": "/schema/complexType[@name=tLinkEventDefinition]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "not_applicable",
+   "note": "BPMN 2.0.2 Table 10.98 (printed p.269) and Table 10.93: the Link name correlates throw/catch events; the Link marker is a fixed arrow and the name is not part of the notation (the event label is the Event name)."
+  },
+  {
+   "path": "/schema/complexType[@name=tMessage]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "not_applicable",
+   "note": "BPMN 2.0.2 Table 8.48 (printed p.93): Message name is a text description; the notation defines no Message label (the Message Flow label is the flow name)."
+  },
+  {
+   "path": "/schema/complexType[@name=tOutputSet]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "not_applicable",
+   "note": "BPMN 2.0.2 Table 10.62 (printed p.220): OutputSet name is a descriptive name of a data-set grouping; no notation is defined."
+  },
+  {
+   "path": "/schema/element[@name=laneSet]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "not_applicable",
+   "note": "BPMN 2.0.2 Table 10.134 (printed p.307): 'A LaneSet is not visually displayed on a BPMN diagram. Consequently, the name of the LaneSet is not displayed as well.'"
+  },
+  {
+   "path": "/schema/element[@name=lane]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/m3r2_render.rs:lane_renders_name_and_hit_tests"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=messageFlow]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/m3r2_render.rs:participant_pool_and_message_flow_hit_test",
+    "crates/processcraft-render/tests/m3_process_collaboration.rs:message_flow_name_renders_as_edge_label"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=participant]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/m3r2_render.rs:participant_pool_and_message_flow_hit_test",
+    "crates/processcraft-render/tests/m3_process_collaboration.rs:participant_name_renders_as_pool_label"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=sequenceFlow]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/m3r2_render.rs:sequence_flow_draws_line_label_and_hits"
+   ]
+  }
+ ]
+}

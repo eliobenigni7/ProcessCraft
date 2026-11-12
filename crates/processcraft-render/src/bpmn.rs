@@ -441,16 +441,22 @@ impl<'a> SemanticIndex<'a> {
             .copied()
             .find(|(_, activity)| &activity.id == id)
     }
-    fn group_label<'b>(&self, id: &ElementSelector, document: &'b BpmnDocument) -> Option<&'b str> {
+    /// BPMN 2.0.2 Table 8.21 / section 8.3.? "Category": the Group label is the
+    /// CategoryValue value, prepended by the Category name and a delineator.
+    fn group_label(&self, id: &ElementSelector, document: &BpmnDocument) -> Option<String> {
         let group = self.groups.iter().find(|g| &g.id == id)?;
         let value_id = self.resolved(&group.category_value_ref)?;
-        document
-            .categories
-            .iter()
-            .flat_map(|c| &c.values)
-            .find(|v| v.id == value_id)?
-            .value
-            .as_deref()
+        let (category, value) = document.categories.iter().find_map(|c| {
+            c.values
+                .iter()
+                .find(|v| v.id == value_id)
+                .map(|v| (c, v.value.as_deref()))
+        })?;
+        let value = value?;
+        Some(match category.name.as_deref().filter(|n| !n.is_empty()) {
+            Some(name) => format!("{name}: {value}"),
+            None => value.to_owned(),
+        })
     }
     fn data_object(&self, id: &ElementSelector) -> Option<&'a DataObject> {
         self.data_objects
@@ -1239,7 +1245,7 @@ impl BpmnScene {
                 dashed_lines(&mut scene, &pts, stroke, 5.0)?;
                 if shape_labels
                     && label_visible(shape.label.as_ref(), shape.label_visibility)
-                    && let Some(name) = semantics.group_label(&shape.element, document)
+                    && let Some(name) = semantics.group_label(&shape.element, document).as_deref()
                 {
                     let fallback = Bounds {
                         x: b.x + 8.0,
@@ -3901,8 +3907,9 @@ impl BpmnViewport {
                     shape.element
                 ));
             }
-            let mut name = semantics
-                .group_label(&shape.element, document)
+            let group_text = semantics.group_label(&shape.element, document);
+            let mut name = group_text
+                .as_deref()
                 .or_else(|| {
                     choreography.map(|(_, activity)| activity.name.as_deref().unwrap_or(""))
                 })

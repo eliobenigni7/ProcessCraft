@@ -15685,7 +15685,7 @@
       "coverage": {
         "model": "verified",
         "edit": "unverified",
-        "render": "unverified",
+        "render": "verified",
         "import": "verified",
         "export": "verified",
         "validate": "unverified"
@@ -15710,6 +15710,10 @@
         ],
         "model": [
           "crates/processcraft-core/tests/m3_di.rs:di_fields_are_typed_and_survive_serde"
+        ],
+        "render": [
+          "crates/processcraft-render/tests/m3_di.rs:diagram_renders_with_plane_and_shapes",
+          "crates/processcraft-render/tests/m3r2_render.rs:plane_bpmn_element_scopes_nested_children"
         ]
       },
       "verified_notes": {
@@ -15832,7 +15836,7 @@
       "coverage": {
         "model": "verified",
         "edit": "partial",
-        "render": "partial",
+        "render": "not_applicable",
         "import": "verified",
         "export": "verified",
         "validate": "partial"
@@ -15864,6 +15868,9 @@
         "model": [
           "crates/processcraft-core/tests/geometry.rs:explicit_di_endpoints_track_only_the_named_shape_and_undo"
         ]
+      },
+      "verified_notes": {
+        "render": "BPMN 2.0.2 section 12.3.3 BPMNEdge (printed p.410): sourceElement/targetElement are DI references to the BPMNShape/BPMNEdge an edge connects to; the depiction is defined by the waypoints, no notation of their own."
       }
     },
     {
@@ -15882,7 +15889,7 @@
       "coverage": {
         "model": "verified",
         "edit": "partial",
-        "render": "partial",
+        "render": "not_applicable",
         "import": "verified",
         "export": "verified",
         "validate": "partial"
@@ -15914,6 +15921,9 @@
         "model": [
           "crates/processcraft-core/tests/geometry.rs:explicit_di_endpoints_track_only_the_named_shape_and_undo"
         ]
+      },
+      "verified_notes": {
+        "render": "BPMN 2.0.2 section 12.3.3 BPMNEdge (printed p.410): sourceElement/targetElement are DI references to the BPMNShape/BPMNEdge an edge connects to; the depiction is defined by the waypoints, no notation of their own."
       }
     },
     {
@@ -19432,7 +19442,7 @@
       "coverage": {
         "model": "verified",
         "edit": "verified",
-        "render": "unverified",
+        "render": "not_applicable",
         "import": "verified",
         "export": "verified",
         "validate": "unverified"
@@ -19464,6 +19474,9 @@
         "model": [
           "crates/processcraft-core/tests/m3_foundation.rs:process_name_rename_is_undoable"
         ]
+      },
+      "verified_notes": {
+        "render": "BPMN 2.0.2 Table 10.24 (printed p.186): name is the descriptive name of a CallableElement (Process/Global Task); it has no shape of its own, a Process is shown through its Pool/Lane labels (section 9.2 Pool)."
       }
     },
     {
@@ -20230,7 +20243,7 @@
       "coverage": {
         "model": "verified",
         "edit": "verified",
-        "render": "unverified",
+        "render": "verified",
         "import": "verified",
         "export": "verified",
         "validate": "unverified"
@@ -20260,6 +20273,9 @@
         ],
         "edit": [
           "crates/processcraft-core/tests/m3_artifacts.rs:category_name_and_value_edit_are_stored_and_undo_restores"
+        ],
+        "render": [
+          "crates/processcraft-render/tests/m3r2_render.rs:group_label_is_category_name_and_value"
         ]
       }
     },
@@ -20681,7 +20697,7 @@
       "coverage": {
         "model": "verified",
         "edit": "verified",
-        "render": "unverified",
+        "render": "verified",
         "import": "verified",
         "export": "verified",
         "validate": "verified"
@@ -20717,6 +20733,9 @@
         "validate": [
           "crates/processcraft-core/tests/diagnostics.rs:choreography_graph_reports_bounded_semantics_without_matching_external_names",
           "crates/processcraft-io/src/choreography_export.rs:incomplete_nested_draft_is_refused_without_native_changes"
+        ],
+        "render": [
+          "crates/processcraft-render/tests/m3r2_render.rs:choreography_initiating_participant_selects_top_band"
         ]
       },
       "verified_notes": {
@@ -21174,7 +21193,7 @@
       "coverage": {
         "model": "verified",
         "edit": "verified",
-        "render": "unverified",
+        "render": "not_applicable",
         "import": "verified",
         "export": "verified",
         "validate": "unverified"
@@ -21206,7 +21225,8 @@
         ]
       },
       "verified_notes": {
-        "edit": "SetCollaborationRoot rename with undo/redo through the GUI controller"
+        "edit": "SetCollaborationRoot rename with undo/redo through the GUI controller",
+        "render": "BPMN 2.0.2 Table 9.1 (printed p.108): Collaboration name is a descriptive name; a Collaboration is drawn as a diagram of Pools and has no shape or label of its own."
       }
     },
     {
@@ -26961,7 +26981,7 @@
       "coverage": {
         "model": "verified",
         "edit": "verified",
-        "render": "unverified",
+        "render": "not_applicable",
         "import": "verified",
         "export": "verified",
         "validate": "verified"
@@ -26998,7 +27018,8 @@
       },
       "verified_notes": {
         "edit": "GUI commit_draft submits SetNodeDetails; asserts Diverging, undo/redo",
-        "export": "export XSD-valid (check_bpmn20_xsd.py on target/m3-gateways-export.bpmn) and re-imports equal"
+        "export": "export XSD-valid (check_bpmn20_xsd.py on target/m3-gateways-export.bpmn) and re-imports equal",
+        "render": "BPMN 2.0.2 Table 8.46 (printed p.89): gatewayDirection only adds constraints on incoming/outgoing Sequence Flows; Gateway notation (section 10.6) defines markers by gateway type only, no direction marker."
       }
     },
     {
@@ -27256,7 +27277,7 @@
       "coverage": {
         "model": "verified",
         "edit": "verified",
-        "render": "unverified",
+        "render": "not_applicable",
         "import": "verified",
         "export": "verified",
         "validate": "verified"
@@ -27294,6 +27315,9 @@
           "crates/processcraft-core/tests/m3_choreography.rs:choreography_reference_diagnostics_name_the_violated_clause",
           "crates/processcraft-core/tests/m3_choreography.rs:global_choreography_task_kind_and_initiator_edit_validate_and_undo"
         ]
+      },
+      "verified_notes": {
+        "render": "BPMN 2.0.2 section 11.5.4 / Table 11.5 (printed p.335) and Table 12.30: a GlobalChoreographyTask has no Flow Elements and no standalone shape; only the calling Call Choreography is drawn."
       }
     },
     {
@@ -28020,7 +28044,7 @@
       "coverage": {
         "model": "verified",
         "edit": "verified",
-        "render": "unverified",
+        "render": "verified",
         "import": "verified",
         "export": "verified",
         "validate": "verified"
@@ -28052,6 +28076,9 @@
         ],
         "edit": [
           "crates/processcraft-core/tests/m3_gateways.rs:inclusive_and_parallel_gateways_are_created_edited_and_undone"
+        ],
+        "render": [
+          "crates/processcraft-render/tests/m3r2_render.rs:inclusive_gateway_default_flow_draws_slash"
         ]
       },
       "verified_notes": {
@@ -28406,7 +28433,7 @@
       "coverage": {
         "model": "verified",
         "edit": "verified",
-        "render": "unverified",
+        "render": "not_applicable",
         "import": "verified",
         "export": "verified",
         "validate": "not_applicable"
@@ -28441,6 +28468,7 @@
         ]
       },
       "verified_notes": {
+        "render": "BPMN 2.0.2 Table 10.61 (printed p.218): InputSet name is a descriptive name of a data-set grouping; no notation is defined.",
         "validate": "BPMN 2.0.2 Table 10.61 (pp. 218-220) describes the attribute only as a descriptive name and Semantic.xsd types it xsd:string; no constraint beyond the lexical type."
       }
     },
@@ -29182,7 +29210,7 @@
       "coverage": {
         "model": "verified",
         "edit": "verified",
-        "render": "unverified",
+        "render": "verified",
         "import": "verified",
         "export": "verified",
         "validate": "unverified"
@@ -29225,6 +29253,9 @@
           "crates/processcraft-core/tests/m3r2_edit-model-io.rs:child_lane_set_name_and_lane_partition_edit_with_undo",
           "crates/processcraft-core/tests/m3r2_edit-model-io.rs:element_level_process_lane_and_sequence_flow_create_delete_undo",
           "crates/processcraft-core/tests/m3r2_edit-model-io.rs:lane_set_name_edits_with_undo_and_rejects_invalid_text"
+        ],
+        "render": [
+          "crates/processcraft-render/tests/m3r2_render.rs:lane_renders_name_and_hit_tests"
         ]
       }
     },
@@ -29536,7 +29567,7 @@
       "coverage": {
         "model": "verified",
         "edit": "verified",
-        "render": "unverified",
+        "render": "not_applicable",
         "import": "verified",
         "export": "verified",
         "validate": "unverified"
@@ -29578,6 +29609,9 @@
           "crates/processcraft-core/tests/m3r2_edit-model-io.rs:child_lane_set_name_and_lane_partition_edit_with_undo",
           "crates/processcraft-core/tests/m3r2_edit-model-io.rs:lane_set_name_edits_with_undo_and_rejects_invalid_text"
         ]
+      },
+      "verified_notes": {
+        "render": "BPMN 2.0.2 Table 10.134 (printed p.307): 'A LaneSet is not visually displayed on a BPMN diagram. Consequently, the name of the LaneSet is not displayed as well.'"
       }
     },
     {
@@ -29640,7 +29674,7 @@
       "coverage": {
         "model": "verified",
         "edit": "verified",
-        "render": "unverified",
+        "render": "not_applicable",
         "import": "verified",
         "export": "verified",
         "validate": "unverified"
@@ -29673,6 +29707,9 @@
           "crates/processcraft-core/tests/m3r2_edit-model-io.rs:child_lane_set_name_and_lane_partition_edit_with_undo",
           "crates/processcraft-core/tests/m3r2_edit-model-io.rs:lane_set_name_edits_with_undo_and_rejects_invalid_text"
         ]
+      },
+      "verified_notes": {
+        "render": "BPMN 2.0.2 Table 10.134 (printed p.307): 'A LaneSet is not visually displayed on a BPMN diagram. Consequently, the name of the LaneSet is not displayed as well.'"
       }
     },
     {
@@ -29914,7 +29951,7 @@
       "coverage": {
         "model": "verified",
         "edit": "verified",
-        "render": "unverified",
+        "render": "not_applicable",
         "import": "verified",
         "export": "verified",
         "validate": "verified"
@@ -29951,6 +29988,9 @@
           "crates/processcraft-core/tests/m3_events.rs:link_pair_edit_with_undo_and_incomplete_pairing_is_diagnosed",
           "crates/processcraft-core/tests/m3_events.rs:link_without_name_is_diagnosed"
         ]
+      },
+      "verified_notes": {
+        "render": "BPMN 2.0.2 Table 10.98 (printed p.269) and Table 10.93: the Link name correlates throw/catch events; the Link marker is a fixed arrow and the name is not part of the notation (the event label is the Event name)."
       }
     },
     {
@@ -30177,7 +30217,7 @@
       "coverage": {
         "model": "verified",
         "edit": "verified",
-        "render": "unverified",
+        "render": "not_applicable",
         "import": "verified",
         "export": "verified",
         "validate": "unverified"
@@ -30206,6 +30246,9 @@
         "model": [
           "crates/processcraft-core/tests/m3_process_collaboration.rs:root_message_name_and_item_ref_edit_with_undo"
         ]
+      },
+      "verified_notes": {
+        "render": "BPMN 2.0.2 Table 8.48 (printed p.93): Message name is a text description; the notation defines no Message label (the Message Flow label is the flow name)."
       }
     },
     {
@@ -30489,7 +30532,7 @@
       "coverage": {
         "model": "verified",
         "edit": "verified",
-        "render": "unverified",
+        "render": "verified",
         "import": "verified",
         "export": "verified",
         "validate": "unverified"
@@ -30525,6 +30568,10 @@
         ],
         "model": [
           "crates/processcraft-core/tests/m3r2_edit-model-io.rs:element_level_collaboration_participant_message_and_message_flow_with_undo"
+        ],
+        "render": [
+          "crates/processcraft-render/tests/m3_process_collaboration.rs:message_flow_name_renders_as_edge_label",
+          "crates/processcraft-render/tests/m3r2_render.rs:participant_pool_and_message_flow_hit_test"
         ]
       }
     },
@@ -32107,7 +32154,7 @@
       "coverage": {
         "model": "verified",
         "edit": "verified",
-        "render": "unverified",
+        "render": "not_applicable",
         "import": "verified",
         "export": "verified",
         "validate": "not_applicable"
@@ -32142,6 +32189,7 @@
         ]
       },
       "verified_notes": {
+        "render": "BPMN 2.0.2 Table 10.62 (printed p.220): OutputSet name is a descriptive name of a data-set grouping; no notation is defined.",
         "validate": "BPMN 2.0.2 Table 10.62 (pp. 218-220) describes the attribute only as a descriptive name and Semantic.xsd types it xsd:string; no constraint beyond the lexical type."
       }
     },
@@ -32274,7 +32322,7 @@
       "coverage": {
         "model": "verified",
         "edit": "verified",
-        "render": "unverified",
+        "render": "verified",
         "import": "verified",
         "export": "verified",
         "validate": "unverified"
@@ -32310,6 +32358,10 @@
         ],
         "model": [
           "crates/processcraft-core/tests/m3r2_edit-model-io.rs:element_level_collaboration_participant_message_and_message_flow_with_undo"
+        ],
+        "render": [
+          "crates/processcraft-render/tests/m3_process_collaboration.rs:participant_name_renders_as_pool_label",
+          "crates/processcraft-render/tests/m3r2_render.rs:participant_pool_and_message_flow_hit_test"
         ]
       }
     },
@@ -35072,7 +35124,7 @@
       "coverage": {
         "model": "verified",
         "edit": "verified",
-        "render": "unverified",
+        "render": "verified",
         "import": "verified",
         "export": "verified",
         "validate": "unverified"
@@ -35102,6 +35154,9 @@
         ],
         "model": [
           "crates/processcraft-core/tests/m3r2_edit-model-io.rs:element_level_process_lane_and_sequence_flow_create_delete_undo"
+        ],
+        "render": [
+          "crates/processcraft-render/tests/m3r2_render.rs:sequence_flow_draws_line_label_and_hits"
         ]
       }
     },
@@ -37683,43 +37738,43 @@
     "total": {
       "declarations": 299,
       "cells": 1450,
-      "verified": 1376,
-      "not_applicable": 14,
-      "partial": 3,
-      "unverified": 57
+      "verified": 1384,
+      "not_applicable": 26,
+      "partial": 1,
+      "unverified": 39
     },
     "by_set": {
       "A": {
         "declarations": 89,
         "cells": 438,
-        "verified": 424,
-        "not_applicable": 7,
+        "verified": 425,
+        "not_applicable": 10,
         "partial": 0,
-        "unverified": 7
+        "unverified": 3
       },
       "C": {
         "declarations": 34,
         "cells": 166,
-        "verified": 160,
-        "not_applicable": 1,
+        "verified": 161,
+        "not_applicable": 3,
         "partial": 0,
-        "unverified": 5
+        "unverified": 2
       },
       "D": {
         "declarations": 173,
         "cells": 861,
-        "verified": 809,
-        "not_applicable": 9,
+        "verified": 814,
+        "not_applicable": 16,
         "partial": 0,
-        "unverified": 43
+        "unverified": 31
       },
       "I": {
         "declarations": 33,
         "cells": 132,
-        "verified": 125,
-        "not_applicable": 0,
-        "partial": 3,
-        "unverified": 4
+        "verified": 126,
+        "not_applicable": 2,
+        "partial": 1,
+        "unverified": 3
       },
       "S": {
         "declarations": 7,
