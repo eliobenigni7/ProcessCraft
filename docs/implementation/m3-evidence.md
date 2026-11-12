@@ -377,7 +377,7 @@ Source base `2532d4c` plus this change. On native Windows 11 (NTFS), `cargo fmt 
 
 Not established: a scope definition for "required" coverage is proposed in `docs/research/m3-required-scope-proposal.md` and is not yet adopted. Native GUI interaction, accessibility and named-consumer gates were not run.
 
-## M3 required-scope closure (M3 is NOT closed)
+## M3 required-scope closure (superseded: gate not met at that point)
 
 Measured 2026-11-12 on Windows 11 (NTFS), main at `3ad3dc7`, scope per `docs/research/m3-required-scope-proposal.md` and the plan's scope decision.
 
@@ -397,3 +397,13 @@ Measured 2026-11-12 on Windows 11 (NTFS), main at `3ad3dc7`, scope per `docs/res
 **Tests (Windows 11):** `cargo fmt --all -- --check` clean; clippy with `-D warnings` clean; `cargo test --workspace --all-targets --all-features --locked --offline --no-fail-fast`: 938 passed, 0 failed.
 
 **Not claimed:** OMG BPMN conformance of any class (Common Executable and Full Process unsatisfied); deferred families; Camunda Modeler / SAP Signavio reopens, the Signavio comparison and screen-reader qualification (deferred to a post-M3 qualification milestone by user decision, 2026-11-12); per-field desktop GUI qualification as part of edit cells; any non-Windows gate run (this gate run is Windows only).
+
+## M3 closed under the adopted required scope
+
+Source checkpoint `689452a`, native Windows 11. `python scripts/generate_bpmn20_inventory.py --gate` exits 0 and `--check` passes: 299 required declarations, 1450 required cells, **1414 verified, 36 not_applicable, 0 partial, 0 unverified**. `cargo fmt --all -- --check`, workspace Clippy with `-D warnings` and `cargo test --workspace --all-targets --all-features --locked --offline --no-fail-fast` (**1009 passed, 0 failed**) passed at that checkpoint.
+
+How the cells were established: evidence fragments in `docs/research/bpmn-2-evidence/` are validated by the generator (in-repo file, named `fn`/`def`, no duplicates; not_applicable only for validate/render with a cited clause). After the first evidence pass, a sample audit (114 cells, 16 refuted by two skeptics) and a full audit of the remaining 1336 verified cells (193 refuted by two skeptics) led to strengthened tests and production fixes (`88dfe42`); a re-audit of the 195 replaced or thin cells refuted 4, repaired in `689452a`. The replaced evidence was audited once; no further audit loop was run.
+
+Production additions during closure include lane set names and lane partitions (commands, undo, interchange), normative validation warnings for activities, loops, events, data, lanes, DI planes and collaborations, group/category, Message-envelope and Link-definition labels in the shared scene, and BPMN import caps on namespace declarations and attributes.
+
+Not claimed: OMG conformance for any class; Common Executable and Full Process families and the deferred families in `docs/research/m3-required-scope-proposal.md`; named external consumer reopens (Camunda Modeler, SAP Signavio), the Signavio benchmark and screen-reader qualification (deferred by the user on 2026-11-12 to a post-M3 qualification milestone); per-field desktop GUI qualification (edit cells rest on shared commands with undo); Linux/macOS gate runs; release binaries and artifacts under `target/m3-qualification/` for this checkpoint.
