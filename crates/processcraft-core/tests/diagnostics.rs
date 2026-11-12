@@ -1976,3 +1976,73 @@ fn choreography_graph_reports_bounded_semantics_without_matching_external_names(
     assert!(!codes(&doc).contains(&"choreographyInitiatorNotPreviouslyInvolved"));
     assert!(codes(&doc).contains(&"choreographyInitiatorSequenceUnqualified"));
 }
+
+#[test]
+fn compensation_event_subprocess_and_ad_hoc_children_are_not_unconnected() {
+    use processcraft_core::{bpmn_activity::ActivityProperties, bpmn_model::NodeDetails};
+    let container = |nodes: Vec<Node>| {
+        Some(NodeDetails::SubProcess {
+            content: Box::new(FlowContainer {
+                lane_set_base: None,
+                lane_set_name: None,
+                lane_set_id: None,
+                groups: vec![],
+                data_objects: vec![],
+                data_associations: vec![],
+                nodes,
+                lanes: vec![],
+                flows: vec![],
+            }),
+        })
+    };
+    let mut compensation = node("comp", NodeKind::Task, "Undo");
+    compensation.activity = Some(ActivityProperties {
+        is_for_compensation: Some(true),
+        ..Default::default()
+    });
+    let mut event_sub = node("event_sub", NodeKind::SubProcess, "On error");
+    event_sub.activity = Some(ActivityProperties {
+        triggered_by_event: Some(true),
+        ..Default::default()
+    });
+    event_sub.details = container(vec![]);
+    let mut ad_hoc = node("adhoc", NodeKind::AdHocSubProcess, "Ad hoc");
+    ad_hoc.details = container(vec![node("adhoc_child", NodeKind::Task, "Any order")]);
+    let mut doc = BpmnDocument::new("d".into(), id("defs"));
+    doc.processes.push(Process {
+        activity_metadata: None,
+        base_extras: None,
+        is_executable: Some(false),
+        io_specification: None,
+        lane_set_base: None,
+        lane_set_name: None,
+        lane_set_id: None,
+        groups: vec![],
+        data_objects: vec![],
+        data_associations: vec![],
+        id: id("process"),
+        name: Some("p".into()),
+        documentation: String::new().into(),
+        nodes: vec![
+            compensation,
+            event_sub,
+            ad_hoc,
+            node("plain", NodeKind::Task, "Plain"),
+        ],
+        lanes: vec![],
+        flows: vec![],
+    });
+    let mut project = ProjectData::new("p".into());
+    project.documents.push(Arc::new(doc));
+    assert!(project.validate().is_ok());
+    let unconnected: Vec<_> = project
+        .diagnostics()
+        .into_iter()
+        .filter(|d| d.code == "unconnectedNode")
+        .filter_map(|d| d.element_id.map(|id| id.to_string()))
+        .collect();
+    assert!(unconnected.contains(&"plain".to_owned()));
+    for exempt in ["comp", "event_sub", "adhoc_child"] {
+        assert!(!unconnected.contains(&exempt.to_owned()), "{exempt}");
+    }
+}

@@ -353,13 +353,20 @@ impl fmt::Display for ElementIdentity {
     }
 }
 impl PartialEq<ElementSelector> for ElementIdentity {
+    // Compare in place: selector() would clone the XML ID on every comparison.
     fn eq(&self, other: &ElementSelector) -> bool {
-        self.selector() == *other
+        match (self, other) {
+            (Self::Legacy(id), ElementSelector::Xml(other)) => id == other,
+            (Self::Native { native_id, .. }, ElementSelector::Native { native_id: other }) => {
+                native_id == other
+            }
+            _ => false,
+        }
     }
 }
 impl PartialEq<ElementIdentity> for ElementSelector {
     fn eq(&self, other: &ElementIdentity) -> bool {
-        *self == other.selector()
+        other == self
     }
 }
 impl PartialEq<XmlId> for ElementSelector {
@@ -392,7 +399,16 @@ impl fmt::Display for ElementSelector {
 }
 impl PartialEq for ElementIdentity {
     fn eq(&self, other: &Self) -> bool {
-        self.selector() == other.selector()
+        match (self, other) {
+            (Self::Legacy(id), Self::Legacy(other)) => id == other,
+            (
+                Self::Native { native_id, .. },
+                Self::Native {
+                    native_id: other, ..
+                },
+            ) => native_id == other,
+            _ => false,
+        }
     }
 }
 impl Eq for ElementIdentity {}

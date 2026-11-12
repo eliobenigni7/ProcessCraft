@@ -1239,3 +1239,150 @@ fn choreography_layout_routes_intermediate_events_and_gateway_kinds() {
     validate_proposal(&doc, &proposal).unwrap();
     assert_eq!(proposal.proposed.shapes.len(), 4);
 }
+/// Ordinary process shapes: gateway/event nodes need ports facing their targets.
+fn ordinary_process(
+    nodes: &[(&str, NodeKind)],
+    flows: &[(&str, &str)],
+    lane: bool,
+) -> BpmnDocument {
+    let mut d = fixture();
+    let template = d.processes[0].nodes[0].clone();
+    let shape = d.diagrams[0].shapes[0].clone();
+    d.processes[0].nodes = nodes
+        .iter()
+        .map(|(name, kind)| Node {
+            id: id(name),
+            kind: *kind,
+            ..template.clone()
+        })
+        .collect();
+    d.diagrams[0].shapes = nodes
+        .iter()
+        .map(|(name, kind)| {
+            let size = match kind {
+                NodeKind::StartEvent | NodeKind::EndEvent => 36.0,
+                NodeKind::ExclusiveGateway | NodeKind::ParallelGateway => 50.0,
+                _ => 0.0,
+            };
+            let mut s = shape.clone();
+            s.id = id(&format!("shape_{name}"));
+            s.element = id(name);
+            if size > 0.0 {
+                s.bounds.width = size;
+                s.bounds.height = size;
+            }
+            s
+        })
+        .collect();
+    for (a, b) in flows {
+        flow(&mut d, &format!("{a}_{b}"), a, b);
+    }
+    if lane {
+        d.processes[0].lanes.push(processcraft_core::model::Lane {
+            base: None,
+            child_lane_set_base: None,
+            child_lane_set_id: None,
+            child_lane_set_name: None,
+            partition_element: None,
+            partition_element_ref: None,
+            id: id("lane"),
+            name: Some("Lane".into()),
+            parent: None,
+            members: nodes.iter().map(|(name, _)| id(name)).collect(),
+        });
+        let mut s = shape;
+        s.id = id("lane_di");
+        s.element = id("lane");
+        d.diagrams[0].shapes.push(s);
+    }
+    d
+}
+fn assert_layout_succeeds(d: &BpmnDocument) {
+    let p = propose_layout(d, &id("diagram"), "s", 0, &AtomicBool::new(false))
+        .unwrap_or_else(|e| panic!("{}: {}", e.code, e.message));
+    validate_proposal(d, &p).unwrap();
+    let container = p
+        .proposed
+        .shapes
+        .iter()
+        .find(|s| s.id == id::<ElementSelector>("lane_di"));
+    for edge in &p.proposed.edges {
+        for point in &edge.waypoints {
+            assert!(point.y >= 0.0, "route leaves the diagram: {point:?}");
+            if let Some(lane) = container {
+                assert!(point.y <= lane.bounds.y + lane.bounds.height);
+            }
+        }
+    }
+}
+#[test]
+fn parallel_split_and_join_layout_succeeds() {
+    use NodeKind::*;
+    let d = ordinary_process(
+        &[
+            ("start", StartEvent),
+            ("split", ParallelGateway),
+            ("t1", Task),
+            ("t2", Task),
+            ("join", ParallelGateway),
+            ("end", EndEvent),
+        ],
+        &[
+            ("start", "split"),
+            ("split", "t1"),
+            ("split", "t2"),
+            ("t1", "join"),
+            ("t2", "join"),
+            ("join", "end"),
+        ],
+        false,
+    );
+    assert_layout_succeeds(&d);
+}
+#[test]
+fn three_way_exclusive_split_layout_succeeds() {
+    use NodeKind::*;
+    let d = ordinary_process(
+        &[
+            ("start", StartEvent),
+            ("xor", ExclusiveGateway),
+            ("t1", Task),
+            ("t2", Task),
+            ("t3", Task),
+            ("end", EndEvent),
+        ],
+        &[
+            ("start", "xor"),
+            ("xor", "t1"),
+            ("xor", "t2"),
+            ("xor", "t3"),
+            ("t1", "end"),
+            ("t2", "end"),
+            ("t3", "end"),
+        ],
+        false,
+    );
+    assert_layout_succeeds(&d);
+}
+#[test]
+fn task_gateway_loop_back_layout_succeeds_with_and_without_lane() {
+    use NodeKind::*;
+    for lane in [false, true] {
+        let d = ordinary_process(
+            &[
+                ("start", StartEvent),
+                ("work", Task),
+                ("check", ExclusiveGateway),
+                ("end", EndEvent),
+            ],
+            &[
+                ("start", "work"),
+                ("work", "check"),
+                ("check", "work"),
+                ("check", "end"),
+            ],
+            lane,
+        );
+        assert_layout_succeeds(&d);
+    }
+}

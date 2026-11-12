@@ -8,6 +8,40 @@ use crate::{
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 
+/// Hash index returning the same first candidate a linear `matches_identity`
+/// search over `ids` would find for a non-external reference.
+struct IdentityLookup<'a> {
+    selectors: HashMap<ElementSelector, &'a crate::ids::ElementIdentity>,
+    xml_ids: HashMap<&'a crate::ids::XmlId, &'a crate::ids::ElementIdentity>,
+}
+impl<'a> IdentityLookup<'a> {
+    fn new(ids: &[&'a crate::ids::ElementIdentity]) -> Self {
+        let mut lookup = Self {
+            selectors: HashMap::with_capacity(ids.len()),
+            xml_ids: HashMap::with_capacity(ids.len()),
+        };
+        for id in ids {
+            lookup.selectors.entry(id.selector()).or_insert(id);
+            if let Some(xml_id) = id.xml_id() {
+                lookup.xml_ids.entry(xml_id).or_insert(id);
+            }
+        }
+        lookup
+    }
+    fn candidates(
+        &self,
+        reference: &crate::bpmn_activity::ModelReference,
+    ) -> Vec<&'a crate::ids::ElementIdentity> {
+        match reference {
+            crate::bpmn_activity::ModelReference::Local(selector) => self.selectors.get(selector),
+            crate::bpmn_activity::ModelReference::Qualified(name) => self.xml_ids.get(&name.local),
+        }
+        .into_iter()
+        .copied()
+        .collect()
+    }
+}
+
 pub fn invalid_activity_namespace(namespace: &str) -> bool {
     namespace.chars().any(|c| c.is_whitespace() || !matches!(c, '\u{9}' | '\u{a}' | '\u{d}' | '\u{20}'..='\u{d7ff}' | '\u{e000}'..='\u{fffd}' | '\u{10000}'..='\u{10ffff}'))
 }
@@ -1059,6 +1093,22 @@ impl ProjectData {
                 emit(issue.owner, issue.code, &issue.message);
             }
             let scopes = queries::scopes(doc);
+            let ad_hoc_scopes: HashSet<_> = scopes
+                .iter()
+                .flat_map(|scope| scope.nodes)
+                .filter(|node| node.kind == NodeKind::AdHocSubProcess)
+                .map(|node| node.id.selector())
+                .collect();
+            let event_subprocess_scopes: HashSet<_> = scopes
+                .iter()
+                .flat_map(|scope| scope.nodes)
+                .filter(|node| {
+                    node.activity
+                        .as_ref()
+                        .is_some_and(|a| a.triggered_by_event == Some(true))
+                })
+                .map(|node| node.id.selector())
+                .collect();
             let mut output_sets: Vec<&crate::bpmn_data::IoSet> = Vec::new();
             for process in &doc.processes {
                 if let Some(io) = &process.io_specification {
@@ -1422,13 +1472,8 @@ impl ProjectData {
                                 "parallelMultiple is relevant only when a catch event has multiple definitions; BPMN 2.0.2 §10.5.1, Table 10.82.",
                             );
                         }
-                        let event_subprocess = scopes.iter().flat_map(|s| s.nodes).any(|owner| {
-                            owner.id.selector() == scope.id.selector()
-                                && owner
-                                    .activity
-                                    .as_ref()
-                                    .is_some_and(|a| a.triggered_by_event == Some(true))
-                        });
+                        let event_subprocess =
+                            event_subprocess_scopes.contains(&scope.id.selector());
                         if node.kind == NodeKind::StartEvent
                             && is_interrupting.is_some()
                             && !event_subprocess
@@ -1526,8 +1571,14 @@ impl ProjectData {
                     }
                     has_start |= matches!(node.kind, NodeKind::StartEvent);
                     has_end |= matches!(node.kind, NodeKind::EndEvent);
+                    // Compensation handlers, event sub-processes and ad-hoc children
+                    // legitimately have no sequence flow; BPMN 2.0.2 §§10.3.5, 10.3.6.
+                    let unconnected_by_design = node.activity.as_ref().is_some_and(|a| {
+                        a.is_for_compensation == Some(true) || a.triggered_by_event == Some(true)
+                    }) || ad_hoc_scopes.contains(&scope.id.selector());
                     if ins.is_empty()
                         && outs.is_empty()
+                        && !unconnected_by_design
                         && !matches!(
                             node.kind,
                             NodeKind::TextAnnotation
@@ -1734,7 +1785,7 @@ impl ProjectData {
 
 /// A stable, value-bearing issue key for comparing local reference problems
 /// before and after an edit. Qualified external references remain opaque.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ActivityReferenceIssue {
     pub owner: ElementSelector,
     pub field: &'static str,
@@ -2375,7 +2426,7 @@ pub fn conversation_link_endpoint_scope_unqualified(
     issues
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ActivityReferenceResolution {
     pub reference: ActivityReferenceIssue,
     pub resolved_target: ElementSelector,
@@ -2386,7 +2437,7 @@ pub fn activity_family_reference_resolutions(
 ) -> Vec<ActivityReferenceResolution> {
     activity_family_reference_scan(doc).1
 }
-fn activity_family_reference_scan(
+pub(crate) fn activity_family_reference_scan(
     doc: &crate::model::BpmnDocument,
 ) -> (
     Vec<ActivityReferenceIssue>,
@@ -3130,13 +3181,14 @@ fn activity_family_reference_scan(
                 );
             }
         }
+        let endpoint_lookup = IdentityLookup::new(&message_endpoints);
         for flow in flows.iter().filter(|f| f.kind == FlowKind::Message) {
             if let Some(reference) = &flow.source {
                 check(
                     flow.id.selector(),
                     "messageFlow.sourceRef",
                     reference,
-                    message_endpoints.clone(),
+                    endpoint_lookup.candidates(reference),
                 );
             }
             if let Some(reference) = &flow.target {
@@ -3144,7 +3196,7 @@ fn activity_family_reference_scan(
                     flow.id.selector(),
                     "messageFlow.targetRef",
                     reference,
-                    message_endpoints.clone(),
+                    endpoint_lookup.candidates(reference),
                 );
             }
         }
@@ -3155,6 +3207,7 @@ fn activity_family_reference_scan(
                 .into_iter()
                 .filter(|identity| base_selectors.contains(&identity.selector()))
                 .collect();
+            let base_lookup = IdentityLookup::new(&base_elements);
             for artifact in &extra.artifacts {
                 if let crate::bpmn_collaboration::CollaborationArtifact::Group(group) = artifact
                     && let Some(reference) = &group.category_value_ref
@@ -3174,7 +3227,7 @@ fn activity_family_reference_scan(
                             flow.id.selector(),
                             "association.sourceRef",
                             reference,
-                            base_elements.clone(),
+                            base_lookup.candidates(reference),
                         );
                     }
                     if let Some(reference) = &flow.target {
@@ -3182,7 +3235,7 @@ fn activity_family_reference_scan(
                             flow.id.selector(),
                             "association.targetRef",
                             reference,
-                            base_elements.clone(),
+                            base_lookup.candidates(reference),
                         );
                     }
                 }
@@ -3324,12 +3377,14 @@ fn activity_family_reference_scan(
                 .collect(),
         );
         if let Some(order) = &diagram.plane_order {
+            let representation_lookup = IdentityLookup::new(&representation_ids);
             for reference in order {
+                let reference = ModelReference::Local(reference.clone());
                 check(
                     diagram.plane_id.selector(),
                     "di.planeOrder",
-                    &ModelReference::Local(reference.clone()),
-                    representation_ids.clone(),
+                    &reference,
+                    representation_lookup.candidates(&reference),
                 );
             }
         }
@@ -3397,6 +3452,7 @@ fn activity_family_reference_scan(
         .into_iter()
         .filter(|identity| base_selectors.contains(&identity.selector()))
         .collect();
+    let base_lookup = IdentityLookup::new(&base_elements);
     for scope in &all_scopes {
         for group in scope.groups {
             if let Some(reference) = &group.category_value_ref {
@@ -3421,6 +3477,7 @@ fn activity_family_reference_scan(
             })
             .map(|node| &node.id)
             .collect();
+        let flow_node_lookup = IdentityLookup::new(&flow_nodes);
         for flow in scope
             .flows
             .iter()
@@ -3431,7 +3488,7 @@ fn activity_family_reference_scan(
                     flow.id.selector(),
                     "association.sourceRef",
                     reference,
-                    base_elements.clone(),
+                    base_lookup.candidates(reference),
                 );
             }
             if let Some(reference) = &flow.target {
@@ -3439,7 +3496,7 @@ fn activity_family_reference_scan(
                     flow.id.selector(),
                     "association.targetRef",
                     reference,
-                    base_elements.clone(),
+                    base_lookup.candidates(reference),
                 );
             }
         }
@@ -3453,7 +3510,7 @@ fn activity_family_reference_scan(
                     flow.id.selector(),
                     "sequenceFlow.sourceRef",
                     reference,
-                    flow_nodes.clone(),
+                    flow_node_lookup.candidates(reference),
                 );
             }
             if let Some(reference) = &flow.target {
@@ -3461,7 +3518,7 @@ fn activity_family_reference_scan(
                     flow.id.selector(),
                     "sequenceFlow.targetRef",
                     reference,
-                    flow_nodes.clone(),
+                    flow_node_lookup.candidates(reference),
                 );
             }
         }
@@ -3539,7 +3596,12 @@ fn activity_family_reference_scan(
                         ("association.targetRef", &flow.target),
                     ] {
                         if let Some(reference) = reference {
-                            check(flow.id.selector(), field, reference, base_elements.clone());
+                            check(
+                                flow.id.selector(),
+                                field,
+                                reference,
+                                base_lookup.candidates(reference),
+                            );
                         }
                     }
                 }

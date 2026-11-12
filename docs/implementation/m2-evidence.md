@@ -73,6 +73,36 @@ Final table digest matches the original run: `5f8dc6fb3a3dad0a606f07f9d75c6d07f8
 
 **Disposition:** library, table, memory and medium save targets pass on this machine. Rename remains above the 20 ms target and is accepted as an explicit M2 latency limitation. Before expanding large-model editing, profile incremental canonical metadata/history work against this fixture. Do not skip trust-boundary validation, introduce SQLite or guess a pass. Baseline, optimized and resource-probe JSON remain separate under ignored `target/m2-performance*`.
 
+## Large-model core latency follow-up
+
+Probe: `cargo test --release -p processcraft-core --test perf -- --ignored --nocapture --test-threads=1` (`crates/processcraft-core/tests/perf.rs`). It builds a start → N tasks → end chain with one dictionary link per task (DI shapes and edges at 2,000 tasks; no DI at 4,000, which the document element limit refuses). Rename is the median of five renames. The 30 MiB case uses a 200-task chain, one 30 MiB resource and 20 checkpoints. Baseline is `main` at b93ba55; both runs used the same probe on the same development machine while other builds were running, so they are single noisy samples, not p95 values.
+
+| Operation | Baseline | After |
+| --- | ---: | ---: |
+| Rename, 2,000 tasks | 763.9 ms | 48.2 ms |
+| Undo, 2,000 tasks | 52.6 ms | 31.1 ms |
+| `ProjectData::diagnostics`, 2,000 tasks | 282.9 ms | 21.5 ms |
+| Activity table, 2,000 rows | 409.1 ms | 5.2 ms |
+| Rename, 4,000 tasks | 2,905.1 ms | 61.5 ms |
+| `ProjectData::diagnostics`, 4,000 tasks | 1,093.6 ms | 47.1 ms |
+| Activity table, 4,000 rows | 1,712.1 ms | 8.1 ms |
+| Rename, 20 checkpoints + 30 MiB resource | 553.3 ms | 20.8 ms |
+
+Fixes, all in `processcraft-core`:
+
+- The activity-reference scan resolves sequence-flow, association, message-flow and plane-order references through a hash index. It returns the same first match as the linear search it replaces. The commit check scans only changed documents, scans each one once rather than twice, reuses the previous commit's scan by `Arc` identity, and counts issues with hash maps. Choreography checks skip documents that have no choreography.
+- The native XML ID guard builds its baseline once per batch segment. A segment ends at an explicit identity edit, and the guard checks at the end of each segment.
+- `ElementIdentity` equality no longer clones XML IDs. The activity table indexes flows, lanes and dictionary labels once. Diagnostics precompute event sub-process scopes.
+- A per-session cache, keyed by pointer identity of the shared `Arc`s, reuses validation facts and content digests for unchanged checkpoints and resources. Validation reuses its parsed project JSON for content identity. The formula and its values are unchanged: a unit test recomputes the old formula, and the persisted-identity tests in `processcraft-io` pass. History memoizes per-document size estimates.
+
+The remaining rename cost grows linearly with model size. Canonical content identity takes about 31 ms at 2,000 tasks: validation, canonical JSON and SHA-256 of the whole project. About 5 ms is history accounting.
+
+Behavior changes made at the same time:
+
+- Deleting a node also deletes, in the same undo step, every flow whose source or target is a deleted element, along with those flows' DI edges. Deleting a flow clears any gateway or activity default that points to it.
+- `unconnectedNode` no longer reports compensation activities, event sub-processes or children of ad-hoc sub-processes.
+- Auto-layout ranks nodes by longest path after removing DFS back-edges. Rows are aligned across columns. A node alone in its column takes the median row of its neighbours. Event and gateway ports face their partner node. Back-edges run over the top inside the topmost band. Tests show that a parallel split/join, a three-way exclusive split, and a task/gateway loop (with and without a lane) now lay out without refusal. Diagrams that need more than six loop-backs in one band are still refused.
+
 ## Final checks
 
 Dependency inspection confirms toolkit/OS-free core (including shared schemars schemas), separate I/O/render libraries and a GUI-free CLI. Tokio/rmcp are confined to CLI; normal GUI operation does not start MCP. Commands use the pinned toolchain and lockfile with cached offline dependencies.

@@ -2622,22 +2622,79 @@ fn retained_extensions_allow_labels_but_reject_structural_changes() {
     );
 }
 #[test]
-fn deletion_rejects_dangling_connections_atomically() {
+fn deletion_cascades_connected_flows_and_defaults_in_one_undo_step() {
+    use processcraft_core::bpmn_model::NodeDetails;
     let mut s = project();
     fixture(&mut s);
+    apply(
+        &mut s,
+        batch(vec![Mutation::SetNodeDetails {
+            document_id: docid(),
+            element_id: id("decision"),
+            details: Some(NodeDetails::Gateway {
+                default_flow: Some(id("flow_approved")),
+                direction: None,
+                instantiate: None,
+                event_gateway_type: None,
+                activation_condition: None,
+            }),
+        }]),
+    )
+    .unwrap();
     let before = s.snapshot();
-    assert!(
-        apply(
-            &mut s,
-            batch(vec![Mutation::Delete {
-                document_id: docid(),
-                element_id: id("review")
-            }])
-        )
-        .is_err()
-    );
+    let flow_ids = |s: &Session| -> Vec<String> {
+        let snapshot = s.snapshot();
+        let document = &snapshot.project.documents[0];
+        assert_eq!(
+            document.processes[0].flows.len(),
+            document.diagrams[0].edges.len()
+        );
+        document.processes[0]
+            .flows
+            .iter()
+            .map(|f| f.id.to_string())
+            .collect()
+    };
+    // A connected node takes its incident flows (and their DI edges) with it.
+    apply(
+        &mut s,
+        batch(vec![Mutation::Delete {
+            document_id: docid(),
+            element_id: id("review"),
+        }]),
+    )
+    .unwrap();
+    let remaining = flow_ids(&s);
+    assert!(!remaining.contains(&"flow_start_review".to_owned()));
+    assert!(!remaining.contains(&"flow_review_decision".to_owned()));
+    assert!(remaining.contains(&"flow_approved".to_owned()));
+    apply(&mut s, Request::Undo).unwrap();
     assert_eq!(s.snapshot().content_id, before.content_id);
     assert_eq!(s.snapshot().undo_count, before.undo_count);
+    // Deleting a gateway's default flow clears the default.
+    apply(
+        &mut s,
+        batch(vec![Mutation::Delete {
+            document_id: docid(),
+            element_id: id("flow_approved"),
+        }]),
+    )
+    .unwrap();
+    let snapshot = s.snapshot();
+    let decision = snapshot.project.documents[0].processes[0]
+        .nodes
+        .iter()
+        .find(|n| n.id.to_string() == "decision")
+        .unwrap();
+    assert!(matches!(
+        &decision.details,
+        Some(NodeDetails::Gateway {
+            default_flow: None,
+            ..
+        })
+    ));
+    apply(&mut s, Request::Undo).unwrap();
+    assert_eq!(s.snapshot().content_id, before.content_id);
 }
 #[test]
 fn batch_cap_and_unknown_mutation_fields_are_enforced() {
