@@ -1084,20 +1084,16 @@ async fn filter_input<I: tokio::io::AsyncRead + Unpin>(
                 } else {
                     None
                 };
-                match rejection {
-                    Some(error) => {
-                        if errors.send(error).await.is_err() {
-                            return;
-                        }
-                    }
+                let failed = match rejection {
+                    Some(error) => errors.send(error).await.is_err(),
                     None if !line.trim_ascii().is_empty() => {
-                        if output.write_all(&line).await.is_err()
+                        output.write_all(&line).await.is_err()
                             || output.write_all(b"\n").await.is_err()
-                        {
-                            return;
-                        }
                     }
-                    None => {}
+                    None => false,
+                };
+                if failed {
+                    return;
                 }
                 line.clear();
                 oversized = false;
@@ -1337,7 +1333,6 @@ mod budget_tests {
             let init = next(format!("\n{init}\n").as_bytes()).await;
             assert_eq!(init["id"], 3);
             assert!(init["result"].is_object(), "{init}");
-            drop(next);
             drop(write);
             task.await.unwrap().unwrap();
         });

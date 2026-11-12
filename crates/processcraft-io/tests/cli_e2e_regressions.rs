@@ -285,12 +285,21 @@ fn local_data_store_selector_exports_as_a_target_namespace_reference() {
 }
 
 #[test]
-fn call_activity_to_missing_local_callable_is_rejected_by_commands() {
-    let call = element(
+fn call_activity_to_local_non_callable_is_rejected_by_commands() {
+    // A calledElement naming nothing in the file is an external callable (engine
+    // process key) and is accepted; one naming a local non-callable is refused.
+    let external = element(
         "c",
         "CallActivity",
         json!({"type": "callActivity", "called_element":
             {"namespace": "urn:processcraft:generated", "local": "nothing"}}),
+    );
+    assert!(session_with(vec![create_process("p"), create_element("p", external)]).is_ok());
+    let call = element(
+        "c",
+        "CallActivity",
+        json!({"type": "callActivity", "called_element":
+            {"namespace": "urn:processcraft:generated", "local": "c"}}),
     );
     let error = session_with(vec![create_process("p"), create_element("p", call)])
         .err()

@@ -700,6 +700,12 @@ fn mcp_discards_oversized_input_before_parsing() {
     input.flush().unwrap();
     writeln!(input, "{}", serde_json::json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"test","version":"1"}}})).unwrap();
     input.flush().unwrap();
+    // The oversized line is answered (never parsed) before the next request.
+    let mut line = String::new();
+    output.read_line(&mut line).unwrap();
+    let rejected: serde_json::Value = serde_json::from_str(&line).unwrap();
+    assert_eq!(rejected["error"]["code"], -32600);
+    assert_eq!(rejected["id"], serde_json::Value::Null);
     let mut line = String::new();
     output.read_line(&mut line).unwrap();
     let result: serde_json::Value = serde_json::from_str(&line).unwrap();
@@ -807,14 +813,19 @@ fn mcp_discards_duplicate_keys_before_sdk_parsing() {
     writeln!(input, "{{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{{\"name\":\"inspect\",\"arguments\":{{\"x\":1,\"x\":2}}}}}}").unwrap();
     writeln!(input, "{}", serde_json::json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"inspect","arguments":{}}})).unwrap();
     input.flush().unwrap();
-    let mut first = String::new();
-    output.read_line(&mut first).unwrap();
-    let mut second = String::new();
-    output.read_line(&mut second).unwrap();
-    let first: serde_json::Value = serde_json::from_str(&first).unwrap();
-    let second: serde_json::Value = serde_json::from_str(&second).unwrap();
-    assert_eq!(first["id"], 1);
-    assert_eq!(second["id"], 3);
+    // The duplicate-key request never reaches the SDK; it is answered with
+    // -32600 (id null), which may arrive before or after the reply to id 1.
+    let mut replies: Vec<serde_json::Value> = (0..3)
+        .map(|_| {
+            let mut line = String::new();
+            output.read_line(&mut line).unwrap();
+            serde_json::from_str(&line).unwrap()
+        })
+        .collect();
+    let rejected = replies.iter().position(|r| r["id"].is_null()).unwrap();
+    assert_eq!(replies.remove(rejected)["error"]["code"], -32600);
+    assert_eq!(replies[0]["id"], 1);
+    assert_eq!(replies[1]["id"], 3);
     drop(input);
     assert!(child.wait().unwrap().success());
 }

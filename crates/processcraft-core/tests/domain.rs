@@ -653,7 +653,10 @@ fn cached_per_document_identity_equals_whole_project_identity() {
         };
         session.apply(envelope, request).unwrap();
         let snapshot = session.snapshot();
-        assert_eq!(snapshot.content_id, whole_project_identity(&snapshot.project));
+        assert_eq!(
+            snapshot.content_id,
+            whole_project_identity(&snapshot.project)
+        );
     };
     let rename: Request = serde_json::from_value(serde_json::json!({"type":"batch","mutations":[
         {"type":"rename","document_id":document_id,"element_id":"task","name":"Renamed"}]}))

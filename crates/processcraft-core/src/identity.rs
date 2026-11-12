@@ -376,7 +376,10 @@ impl ProjectData {
         let current_len = serde_json::to_vec(&current_value)
             .map_err(|e| e.to_string())?
             .len()
-            + documents.iter().map(|(bytes, _)| bytes.len()).sum::<usize>()
+            + documents
+                .iter()
+                .map(|(bytes, _)| bytes.len())
+                .sum::<usize>()
             + documents.len().saturating_sub(1);
         let mut checkpoint_bytes = current_len;
         checkpoint_bytes = checkpoint_bytes
