@@ -621,20 +621,423 @@ fn promotion_requires_generation_and_undo_restores_legacy_identity() {
         )
         .unwrap();
     let connected = session.snapshot();
-    assert!(
-        session
-            .apply(
-                envelope(&session, Some(connected.generation)),
-                Request::Batch {
-                    mutations: vec![Mutation::DeleteChoreographyFlowElement {
-                        document_id,
-                        choreography_id: "choreo".parse().unwrap(),
-                        scope_id: "choreo".parse().unwrap(),
-                        element_id: "second".parse().unwrap(),
-                    }]
+    // Deleting a connected element cascades to its sequence flows.
+    session
+        .apply(
+            envelope(&session, Some(connected.generation)),
+            Request::Batch {
+                mutations: vec![Mutation::DeleteChoreographyFlowElement {
+                    document_id,
+                    choreography_id: "choreo".parse().unwrap(),
+                    scope_id: "choreo".parse().unwrap(),
+                    element_id: "second".parse().unwrap(),
+                }],
+            },
+        )
+        .unwrap();
+    assert_eq!(session.snapshot().content_id, promoted);
+    session
+        .apply(envelope(&session, None), Request::Undo)
+        .unwrap();
+    assert_eq!(session.snapshot().content_id, connected.content_id);
+}
+
+mod generic_graph_commands {
+    use super::*;
+    use processcraft_core::{
+        bpmn_collaboration::{ChoreographyActivityDetails, ChoreographyGraph},
+        bpmn_data::{DataAssociation, DataAssociationKind, DataPort},
+        bpmn_model::{EventDefinition, EventIo, EventProperty, NodeDetails},
+        ids::ElementSelector,
+        model::{Node, NodeKind},
+    };
+
+    fn sel(id: &str) -> ElementSelector {
+        id.parse().unwrap()
+    }
+    fn node(id: &str, kind: NodeKind, details: Option<NodeDetails>) -> Node {
+        Node {
+            id: id.parse().unwrap(),
+            name: None,
+            documentation: "".into(),
+            base_extras: None,
+            kind,
+            flow_metadata: None,
+            item_aware: None,
+            loop_characteristics: None,
+            io_specification: None,
+            activity: None,
+            owner: String::new(),
+            contact: String::new(),
+            details,
+        }
+    }
+    fn data_event(id: &str) -> Node {
+        node(
+            id,
+            NodeKind::StartEvent,
+            Some(NodeDetails::Event {
+                definitions: vec![EventDefinition::Signal {
+                    id: None,
+                    base: None,
+                    signal_ref: None,
+                }],
+                attached_to: None,
+                cancel_activity: None,
+                definition_refs: vec![],
+                parallel_multiple: None,
+                is_interrupting: None,
+                properties: vec![EventProperty {
+                    id: Some("property".parse().unwrap()),
+                    base: None,
+                    name: None,
+                    item_aware: None,
+                }],
+                io: Some(EventIo::Catch {
+                    outputs: vec![DataPort {
+                        id: Some("port".parse().unwrap()),
+                        base: None,
+                        name: None,
+                        item_aware: None,
+                        is_collection: None,
+                    }],
+                    output_set: None,
+                }),
+            }),
+        )
+    }
+    fn activity(id: &str, details: Option<ChoreographyActivityDetails>) -> ChoreographyFlowElement {
+        ChoreographyFlowElement::Activity(Box::new(ChoreographyActivity {
+            id: id.parse().unwrap(),
+            name: None,
+            base: None,
+            flow_metadata: None,
+            correlation_keys: vec![],
+            loop_type: None,
+            participant_refs: vec![],
+            initiating_participant: None,
+            message_flow_refs: vec![],
+            details,
+        }))
+    }
+    fn flow(id: &str, source: &str, target: &str) -> ChoreographyFlowElement {
+        ChoreographyFlowElement::SequenceFlow(Box::new(Flow {
+            id: id.parse().unwrap(),
+            kind: FlowKind::Sequence,
+            source: Some(EventReference::Local(sel(source))),
+            target: Some(EventReference::Local(sel(target))),
+            name: None,
+            documentation: String::new().into(),
+            base_extras: None,
+            association_direction: None,
+            flow_metadata: None,
+            condition: None,
+            message_ref: None,
+        }))
+    }
+    fn association(owner: &str) -> DataAssociation {
+        DataAssociation {
+            id: Some("assoc".parse().unwrap()),
+            base: None,
+            owner: sel(owner),
+            kind: DataAssociationKind::Output,
+            sources: vec![sel("port")],
+            target: sel("property"),
+            transformation: None,
+            assignments: vec![],
+        }
+    }
+    /// Root graph: a, e (with data association), g, b (boundary on a), f (a -> g), sub{ inner }.
+    fn fixture() -> (Session, processcraft_core::ids::DocumentId) {
+        let sub = activity(
+            "sub",
+            Some(ChoreographyActivityDetails::Sub {
+                graph: Box::new(ChoreographyGraph {
+                    flow_elements: vec![activity("inner", None)],
+                    data_associations: vec![],
+                }),
+                artifacts: vec![],
+            }),
+        );
+        let mut doc = BpmnDocument::new("Document".into(), "defs".parse().unwrap());
+        let document_id = doc.id;
+        doc.choreographies.push(Choreography {
+            id: "choreo".parse().unwrap(),
+            name: None,
+            kind: None,
+            graph: Some(ChoreographyGraph {
+                flow_elements: vec![
+                    activity("a", None),
+                    ChoreographyFlowElement::Event(Box::new(data_event("e"))),
+                    ChoreographyFlowElement::Gateway(Box::new(node(
+                        "g",
+                        NodeKind::ExclusiveGateway,
+                        None,
+                    ))),
+                    ChoreographyFlowElement::Event(Box::new(node(
+                        "b",
+                        NodeKind::BoundaryEvent,
+                        Some(NodeDetails::BoundaryEvent {
+                            attached_to: EventReference::Local(sel("a")),
+                            cancel_activity: true,
+                        }),
+                    ))),
+                    flow("f", "a", "g"),
+                    sub,
+                ],
+                data_associations: vec![association("e")],
+            }),
+            extras: None,
+            base: None,
+            participants: vec![],
+            message_flows: vec![],
+            activities: vec![],
+            sequence_flows: vec![],
+            conversation_nodes: vec![],
+            conversation_links: vec![],
+            correlation_keys: vec![],
+        });
+        let mut project = ProjectData::new("Project".into());
+        project.documents.push(Arc::new(doc));
+        (Session::new(project).unwrap(), document_id)
+    }
+    fn run(s: &mut Session, mutations: Vec<Mutation>) -> Result<(), ()> {
+        let expected_generation = Some(s.snapshot().generation);
+        s.apply(
+            Envelope {
+                request_id: "t".into(),
+                session_id: s.id(),
+                expected_generation,
+            },
+            Request::Batch { mutations },
+        )
+        .map(|_| ())
+        .map_err(|_| ())
+    }
+    fn history(s: &mut Session, request: Request) {
+        s.apply(
+            Envelope {
+                request_id: "h".into(),
+                session_id: s.id(),
+                expected_generation: None,
+            },
+            request,
+        )
+        .unwrap();
+    }
+    fn walk(graph: &ChoreographyGraph, out: &mut Vec<(String, Option<String>)>) {
+        for e in &graph.flow_elements {
+            match e {
+                ChoreographyFlowElement::Activity(a) => {
+                    out.push((a.id.selector().to_string(), a.name.clone()));
+                    if let Some(ChoreographyActivityDetails::Sub { graph, .. }) = &a.details {
+                        walk(graph, out);
+                    }
                 }
+                ChoreographyFlowElement::Event(n) | ChoreographyFlowElement::Gateway(n) => {
+                    out.push((n.id.selector().to_string(), n.name.clone()))
+                }
+                ChoreographyFlowElement::SequenceFlow(f) => {
+                    out.push((f.id.selector().to_string(), f.name.clone()))
+                }
+            }
+        }
+    }
+    fn elements(s: &Session) -> Vec<(String, Option<String>)> {
+        let snapshot = s.snapshot();
+        let mut out = vec![];
+        walk(
+            snapshot.project.documents[0].choreographies[0]
+                .graph
+                .as_ref()
+                .unwrap(),
+            &mut out,
+        );
+        out
+    }
+    fn root_associations(s: &Session) -> usize {
+        s.snapshot().project.documents[0].choreographies[0]
+            .graph
+            .as_ref()
+            .unwrap()
+            .data_associations
+            .len()
+    }
+
+    #[test]
+    fn generic_rename_reaches_graph_elements_with_undo_redo_and_atomicity() {
+        for id in ["a", "e", "g", "f", "inner", "sub"] {
+            let (mut s, document_id) = fixture();
+            let before = s.snapshot().content_id;
+            run(
+                &mut s,
+                vec![Mutation::Rename {
+                    document_id,
+                    element_id: sel(id),
+                    name: Some("X".into()),
+                }],
+            )
+            .unwrap();
+            let renamed = s.snapshot().content_id;
+            assert_ne!(renamed, before);
+            let names = elements(&s);
+            assert_eq!(names.iter().filter(|(_, n)| n.is_some()).count(), 1, "{id}");
+            assert!(
+                names
+                    .iter()
+                    .any(|(i, n)| i == id && n.as_deref() == Some("X"))
+            );
+            history(&mut s, Request::Undo);
+            assert_eq!(s.snapshot().content_id, before);
+            history(&mut s, Request::Redo);
+            assert_eq!(s.snapshot().content_id, renamed);
+        }
+        let (mut s, document_id) = fixture();
+        let (before, generation) = (s.snapshot().content_id, s.snapshot().generation);
+        assert!(
+            run(
+                &mut s,
+                vec![
+                    Mutation::Rename {
+                        document_id,
+                        element_id: sel("a"),
+                        name: Some("X".into()),
+                    },
+                    Mutation::Rename {
+                        document_id,
+                        element_id: sel("missing"),
+                        name: None,
+                    },
+                ],
             )
             .is_err()
-    );
-    assert_eq!(session.snapshot().content_id, connected.content_id);
+        );
+        assert_eq!(s.snapshot().content_id, before);
+        assert_eq!(s.snapshot().generation, generation);
+    }
+
+    #[test]
+    fn generic_delete_cascades_in_graph_with_undo_redo_and_atomicity() {
+        // (deleted id, ids that must disappear with it)
+        let cases: [(&str, &[&str]); 7] = [
+            ("f", &["f"]),
+            ("g", &["g", "f"]),
+            ("e", &["e"]),
+            ("a", &["a", "b", "f"]),
+            ("b", &["b"]),
+            ("inner", &["inner"]),
+            ("sub", &["sub", "inner"]),
+        ];
+        for (id, gone) in cases {
+            let (mut s, document_id) = fixture();
+            let before = s.snapshot().content_id;
+            let all = elements(&s);
+            run(
+                &mut s,
+                vec![Mutation::Delete {
+                    document_id,
+                    element_id: sel(id),
+                }],
+            )
+            .unwrap();
+            let after = s.snapshot().content_id;
+            let left = elements(&s);
+            assert_eq!(left.len(), all.len() - gone.len(), "{id}");
+            assert!(
+                left.iter().all(|(i, _)| !gone.contains(&i.as_str())),
+                "{id}"
+            );
+            assert_eq!(root_associations(&s), usize::from(id != "e"), "{id}");
+            history(&mut s, Request::Undo);
+            assert_eq!(s.snapshot().content_id, before, "{id}");
+            history(&mut s, Request::Redo);
+            assert_eq!(s.snapshot().content_id, after, "{id}");
+        }
+        let (mut s, document_id) = fixture();
+        let (before, generation) = (s.snapshot().content_id, s.snapshot().generation);
+        assert!(
+            run(
+                &mut s,
+                vec![
+                    Mutation::Delete {
+                        document_id,
+                        element_id: sel("a"),
+                    },
+                    Mutation::Delete {
+                        document_id,
+                        element_id: sel("missing"),
+                    },
+                ],
+            )
+            .is_err()
+        );
+        assert_eq!(s.snapshot().content_id, before);
+        assert_eq!(s.snapshot().generation, generation);
+    }
+
+    #[test]
+    fn scoped_delete_of_event_with_associations_cascades() {
+        let (mut s, document_id) = fixture();
+        let before = s.snapshot().content_id;
+        run(
+            &mut s,
+            vec![Mutation::DeleteChoreographyFlowElement {
+                document_id,
+                choreography_id: sel("choreo"),
+                scope_id: sel("choreo"),
+                element_id: sel("e"),
+            }],
+        )
+        .unwrap();
+        assert_eq!(root_associations(&s), 0);
+        history(&mut s, Request::Undo);
+        assert_eq!(s.snapshot().content_id, before);
+    }
+
+    #[test]
+    fn reparent_moves_event_data_associations_with_the_event() {
+        let (mut s, document_id) = fixture();
+        let before = s.snapshot().content_id;
+        let reparent = |index| Mutation::ReparentChoreographyFlowElement {
+            document_id,
+            choreography_id: sel("choreo"),
+            source_scope_id: sel("choreo"),
+            target_scope_id: sel("sub"),
+            element_id: sel("e"),
+            index,
+        };
+        // Atomic: an out-of-range index leaves the project untouched.
+        assert!(run(&mut s, vec![reparent(99)]).is_err());
+        assert_eq!(s.snapshot().content_id, before);
+        run(&mut s, vec![reparent(0)]).unwrap();
+        let moved = s.snapshot().content_id;
+        assert_eq!(root_associations(&s), 0);
+        {
+            let snapshot = s.snapshot();
+            let graph = snapshot.project.documents[0].choreographies[0]
+                .graph
+                .as_ref()
+                .unwrap();
+            let sub = graph
+                .flow_elements
+                .iter()
+                .find_map(|e| match e {
+                    ChoreographyFlowElement::Activity(a) => match &a.details {
+                        Some(ChoreographyActivityDetails::Sub { graph, .. }) => Some(graph),
+                        _ => None,
+                    },
+                    _ => None,
+                })
+                .unwrap();
+            assert_eq!(sub.data_associations.len(), 1);
+            assert!(matches!(
+                &sub.flow_elements[0],
+                ChoreographyFlowElement::Event(_)
+            ));
+        }
+        history(&mut s, Request::Undo);
+        assert_eq!(s.snapshot().content_id, before);
+        history(&mut s, Request::Redo);
+        assert_eq!(s.snapshot().content_id, moved);
+    }
 }

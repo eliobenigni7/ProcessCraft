@@ -2498,6 +2498,190 @@ fn choreography_scope_mut<'a>(
         nested(graph, scope).ok_or_else(|| invalid("choreography scope not found"))
     }
 }
+fn choreography_element_identity(
+    element: &crate::bpmn_collaboration::ChoreographyFlowElement,
+) -> crate::ids::ElementIdentity {
+    use crate::bpmn_collaboration::ChoreographyFlowElement;
+    match element {
+        ChoreographyFlowElement::Activity(a) => a.id.clone(),
+        ChoreographyFlowElement::Event(n) | ChoreographyFlowElement::Gateway(n) => n.id.clone(),
+        ChoreographyFlowElement::SequenceFlow(f) => f.id.clone(),
+    }
+}
+/// Scope that directly contains a graph-mode flow element, searching nested Sub graphs.
+fn choreography_graph_owner(
+    document: &BpmnDocument,
+    id: &ElementSelector,
+) -> Option<(ElementSelector, ElementSelector)> {
+    fn walk(
+        graph: &crate::bpmn_collaboration::ChoreographyGraph,
+        scope: &ElementSelector,
+        id: &ElementSelector,
+    ) -> Option<ElementSelector> {
+        use crate::bpmn_collaboration::{ChoreographyActivityDetails, ChoreographyFlowElement};
+        for element in &graph.flow_elements {
+            if choreography_element_id(element) == *id {
+                return Some(scope.clone());
+            }
+            if let ChoreographyFlowElement::Activity(a) = element
+                && let Some(ChoreographyActivityDetails::Sub { graph, .. }) = &a.details
+                && let Some(found) = walk(graph, &a.id.selector(), id)
+            {
+                return Some(found);
+            }
+        }
+        None
+    }
+    document.choreographies.iter().find_map(|c| {
+        walk(c.graph.as_ref()?, &c.id.selector(), id).map(|scope| (c.id.selector(), scope))
+    })
+}
+fn rename_choreography_element(
+    graph: &mut crate::bpmn_collaboration::ChoreographyGraph,
+    id: &ElementSelector,
+    name: &Option<String>,
+) -> bool {
+    use crate::bpmn_collaboration::{ChoreographyActivityDetails, ChoreographyFlowElement};
+    let mut found = false;
+    for element in &mut graph.flow_elements {
+        match element {
+            ChoreographyFlowElement::Activity(a) => {
+                if a.id == *id {
+                    a.name = name.clone();
+                    found = true;
+                }
+                if let Some(ChoreographyActivityDetails::Sub { graph, .. }) = &mut a.details {
+                    found |= rename_choreography_element(graph, id, name);
+                }
+            }
+            ChoreographyFlowElement::Event(n) | ChoreographyFlowElement::Gateway(n) => {
+                if n.id == *id {
+                    n.name = name.clone();
+                    found = true;
+                }
+            }
+            ChoreographyFlowElement::SequenceFlow(f) => {
+                if f.id == *id {
+                    f.name = name.clone();
+                    found = true;
+                }
+            }
+        }
+    }
+    found
+}
+/// Removes an element plus what cannot outlive it: connected sequence flows, events attached to
+/// it, and data associations it owns (recursively for removed dependents).
+fn cascade_choreography_removal(
+    graph: &mut crate::bpmn_collaboration::ChoreographyGraph,
+    element_id: &ElementSelector,
+    namespace: Option<&str>,
+) -> Result<(), CommandError> {
+    use crate::bpmn_collaboration::ChoreographyFlowElement;
+    use crate::bpmn_model::NodeDetails;
+    fn depends(
+        element: &ChoreographyFlowElement,
+        doomed: &[crate::ids::ElementIdentity],
+        namespace: Option<&str>,
+    ) -> bool {
+        let hits = |r: &crate::bpmn_model::EventReference| {
+            doomed.iter().any(|d| r.matches_identity(d, namespace))
+        };
+        match element {
+            ChoreographyFlowElement::SequenceFlow(f) => {
+                [&f.source, &f.target].into_iter().flatten().any(hits)
+            }
+            ChoreographyFlowElement::Event(n) | ChoreographyFlowElement::Gateway(n) => {
+                match &n.details {
+                    Some(NodeDetails::Event {
+                        attached_to: Some(r),
+                        ..
+                    })
+                    | Some(NodeDetails::BoundaryEvent { attached_to: r, .. }) => hits(r),
+                    _ => false,
+                }
+            }
+            ChoreographyFlowElement::Activity(_) => false,
+        }
+    }
+    let mut doomed = vec![
+        graph
+            .flow_elements
+            .iter()
+            .find(|e| choreography_element_id(e) == *element_id)
+            .map(choreography_element_identity)
+            .ok_or_else(|| invalid("choreography flow element not found"))?,
+    ];
+    while let Some(next) = graph
+        .flow_elements
+        .iter()
+        .find(|e| {
+            !doomed.iter().any(|d| *d == choreography_element_id(e))
+                && depends(e, &doomed, namespace)
+        })
+        .map(choreography_element_identity)
+    {
+        doomed.push(next);
+    }
+    graph
+        .flow_elements
+        .retain(|e| !doomed.iter().any(|d| *d == choreography_element_id(e)));
+    graph
+        .data_associations
+        .retain(|a| !doomed.iter().any(|d| *d == a.owner));
+    Ok(())
+}
+fn delete_choreography_flow_element(
+    p: &mut ProjectData,
+    document_id: DocumentId,
+    choreography_id: &ElementSelector,
+    scope_id: &ElementSelector,
+    element_id: &ElementSelector,
+) -> Result<(), CommandError> {
+    let document = doc(p, document_id, true)?;
+    let before: std::collections::HashSet<_> = document
+        .element_identities()
+        .into_iter()
+        .map(|id| id.selector())
+        .collect();
+    let namespace = document
+        .definitions
+        .as_ref()
+        .map(|d| d.target_namespace.clone())
+        .or_else(|| {
+            document
+                .provenance
+                .is_none()
+                .then(|| GENERATED_TARGET_NAMESPACE.to_owned())
+        });
+    let graph = choreography_scope_mut(choreography_mut(document, choreography_id)?, scope_id)?;
+    cascade_choreography_removal(graph, element_id, namespace.as_deref())?;
+    let after: std::collections::HashSet<_> = document
+        .element_identities()
+        .into_iter()
+        .map(|id| id.selector())
+        .collect();
+    let removed: std::collections::HashSet<_> = before.difference(&after).cloned().collect();
+    for diagram in &mut document.diagrams {
+        let owners = diagram
+            .shapes
+            .iter()
+            .filter(|shape| removed.contains(&shape.element))
+            .map(|shape| shape.id.selector())
+            .collect();
+        remove_di_shapes(diagram, &owners, namespace.as_deref());
+        diagram
+            .edges
+            .retain(|edge| !removed.contains(&edge.element));
+    }
+    p.links.retain(|link| {
+        link.source.document_id != document_id || !removed.contains(&link.source.xml_id)
+    });
+    p.dictionary_links.retain(|link| {
+        link.source.document_id != document_id || !removed.contains(&link.source.xml_id)
+    });
+    Ok(())
+}
 fn collaboration_mut(document: &mut BpmnDocument) -> Result<&mut Collaboration, CommandError> {
     document
         .collaboration
@@ -3761,55 +3945,13 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             scope_id,
             element_id,
         } => {
-            let document = doc(p, document_id, true)?;
-            let before: std::collections::HashSet<_> = document
-                .element_identities()
-                .into_iter()
-                .map(|id| id.selector())
-                .collect();
-            let graph =
-                choreography_scope_mut(choreography_mut(document, &choreography_id)?, &scope_id)?;
-            let index = graph
-                .flow_elements
-                .iter()
-                .position(|e| choreography_element_id(e) == element_id)
-                .ok_or_else(|| invalid("choreography flow element not found"))?;
-            graph.flow_elements.remove(index);
-            let after: std::collections::HashSet<_> = document
-                .element_identities()
-                .into_iter()
-                .map(|id| id.selector())
-                .collect();
-            let removed: std::collections::HashSet<_> =
-                before.difference(&after).cloned().collect();
-            let namespace = document
-                .definitions
-                .as_ref()
-                .map(|d| d.target_namespace.clone())
-                .or_else(|| {
-                    document
-                        .provenance
-                        .is_none()
-                        .then(|| GENERATED_TARGET_NAMESPACE.to_owned())
-                });
-            for diagram in &mut document.diagrams {
-                let owners = diagram
-                    .shapes
-                    .iter()
-                    .filter(|shape| removed.contains(&shape.element))
-                    .map(|shape| shape.id.selector())
-                    .collect();
-                remove_di_shapes(diagram, &owners, namespace.as_deref());
-                diagram
-                    .edges
-                    .retain(|edge| !removed.contains(&edge.element));
-            }
-            p.links.retain(|link| {
-                link.source.document_id != document_id || !removed.contains(&link.source.xml_id)
-            });
-            p.dictionary_links.retain(|link| {
-                link.source.document_id != document_id || !removed.contains(&link.source.xml_id)
-            });
+            delete_choreography_flow_element(
+                p,
+                document_id,
+                &choreography_id,
+                &scope_id,
+                &element_id,
+            )?;
         }
         Mutation::ReorderChoreographyFlowElement {
             document_id,
@@ -3869,11 +4011,17 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             let c = choreography_mut(document, &choreography_id)?;
             let source = choreography_scope_mut(c, &source_scope_id)?;
             let element = source.flow_elements.remove(old);
+            // Data associations are owned by their element and move with it.
+            let (moved, kept) = std::mem::take(&mut source.data_associations)
+                .into_iter()
+                .partition(|a| a.owner == element_id);
+            source.data_associations = kept;
             let target = choreography_scope_mut(c, &target_scope_id)?;
             if index > target.flow_elements.len() {
                 return Err(invalid("choreography insertion index out of range"));
             }
             target.flow_elements.insert(index, element);
+            target.data_associations.extend::<Vec<_>>(moved);
         }
         Mutation::CreateChoreographyArtifact {
             document_id,
@@ -4998,6 +5146,9 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                         found = true;
                     }
                 }
+                if let Some(graph) = &mut choreography.graph {
+                    found |= rename_choreography_element(graph, &element_id, &name);
+                }
                 for node in &mut choreography.conversation_nodes {
                     if node.id == element_id {
                         node.name = name.clone();
@@ -5182,6 +5333,17 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             document_id,
             element_id,
         } => {
+            if let Some((choreography_id, scope_id)) =
+                choreography_graph_owner(doc(p, document_id, true)?, &element_id)
+            {
+                return delete_choreography_flow_element(
+                    p,
+                    document_id,
+                    &choreography_id,
+                    &scope_id,
+                    &element_id,
+                );
+            }
             let d = doc(p, document_id, true)?;
             let mut removed = std::collections::HashSet::new();
             let mut found = false;

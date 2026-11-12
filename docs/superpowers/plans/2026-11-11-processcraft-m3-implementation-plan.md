@@ -14,6 +14,8 @@
 - Qualified: workspace regression, formatting and Clippy, focused official-schema XML round trips, native review/export checks and resource/checkpoint limit experiments; see [evidence](../../implementation/m3-evidence.md) for exact build scope and limitations.
 - Remaining: the unchecked full-coverage work packages below, complete UI/property/DI parity, normative semantic validation and independent external-tool interoperability. The [normative gap crosswalk](../../research/bpmn-2-conformance-gap.md) identifies why the current implementation does not satisfy full process/choreography modeling coverage.
 
+**Scope decision (November 12, 2026).** The user adopted [the required-scope definition](../../research/m3-required-scope-proposal.md): the M3 coverage gate is every *required* cell (Descriptive, Analytic, Choreography and their DI) verified by in-repo evidence, computed by `scripts/generate_bpmn20_inventory.py --gate`. Common Executable, Full Process and the deferred families listed there are out of M3. Named external consumer reopens (Camunda Modeler, SAP Signavio), the Signavio comparative benchmark and screen-reader qualification move to a post-M3 qualification milestone; no interoperability, superiority or accessibility claim is made until they run. Where the sections below say otherwise, this decision governs.
+
 ## Delivery order and parallel ownership
 
 1. **M3.0 Auto-layout:** execute the existing [detailed plan](2026-11-11-processcraft-m3-auto-layout.md). A pure bounded deterministic proposal, explicit preview, cancel, stale-safe apply, exact one-step undo/redo and no-op detection. Initial auto-layout coverage remains explicitly narrower than the final BPMN editor; unsupported structures refuse without change.

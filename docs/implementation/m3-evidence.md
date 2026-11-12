@@ -365,3 +365,14 @@ The final workspace gate on frozen production source reports **710 passed, 15 fa
 Independent shared-scene checks passed eight Light/Dark 1×/2× PDF/PNG samples across the two choreography views and four samples for the Subplane (`target/m3-qualification/graph-render-di-bands/`, `graph-render-subplane/`). The checker now checks the complete A4 landscape page grid and every tiled viewport instead of assuming a single page. Deliberately removing a page and blanking the last page were both detected with artifact hashes recomputed, so rejection did not rely solely on checksum differences (`graph-render-negative-results.json`). Outlined PDF text remains unsearchable and untagged.
 
 This checkpoint is a **partial M3 closure**. Do not treat the passing bounded workflows as completion of a family or an OMG conformance class. Resume with optional/qualified DI references and representation-only selection, event-association depiction and boundary routing; then ordered process lane sets and partitions. Complete the remaining normative crosswalk, reparent contexts, native Windows file/recovery, keyboard/accessibility, performance and named-consumer/Signavio workflow qualification before closing M3.
+
+## Windows native gate and hardening checkpoint (M3 remains incomplete)
+
+Source base `2532d4c` plus this change. On native Windows 11 (NTFS), `cargo fmt --all -- --check`, workspace Clippy with warnings denied and `cargo test --workspace --all-targets --all-features --locked --offline --no-fail-fast` all passed: **789 passed, 0 failed across 52 result lines** (`target/m3-windows-gate.log`). This supersedes the earlier Linux-only gate figure for the CLI NTFS boundary target, which passes here.
+
+- The Windows-only attachment export path no longer failed to compile: its `diagramId` now accepts the same `ElementSelector` as CLI/MCP export.
+- The storage alias test skips the 8.3 case, with a printed reason, only when no distinct existing short path exists (8.3 creation disabled on this volume). Uppercase, trailing-dot and ADS alias assertions are unchanged.
+- BPMN import now refuses more than `MAX_NAMESPACE_DECLARATIONS` (1024) namespace declarations per document and more than `MAX_ATTRIBUTES_PER_ELEMENT` (256) attributes per element. Choreography XML writer and parser share `MAX_CHOREOGRAPHY_DEPTH`; export of deeper native graphs fails with a depth message. Tests: `crates/processcraft-io/tests/bpmn_limits.rs`.
+- Generic Rename/Delete reach graph-mode choreography elements; graph deletion cascades connected sequence flows, attached events and owned data associations; reparenting an event moves its owned associations. All are one undo step. Tests: `crates/processcraft-core/tests/choreography_graph_commands.rs`.
+
+Not established: a scope definition for "required" coverage is proposed in `docs/research/m3-required-scope-proposal.md` and is not yet adopted. Native GUI interaction, accessibility and named-consumer gates were not run.

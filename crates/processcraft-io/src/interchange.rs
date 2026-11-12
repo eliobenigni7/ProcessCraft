@@ -3877,6 +3877,31 @@ fn choreography_child_scopes<'a>(
         }
     }
 }
+/// Shared by the XML writer and parser so export never emits what import refuses.
+const MAX_CHOREOGRAPHY_DEPTH: usize = 16;
+
+/// Nesting levels that contain flow elements (0 for an empty graph).
+fn choreography_graph_levels(
+    graph: &processcraft_core::bpmn_collaboration::ChoreographyGraph,
+) -> usize {
+    use processcraft_core::bpmn_collaboration::{
+        ChoreographyActivityDetails as Details, ChoreographyFlowElement as Element,
+    };
+    graph
+        .flow_elements
+        .iter()
+        .filter_map(|element| match element {
+            Element::Activity(a) => match &a.details {
+                Some(Details::Sub { graph, .. }) => Some(choreography_graph_levels(graph)),
+                _ => None,
+            },
+            _ => None,
+        })
+        .max()
+        .unwrap_or(0)
+        + usize::from(!graph.flow_elements.is_empty())
+}
+
 fn write_choreography_graph(
     xml: &mut String,
     graph: &processcraft_core::bpmn_collaboration::ChoreographyGraph,
@@ -3888,7 +3913,7 @@ fn write_choreography_graph(
         ChoreographyActivityDetails as Details, ChoreographyFlowElement as Element,
         CollaborationExtras,
     };
-    if depth > 16 {
+    if depth > MAX_CHOREOGRAPHY_DEPTH && !graph.flow_elements.is_empty() {
         return false;
     }
     for element in &graph.flow_elements {
@@ -4061,7 +4086,7 @@ fn parse_choreography_flow(
         ChoreographyActivity, ChoreographyActivityDetails as Details,
         ChoreographyFlowElement as Element, ChoreographyGraph, ChoreographyLoopType,
     };
-    if depth > 16 || e.ns != B {
+    if depth > MAX_CHOREOGRAPHY_DEPTH || e.ns != B {
         return None;
     }
     if matches!(
@@ -9757,6 +9782,14 @@ fn export_document(
         }
         write_collaboration_refs(&mut xml, c.extras.as_ref(), &namespace, &context);
         write_conversation_links(&mut xml, &c.conversation_links, &namespace, &context);
+        if let Some(graph) = &c.graph
+            && choreography_graph_levels(graph) > MAX_CHOREOGRAPHY_DEPTH + 1
+        {
+            report.blocked.push(format!(
+                "Choreography nesting depth exceeds {MAX_CHOREOGRAPHY_DEPTH} levels"
+            ));
+            return Err(ExportFailure { report });
+        }
         if let Some(graph) = &c.graph
             && !write_choreography_graph(&mut xml, graph, &namespace, &context, 0)
         {

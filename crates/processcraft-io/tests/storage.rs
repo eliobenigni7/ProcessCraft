@@ -367,6 +367,13 @@ fn file_aliases_share_one_lock_or_are_refused() {
         &temp,
         None,
     );
+    // The non-ASCII target name makes PowerShell's stdout lossy (mojibake) and
+    // 8.3 creation may be off, so only use the value if it is a distinct,
+    // existing alias of the target.
+    if std::path::Path::new(&short) == temp.target() || !std::path::Path::new(&short).exists() {
+        eprintln!("skipping 8.3 alias case: no distinct existing short path ({short:?})");
+        return;
+    }
     let grant = FileGrant::new(short, Access::Write).unwrap();
     assert!(matches!(
         WriterSession::open(&grant).unwrap(),

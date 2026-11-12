@@ -77,7 +77,7 @@ struct Export {
     #[serde(default)]
     format: ExportKind,
     #[serde(default)]
-    diagram_id: Option<processcraft_core::ids::XmlId>,
+    diagram_id: Option<processcraft_core::ids::ElementSelector>,
     #[serde(default)]
     scale: Option<f32>,
     #[serde(default)]

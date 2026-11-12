@@ -18,6 +18,9 @@ const XSI: &str = "http://www.w3.org/2001/XMLSchema-instance";
 pub const MAX_RAW_BYTES: usize = 32 * 1024 * 1024;
 pub const MAX_DEPTH: usize = 128;
 pub const MAX_ELEMENTS: usize = 10_000;
+/// Namespace declarations per document and attributes per element.
+pub const MAX_NAMESPACE_DECLARATIONS: usize = 1024;
+pub const MAX_ATTRIBUTES_PER_ELEMENT: usize = 256;
 pub const MAX_LABEL_BYTES: usize = 16 * 1024;
 pub const MAX_DOCUMENTATION_BYTES: usize = 1024 * 1024;
 /// Conservative M0 import bound in diagram units; sizes are also non-negative.
@@ -140,6 +143,7 @@ pub fn import_bpmn(bytes: &[u8]) -> Result<PreservedBpmn, ImportError> {
     reader.config_mut().expand_empty_elements = true;
     let mut stack: Vec<Frame> = Vec::new();
     let mut seen_root = false;
+    let mut namespace_declarations = 0usize;
     let mut seen_declaration = false;
     let mut preceding_content = false;
     let mut ids = HashSet::new();
@@ -276,8 +280,16 @@ pub fn import_bpmn(bytes: &[u8]) -> Result<PreservedBpmn, ImportError> {
                 };
                 let mut attrs = std::collections::HashMap::new();
                 let mut expanded_attrs = HashSet::new();
+                let mut attribute_count = 0usize;
                 for attr in start.attributes() {
                     let attr = attr.map_err(xml)?;
+                    attribute_count += 1;
+                    if attribute_count > MAX_ATTRIBUTES_PER_ELEMENT {
+                        return Err(error(
+                            ImportErrorKind::Metadata,
+                            format!("XML element exceeds {MAX_ATTRIBUTES_PER_ELEMENT} attributes"),
+                        ));
+                    }
                     validate_qname(attr.key.0)?;
                     let value = attr
                         .normalized_value(XmlVersion::Implicit1_0)
@@ -286,6 +298,15 @@ pub fn import_bpmn(bytes: &[u8]) -> Result<PreservedBpmn, ImportError> {
                         return Err(xml("invalid XML attribute value"));
                     }
                     if let Some(binding) = attr.key.as_namespace_binding() {
+                        namespace_declarations += 1;
+                        if namespace_declarations > MAX_NAMESPACE_DECLARATIONS {
+                            return Err(error(
+                                ImportErrorKind::Metadata,
+                                format!(
+                                    "XML namespace declarations exceed {MAX_NAMESPACE_DECLARATIONS} per document"
+                                ),
+                            ));
+                        }
                         if value.len() > MAX_LABEL_BYTES {
                             return Err(error(
                                 ImportErrorKind::Metadata,
