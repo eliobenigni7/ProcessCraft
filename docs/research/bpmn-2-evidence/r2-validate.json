@@ -1,0 +1,400 @@
+{
+ "family": "r2-validate",
+ "cells": [
+  {
+   "path": "/schema/complexType[@name=tDataObject]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_validate.rs",
+    "crates/processcraft-core/tests/m3r2_validate.rs:data_object_item_subject_and_collection_are_validated"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=dataObject]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_validate.rs",
+    "crates/processcraft-core/tests/m3r2_validate.rs:data_object_item_subject_and_collection_are_validated"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataObject]/complexContent/extension/attribute[@name=itemSubjectRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_validate.rs",
+    "crates/processcraft-core/tests/m3r2_validate.rs:data_object_item_subject_and_collection_are_validated"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataObject]/complexContent/extension/attribute[@name=isCollection]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_validate.rs",
+    "crates/processcraft-core/tests/m3r2_validate.rs:data_object_item_subject_and_collection_are_validated"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataStore]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_validate.rs",
+    "crates/processcraft-core/tests/m3r2_validate.rs:data_store_and_reference_are_validated"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=dataStore]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_validate.rs",
+    "crates/processcraft-core/tests/m3r2_validate.rs:data_store_and_reference_are_validated"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataStore]/complexContent/extension/attribute[@name=itemSubjectRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_validate.rs",
+    "crates/processcraft-core/tests/m3r2_validate.rs:data_store_and_reference_are_validated"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataStore]/complexContent/extension/attribute[@name=capacity]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_validate.rs",
+    "crates/processcraft-core/tests/m3r2_validate.rs:data_store_and_reference_are_validated"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataStore]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "not_applicable",
+   "note": "BPMN 2.0.2 Table 10.55 (p. 208) describes the attribute only as a descriptive name and Semantic.xsd types it xsd:string; no constraint beyond the lexical type."
+  },
+  {
+   "path": "/schema/complexType[@name=tDataStore]/complexContent/extension/attribute[@name=isUnlimited]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "not_applicable",
+   "note": "BPMN 2.0.2 Table 10.55 (p. 208) says isUnlimited=true overrides capacity; it states no constraint beyond xsd:boolean (Semantic.xsd tDataStore)."
+  },
+  {
+   "path": "/schema/complexType[@name=tDataStoreReference]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_validate.rs",
+    "crates/processcraft-core/tests/m3r2_validate.rs:data_store_and_reference_are_validated"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=dataStoreReference]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_validate.rs",
+    "crates/processcraft-core/tests/m3r2_validate.rs:data_store_and_reference_are_validated"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataStoreReference]/complexContent/extension/attribute[@name=itemSubjectRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_validate.rs",
+    "crates/processcraft-core/tests/m3r2_validate.rs:data_store_and_reference_are_validated"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataStoreReference]/complexContent/extension/attribute[@name=dataStoreRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_validate.rs",
+    "crates/processcraft-core/tests/m3r2_validate.rs:data_store_and_reference_are_validated"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataInput]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_validate.rs",
+    "crates/processcraft-core/tests/m3r2_validate.rs:data_ports_are_validated"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=dataInput]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_validate.rs",
+    "crates/processcraft-core/tests/m3r2_validate.rs:data_ports_are_validated"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataInput]/complexContent/extension/attribute[@name=itemSubjectRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_validate.rs",
+    "crates/processcraft-core/tests/m3r2_validate.rs:data_ports_are_validated"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataInput]/complexContent/extension/attribute[@name=isCollection]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_validate.rs",
+    "crates/processcraft-core/tests/m3r2_validate.rs:data_ports_are_validated"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataInput]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "not_applicable",
+   "note": "BPMN 2.0.2 Table 10.59 (pp. 214-216) describes the attribute only as a descriptive name and Semantic.xsd types it xsd:string; no constraint beyond the lexical type."
+  },
+  {
+   "path": "/schema/complexType[@name=tDataOutput]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_validate.rs",
+    "crates/processcraft-core/tests/m3r2_validate.rs:data_ports_are_validated"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=dataOutput]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_validate.rs",
+    "crates/processcraft-core/tests/m3r2_validate.rs:data_ports_are_validated"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataOutput]/complexContent/extension/attribute[@name=itemSubjectRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_validate.rs",
+    "crates/processcraft-core/tests/m3r2_validate.rs:data_ports_are_validated"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataOutput]/complexContent/extension/attribute[@name=isCollection]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_validate.rs",
+    "crates/processcraft-core/tests/m3r2_validate.rs:data_ports_are_validated"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataOutput]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "not_applicable",
+   "note": "BPMN 2.0.2 Table 10.60 (pp. 214-216) describes the attribute only as a descriptive name and Semantic.xsd types it xsd:string; no constraint beyond the lexical type."
+  },
+  {
+   "path": "/schema/complexType[@name=tInputSet]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_validate.rs",
+    "crates/processcraft-core/tests/m3r2_validate.rs:input_and_output_set_references_are_validated"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=inputSet]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_validate.rs",
+    "crates/processcraft-core/tests/m3r2_validate.rs:input_and_output_set_references_are_validated"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tInputSet]/complexContent/extension/sequence/element[@name=dataInputRefs]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_validate.rs",
+    "crates/processcraft-core/tests/m3r2_validate.rs:input_and_output_set_references_are_validated"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tInputSet]/complexContent/extension/sequence/element[@name=optionalInputRefs]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_validate.rs",
+    "crates/processcraft-core/tests/m3r2_validate.rs:input_and_output_set_references_are_validated"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tInputSet]/complexContent/extension/sequence/element[@name=whileExecutingInputRefs]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_validate.rs",
+    "crates/processcraft-core/tests/m3r2_validate.rs:input_and_output_set_references_are_validated"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tInputSet]/complexContent/extension/sequence/element[@name=outputSetRefs]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_validate.rs",
+    "crates/processcraft-core/tests/m3r2_validate.rs:input_and_output_set_references_are_validated"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tInputSet]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "not_applicable",
+   "note": "BPMN 2.0.2 Table 10.61 (pp. 218-220) describes the attribute only as a descriptive name and Semantic.xsd types it xsd:string; no constraint beyond the lexical type."
+  },
+  {
+   "path": "/schema/complexType[@name=tOutputSet]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_validate.rs",
+    "crates/processcraft-core/tests/m3r2_validate.rs:input_and_output_set_references_are_validated"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=outputSet]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_validate.rs",
+    "crates/processcraft-core/tests/m3r2_validate.rs:input_and_output_set_references_are_validated"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tOutputSet]/complexContent/extension/sequence/element[@name=dataOutputRefs]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_validate.rs",
+    "crates/processcraft-core/tests/m3r2_validate.rs:input_and_output_set_references_are_validated"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tOutputSet]/complexContent/extension/sequence/element[@name=optionalOutputRefs]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_validate.rs",
+    "crates/processcraft-core/tests/m3r2_validate.rs:input_and_output_set_references_are_validated"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tOutputSet]/complexContent/extension/sequence/element[@name=whileExecutingOutputRefs]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_validate.rs",
+    "crates/processcraft-core/tests/m3r2_validate.rs:input_and_output_set_references_are_validated"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tOutputSet]/complexContent/extension/sequence/element[@name=inputSetRefs]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_validate.rs",
+    "crates/processcraft-core/tests/m3r2_validate.rs:input_and_output_set_references_are_validated"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tOutputSet]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "not_applicable",
+   "note": "BPMN 2.0.2 Table 10.62 (pp. 218-220) describes the attribute only as a descriptive name and Semantic.xsd types it xsd:string; no constraint beyond the lexical type."
+  },
+  {
+   "path": "/schema/complexType[@name=tDataAssociation]/complexContent/extension/sequence/element[@name=transformation]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs",
+    "crates/processcraft-core/tests/m3_data.rs:data_association_source_count_diagnostic_is_negative_tested"
+   ],
+   "note": "With a transformation Expression the single-source rule of section 10.4.1 no longer applies; the negative test shows the diagnostic disappears."
+  },
+  {
+   "path": "/schema/complexType[@name=tDataInputAssociation]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_validate.rs",
+    "crates/processcraft-core/tests/m3r2_validate.rs:data_association_endpoints_are_validated",
+    "crates/processcraft-core/tests/m3_data.rs:data_association_source_count_diagnostic_is_negative_tested"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=dataInputAssociation]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_validate.rs",
+    "crates/processcraft-core/tests/m3r2_validate.rs:data_association_endpoints_are_validated",
+    "crates/processcraft-core/tests/m3_data.rs:data_association_source_count_diagnostic_is_negative_tested"
+   ]
+  }
+ ]
+}

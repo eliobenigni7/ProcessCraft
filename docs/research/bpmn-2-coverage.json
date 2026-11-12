@@ -22685,7 +22685,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "D"
@@ -22715,7 +22715,14 @@
           "crates/processcraft-core/tests/commands.rs:expanded_data_preserves_omissions_and_validates_transformation",
           "crates/processcraft-io/tests/interchange.rs:item_aware_metadata_transformations_and_assignments_roundtrip",
           "scripts/qualify_common_metadata.py"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3_data.rs",
+          "crates/processcraft-core/tests/m3_data.rs:data_association_source_count_diagnostic_is_negative_tested"
         ]
+      },
+      "verified_notes": {
+        "validate": "With a transformation Expression the single-source rule of section 10.4.1 no longer applies; the negative test shows the diagnostic disappears."
       }
     },
     {
@@ -22737,7 +22744,7 @@
         "render": "verified",
         "import": "verified",
         "export": "verified",
-        "validate": "partial"
+        "validate": "verified"
       },
       "profile": "data",
       "evidence": [
@@ -22772,6 +22779,10 @@
         ],
         "render": [
           "crates/processcraft-render/tests/bpmn_scene.rs:process_data_ports_render_direction_collection_state_and_hits"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:data_ports_are_validated"
         ]
       }
     },
@@ -22794,7 +22805,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "partial"
+        "validate": "verified"
       },
       "evidence": [
         "crates/processcraft-io/tests/interchange.rs:item_aware_metadata_transformations_and_assignments_roundtrip",
@@ -22823,6 +22834,10 @@
         ],
         "model": [
           "crates/processcraft-render/tests/bpmn_scene.rs:process_data_ports_render_direction_collection_state_and_hits"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:data_ports_are_validated"
         ]
       }
     },
@@ -22845,7 +22860,7 @@
         "render": "verified",
         "import": "verified",
         "export": "verified",
-        "validate": "partial"
+        "validate": "not_applicable"
       },
       "evidence": [
         "crates/processcraft-io/tests/interchange.rs:item_aware_metadata_transformations_and_assignments_roundtrip",
@@ -22884,6 +22899,9 @@
         "render": [
           "crates/processcraft-render/tests/bpmn_scene.rs:process_data_ports_render_direction_collection_state_and_hits"
         ]
+      },
+      "verified_notes": {
+        "validate": "BPMN 2.0.2 Table 10.59 (pp. 214-216) describes the attribute only as a descriptive name and Semantic.xsd types it xsd:string; no constraint beyond the lexical type."
       }
     },
     {
@@ -22905,7 +22923,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "partial"
+        "validate": "verified"
       },
       "evidence": [
         "crates/processcraft-io/tests/interchange.rs:item_aware_metadata_transformations_and_assignments_roundtrip",
@@ -22940,6 +22958,10 @@
         "model": [
           "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo",
           "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:data_ports_are_validated"
         ]
       }
     },
@@ -22962,7 +22984,7 @@
         "render": "verified",
         "import": "verified",
         "export": "verified",
-        "validate": "partial"
+        "validate": "verified"
       },
       "evidence": [
         "crates/processcraft-io/tests/interchange.rs:item_aware_metadata_transformations_and_assignments_roundtrip",
@@ -23001,6 +23023,10 @@
         ],
         "render": [
           "crates/processcraft-render/tests/m3_data.rs:data_input_port_draws_name_and_collection_marker"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:data_ports_are_validated"
         ]
       }
     },
@@ -23023,7 +23049,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "profile": "data",
       "evidence": [
@@ -23067,6 +23093,11 @@
           "crates/processcraft-core/tests/m2.rs:typed_data_association_is_scoped_to_owner_ports_and_undoable",
           "crates/processcraft-io/tests/interchange.rs:data_io_sets_ports_and_associations_round_trip",
           "scripts/check_bpmn20_xsd.py"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3_data.rs:data_association_source_count_diagnostic_is_negative_tested",
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:data_association_endpoints_are_validated"
         ]
       }
     },
@@ -23089,7 +23120,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "D"
@@ -23121,6 +23152,11 @@
           "crates/processcraft-core/tests/m2.rs:typed_data_association_is_scoped_to_owner_ports_and_undoable",
           "crates/processcraft-io/tests/interchange.rs:data_io_sets_ports_and_associations_round_trip",
           "scripts/check_bpmn20_xsd.py"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3_data.rs:data_association_source_count_diagnostic_is_negative_tested",
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:data_association_endpoints_are_validated"
         ]
       }
     },
@@ -23143,7 +23179,7 @@
         "render": "verified",
         "import": "verified",
         "export": "verified",
-        "validate": "partial"
+        "validate": "verified"
       },
       "profile": "data",
       "evidence": [
@@ -23184,6 +23220,10 @@
         ],
         "render": [
           "crates/processcraft-render/tests/bpmn_scene.rs:data_object_collection_marker_comes_from_referenced_definition"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:data_object_item_subject_and_collection_are_validated"
         ]
       }
     },
@@ -23206,7 +23246,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "partial"
+        "validate": "verified"
       },
       "evidence": [
         "crates/processcraft-io/tests/interchange.rs:item_aware_metadata_transformations_and_assignments_roundtrip",
@@ -23238,6 +23278,10 @@
         "model": [
           "crates/processcraft-io/tests/interchange.rs:item_aware_metadata_transformations_and_assignments_roundtrip",
           "crates/processcraft-render/tests/bpmn_scene.rs:data_object_collection_marker_comes_from_referenced_definition"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:data_object_item_subject_and_collection_are_validated"
         ]
       }
     },
@@ -23260,7 +23304,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "partial"
+        "validate": "verified"
       },
       "evidence": [
         "crates/processcraft-io/tests/interchange.rs:item_aware_metadata_transformations_and_assignments_roundtrip",
@@ -23297,6 +23341,10 @@
           "crates/processcraft-io/tests/interchange.rs:item_aware_metadata_transformations_and_assignments_roundtrip",
           "scripts/check_bpmn20_xsd.py",
           "scripts/qualify_common_metadata.py"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:data_object_item_subject_and_collection_are_validated"
         ]
       }
     },
@@ -23319,7 +23367,7 @@
         "render": "verified",
         "import": "verified",
         "export": "verified",
-        "validate": "partial"
+        "validate": "verified"
       },
       "evidence": [
         "crates/processcraft-io/tests/interchange.rs:item_aware_metadata_transformations_and_assignments_roundtrip",
@@ -23357,6 +23405,10 @@
         ],
         "render": [
           "crates/processcraft-render/tests/bpmn_scene.rs:data_object_collection_marker_comes_from_referenced_definition"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:data_object_item_subject_and_collection_are_validated"
         ]
       }
     },
@@ -23475,7 +23527,7 @@
         "render": "verified",
         "import": "partial",
         "export": "partial",
-        "validate": "partial"
+        "validate": "verified"
       },
       "profile": "data",
       "evidence": [
@@ -23502,6 +23554,10 @@
         ],
         "render": [
           "crates/processcraft-render/tests/bpmn_scene.rs:process_data_ports_render_direction_collection_state_and_hits"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:data_ports_are_validated"
         ]
       }
     },
@@ -23524,7 +23580,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "partial"
+        "validate": "verified"
       },
       "evidence": [
         "crates/processcraft-io/tests/interchange.rs:item_aware_metadata_transformations_and_assignments_roundtrip",
@@ -23554,6 +23610,10 @@
         ],
         "model": [
           "crates/processcraft-render/tests/bpmn_scene.rs:process_data_ports_render_direction_collection_state_and_hits"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:data_ports_are_validated"
         ]
       }
     },
@@ -23576,7 +23636,7 @@
         "render": "verified",
         "import": "verified",
         "export": "verified",
-        "validate": "partial"
+        "validate": "not_applicable"
       },
       "evidence": [
         "crates/processcraft-io/tests/interchange.rs:item_aware_metadata_transformations_and_assignments_roundtrip",
@@ -23616,6 +23676,9 @@
         "render": [
           "crates/processcraft-render/tests/m3_data.rs:data_output_port_draws_its_own_name_and_collection_marker"
         ]
+      },
+      "verified_notes": {
+        "validate": "BPMN 2.0.2 Table 10.60 (pp. 214-216) describes the attribute only as a descriptive name and Semantic.xsd types it xsd:string; no constraint beyond the lexical type."
       }
     },
     {
@@ -23637,7 +23700,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "partial"
+        "validate": "verified"
       },
       "evidence": [
         "crates/processcraft-io/tests/interchange.rs:item_aware_metadata_transformations_and_assignments_roundtrip",
@@ -23672,6 +23735,10 @@
         "model": [
           "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo",
           "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:data_ports_are_validated"
         ]
       }
     },
@@ -23694,7 +23761,7 @@
         "render": "verified",
         "import": "verified",
         "export": "verified",
-        "validate": "partial"
+        "validate": "verified"
       },
       "evidence": [
         "crates/processcraft-io/tests/interchange.rs:item_aware_metadata_transformations_and_assignments_roundtrip",
@@ -23733,6 +23800,10 @@
         ],
         "render": [
           "crates/processcraft-render/tests/m3_data.rs:data_output_port_draws_its_own_name_and_collection_marker"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:data_ports_are_validated"
         ]
       }
     },
@@ -23968,7 +24039,7 @@
         "render": "verified",
         "import": "verified",
         "export": "verified",
-        "validate": "partial"
+        "validate": "verified"
       },
       "profile": "data",
       "evidence": [
@@ -24006,6 +24077,10 @@
         ],
         "render": [
           "crates/processcraft-render/tests/bpmn_scene.rs:global_data_store_shape_uses_cylinder_state_and_viewport_hits"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:data_store_and_reference_are_validated"
         ]
       }
     },
@@ -24028,7 +24103,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "partial"
+        "validate": "verified"
       },
       "evidence": [
         "crates/processcraft-io/tests/interchange.rs:item_aware_metadata_transformations_and_assignments_roundtrip",
@@ -24060,6 +24135,10 @@
         "model": [
           "crates/processcraft-core/tests/commands.rs:identity_edit_rewrites_only_typed_local_references",
           "crates/processcraft-render/tests/bpmn_scene.rs:global_data_store_shape_uses_cylinder_state_and_viewport_hits"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:data_store_and_reference_are_validated"
         ]
       }
     },
@@ -24082,7 +24161,7 @@
         "render": "verified",
         "import": "verified",
         "export": "verified",
-        "validate": "partial"
+        "validate": "not_applicable"
       },
       "evidence": [
         "crates/processcraft-io/tests/interchange.rs:item_aware_metadata_transformations_and_assignments_roundtrip",
@@ -24121,6 +24200,9 @@
         "render": [
           "crates/processcraft-render/tests/bpmn_scene.rs:global_data_store_shape_uses_cylinder_state_and_viewport_hits"
         ]
+      },
+      "verified_notes": {
+        "validate": "BPMN 2.0.2 Table 10.55 (p. 208) describes the attribute only as a descriptive name and Semantic.xsd types it xsd:string; no constraint beyond the lexical type."
       }
     },
     {
@@ -24142,7 +24224,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "partial"
+        "validate": "verified"
       },
       "evidence": [
         "crates/processcraft-io/tests/interchange.rs:item_aware_metadata_transformations_and_assignments_roundtrip",
@@ -24177,6 +24259,10 @@
         "model": [
           "crates/processcraft-core/tests/m3_data.rs:data_store_attributes_edit_and_undo",
           "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:data_store_and_reference_are_validated"
         ]
       }
     },
@@ -24199,7 +24285,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "partial"
+        "validate": "not_applicable"
       },
       "evidence": [
         "crates/processcraft-io/tests/interchange.rs:item_aware_metadata_transformations_and_assignments_roundtrip",
@@ -24235,6 +24321,9 @@
           "crates/processcraft-core/tests/m3_data.rs:data_store_attributes_edit_and_undo",
           "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
         ]
+      },
+      "verified_notes": {
+        "validate": "BPMN 2.0.2 Table 10.55 (p. 208) says isUnlimited=true overrides capacity; it states no constraint beyond xsd:boolean (Semantic.xsd tDataStore)."
       }
     },
     {
@@ -24256,7 +24345,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "partial"
+        "validate": "verified"
       },
       "evidence": [
         "crates/processcraft-io/tests/interchange.rs:item_aware_metadata_transformations_and_assignments_roundtrip",
@@ -24290,6 +24379,10 @@
         ],
         "model": [
           "crates/processcraft-core/tests/commands.rs:identity_edit_rewrites_only_typed_local_references"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:data_store_and_reference_are_validated"
         ]
       }
     },
@@ -24312,7 +24405,7 @@
         "render": "verified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "profile": "data",
       "evidence": [
@@ -24351,6 +24444,10 @@
         ],
         "render": [
           "crates/processcraft-render/tests/bpmn_scene.rs:data_store_reference_displays_its_own_name_including_empty"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:data_store_and_reference_are_validated"
         ]
       }
     },
@@ -24373,7 +24470,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "D"
@@ -24399,6 +24496,10 @@
           "crates/processcraft-io/tests/interchange.rs:data_store_qualified_and_no_namespace_references_keep_identity",
           "crates/processcraft-io/tests/interchange.rs:item_aware_metadata_transformations_and_assignments_roundtrip",
           "scripts/qualify_common_metadata.py"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:data_store_and_reference_are_validated"
         ]
       }
     },
@@ -24421,7 +24522,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "D"
@@ -24449,6 +24550,10 @@
         "model": [
           "crates/processcraft-core/tests/m3_data.rs:data_store_reference_target_and_item_edit_and_undo",
           "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:data_store_and_reference_are_validated"
         ]
       }
     },
@@ -24471,7 +24576,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "D"
@@ -24501,6 +24606,10 @@
           "crates/processcraft-io/tests/interchange.rs:data_store_qualified_and_no_namespace_references_keep_identity",
           "crates/processcraft-io/tests/interchange.rs:item_aware_metadata_transformations_and_assignments_roundtrip",
           "scripts/qualify_common_metadata.py"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:data_store_and_reference_are_validated"
         ]
       }
     },
@@ -27870,7 +27979,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "profile": "data",
       "evidence": [
@@ -27905,6 +28014,10 @@
           "crates/processcraft-io/tests/interchange.rs:data_io_sets_ports_and_associations_round_trip",
           "scripts/check_bpmn20_xsd.py",
           "tests/fixtures/bpmn20-schema/data-io.bpmn"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:input_and_output_set_references_are_validated"
         ]
       }
     },
@@ -27927,7 +28040,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "D"
@@ -27953,6 +28066,10 @@
           "crates/processcraft-io/tests/interchange.rs:data_io_sets_ports_and_associations_round_trip",
           "scripts/check_bpmn20_xsd.py",
           "tests/fixtures/bpmn20-schema/data-io.bpmn"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:input_and_output_set_references_are_validated"
         ]
       }
     },
@@ -27975,7 +28092,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "D"
@@ -28003,6 +28120,10 @@
         "model": [
           "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo",
           "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:input_and_output_set_references_are_validated"
         ]
       }
     },
@@ -28025,7 +28146,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "D"
@@ -28053,6 +28174,10 @@
         "model": [
           "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo",
           "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:input_and_output_set_references_are_validated"
         ]
       }
     },
@@ -28075,7 +28200,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "D"
@@ -28103,6 +28228,10 @@
         "model": [
           "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo",
           "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:input_and_output_set_references_are_validated"
         ]
       }
     },
@@ -28125,7 +28254,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "D"
@@ -28153,6 +28282,10 @@
         "model": [
           "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo",
           "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:input_and_output_set_references_are_validated"
         ]
       }
     },
@@ -28175,7 +28308,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "not_applicable"
       },
       "required": [
         "D"
@@ -28205,6 +28338,9 @@
           "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo",
           "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
         ]
+      },
+      "verified_notes": {
+        "validate": "BPMN 2.0.2 Table 10.61 (pp. 218-220) describes the attribute only as a descriptive name and Semantic.xsd types it xsd:string; no constraint beyond the lexical type."
       }
     },
     {
@@ -31378,7 +31514,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "profile": "data",
       "evidence": [
@@ -31413,6 +31549,10 @@
           "crates/processcraft-io/tests/interchange.rs:data_io_sets_ports_and_associations_round_trip",
           "scripts/check_bpmn20_xsd.py",
           "tests/fixtures/bpmn20-schema/data-io.bpmn"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:input_and_output_set_references_are_validated"
         ]
       }
     },
@@ -31435,7 +31575,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "D"
@@ -31461,6 +31601,10 @@
           "crates/processcraft-io/tests/interchange.rs:data_io_sets_ports_and_associations_round_trip",
           "scripts/check_bpmn20_xsd.py",
           "tests/fixtures/bpmn20-schema/data-io.bpmn"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:input_and_output_set_references_are_validated"
         ]
       }
     },
@@ -31483,7 +31627,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "D"
@@ -31511,6 +31655,10 @@
         "model": [
           "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo",
           "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:input_and_output_set_references_are_validated"
         ]
       }
     },
@@ -31533,7 +31681,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "D"
@@ -31561,6 +31709,10 @@
         "model": [
           "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo",
           "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:input_and_output_set_references_are_validated"
         ]
       }
     },
@@ -31583,7 +31735,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "D"
@@ -31611,6 +31763,10 @@
         "model": [
           "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo",
           "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:input_and_output_set_references_are_validated"
         ]
       }
     },
@@ -31633,7 +31789,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "D"
@@ -31661,6 +31817,10 @@
         "model": [
           "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo",
           "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:input_and_output_set_references_are_validated"
         ]
       }
     },
@@ -31683,7 +31843,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "not_applicable"
       },
       "required": [
         "D"
@@ -31713,6 +31873,9 @@
           "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo",
           "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
         ]
+      },
+      "verified_notes": {
+        "validate": "BPMN 2.0.2 Table 10.62 (pp. 218-220) describes the attribute only as a descriptive name and Semantic.xsd types it xsd:string; no constraint beyond the lexical type."
       }
     },
     {
@@ -37167,10 +37330,10 @@
     "total": {
       "declarations": 299,
       "cells": 1450,
-      "verified": 1256,
-      "not_applicable": 0,
-      "partial": 43,
-      "unverified": 151
+      "verified": 1291,
+      "not_applicable": 6,
+      "partial": 23,
+      "unverified": 130
     },
     "by_set": {
       "A": {
@@ -37192,10 +37355,10 @@
       "D": {
         "declarations": 173,
         "cells": 861,
-        "verified": 715,
-        "not_applicable": 0,
-        "partial": 40,
-        "unverified": 106
+        "verified": 750,
+        "not_applicable": 6,
+        "partial": 20,
+        "unverified": 85
       },
       "I": {
         "declarations": 33,

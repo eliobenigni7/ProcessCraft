@@ -15,6 +15,7 @@ pub mod geometry;
 mod history;
 
 pub mod validation;
+pub mod validation_data;
 pub use validation::{Diagnostic, DiagnosticSeverity};
 
 pub mod layout;
