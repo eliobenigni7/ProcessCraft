@@ -7,6 +7,9 @@
 *.sh text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
+*.vectorcraft text eol=lf
+*.svg text eol=lf
+*.ico binary
 
 # Fixtures and font manifests pin exact source bytes with SHA-256 hashes.
 tests/fixtures/** -text whitespace=-trailing-space,cr-at-eol
