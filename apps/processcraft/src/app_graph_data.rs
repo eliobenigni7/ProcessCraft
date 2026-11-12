@@ -107,6 +107,33 @@ fn owner_choices(scope: &ChoreographyScope<'_>) -> Vec<EventChoices> {
         .collect()
 }
 
+/// Valid sources and targets of `draft` for its owning event and direction.
+fn endpoints(
+    document: &BpmnDocument,
+    scope: &ChoreographyScope<'_>,
+    draft: &GraphDataDraft,
+) -> (Vec<ElementSelector>, Vec<ElementSelector>) {
+    let owners = owner_choices(scope);
+    let owner = owners
+        .iter()
+        .find(|owner| Some(&owner.0) == draft.owner.as_ref());
+    let mut local = document
+        .data_stores
+        .iter()
+        .filter_map(|store| store.id.as_ref().map(|id| id.selector()))
+        .collect::<Vec<_>>();
+    if let Some((_, _, _, _, properties)) = owner {
+        local.extend(properties.iter().cloned());
+    }
+    let inputs = owner.map_or(Vec::new(), |owner| owner.2.clone());
+    let outputs = owner.map_or(Vec::new(), |owner| owner.3.clone());
+    match draft.kind {
+        Some(DataAssociationKind::Input) => (local, inputs),
+        Some(DataAssociationKind::Output) => (outputs, local),
+        None => (Vec::new(), Vec::new()),
+    }
+}
+
 fn label(document: &BpmnDocument, id: &ElementSelector) -> String {
     processcraft_core::queries::element_name(document, id)
         .filter(|name| !name.is_empty())
@@ -192,10 +219,10 @@ impl ProcessCraft {
                     ui.push_id(index, |ui| {
                         ui.horizontal_wrapped(|ui| {
                             ui.label(format!(
-                                "Association {} · {} · {:?}",
+                                "Association {} · {} · {}",
                                 index + 1,
                                 label(document, &association.owner),
-                                association.kind
+                                super::data::data_kind_label(association.kind)
                             ));
                             if let Some(id) = &association.id {
                                 if ui
@@ -397,29 +424,8 @@ impl ProcessCraft {
                         "Output",
                     );
                 });
-            let owner = owners
-                .iter()
-                .find(|owner| Some(&owner.0) == draft.owner.as_ref());
-            let mut local = document
-                .data_stores
-                .iter()
-                .filter_map(|store| store.id.as_ref().map(|id| id.selector()))
-                .collect::<Vec<_>>();
-            if let Some((_, _, _, _, properties)) = owner {
-                local.extend(properties.iter().cloned());
-            }
-            let inputs = owner.map_or(&[][..], |owner| owner.2.as_slice());
-            let outputs = owner.map_or(&[][..], |owner| owner.3.as_slice());
-            let sources = match draft.kind {
-                Some(DataAssociationKind::Input) => local.as_slice(),
-                Some(DataAssociationKind::Output) => outputs,
-                None => &[],
-            };
-            let targets = match draft.kind {
-                Some(DataAssociationKind::Input) => inputs,
-                Some(DataAssociationKind::Output) => local.as_slice(),
-                None => &[],
-            };
+            let (sources, targets) = endpoints(document, scope, draft);
+            let (sources, targets) = (sources.as_slice(), targets.as_slice());
             ui.label("Sources");
             let mut all_sources = draft.sources.clone();
             for id in sources {
@@ -528,7 +534,7 @@ impl ProcessCraft {
                 ui.label(&draft.error);
             }
             let mut close = false;
-            let mut applied = false;
+            let mut apply = false;
             ui.horizontal(|ui| {
                 if ui
                     .add_enabled(
@@ -537,40 +543,7 @@ impl ProcessCraft {
                     )
                     .clicked()
                 {
-                    if self.ctl.session.snapshot().generation != draft.generation {
-                        draft.error = "The model changed; cancel and reopen this draft.".into();
-                        return;
-                    }
-                    let association = match draft.build(sources, targets) {
-                        Ok(value) => value,
-                        Err(error) => {
-                            draft.error = error;
-                            return;
-                        }
-                    };
-                    let mutation = if draft.original.is_some() {
-                        Mutation::UpdateChoreographyDataAssociation {
-                            document_id: document.id,
-                            choreography_id: draft.root.clone(),
-                            scope_id: draft.scope.clone(),
-                            association,
-                        }
-                    } else {
-                        Mutation::CreateChoreographyDataAssociation {
-                            document_id: document.id,
-                            choreography_id: draft.root.clone(),
-                            scope_id: draft.scope.clone(),
-                            index: scope.data_associations.len(),
-                            association,
-                        }
-                    };
-                    if self
-                        .ctl
-                        .mutate_at_generation(draft.generation, vec![mutation])
-                    {
-                        close = true;
-                        applied = true;
-                    }
+                    apply = true;
                 }
                 if ui
                     .add_enabled(
@@ -584,11 +557,55 @@ impl ProcessCraft {
             });
             if close {
                 self.graph_data_draft = None;
-                if applied {
-                    self.restore_selection();
-                }
+            } else if apply && self.apply_graph_data_draft().is_ok() {
+                self.restore_selection();
             }
         });
+    }
+    /// A new association where nothing was chosen yet.
+    pub(super) fn graph_data_draft_untouched(&self) -> bool {
+        self.graph_data_draft.as_ref().is_some_and(|d| {
+            d.original.is_none() && d.kind.is_none() && d.sources.is_empty() && d.target.is_none()
+        })
+    }
+    pub(super) fn apply_graph_data_draft(&mut self) -> Result<(), String> {
+        let generation = self.ctl.session.snapshot().generation;
+        self.apply_typed_draft(
+            |app| &mut app.graph_data_draft,
+            |draft, document| {
+                if generation != draft.generation {
+                    draft.error = "The model changed; cancel and reopen this draft.".into();
+                    return Err(draft.error.clone());
+                }
+                let Some(scope) = processcraft_core::queries::choreography_scopes(document)
+                    .into_iter()
+                    .find(|scope| scope.root.id == draft.root && scope.owner == draft.scope)
+                else {
+                    draft.error = "The choreography scope is no longer available.".into();
+                    return Err(draft.error.clone());
+                };
+                let (sources, targets) = endpoints(document, &scope, draft);
+                let association = draft
+                    .build(&sources, &targets)
+                    .inspect_err(|e| draft.error = e.clone())?;
+                Ok(vec![if draft.original.is_some() {
+                    Mutation::UpdateChoreographyDataAssociation {
+                        document_id: document.id,
+                        choreography_id: draft.root.clone(),
+                        scope_id: draft.scope.clone(),
+                        association,
+                    }
+                } else {
+                    Mutation::CreateChoreographyDataAssociation {
+                        document_id: document.id,
+                        choreography_id: draft.root.clone(),
+                        scope_id: draft.scope.clone(),
+                        index: scope.data_associations.len(),
+                        association,
+                    }
+                }])
+            },
+        )
     }
 }
 
@@ -659,25 +676,38 @@ mod tests {
         );
     }
     #[test]
-    fn association_draft_blocks_navigation_and_history_until_cancelled() {
+    fn invalid_association_draft_blocks_navigation_and_history_until_cancelled() {
+        let draft = |kind| GraphDataDraft {
+            root: "Root".parse().unwrap(),
+            scope: "Sub".parse().unwrap(),
+            generation: 0,
+            original: None,
+            owner: None,
+            kind,
+            sources: vec![],
+            target: None,
+            transformation: None,
+            assignments: vec![],
+            error: String::new(),
+        };
+        // A new association where nothing was chosen yet just closes.
         let mut app = ProcessCraft {
-            graph_data_draft: Some(GraphDataDraft {
-                root: "Root".parse().unwrap(),
-                scope: "Sub".parse().unwrap(),
-                generation: 0,
-                original: None,
-                owner: None,
-                kind: None,
-                sources: vec![],
-                target: None,
-                transformation: None,
-                assignments: vec![],
-                error: String::new(),
-            }),
+            graph_data_draft: Some(draft(None)),
             ..Default::default()
         };
+        assert!(app.prepare_navigation(), "{}", app.ctl.error);
+        assert!(app.graph_data_draft.is_none());
+        // A started but invalid one is refused with its reason and stays open.
+        app.graph_data_draft = Some(draft(Some(DataAssociationKind::Input)));
         assert!(app.has_drafts());
         assert!(!app.prepare_navigation());
+        assert!(
+            app.ctl
+                .error
+                .contains("choreography data association draft"),
+            "{}",
+            app.ctl.error
+        );
         let generation = app.ctl.session.snapshot().generation;
         app.history(Request::Undo);
         assert_eq!(app.ctl.session.snapshot().generation, generation);

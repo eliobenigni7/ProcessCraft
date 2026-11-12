@@ -648,171 +648,213 @@ impl ProcessCraft {
         if !draft.error.is_empty() {
             ui.label(&draft.error);
         }
-        if ui.button("Apply choreography details").clicked() {
-            match draft.build() {
-                Ok(metadata) => {
-                    let mutation = if let Some(sequence) = &draft.sequence {
-                        if let Some(scope) = &draft.scope {
-                            let built = (|| -> Result<_, String> {
-                                Ok((
-                                    draft
-                                        .source
-                                        .as_ref()
-                                        .map(ReferenceDraft::build)
-                                        .transpose()?,
-                                    draft
-                                        .target
-                                        .as_ref()
-                                        .map(ReferenceDraft::build)
-                                        .transpose()?,
-                                ))
-                            })();
-                            let Ok((source, target)) = built else {
-                                draft.error = built.unwrap_err();
-                                return;
-                            };
-                            let mut flow = draft.sequence_flow.clone().expect("sequence owner");
-                            flow.source = source;
-                            flow.target = target;
-                            flow.flow_metadata = metadata;
-                            if self.ctl.session.snapshot().generation != draft.generation {
-                                draft.error =
-                                    "The model changed; cancel and reopen this draft.".into();
-                                return;
-                            }
-                            Mutation::UpdateChoreographyFlowElement { document_id: document.id, choreography_id: draft.choreography.clone(), scope_id: scope.clone(), element: processcraft_core::bpmn_collaboration::ChoreographyFlowElement::SequenceFlow(Box::new(flow)) }
-                        } else {
-                            Mutation::SetFlowMetadata {
-                                document_id: document.id,
-                                element_id: sequence.clone(),
-                                metadata,
-                            }
-                        }
-                    } else {
-                        let mut activity = draft.activity.clone().expect("activity owner");
-                        activity.flow_metadata = metadata;
-                        if let Some(scope) = &draft.scope {
-                            let references = (|| -> Result<_, String> {
-                                Ok((
-                                    draft
-                                        .participants
-                                        .iter()
-                                        .map(ReferenceDraft::build)
-                                        .collect::<Result<Vec<_>, _>>()?,
-                                    draft
-                                        .initiating
-                                        .as_ref()
-                                        .map(ReferenceDraft::build)
-                                        .transpose()?,
-                                    draft
-                                        .messages
-                                        .iter()
-                                        .map(ReferenceDraft::build)
-                                        .collect::<Result<Vec<_>, _>>()?,
-                                ))
-                            })();
-                            let Ok((participants, initiating, messages)) = references else {
-                                draft.error = references.unwrap_err();
-                                return;
-                            };
-                            activity.participant_refs = participants;
-                            activity.initiating_participant = initiating;
-                            activity.message_flow_refs = messages;
-                            if let Some(processcraft_core::bpmn_collaboration::ChoreographyActivityDetails::Call { participant_associations, called_choreography_ref }) = &mut activity.details {
-                                let built = (|| -> Result<_, String> {
-                                    let called = draft.called.as_ref().map(ReferenceDraft::build).transpose()?;
-                                    let mappings = draft.mappings.iter().map(|(original, inner, outer)| {
-                                        let mut value = original.clone();
-                                        value.inner = inner.as_ref().map(ReferenceDraft::build).transpose()?;
-                                        value.outer = outer.as_ref().map(ReferenceDraft::build).transpose()?;
-                                        Ok(value)
-                                    }).collect::<Result<Vec<_>, String>>()?;
-                                    Ok((called, mappings))
-                                })();
-                                match built { Ok((called, mappings)) => { *called_choreography_ref = called; *participant_associations = mappings; }, Err(error) => { draft.error = error; return; } }
-                            }
-                            if self.ctl.session.snapshot().generation != draft.generation {
-                                draft.error =
-                                    "The model changed; cancel and reopen this draft.".into();
-                                return;
-                            }
-                            Mutation::UpdateChoreographyFlowElement { document_id: document.id, choreography_id: draft.choreography.clone(), scope_id: scope.clone(), element: processcraft_core::bpmn_collaboration::ChoreographyFlowElement::Activity(Box::new(activity)) }
-                        } else {
-                            Mutation::UpdateChoreographyActivity {
-                                document_id: document.id,
-                                choreography_id: draft.choreography.clone(),
-                                activity,
-                            }
-                        }
-                    };
-                    let mut mutations = vec![mutation];
-                    let mut route_warning = None;
-                    if let (Some(scope), Some(sequence)) = (&draft.scope, &draft.sequence) {
-                        let diagram = document.diagrams.iter().find(|diagram| {
-                            self.diagram_id.as_ref().is_none_or(|id| diagram.id == *id)
-                                && diagram.plane == *scope
-                        });
-                        match diagram {
-                            None => {
-                                route_warning = Some("select a diagram for this scope".to_owned())
-                            }
-                            Some(diagram)
-                                if !diagram.edges.iter().any(|edge| edge.element == *sequence) =>
-                            {
-                                let result = match (&draft.source, &draft.target) {
-                                    (
-                                        Some(ReferenceDraft::Local(Some(source))),
-                                        Some(ReferenceDraft::Local(Some(target))),
-                                    ) => route_new_sequence(diagram, source, target),
-                                    _ => Err("select local source and target nodes".into()),
-                                };
-                                match result {
-                                    Ok((source, target, waypoints)) => {
-                                        mutations.push(Mutation::CreateEdge {
-                                            document_id: document.id,
-                                            diagram_id: diagram.id.selector(),
-                                            edge: Edge {
-                                                id: controller::id("SequenceEdge").into(),
-                                                element: sequence.clone(),
-                                                source_element: Some(source),
-                                                target_element: Some(target),
-                                                waypoints,
-                                                label: None,
-                                                label_visibility: None,
-                                                style: None,
-                                                di_metadata: None,
-                                                message_visible_kind: None,
-                                            },
-                                        })
-                                    }
-                                    Err(reason) => route_warning = Some(reason),
-                                }
-                            }
-                            Some(_) => {}
-                        }
-                    }
-                    if self.ctl.mutate_at_generation(
-                        if draft.scope.is_some() {
-                            draft.generation
-                        } else {
-                            self.ctl.session.snapshot().generation
-                        },
-                        mutations,
-                    ) {
-                        self.choreography_flow_draft = None;
-                        self.restore_selection();
-                        if let Some(reason) = route_warning {
-                            self.ctl.error = format!(
-                                "Sequence flow saved; no diagram edge was created: {reason}."
-                            );
-                        }
-                    }
-                }
-                Err(error) => draft.error = error,
-            }
+        if ui.button("Apply choreography details").clicked()
+            && self.apply_choreography_flow_draft().is_ok()
+        {
+            self.restore_selection();
         }
         if ui.button("Cancel choreography details").clicked() {
             self.choreography_flow_draft = None;
+        }
+    }
+    pub(super) fn apply_choreography_flow_draft(&mut self) -> Result<(), String> {
+        let snap = self.ctl.session.snapshot();
+        let Some(document) = snap.project.documents.get(self.doc) else {
+            return Err("no model is open".into());
+        };
+        let Some(draft) = self.choreography_flow_draft.as_mut() else {
+            return Ok(());
+        };
+        let metadata = draft.build().inspect_err(|e| draft.error = e.clone())?;
+        let mutation = if let Some(sequence) = &draft.sequence {
+            if let Some(scope) = &draft.scope {
+                let built = (|| -> Result<_, String> {
+                    Ok((
+                        draft
+                            .source
+                            .as_ref()
+                            .map(ReferenceDraft::build)
+                            .transpose()?,
+                        draft
+                            .target
+                            .as_ref()
+                            .map(ReferenceDraft::build)
+                            .transpose()?,
+                    ))
+                })();
+                let Ok((source, target)) = built else {
+                    draft.error = built.unwrap_err();
+                    return Err(draft.error.clone());
+                };
+                let mut flow = draft.sequence_flow.clone().expect("sequence owner");
+                flow.source = source;
+                flow.target = target;
+                flow.flow_metadata = metadata;
+                if self.ctl.session.snapshot().generation != draft.generation {
+                    draft.error = "The model changed; cancel and reopen this draft.".into();
+                    return Err(draft.error.clone());
+                }
+                Mutation::UpdateChoreographyFlowElement {
+                    document_id: document.id,
+                    choreography_id: draft.choreography.clone(),
+                    scope_id: scope.clone(),
+                    element:
+                        processcraft_core::bpmn_collaboration::ChoreographyFlowElement::SequenceFlow(
+                            Box::new(flow),
+                        ),
+                }
+            } else {
+                Mutation::SetFlowMetadata {
+                    document_id: document.id,
+                    element_id: sequence.clone(),
+                    metadata,
+                }
+            }
+        } else {
+            let mut activity = draft.activity.clone().expect("activity owner");
+            activity.flow_metadata = metadata;
+            if let Some(scope) = &draft.scope {
+                let references = (|| -> Result<_, String> {
+                    Ok((
+                        draft
+                            .participants
+                            .iter()
+                            .map(ReferenceDraft::build)
+                            .collect::<Result<Vec<_>, _>>()?,
+                        draft
+                            .initiating
+                            .as_ref()
+                            .map(ReferenceDraft::build)
+                            .transpose()?,
+                        draft
+                            .messages
+                            .iter()
+                            .map(ReferenceDraft::build)
+                            .collect::<Result<Vec<_>, _>>()?,
+                    ))
+                })();
+                let Ok((participants, initiating, messages)) = references else {
+                    draft.error = references.unwrap_err();
+                    return Err(draft.error.clone());
+                };
+                activity.participant_refs = participants;
+                activity.initiating_participant = initiating;
+                activity.message_flow_refs = messages;
+                if let Some(
+                    processcraft_core::bpmn_collaboration::ChoreographyActivityDetails::Call {
+                        participant_associations,
+                        called_choreography_ref,
+                    },
+                ) = &mut activity.details
+                {
+                    let built = (|| -> Result<_, String> {
+                        let called = draft
+                            .called
+                            .as_ref()
+                            .map(ReferenceDraft::build)
+                            .transpose()?;
+                        let mappings = draft
+                            .mappings
+                            .iter()
+                            .map(|(original, inner, outer)| {
+                                let mut value = original.clone();
+                                value.inner =
+                                    inner.as_ref().map(ReferenceDraft::build).transpose()?;
+                                value.outer =
+                                    outer.as_ref().map(ReferenceDraft::build).transpose()?;
+                                Ok(value)
+                            })
+                            .collect::<Result<Vec<_>, String>>()?;
+                        Ok((called, mappings))
+                    })();
+                    match built {
+                        Ok((called, mappings)) => {
+                            *called_choreography_ref = called;
+                            *participant_associations = mappings;
+                        }
+                        Err(error) => {
+                            draft.error = error;
+                            return Err(draft.error.clone());
+                        }
+                    }
+                }
+                if self.ctl.session.snapshot().generation != draft.generation {
+                    draft.error = "The model changed; cancel and reopen this draft.".into();
+                    return Err(draft.error.clone());
+                }
+                Mutation::UpdateChoreographyFlowElement {
+                    document_id: document.id,
+                    choreography_id: draft.choreography.clone(),
+                    scope_id: scope.clone(),
+                    element:
+                        processcraft_core::bpmn_collaboration::ChoreographyFlowElement::Activity(
+                            Box::new(activity),
+                        ),
+                }
+            } else {
+                Mutation::UpdateChoreographyActivity {
+                    document_id: document.id,
+                    choreography_id: draft.choreography.clone(),
+                    activity,
+                }
+            }
+        };
+        let mut mutations = vec![mutation];
+        let mut route_warning = None;
+        if let (Some(scope), Some(sequence)) = (&draft.scope, &draft.sequence) {
+            let diagram = document.diagrams.iter().find(|diagram| {
+                self.diagram_id.as_ref().is_none_or(|id| diagram.id == *id)
+                    && diagram.plane == *scope
+            });
+            match diagram {
+                None => route_warning = Some("select a diagram for this scope".to_owned()),
+                Some(diagram) if !diagram.edges.iter().any(|edge| edge.element == *sequence) => {
+                    let result = match (&draft.source, &draft.target) {
+                        (
+                            Some(ReferenceDraft::Local(Some(source))),
+                            Some(ReferenceDraft::Local(Some(target))),
+                        ) => route_new_sequence(diagram, source, target),
+                        _ => Err("select local source and target nodes".into()),
+                    };
+                    match result {
+                        Ok((source, target, waypoints)) => mutations.push(Mutation::CreateEdge {
+                            document_id: document.id,
+                            diagram_id: diagram.id.selector(),
+                            edge: Edge {
+                                id: controller::id("SequenceEdge").into(),
+                                element: sequence.clone(),
+                                source_element: Some(source),
+                                target_element: Some(target),
+                                waypoints,
+                                label: None,
+                                label_visibility: None,
+                                style: None,
+                                di_metadata: None,
+                                message_visible_kind: None,
+                            },
+                        }),
+                        Err(reason) => route_warning = Some(reason),
+                    }
+                }
+                Some(_) => {}
+            }
+        }
+        if self.ctl.mutate_at_generation(
+            if draft.scope.is_some() {
+                draft.generation
+            } else {
+                self.ctl.session.snapshot().generation
+            },
+            mutations,
+        ) {
+            self.choreography_flow_draft = None;
+            if let Some(reason) = route_warning {
+                self.ctl.error =
+                    format!("Sequence flow saved; no diagram edge was created: {reason}.");
+            }
+            Ok(())
+        } else {
+            Err(self.ctl.error.clone())
         }
     }
 }

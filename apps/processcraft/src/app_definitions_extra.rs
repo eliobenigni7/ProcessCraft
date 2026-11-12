@@ -305,19 +305,23 @@ impl ProcessCraft {
         if !draft.error.is_empty() {
             ui.label(&draft.error);
         }
-        if ui.button("Apply definitions details").clicked() {
-            match draft.changes(document.id) {
-                Ok(changes) => {
-                    if self.ctl.mutate(changes) {
-                        self.definitions_extra_draft = None;
-                        self.restore_selection();
-                    }
-                }
-                Err(error) => draft.error = error,
-            }
+        if ui.button("Apply definitions details").clicked()
+            && self.apply_definitions_extra_draft().is_ok()
+        {
+            self.restore_selection();
         }
         if ui.button("Cancel definitions details").clicked() {
             self.definitions_extra_draft = None;
         }
+    }
+    pub(super) fn apply_definitions_extra_draft(&mut self) -> Result<(), String> {
+        self.apply_typed_draft(
+            |app| &mut app.definitions_extra_draft,
+            |draft, document| {
+                draft
+                    .changes(document.id)
+                    .inspect_err(|e| draft.error = e.clone())
+            },
+        )
     }
 }

@@ -239,22 +239,30 @@ impl ProcessCraft {
             ui.label(&draft.error);
         }
         if ui.button("Create participant band").clicked() {
-            match draft.build() {
-                Ok(shape) => {
-                    if self.ctl.mutate(vec![Mutation::CreateShape {
-                        document_id: document.id,
-                        diagram_id: draft.diagram.clone(),
-                        shape,
-                    }]) {
-                        self.band_draft = None;
-                    }
-                }
-                Err(error) => draft.error = error,
-            }
+            let _ = self.apply_band_draft();
         }
         if ui.button("Cancel participant band").clicked() {
             self.band_draft = None;
         }
+    }
+    /// A band draft where nothing was chosen yet.
+    pub(super) fn band_draft_untouched(&self) -> bool {
+        self.band_draft
+            .as_ref()
+            .is_some_and(|d| d.owner.is_none() && d.participant.is_none() && d.kind.is_none())
+    }
+    pub(super) fn apply_band_draft(&mut self) -> Result<(), String> {
+        self.apply_typed_draft(
+            |app| &mut app.band_draft,
+            |draft, document| {
+                let shape = draft.build().inspect_err(|e| draft.error = e.clone())?;
+                Ok(vec![Mutation::CreateShape {
+                    document_id: document.id,
+                    diagram_id: draft.diagram.clone(),
+                    shape,
+                }])
+            },
+        )
     }
 }
 

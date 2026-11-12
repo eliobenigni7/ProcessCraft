@@ -513,7 +513,7 @@ impl ProcessCraft {
             || self.band_draft.is_some()
             || self.event_draft.is_some()
             || self.event_catalog_draft.is_some())
-            && !self.commit_draft()
+            && !self.commit_all_drafts()
         {
             return;
         }
@@ -880,6 +880,206 @@ impl ProcessCraft {
             .into_iter()
             .collect(),
         );
+    }
+    /// Apply the typed draft in `slot`: `build` turns it into one batch (recording its own
+    /// validation error on the draft); on success the draft closes. No draft is a success.
+    fn apply_typed_draft<D>(
+        &mut self,
+        slot: fn(&mut Self) -> &mut Option<D>,
+        build: impl FnOnce(&mut D, &BpmnDocument) -> Result<Vec<Mutation>, String>,
+    ) -> Result<(), String> {
+        let snap = self.ctl.session.snapshot();
+        let Some(document) = snap.project.documents.get(self.doc) else {
+            return Err("no model is open".into());
+        };
+        let Some(draft) = slot(self).as_mut() else {
+            return Ok(());
+        };
+        let mutations = build(draft, document)?;
+        // An empty batch means nothing changed: the draft just closes.
+        if !mutations.is_empty() && !self.ctl.mutate(mutations) {
+            return Err(self.ctl.error.clone());
+        }
+        *slot(self) = None;
+        Ok(())
+    }
+    /// Apply every open typed draft (selection change, history, navigation), as simple fields are:
+    /// an unchanged draft applies as a no-op (history and redo stay intact); an invalid one is
+    /// refused with its reason and stays open. Untouched creation drafts just close.
+    fn commit_typed_drafts(&mut self) -> bool {
+        type Apply = fn(&mut ProcessCraft) -> Result<(), String>;
+        let drafts: [(&str, bool, Apply); 25] = [
+            (
+                "activity reference",
+                self.binding_draft.is_some(),
+                Self::apply_binding_draft,
+            ),
+            (
+                "XML ID",
+                self.xml_id_draft.is_some(),
+                Self::apply_xml_id_draft,
+            ),
+            (
+                "supporting catalog",
+                self.catalog_draft.is_some(),
+                Self::apply_catalog_draft,
+            ),
+            ("data", self.data_draft.is_some(), Self::apply_data_draft),
+            (
+                "choreography data association",
+                self.graph_data_draft.is_some(),
+                Self::apply_graph_data_draft,
+            ),
+            (
+                "diagram properties",
+                self.di_draft.is_some(),
+                Self::apply_di_draft,
+            ),
+            (
+                "documentation",
+                self.documentation_draft.is_some(),
+                Self::apply_documentation_draft,
+            ),
+            ("content", self.body_draft.is_some(), Self::apply_body_draft),
+            (
+                "advanced metadata",
+                self.metadata_draft.is_some(),
+                Self::apply_metadata_draft,
+            ),
+            (
+                "diagram font",
+                self.style_draft.is_some(),
+                Self::apply_style_draft,
+            ),
+            (
+                "definitions details",
+                self.definitions_extra_draft.is_some(),
+                Self::apply_definitions_extra_draft,
+            ),
+            (
+                "correlation",
+                self.correlation_catalog_draft.is_some(),
+                Self::apply_correlation_catalog_draft,
+            ),
+            (
+                "activity roles",
+                self.activity_roles_draft.is_some(),
+                Self::apply_activity_roles_draft,
+            ),
+            (
+                "global task",
+                self.callable_catalog_draft.is_some(),
+                Self::apply_callable_catalog_draft,
+            ),
+            (
+                "called element",
+                self.call_draft.is_some(),
+                Self::apply_call_draft,
+            ),
+            (
+                "process behavior",
+                self.process_activity_draft.is_some(),
+                Self::apply_process_activity_draft,
+            ),
+            (
+                "flow details",
+                self.flow_metadata_draft.is_some(),
+                Self::apply_flow_metadata_draft,
+            ),
+            (
+                "correlation keys",
+                self.correlation_keys_draft.is_some(),
+                Self::apply_correlation_keys_draft,
+            ),
+            (
+                "multi-instance",
+                self.loop_advanced_draft.is_some(),
+                Self::apply_loop_advanced_draft,
+            ),
+            (
+                "choreography details",
+                self.choreography_flow_draft.is_some(),
+                Self::apply_choreography_flow_draft,
+            ),
+            (
+                "multiplicity",
+                self.multiplicity_draft.is_some(),
+                Self::apply_multiplicity_draft,
+            ),
+            (
+                "message reference",
+                self.message_ref_draft.is_some(),
+                Self::apply_message_ref_draft,
+            ),
+            (
+                "participant band",
+                self.band_draft.is_some(),
+                Self::apply_band_draft,
+            ),
+            ("event", self.event_draft.is_some(), Self::apply_event_draft),
+            (
+                "event catalog",
+                self.event_catalog_draft.is_some(),
+                Self::apply_event_catalog_draft,
+            ),
+        ];
+        if !drafts.iter().any(|(_, open, _)| *open) {
+            return true;
+        }
+        // The expression metadata editor writes into its owner's field, which only its panel can
+        // reach, so it is the one draft that must be finished by hand.
+        if self.expression_draft.is_some() {
+            self.ctl.error = "Apply or cancel the expression metadata draft first.".into();
+            return false;
+        }
+        if self.band_draft_untouched() {
+            self.band_draft = None;
+        }
+        if self.graph_data_draft_untouched() {
+            self.graph_data_draft = None;
+        }
+        // Simple-field mirrors the user did not edit follow what the drafts change.
+        let mirrored = |app: &Self| {
+            let snap = app.ctl.session.snapshot();
+            let document = snap.project.documents.get(app.doc)?;
+            let id = app.selected.as_ref()?;
+            let node = processcraft_core::queries::find_node(document, id);
+            Some((
+                node.map(|n| n.details.clone()),
+                node.map(|n| n.loop_characteristics.clone()),
+                node.map(|n| n.activity.clone()),
+                processcraft_core::queries::find_flow(document, id).map(|f| f.condition.clone()),
+            ))
+        };
+        let before = mirrored(self);
+        for (name, _, apply) in drafts {
+            if let Err(reason) = apply(self) {
+                self.ctl.error = format!(
+                    "The {name} draft is not valid: {}. Fix it or cancel it first.",
+                    reason.trim_end_matches('.')
+                );
+                return false;
+            }
+        }
+        if let (Some((details, lp, activity, condition)), Some(after)) = (before, mirrored(self)) {
+            if details.as_ref() == Some(&self.bpmn_details) {
+                self.bpmn_details = after.0.flatten();
+            }
+            if lp.as_ref() == Some(&self.bpmn_loop) {
+                self.bpmn_loop = after.1.flatten();
+            }
+            if activity.as_ref() == Some(&self.bpmn_activity) {
+                self.bpmn_activity = after.2.flatten();
+            }
+            if condition.as_ref() == Some(&self.condition) {
+                self.condition = after.3.flatten();
+            }
+        }
+        true
+    }
+    /// Typed drafts, then the simple fields.
+    fn commit_all_drafts(&mut self) -> bool {
+        self.commit_typed_drafts() && self.commit_draft()
     }
     fn commit_draft(&mut self) -> bool {
         if self.event_draft.is_some() || self.event_catalog_draft.is_some() {
@@ -1249,10 +1449,19 @@ impl ProcessCraft {
             self.ctl.error = "Post or discard the comment draft before using history.".into();
             return;
         }
-        if self.commit_draft()
-            && self.commit_dictionary_draft()
-            && let Some(changes) = self.ctl.apply_changes(request)
+        let generation = self.ctl.session.snapshot().generation;
+        if !self.commit_all_drafts() || !self.commit_dictionary_draft() {
+            return;
+        }
+        // An unchanged draft applies as a no-op, so redo still works; a changed one is a new
+        // edit, which leaves nothing to redo.
+        if matches!(request, Request::Redo) && self.ctl.session.snapshot().generation != generation
         {
+            self.ctl
+                .notify("The open draft was applied, so there is nothing left to redo.");
+            return;
+        }
+        if let Some(changes) = self.ctl.apply_changes(request) {
             self.remap_context(&changes.selector_mappings);
             self.restore_selection();
             self.refresh_dictionary_editor();
@@ -1581,7 +1790,20 @@ impl ProcessCraft {
         }
     }
     fn add(&mut self, kind: NodeKind) {
+        self.add_entry(kind.into());
+    }
+    /// New element identity; a picked trigger needs a named one to address the new node.
+    fn new_identity(&self, named: bool) -> processcraft_core::ids::ElementIdentity {
+        if self.create_anonymous && !named {
+            processcraft_core::ids::ElementIdentity::anonymous()
+        } else {
+            controller::id("Node").into()
+        }
+    }
+    /// Palette click: append after a selected flow node, otherwise place in free space.
+    fn add_entry(&mut self, entry: canvas::PaletteEntry) {
         use processcraft_core::modeling;
+        let kind = entry.kind;
         let snap = self.ctl.session.snapshot();
         let Some(d) = snap.project.documents.get(self.doc) else {
             return;
@@ -1608,7 +1830,7 @@ impl ProcessCraft {
             && !matches!(kind, NodeKind::StartEvent | NodeKind::BoundaryEvent)
             && processcraft_core::rules::sequence_source_refusal(source).is_none()
         {
-            self.append(source.id.selector(), kind);
+            self.append_entry(source.id.selector(), entry);
             return;
         }
         let host = selected.filter(|(node, _)| node.kind.is_activity());
@@ -1634,17 +1856,14 @@ impl ProcessCraft {
         } else {
             canvas::vacant_bounds(&diagram.shapes, self.viewport_center(), width, height)
         };
-        let eid: processcraft_core::ids::ElementIdentity = if self.create_anonymous {
-            processcraft_core::ids::ElementIdentity::anonymous()
-        } else {
-            controller::id("Node").into()
-        };
-        let node = modeling::new_node(
+        let eid = self.new_identity(entry.trigger.is_some());
+        let mut node = modeling::new_node(
             kind,
             eid.clone(),
             (kind != NodeKind::TextAnnotation).then(|| node_kind_label(kind).into()),
             host.map(|(activity, _)| activity.id.selector()),
         );
+        canvas::apply_trigger(&mut node, entry.trigger);
         if self.ctl.mutate(vec![
             Mutation::CreateElement {
                 document_id: d.id,
@@ -1667,6 +1886,10 @@ impl ProcessCraft {
     }
     /// Append `kind` after `source` through the core append builder and select it.
     fn append(&mut self, source: ElementSelector, kind: NodeKind) -> bool {
+        self.append_entry(source, kind.into())
+    }
+    fn append_entry(&mut self, source: ElementSelector, entry: canvas::PaletteEntry) -> bool {
+        let kind = entry.kind;
         let snap = self.ctl.session.snapshot();
         let Some(d) = snap.project.documents.get(self.doc) else {
             return false;
@@ -1678,11 +1901,7 @@ impl ProcessCraft {
         else {
             return false;
         };
-        let node: processcraft_core::ids::ElementIdentity = if self.create_anonymous {
-            processcraft_core::ids::ElementIdentity::anonymous()
-        } else {
-            controller::id("Node").into()
-        };
+        let node = self.new_identity(entry.trigger.is_some());
         let ids = processcraft_core::modeling::AppendIds {
             node: node.clone(),
             shape: controller::id("Shape").into(),
@@ -1699,8 +1918,8 @@ impl ProcessCraft {
             name.clone(),
             ids.clone(),
         ) {
-            Ok(_) => {
-                let done = self.ctl.mutate(vec![Mutation::Append {
+            Ok(batch) => {
+                let mut mutations = vec![Mutation::Append {
                     document_id: d.id,
                     diagram_id: diagram.id.selector(),
                     source_id: source,
@@ -1710,7 +1929,13 @@ impl ProcessCraft {
                     shape_id: ids.shape,
                     flow_id: ids.flow,
                     edge_id: ids.edge,
-                }]);
+                }];
+                mutations.extend(canvas::trigger_mutation(
+                    &batch,
+                    &node.selector(),
+                    entry.trigger,
+                ));
+                let done = self.ctl.mutate(mutations);
                 if done {
                     self.select(Some(node.selector()));
                 }
@@ -1879,7 +2104,7 @@ impl ProcessCraft {
         match processcraft_core::geometry::prepare_move(d, &diagram.id.selector(), bounds) {
             Ok(prepared) => {
                 if self.ctl.apply(prepared.request) && !prepared.warnings.is_empty() {
-                    self.ctl.error = prepared.warnings.join("; ");
+                    self.ctl.notify(prepared.warnings.join("; "));
                 }
             }
             Err(e) => self.ctl.error = format!("Could not move selection: {e}"),
@@ -1898,7 +2123,7 @@ impl ProcessCraft {
         else {
             return;
         };
-        let shapes = items
+        let shapes: Vec<_> = items
             .into_iter()
             .map(|(shape_id, mut bounds)| {
                 bounds.x += dx;
@@ -1910,13 +2135,21 @@ impl ProcessCraft {
                 }
             })
             .collect();
-        self.ctl.mutate(vec![Mutation::MoveElements {
+        // Route-repair warnings of the plain move, reported as a notice once the move applies.
+        let warnings =
+            processcraft_core::geometry::prepare_move(d, &diagram.id.selector(), shapes.clone())
+                .map(|prepared| prepared.warnings)
+                .unwrap_or_default();
+        if self.ctl.mutate(vec![Mutation::MoveElements {
             document_id: d.id,
             diagram_id: diagram.id.selector(),
             shapes,
             flow_id: Some(controller::id("Flow").into()),
             edge_id: Some(controller::id("Edge").into()),
-        }]);
+        }]) && !warnings.is_empty()
+        {
+            self.ctl.notify(warnings.join("; "));
+        }
     }
     fn move_selected(&mut self, dx: f64, dy: f64) {
         let snap = self.ctl.session.snapshot();

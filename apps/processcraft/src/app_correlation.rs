@@ -194,17 +194,7 @@ impl ProcessCraft {
             )
             .clicked()
         {
-            match draft.build() {
-                Ok(values) => {
-                    if self.ctl.mutate(vec![Mutation::SetCorrelationProperties {
-                        document_id: document.id,
-                        correlation_properties: values,
-                    }]) {
-                        self.correlation_catalog_draft = None;
-                    }
-                }
-                Err(error) => draft.error = error,
-            }
+            let _ = self.apply_correlation_catalog_draft();
         }
         if ui
             .add_enabled(
@@ -215,6 +205,18 @@ impl ProcessCraft {
         {
             self.correlation_catalog_draft = None;
         }
+    }
+    pub(super) fn apply_correlation_catalog_draft(&mut self) -> Result<(), String> {
+        self.apply_typed_draft(
+            |app| &mut app.correlation_catalog_draft,
+            |draft, document| {
+                let values = draft.build().inspect_err(|e| draft.error = e.clone())?;
+                Ok(vec![Mutation::SetCorrelationProperties {
+                    document_id: document.id,
+                    correlation_properties: values,
+                }])
+            },
+        )
     }
 }
 

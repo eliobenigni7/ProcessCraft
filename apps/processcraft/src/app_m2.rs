@@ -1106,7 +1106,7 @@ impl ProcessCraft {
         match processcraft_core::geometry::prepare_move(d, &diagram.id.selector(), bounds.clone()) {
             Ok(prepared) => {
                 if !prepared.warnings.is_empty() {
-                    self.ctl.error = prepared.warnings.join("; ");
+                    self.ctl.notify(prepared.warnings.join("; "));
                 }
                 match prepared.request {
                     Request::Batch { mutations } => Some((bounds, mutations)),

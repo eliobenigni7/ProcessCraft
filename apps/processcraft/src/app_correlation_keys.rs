@@ -224,12 +224,24 @@ impl ProcessCraft {
         if !draft.error.is_empty() {
             ui.label(&draft.error);
         }
-        if ui.button("Apply correlation keys").clicked() {
-            match draft.build() {
-                Ok(keys) => {
-                    if draft.generation != self.ctl.session.snapshot().generation {
+        if ui.button("Apply correlation keys").clicked()
+            && self.apply_correlation_keys_draft().is_ok()
+        {
+            self.restore_selection();
+        }
+        if ui.button("Cancel correlation keys").clicked() {
+            self.correlation_keys_draft = None;
+        }
+    }
+    pub(super) fn apply_correlation_keys_draft(&mut self) -> Result<(), String> {
+        let generation = self.ctl.session.snapshot().generation;
+        self.apply_typed_draft(
+            |app| &mut app.correlation_keys_draft,
+            |draft, document| {
+                let keys = draft.build().inspect_err(|e| draft.error = e.clone())?;
+                    if draft.generation != generation {
                         draft.error = "The model changed while this draft was open. Cancel it and reopen the editor.".into();
-                        return;
+                        return Err(draft.error.clone());
                     }
                     let mutation = match &draft.owner {
                         KeyOwner::Collaboration(root) => {
@@ -247,7 +259,7 @@ impl ProcessCraft {
                                 current.correlation_keys = keys;
                             } else {
                                 draft.error = "The conversation no longer exists.".into();
-                                return;
+                                return Err(draft.error.clone());
                             }
                             super::collaboration::update_root(document, updated)
                         }
@@ -266,19 +278,8 @@ impl ProcessCraft {
                             Mutation::UpdateChoreographyFlowElement { document_id: document.id, choreography_id: root.clone(), scope_id: scope.clone(), element: processcraft_core::bpmn_collaboration::ChoreographyFlowElement::Activity(Box::new(activity)) }
                         }
                     };
-                    if self
-                        .ctl
-                        .mutate_at_generation(draft.generation, vec![mutation])
-                    {
-                        self.correlation_keys_draft = None;
-                        self.restore_selection();
-                    }
-                }
-                Err(error) => draft.error = error,
-            }
-        }
-        if ui.button("Cancel correlation keys").clicked() {
-            self.correlation_keys_draft = None;
-        }
+                Ok(vec![mutation])
+            },
+        )
     }
 }

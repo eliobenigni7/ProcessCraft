@@ -157,32 +157,32 @@ impl ProcessCraft {
         if !draft.error.is_empty() {
             ui.label(&draft.error);
         }
-        if ui.button("Apply flow details").clicked() {
-            match draft.build() {
-                Ok(metadata) => {
-                    let change = if draft.node {
-                        Mutation::SetNodeFlowMetadata {
-                            document_id: document.id,
-                            element_id: target.clone(),
-                            metadata,
-                        }
-                    } else {
-                        Mutation::SetFlowMetadata {
-                            document_id: document.id,
-                            element_id: target.clone(),
-                            metadata,
-                        }
-                    };
-                    if self.ctl.mutate(vec![change]) {
-                        self.flow_metadata_draft = None;
-                        self.restore_selection();
-                    }
-                }
-                Err(error) => draft.error = error,
-            }
+        if ui.button("Apply flow details").clicked() && self.apply_flow_metadata_draft().is_ok() {
+            self.restore_selection();
         }
         if ui.button("Cancel flow details").clicked() {
             self.flow_metadata_draft = None;
         }
+    }
+    pub(super) fn apply_flow_metadata_draft(&mut self) -> Result<(), String> {
+        self.apply_typed_draft(
+            |app| &mut app.flow_metadata_draft,
+            |draft, document| {
+                let metadata = draft.build().inspect_err(|e| draft.error = e.clone())?;
+                Ok(vec![if draft.node {
+                    Mutation::SetNodeFlowMetadata {
+                        document_id: document.id,
+                        element_id: draft.target.clone(),
+                        metadata,
+                    }
+                } else {
+                    Mutation::SetFlowMetadata {
+                        document_id: document.id,
+                        element_id: draft.target.clone(),
+                        metadata,
+                    }
+                }])
+            },
+        )
     }
 }

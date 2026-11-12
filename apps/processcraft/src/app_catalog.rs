@@ -522,21 +522,23 @@ impl ProcessCraft {
             ui.label(&draft.error);
         }
         if ui.button("Apply catalog").clicked() {
-            match draft.build() {
-                Ok(catalog) => {
-                    if self.ctl.mutate(vec![Mutation::SetSupportingCatalog {
-                        document_id: document.id,
-                        catalog,
-                    }]) {
-                        self.catalog_draft = None;
-                    }
-                }
-                Err(error) => draft.error = error,
-            }
+            let _ = self.apply_catalog_draft();
         }
         if ui.button("Cancel catalog editing").clicked() {
             self.catalog_draft = None;
         }
+    }
+    pub(super) fn apply_catalog_draft(&mut self) -> Result<(), String> {
+        self.apply_typed_draft(
+            |app| &mut app.catalog_draft,
+            |draft, document| {
+                let catalog = draft.build().inspect_err(|e| draft.error = e.clone())?;
+                Ok(vec![Mutation::SetSupportingCatalog {
+                    document_id: document.id,
+                    catalog,
+                }])
+            },
+        )
     }
 }
 
@@ -610,7 +612,7 @@ mod tests {
         );
     }
     #[test]
-    fn catalog_draft_blocks_navigation_and_uses_history() {
+    fn catalog_draft_applies_on_selection_change_and_uses_history() {
         let mut app = ProcessCraft::default();
         app.select(None);
         let mut draft = CatalogDraft::new(&SupportingCatalog::default());
@@ -623,17 +625,19 @@ mod tests {
         });
         app.catalog_draft = Some(draft);
         app.draft_dirty = true;
+        // Simple-field commits (auto-commit) still leave the open draft alone.
         assert!(!app.commit_draft());
-        app.select(Some("not_selected".parse().unwrap()));
-        assert!(app.selected.is_none());
-        assert!(app.catalog_draft.is_some());
-        let catalog = app.catalog_draft.as_ref().unwrap().build().unwrap();
-        let document_id = app.ctl.session.snapshot().project.documents[0].id;
-        assert!(app.ctl.mutate(vec![Mutation::SetSupportingCatalog {
-            document_id,
-            catalog
-        }]));
-        app.catalog_draft = None;
+        // Selecting another element applies the valid draft, as simple fields are.
+        app.add(NodeKind::Task);
+        assert!(app.selected.is_some(), "{}", app.ctl.error);
+        assert!(app.catalog_draft.is_none());
+        assert_eq!(
+            app.ctl.session.snapshot().project.documents[0]
+                .catalog
+                .item_definitions
+                .len(),
+            1
+        );
         app.history(Request::Undo);
         assert!(
             app.ctl.session.snapshot().project.documents[0]

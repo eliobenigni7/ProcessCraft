@@ -54,32 +54,37 @@ impl ProcessCraft {
         if !draft.error.is_empty() {
             ui.label(&draft.error);
         }
-        if ui.button("Apply content").clicked() {
-            match draft.value.as_ref().map(MixedDraft::build).transpose() {
-                Ok(body) => {
-                    let document_id = self.ctl.session.snapshot().project.documents[self.doc].id;
-                    let mutation = match &draft.owner {
-                        BodyOwner::Annotation(element_id) => Mutation::SetAnnotationBody {
-                            document_id,
-                            element_id: element_id.clone(),
-                            body,
-                        },
-                        BodyOwner::Script(element_id) => Mutation::SetScriptBody {
-                            document_id,
-                            element_id: element_id.clone(),
-                            body,
-                        },
-                    };
-                    if self.ctl.mutate(vec![mutation]) {
-                        self.body_draft = None;
-                        self.restore_selection();
-                    }
-                }
-                Err(error) => draft.error = error,
-            }
+        if ui.button("Apply content").clicked() && self.apply_body_draft().is_ok() {
+            self.restore_selection();
         }
         if ui.button("Cancel content editing").clicked() {
             self.body_draft = None;
         }
+    }
+    pub(super) fn apply_body_draft(&mut self) -> Result<(), String> {
+        self.apply_typed_draft(
+            |app| &mut app.body_draft,
+            |draft, document| {
+                let body = draft
+                    .value
+                    .as_ref()
+                    .map(MixedDraft::build)
+                    .transpose()
+                    .inspect_err(|e| draft.error = e.clone())?;
+                let document_id = document.id;
+                Ok(vec![match &draft.owner {
+                    BodyOwner::Annotation(element_id) => Mutation::SetAnnotationBody {
+                        document_id,
+                        element_id: element_id.clone(),
+                        body,
+                    },
+                    BodyOwner::Script(element_id) => Mutation::SetScriptBody {
+                        document_id,
+                        element_id: element_id.clone(),
+                        body,
+                    },
+                }])
+            },
+        )
     }
 }

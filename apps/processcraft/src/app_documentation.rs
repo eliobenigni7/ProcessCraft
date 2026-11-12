@@ -159,25 +159,25 @@ impl ProcessCraft {
         if !draft.error.is_empty() {
             ui.label(&draft.error);
         }
-        if ui.button("Apply documentation").clicked() {
-            match draft.build() {
-                Ok(documentation) => {
-                    let document_id = self.ctl.session.snapshot().project.documents[self.doc].id;
-                    if self.ctl.mutate(vec![Mutation::ReplaceDocumentation {
-                        document_id,
-                        element_id: draft.target.clone(),
-                        documentation,
-                    }]) {
-                        self.documentation_draft = None;
-                        self.restore_selection();
-                    }
-                }
-                Err(error) => draft.error = error,
-            }
+        if ui.button("Apply documentation").clicked() && self.apply_documentation_draft().is_ok() {
+            self.restore_selection();
         }
         if ui.button("Cancel documentation editing").clicked() {
             self.documentation_draft = None;
         }
+    }
+    pub(super) fn apply_documentation_draft(&mut self) -> Result<(), String> {
+        self.apply_typed_draft(
+            |app| &mut app.documentation_draft,
+            |draft, document| {
+                let documentation = draft.build().inspect_err(|e| draft.error = e.clone())?;
+                Ok(vec![Mutation::ReplaceDocumentation {
+                    document_id: document.id,
+                    element_id: draft.target.clone(),
+                    documentation,
+                }])
+            },
+        )
     }
 }
 

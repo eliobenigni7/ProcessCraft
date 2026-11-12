@@ -988,20 +988,9 @@ impl ProcessCraft {
                 egui::Button::new("Apply multi-instance details"),
             )
             .clicked()
+            && self.apply_loop_advanced_draft().is_ok()
         {
-            match draft.build() {
-                Ok(value) => {
-                    if self.ctl.mutate(vec![Mutation::SetNodeLoop {
-                        document_id: document.id,
-                        element_id: draft.target.clone(),
-                        loop_characteristics: Some(value),
-                    }]) {
-                        self.loop_advanced_draft = None;
-                        self.restore_selection();
-                    }
-                }
-                Err(error) => draft.error = error,
-            }
+            self.restore_selection();
         }
         if ui
             .add_enabled(
@@ -1012,6 +1001,19 @@ impl ProcessCraft {
         {
             self.loop_advanced_draft = None;
         }
+    }
+    pub(super) fn apply_loop_advanced_draft(&mut self) -> Result<(), String> {
+        self.apply_typed_draft(
+            |app| &mut app.loop_advanced_draft,
+            |draft, document| {
+                let value = draft.build().inspect_err(|e| draft.error = e.clone())?;
+                Ok(vec![Mutation::SetNodeLoop {
+                    document_id: document.id,
+                    element_id: draft.target.clone(),
+                    loop_characteristics: Some(value),
+                }])
+            },
+        )
     }
 }
 

@@ -216,21 +216,23 @@ impl ProcessCraft {
         if !draft.error.is_empty() {
             ui.label(&draft.error);
         }
-        if ui.button("Apply advanced metadata").clicked() {
-            let document_id = self.ctl.session.snapshot().project.documents[self.doc].id;
-            match draft.mutation(document_id) {
-                Ok(mutation) => {
-                    if self.ctl.mutate(vec![mutation]) {
-                        self.metadata_draft = None;
-                        self.restore_selection();
-                    }
-                }
-                Err(error) => draft.error = error,
-            }
+        if ui.button("Apply advanced metadata").clicked() && self.apply_metadata_draft().is_ok() {
+            self.restore_selection();
         }
         if ui.button("Cancel advanced metadata").clicked() {
             self.metadata_draft = None;
         }
+    }
+    pub(super) fn apply_metadata_draft(&mut self) -> Result<(), String> {
+        self.apply_typed_draft(
+            |app| &mut app.metadata_draft,
+            |draft, document| {
+                draft
+                    .mutation(document.id)
+                    .map(|m| vec![m])
+                    .inspect_err(|e| draft.error = e.clone())
+            },
+        )
     }
 }
 

@@ -1,6 +1,19 @@
 use super::{ProcessCraft, node_kind_label};
 use crate::widgets;
 
+/// Human label of a gateway direction (never Rust debug output).
+fn gateway_direction_label(
+    direction: processcraft_core::bpmn_model::GatewayDirection,
+) -> &'static str {
+    use processcraft_core::bpmn_model::GatewayDirection as G;
+    match direction {
+        G::Unspecified => "Unspecified",
+        G::Converging => "Converging",
+        G::Diverging => "Diverging",
+        G::Mixed => "Mixed",
+    }
+}
+
 fn graph_node<'a>(
     document: &'a processcraft_core::model::BpmnDocument,
     id: &processcraft_core::ids::ElementSelector,
@@ -156,6 +169,74 @@ pub(super) struct XmlIdDraft {
     target: XmlIdTarget,
     value: Option<String>,
     error: String,
+}
+
+impl ProcessCraft {
+    /// Apply an open XML ID draft (selection change, history): same mutation as its button.
+    pub(super) fn apply_xml_id_draft(&mut self) -> Result<(), String> {
+        let Some(current) = self.xml_id_draft.as_mut() else {
+            return Ok(());
+        };
+        let xml_id = current
+            .value
+            .as_ref()
+            .map(|text| {
+                text.parse::<processcraft_core::ids::XmlId>()
+                    .map_err(|_| "Enter a valid XML ID.".to_owned())
+            })
+            .transpose()
+            .inspect_err(|e| current.error = e.clone())?;
+        let document_id = self.ctl.session.snapshot().project.documents[self.doc].id;
+        let mutation = match &current.target {
+            XmlIdTarget::Existing(target) => {
+                processcraft_core::commands::Mutation::SetElementXmlId {
+                    document_id,
+                    element_id: target.clone(),
+                    xml_id,
+                }
+            }
+            XmlIdTarget::Anonymous(path) => {
+                processcraft_core::commands::Mutation::PromoteElementIdentity {
+                    document_id,
+                    model_path: path.clone(),
+                    xml_id,
+                }
+            }
+        };
+        let changes = self
+            .ctl
+            .mutate_changes(vec![mutation])
+            .ok_or_else(|| self.ctl.error.clone())?;
+        self.xml_id_draft = None;
+        self.remap_context(&changes.selector_mappings);
+        Ok(())
+    }
+    /// Apply open message/operation references into the activity properties draft.
+    pub(super) fn apply_binding_draft(&mut self) -> Result<(), String> {
+        let Some(draft) = self.binding_draft.as_mut() else {
+            return Ok(());
+        };
+        let (message, operation) = match (
+            super::catalog::q_build(&draft.message),
+            super::catalog::q_build(&draft.operation),
+        ) {
+            (Ok(message), Ok(operation)) => (message, operation),
+            (Err(error), _) | (_, Err(error)) => {
+                draft.error = error.clone();
+                return Err(error);
+            }
+        };
+        let original = self.bpmn_activity.clone().unwrap_or_default();
+        let mut value = original.clone();
+        value.message_ref = message;
+        value.operation_ref = operation;
+        if value != original {
+            self.bpmn_activity = Some(value);
+            self.draft_dirty = true;
+        }
+        self.binding_draft = None;
+        Ok(())
+    }
 }
 
 fn xml_id_editor(
@@ -1597,11 +1678,11 @@ impl ProcessCraft {
                     ui.separator();
                     ui.strong("Gateway behavior");
                     egui::ComboBox::from_label("Direction")
-                        .selected_text(direction.map_or("Unspecified".into(), |v| format!("{v:?}")))
+                        .selected_text(direction.map_or("Unspecified (omitted)", gateway_direction_label))
                         .show_ui(ui, |ui| {
                             ui.selectable_value(direction, None, "Unspecified (omitted)");
                             for v in [G::Unspecified, G::Converging, G::Diverging, G::Mixed] {
-                                ui.selectable_value(direction, Some(v), format!("{v:?}"));
+                                ui.selectable_value(direction, Some(v), gateway_direction_label(v));
                             }
                         });
                     if matches!(
@@ -1641,8 +1722,10 @@ impl ProcessCraft {
                         }
                         egui::ComboBox::from_label("Event gateway type")
                             .selected_text(
-                                event_gateway_type
-                                    .map_or("Exclusive (default)".into(), |v| format!("{v:?}")),
+                                event_gateway_type.map_or("Exclusive (default)", |v| match v {
+                                    T::Exclusive => "Exclusive",
+                                    T::Parallel => "Parallel",
+                                }),
                             )
                             .show_ui(ui, |ui| {
                                 ui.selectable_value(
@@ -1723,7 +1806,7 @@ impl ProcessCraft {
                 });
                 if node.kind == K::SubProcess { checkbox(ui,"Triggered by event",&mut value.triggered_by_event,false); }
                 if node.kind == K::AdHocSubProcess {
-                    egui::ComboBox::from_label("Ad-hoc ordering").selected_text(value.ad_hoc_ordering.map_or("Parallel (default)".into(), |v|format!("{v:?}"))).show_ui(ui, |ui| {
+                    egui::ComboBox::from_label("Ad-hoc ordering").selected_text(value.ad_hoc_ordering.map_or("Parallel (default)", |v| match v { AdHocOrdering::Parallel => "Parallel", AdHocOrdering::Sequential => "Sequential" })).show_ui(ui, |ui| {
                         ui.selectable_value(&mut value.ad_hoc_ordering,None,"Parallel (default)");
                         ui.selectable_value(&mut value.ad_hoc_ordering,Some(AdHocOrdering::Parallel),"Parallel");
                         ui.selectable_value(&mut value.ad_hoc_ordering,Some(AdHocOrdering::Sequential),"Sequential");

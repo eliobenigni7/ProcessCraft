@@ -458,17 +458,7 @@ impl ProcessCraft {
             )
             .clicked()
         {
-            match draft.build() {
-                Ok(global_tasks) => {
-                    if self.ctl.mutate(vec![Mutation::SetGlobalTasks {
-                        document_id: document.id,
-                        global_tasks,
-                    }]) {
-                        self.callable_catalog_draft = None;
-                    }
-                }
-                Err(error) => draft.error = error,
-            }
+            let _ = self.apply_callable_catalog_draft();
         }
         if ui
             .add_enabled(
@@ -479,6 +469,18 @@ impl ProcessCraft {
         {
             self.callable_catalog_draft = None;
         }
+    }
+    pub(super) fn apply_callable_catalog_draft(&mut self) -> Result<(), String> {
+        self.apply_typed_draft(
+            |app| &mut app.callable_catalog_draft,
+            |draft, document| {
+                let global_tasks = draft.build().inspect_err(|e| draft.error = e.clone())?;
+                Ok(vec![Mutation::SetGlobalTasks {
+                    document_id: document.id,
+                    global_tasks,
+                }])
+            },
+        )
     }
 }
 

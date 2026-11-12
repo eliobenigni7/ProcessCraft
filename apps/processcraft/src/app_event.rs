@@ -1281,7 +1281,7 @@ impl ProcessCraft {
             )
             .clicked()
         {
-            self.apply_event_draft();
+            let _ = self.apply_event_draft();
         }
         if ui
             .add_enabled(
@@ -1293,7 +1293,7 @@ impl ProcessCraft {
             self.event_draft = None;
         }
     }
-    fn apply_event_draft(&mut self) -> bool {
+    pub(super) fn apply_event_draft(&mut self) -> Result<(), String> {
         let Some(document_id) = self
             .ctl
             .session
@@ -1303,23 +1303,23 @@ impl ProcessCraft {
             .get(self.doc)
             .map(|document| document.id)
         else {
-            return false;
+            return Err("no model is open".into());
         };
         let Some(draft) = &mut self.event_draft else {
-            return false;
+            return Ok(());
         };
         let details = match draft.build() {
             Ok(details) => details,
             Err(error) => {
                 draft.error = error;
-                return false;
+                return Err(draft.error.clone());
             }
         };
         let mutation = if let Some((root, scope_id, generation)) = &draft.choreography_scope {
             let snapshot = self.ctl.session.snapshot();
             if snapshot.generation != *generation {
                 draft.error = "The model changed; cancel and reopen this draft.".into();
-                return false;
+                return Err(draft.error.clone());
             }
             let Some(mut node) = snapshot
                 .project
@@ -1339,7 +1339,7 @@ impl ProcessCraft {
                 })
             else {
                 draft.error = "The event is no longer available.".into();
-                return false;
+                return Err(draft.error.clone());
             };
             node.details = Some(details.clone());
             Mutation::UpdateChoreographyFlowElement {
@@ -1365,12 +1365,12 @@ impl ProcessCraft {
             .ctl
             .mutate_at_generation(expected_generation, vec![mutation])
         {
-            return false;
+            return Err(self.ctl.error.clone());
         }
         self.bpmn_details = Some(details);
         self.event_draft = None;
         self.restore_selection();
-        true
+        Ok(())
     }
     pub(super) fn event_catalog_ui(&mut self, ui: &mut egui::Ui, editable: bool) {
         let snapshot = self.ctl.session.snapshot();
@@ -1428,33 +1428,7 @@ impl ProcessCraft {
             )
             .clicked()
         {
-            let definitions = draft
-                .definitions
-                .iter()
-                .map(DefinitionDraft::build)
-                .collect::<Result<Vec<_>, _>>();
-            let resources = draft
-                .resources
-                .iter()
-                .map(ResourceDraft::build)
-                .collect::<Result<Vec<_>, _>>();
-            match (definitions, resources) {
-                (Ok(definitions), Ok(resources)) => {
-                    if self.ctl.mutate(vec![
-                        Mutation::SetRootEventDefinitions {
-                            document_id: document.id,
-                            definitions,
-                        },
-                        Mutation::SetEventResources {
-                            document_id: document.id,
-                            resources,
-                        },
-                    ]) {
-                        self.event_catalog_draft = None;
-                    }
-                }
-                (Err(error), _) | (_, Err(error)) => draft.error = error,
-            }
+            let _ = self.apply_event_catalog_draft();
         }
         if ui
             .add_enabled(
@@ -1465,6 +1439,39 @@ impl ProcessCraft {
         {
             self.event_catalog_draft = None;
         }
+    }
+    pub(super) fn apply_event_catalog_draft(&mut self) -> Result<(), String> {
+        self.apply_typed_draft(
+            |app| &mut app.event_catalog_draft,
+            |draft, document| {
+                let definitions = draft
+                    .definitions
+                    .iter()
+                    .map(DefinitionDraft::build)
+                    .collect::<Result<Vec<_>, _>>();
+                let resources = draft
+                    .resources
+                    .iter()
+                    .map(ResourceDraft::build)
+                    .collect::<Result<Vec<_>, _>>();
+                match (definitions, resources) {
+                    (Ok(definitions), Ok(resources)) => Ok(vec![
+                        Mutation::SetRootEventDefinitions {
+                            document_id: document.id,
+                            definitions,
+                        },
+                        Mutation::SetEventResources {
+                            document_id: document.id,
+                            resources,
+                        },
+                    ]),
+                    (Err(error), _) | (_, Err(error)) => {
+                        draft.error = error.clone();
+                        Err(error)
+                    }
+                }
+            },
+        )
     }
 }
 
@@ -1551,20 +1558,35 @@ mod tests {
     }
 
     #[test]
-    fn event_draft_blocks_navigation_history_and_transition() {
+    fn unchanged_event_draft_keeps_redo_and_applies_on_selection_change() {
         let mut app = ProcessCraft::default();
         app.add(NodeKind::IntermediateCatchEvent);
         let selected = app.selected.clone().unwrap();
+        assert!(app.ctl.mutate(vec![Mutation::RenameProject {
+            name: "Renamed".into()
+        }]));
+        app.history(Request::Undo);
         let snapshot = app.ctl.session.snapshot();
+        assert_eq!(snapshot.redo_count, 1);
         let document = &snapshot.project.documents[0];
         let node = processcraft_core::queries::find_node(document, &selected).unwrap();
         app.event_draft = EventDraft::new(selected.clone(), node.details.as_ref().unwrap());
         assert!(app.has_drafts());
+        // Simple-field commits still leave the open draft alone.
         assert!(!app.commit_draft());
+        // Redo applies the unchanged draft as a no-op, so the redo step is still there.
+        app.history(Request::Redo);
+        assert!(app.event_draft.is_none(), "{}", app.ctl.error);
+        assert_eq!(app.ctl.session.snapshot().project.name, "Renamed");
+        // A selection change applies an unchanged draft without a history step.
+        let node_details = node.details.clone();
+        app.select(Some(selected.clone()));
+        app.event_draft = EventDraft::new(selected.clone(), node_details.as_ref().unwrap());
+        let undo = app.ctl.session.snapshot().undo_count;
         app.select(None);
-        app.history(Request::Undo);
-        assert_eq!(app.selected, Some(selected));
-        assert!(app.event_draft.is_some());
+        assert!(app.selected.is_none(), "{}", app.ctl.error);
+        assert!(app.event_draft.is_none());
+        assert_eq!(app.ctl.session.snapshot().undo_count, undo);
     }
 
     #[test]
@@ -1585,7 +1607,7 @@ mod tests {
         app.draft = "Renamed".into();
         app.draft_name_present = true;
         app.draft_dirty = true;
-        assert!(app.apply_event_draft(), "{}", app.ctl.error);
+        assert!(app.apply_event_draft().is_ok(), "{}", app.ctl.error);
         let snapshot = app.ctl.session.snapshot();
         let node = processcraft_core::queries::find_node(&snapshot.project.documents[0], &selected)
             .unwrap();

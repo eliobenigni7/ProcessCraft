@@ -91,18 +91,7 @@ impl ProcessCraft {
             ui.label(&draft.error);
         }
         if ui.button("Apply multiplicity").clicked() {
-            match draft.build() {
-                Ok(multiplicity) => {
-                    if self.ctl.mutate(vec![Mutation::SetParticipantMultiplicity {
-                        document_id: document.id,
-                        participant_id: draft.target.clone(),
-                        multiplicity,
-                    }]) {
-                        self.multiplicity_draft = None;
-                    }
-                }
-                Err(error) => draft.error = error,
-            }
+            let _ = self.apply_multiplicity_draft();
         }
         if ui.button("Cancel multiplicity").clicked() {
             self.multiplicity_draft = None;
@@ -158,22 +147,38 @@ impl ProcessCraft {
             ui.label(&draft.error);
         }
         if ui.button("Apply message reference").clicked() {
-            match build_ref(&draft.value) {
-                Ok(message_ref) => {
-                    if self.ctl.mutate(vec![Mutation::SetMessageFlowReference {
-                        document_id: document.id,
-                        flow_id: draft.target.clone(),
-                        message_ref,
-                    }]) {
-                        self.message_ref_draft = None;
-                    }
-                }
-                Err(error) => draft.error = error,
-            }
+            let _ = self.apply_message_ref_draft();
         }
         if ui.button("Cancel message reference").clicked() {
             self.message_ref_draft = None;
         }
+    }
+    pub(super) fn apply_multiplicity_draft(&mut self) -> Result<(), String> {
+        self.apply_typed_draft(
+            |app| &mut app.multiplicity_draft,
+            |draft, document| {
+                let multiplicity = draft.build().inspect_err(|e| draft.error = e.clone())?;
+                Ok(vec![Mutation::SetParticipantMultiplicity {
+                    document_id: document.id,
+                    participant_id: draft.target.clone(),
+                    multiplicity,
+                }])
+            },
+        )
+    }
+    pub(super) fn apply_message_ref_draft(&mut self) -> Result<(), String> {
+        self.apply_typed_draft(
+            |app| &mut app.message_ref_draft,
+            |draft, document| {
+                let message_ref =
+                    build_ref(&draft.value).inspect_err(|e| draft.error = e.clone())?;
+                Ok(vec![Mutation::SetMessageFlowReference {
+                    document_id: document.id,
+                    flow_id: draft.target.clone(),
+                    message_ref,
+                }])
+            },
+        )
     }
 }
 

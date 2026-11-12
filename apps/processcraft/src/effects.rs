@@ -31,6 +31,22 @@ pub enum ResultValue {
     LostWrite(Box<WriteContext>),
     Failed(String),
 }
+/// Largest BPMN input read for an import.
+const IMPORT_LIMIT: usize = 32 * 1024 * 1024;
+fn import_result(
+    result: Result<interchange::PreparedImport, String>,
+    session: String,
+    generation: u64,
+) -> ResultValue {
+    match result {
+        Ok(prepared) => ResultValue::Import {
+            session,
+            generation,
+            prepared: Box::new(prepared),
+        },
+        Err(error) => ResultValue::Failed(format!("Import failed: {error}")),
+    }
+}
 pub struct UncertainExport {
     writer: WriterSession,
     bytes: Vec<u8>,
@@ -117,7 +133,7 @@ impl Effects {
     pub fn import(&mut self, ctx: egui::Context, path: PathBuf, session: String, generation: u64) {
         self.start(ctx, "Importing BPMN…", move || {
             let result = FileGrant::new(&path, Access::ReadOnly)
-                .and_then(|g| g.read_limited(32 * 1024 * 1024))
+                .and_then(|g| g.read_limited(IMPORT_LIMIT))
                 .map_err(|e| e.to_string())
                 .and_then(|bytes| {
                     interchange::prepare_import(
@@ -126,14 +142,25 @@ impl Effects {
                     )
                     .map_err(|e| e.detail)
                 });
-            match result {
-                Ok(prepared) => ResultValue::Import {
-                    session,
-                    generation,
-                    prepared: Box::new(prepared),
-                },
-                Err(error) => ResultValue::Failed(format!("Import failed: {error}")),
-            }
+            import_result(result, session, generation)
+        });
+    }
+    /// Import BPMN XML held in memory (pasted from the OS clipboard) through the same path.
+    pub fn import_bytes(
+        &mut self,
+        ctx: egui::Context,
+        bytes: Vec<u8>,
+        name: String,
+        session: String,
+        generation: u64,
+    ) {
+        self.start(ctx, "Importing BPMN…", move || {
+            let result = if bytes.len() > IMPORT_LIMIT {
+                Err("the BPMN text is larger than 32 MiB".into())
+            } else {
+                interchange::prepare_import(&bytes, &name).map_err(|e| e.detail)
+            };
+            import_result(result, session, generation)
         });
     }
     pub fn export(

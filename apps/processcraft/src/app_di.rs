@@ -27,6 +27,85 @@ pub(super) enum DiDraft {
     },
 }
 
+impl DiDraft {
+    /// DI attributes, label, and representation metadata as one batch.
+    fn mutations(
+        &self,
+        document_id: processcraft_core::ids::DocumentId,
+    ) -> Result<Vec<Mutation>, String> {
+        Ok(match self {
+            DiDraft::Shape {
+                diagram,
+                shape,
+                horizontal,
+                marker,
+                label,
+                metadata,
+                is_message_visible,
+                band_kind,
+                band_owner,
+                ..
+            } => vec![
+                Mutation::SetShapeDiAttributes {
+                    document_id,
+                    diagram_id: diagram.clone(),
+                    shape_id: shape.clone(),
+                    is_horizontal: *horizontal,
+                    is_marker_visible: *marker,
+                },
+                Mutation::SetShapeLabel {
+                    document_id,
+                    diagram_id: diagram.clone(),
+                    shape_id: shape.clone(),
+                    label: label.build()?,
+                    label_visibility: label.visibility(),
+                },
+                Mutation::SetShapeRepresentationMetadata {
+                    document_id,
+                    diagram_id: diagram.clone(),
+                    shape_id: shape.clone(),
+                    metadata: metadata.build()?,
+                    is_message_visible: *is_message_visible,
+                    participant_band_kind: *band_kind,
+                    choreography_activity_shape: build_di_reference(band_owner)?,
+                },
+            ],
+            DiDraft::Edge {
+                diagram,
+                edge,
+                source,
+                target,
+                label,
+                metadata,
+                message_kind,
+                ..
+            } => vec![
+                Mutation::SetEdgeDiEndpoints {
+                    document_id,
+                    diagram_id: diagram.clone(),
+                    edge_id: edge.clone(),
+                    source_element: source.clone(),
+                    target_element: target.clone(),
+                },
+                Mutation::SetEdgeLabel {
+                    document_id,
+                    diagram_id: diagram.clone(),
+                    edge_id: edge.clone(),
+                    label: label.build()?,
+                    label_visibility: label.visibility(),
+                },
+                Mutation::SetEdgeRepresentationMetadata {
+                    document_id,
+                    diagram_id: diagram.clone(),
+                    edge_id: edge.clone(),
+                    metadata: metadata.build()?,
+                    message_visible_kind: *message_kind,
+                },
+            ],
+        })
+    }
+}
+
 pub(super) struct LabelDraft {
     value: Option<processcraft_core::model::Label>,
     explicit: bool,
@@ -158,7 +237,24 @@ impl LabelDraft {
         ui.collapsing("Label diagram metadata", |ui| self.metadata.ui(ui));
         Ok(())
     }
+    /// The style choice checks `ui` reports, without drawing.
+    fn validate(&self) -> Result<(), String> {
+        use processcraft_core::model::DiStyleRef;
+        if let Some(label) = &self.value {
+            match self.kind {
+                1 if !matches!(label.style_ref, Some(DiStyleRef::Local(_))) => {
+                    return Err("Choose a diagram style.".into());
+                }
+                2 => {
+                    super::catalog::q_build(&self.qualified)?;
+                }
+                _ => {}
+            }
+        }
+        Ok(())
+    }
     fn build(&self) -> Result<Option<Label>, String> {
+        self.validate()?;
         let mut value = self.value.clone();
         if let Some(label) = &mut value {
             label.di_metadata = self.metadata.build()?;
@@ -374,13 +470,9 @@ impl ProcessCraft {
         }
         let draft = self.di_draft.as_mut().unwrap();
         ui.strong("Diagram representation");
-        let mut change = None;
-        let mut label_change = None;
-        let mut representation_change = None;
+        let mut apply = false;
         match draft {
             DiDraft::Shape {
-                diagram: diagram_id,
-                shape,
                 horizontal,
                 marker,
                 horizontal_allowed,
@@ -391,6 +483,7 @@ impl ProcessCraft {
                 band_kind,
                 band_owner,
                 band_allowed,
+                ..
             } => {
                 optional_flag(
                     ui,
@@ -480,41 +573,17 @@ impl ProcessCraft {
                     )
                     .clicked()
                 {
-                    representation_change = Some(Mutation::SetShapeRepresentationMetadata {
-                        document_id: document.id,
-                        diagram_id: diagram_id.clone(),
-                        shape_id: shape.clone(),
-                        metadata: metadata.build().expect("validated metadata"),
-                        is_message_visible: *is_message_visible,
-                        participant_band_kind: *band_kind,
-                        choreography_activity_shape: build_di_reference(band_owner)
-                            .expect("validated reference"),
-                    });
-                    label_change = Some(Mutation::SetShapeLabel {
-                        document_id: document.id,
-                        diagram_id: diagram_id.clone(),
-                        shape_id: shape.clone(),
-                        label: label.build().expect("validated label"),
-                        label_visibility: label.visibility(),
-                    });
-                    change = Some(Mutation::SetShapeDiAttributes {
-                        document_id: document.id,
-                        diagram_id: diagram_id.clone(),
-                        shape_id: shape.clone(),
-                        is_horizontal: *horizontal,
-                        is_marker_visible: *marker,
-                    });
+                    apply = true;
                 }
             }
             DiDraft::Edge {
-                diagram: diagram_id,
-                edge,
                 source,
                 target,
                 label,
                 metadata,
                 message_kind,
                 message_allowed,
+                ..
             } => {
                 let candidates = diagram
                     .shapes
@@ -594,42 +663,22 @@ impl ProcessCraft {
                     )
                     .clicked()
                 {
-                    representation_change = Some(Mutation::SetEdgeRepresentationMetadata {
-                        document_id: document.id,
-                        diagram_id: diagram_id.clone(),
-                        edge_id: edge.clone(),
-                        metadata: metadata.build().expect("validated metadata"),
-                        message_visible_kind: *message_kind,
-                    });
-                    label_change = Some(Mutation::SetEdgeLabel {
-                        document_id: document.id,
-                        diagram_id: diagram_id.clone(),
-                        edge_id: edge.clone(),
-                        label: label.build().expect("validated label"),
-                        label_visibility: label.visibility(),
-                    });
-                    change = Some(Mutation::SetEdgeDiEndpoints {
-                        document_id: document.id,
-                        diagram_id: diagram_id.clone(),
-                        edge_id: edge.clone(),
-                        source_element: source.clone(),
-                        target_element: target.clone(),
-                    });
+                    apply = true;
                 }
             }
         }
-        if let Some(change) = change
-            && self.ctl.mutate(vec![
-                change,
-                label_change.expect("label change accompanies diagram change"),
-                representation_change.expect("representation change accompanies diagram change"),
-            ])
-        {
-            self.di_draft = None;
+        if apply {
+            let _ = self.apply_di_draft();
         }
         if ui.button("Cancel diagram editing").clicked() {
             self.di_draft = None;
         }
+    }
+    pub(super) fn apply_di_draft(&mut self) -> Result<(), String> {
+        self.apply_typed_draft(
+            |app| &mut app.di_draft,
+            |draft, document| draft.mutations(document.id),
+        )
     }
 }
 
@@ -660,24 +709,11 @@ mod tests {
             band_allowed: false,
         });
         assert!(!app.commit_draft());
-        app.select(None);
-        app.history(Request::Undo);
-        assert_eq!(app.selected, selected);
-        assert!(matches!(
-            app.di_draft,
-            Some(DiDraft::Shape {
-                horizontal: None,
-                marker: Some(false),
-                ..
-            })
-        ));
-        let document_id = document.id;
-        let diagram_id = diagram.id.selector();
-        let shape_id = shape.id.selector();
+        // Other edits that only commit simple fields still wait for the open draft.
         assert!(!app.remove_shape_representation(
-            document_id,
-            diagram_id.clone(),
-            shape_id.clone()
+            document.id,
+            diagram.id.selector(),
+            shape.id.selector()
         ));
         assert_eq!(
             app.ctl.session.snapshot().project.documents[0].diagrams[0]
@@ -685,15 +721,11 @@ mod tests {
                 .len(),
             1
         );
-        assert!(app.di_draft.is_some());
-        app.di_draft = None;
-        assert!(app.ctl.mutate(vec![Mutation::SetShapeDiAttributes {
-            document_id,
-            diagram_id,
-            shape_id,
-            is_horizontal: None,
-            is_marker_visible: Some(false)
-        }]));
+        // A selection change applies the draft with its optional flags.
+        assert!(selected.is_some());
+        app.select(None);
+        assert!(app.selected.is_none(), "{}", app.ctl.error);
+        assert!(app.di_draft.is_none());
         assert_eq!(
             app.ctl.session.snapshot().project.documents[0].diagrams[0].shapes[0].is_marker_visible,
             Some(false)

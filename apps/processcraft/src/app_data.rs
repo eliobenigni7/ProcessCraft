@@ -9,6 +9,16 @@ use processcraft_core::bpmn_data::{
 };
 type DataValues = (Vec<DataStore>, Vec<DataObject>, Vec<DataAssociation>);
 
+/// Human label of a data association direction.
+pub(super) fn data_kind_label(
+    kind: processcraft_core::bpmn_data::DataAssociationKind,
+) -> &'static str {
+    match kind {
+        processcraft_core::bpmn_data::DataAssociationKind::Input => "Input",
+        processcraft_core::bpmn_data::DataAssociationKind::Output => "Output",
+    }
+}
+
 #[derive(Clone, Default)]
 pub(super) struct ItemDraft {
     subject: Option<QNameDraft>,
@@ -1041,7 +1051,7 @@ impl DataDraft {
                             }
                         });
                     egui::ComboBox::from_label("Direction")
-                        .selected_text(format!("{:?}", draft.value.kind))
+                        .selected_text(data_kind_label(draft.value.kind))
                         .show_ui(ui, |ui| {
                             ui.selectable_value(
                                 &mut draft.value.kind,
@@ -1476,8 +1486,28 @@ impl ProcessCraft {
             )
             .clicked()
         {
-            match draft.build() {
-                Ok((data_stores, data_objects, data_associations)) => {
+            let _ = self.apply_data_draft();
+        }
+        if ui
+            .add_enabled(
+                self.expression_draft.is_none(),
+                egui::Button::new("Cancel data editing"),
+            )
+            .clicked()
+        {
+            self.data_draft = None;
+        }
+    }
+    pub(super) fn apply_data_draft(&mut self) -> Result<(), String> {
+        if self.data_draft.is_none() {
+            return Ok(());
+        }
+        self.apply_typed_draft(
+            |app| &mut app.data_draft,
+            |draft, document| {
+                let (data_stores, data_objects, data_associations) =
+                    draft.build().inspect_err(|e| draft.error = e.clone())?;
+                {
                     let mut mutations = vec![
                         Mutation::SetDataStores {
                             document_id: document.id,
@@ -1536,40 +1566,21 @@ impl ProcessCraft {
                         }
                         Ok(())
                     })();
-                    match extras {
-                        Ok(()) => {
-                            if self.ctl.mutate(mutations) {
-                                self.data_draft = None;
-                                if let Some(selected) = &self.selected {
-                                    let current = self.ctl.session.snapshot();
-                                    self.bpmn_details = current
-                                        .project
-                                        .documents
-                                        .get(self.doc)
-                                        .and_then(|document| {
-                                            processcraft_core::queries::find_node(
-                                                document, selected,
-                                            )
-                                        })
-                                        .and_then(|node| node.details.clone());
-                                }
-                            }
-                        }
-                        Err(error) => draft.error = error,
-                    }
+                    extras.inspect_err(|e| draft.error = e.clone())?;
+                    Ok(mutations)
                 }
-                Err(error) => draft.error = error,
-            }
+            },
+        )?;
+        if let Some(selected) = &self.selected {
+            let current = self.ctl.session.snapshot();
+            self.bpmn_details = current
+                .project
+                .documents
+                .get(self.doc)
+                .and_then(|document| processcraft_core::queries::find_node(document, selected))
+                .and_then(|node| node.details.clone());
         }
-        if ui
-            .add_enabled(
-                self.expression_draft.is_none(),
-                egui::Button::new("Cancel data editing"),
-            )
-            .clicked()
-        {
-            self.data_draft = None;
-        }
+        Ok(())
     }
 }
 
@@ -1826,16 +1837,24 @@ mod tests {
         let snapshot = app.ctl.session.snapshot();
         app.ctl.session.mark_saved(snapshot.content_id);
         let document = &snapshot.project.documents[0];
-        let scope = processcraft_core::queries::scopes(document)
-            .into_iter()
-            .next()
-            .unwrap();
-        app.data_draft = Some(DataDraft::new(document, scope));
+        let scope = || {
+            processcraft_core::queries::scopes(document)
+                .into_iter()
+                .next()
+                .unwrap()
+        };
+        app.data_draft = Some(DataDraft::new(document, scope()));
         app.draft_dirty = false;
-        let selected = app.selected.clone();
         let session = app.ctl.session.id();
+        // An unchanged draft applies as a no-op on a selection change: the selection moves,
+        // and history, redo, and the saved state are untouched.
         app.select(None);
-        assert_eq!(app.selected, selected);
+        assert!(app.selected.is_none(), "{}", app.ctl.error);
+        assert!(app.data_draft.is_none());
+        let after = app.ctl.session.snapshot();
+        assert!(!after.dirty);
+        assert_eq!(after.undo_count, snapshot.undo_count);
+        app.data_draft = Some(DataDraft::new(document, scope()));
         app.new_or_open("new");
         assert_eq!(app.confirm, Some("new"));
         assert_eq!(app.ctl.session.id(), session);
@@ -1851,7 +1870,7 @@ mod tests {
     }
 
     #[test]
-    fn data_draft_guards_navigation_and_history() {
+    fn data_draft_applies_before_history() {
         let mut app = ProcessCraft::default();
         app.select(None);
         let snapshot = app.ctl.session.snapshot();
@@ -1877,20 +1896,21 @@ mod tests {
         app.data_draft = Some(draft);
         app.draft_dirty = true;
         assert!(!app.commit_draft());
-        app.select(Some("other".parse().unwrap()));
+        // Undo first applies the valid draft (one step), then undoes it.
         app.history(Request::Undo);
-        assert!(app.selected.is_none());
-        assert!(app.data_draft.is_some());
-        let draft = app.data_draft.as_ref().unwrap();
-        let (_, data_objects, _) = draft.build().unwrap();
-        let document_id = document.id;
-        let scope_id = draft.scope.clone();
-        assert!(app.ctl.mutate(vec![Mutation::SetScopeDataObjects {
-            document_id,
-            scope_id,
-            data_objects
-        }]));
-        app.data_draft = None;
+        assert!(app.data_draft.is_none(), "{}", app.ctl.error);
+        assert!(
+            app.ctl.session.snapshot().project.documents[0].processes[0]
+                .data_objects
+                .is_empty()
+        );
+        app.history(Request::Redo);
+        assert_eq!(
+            app.ctl.session.snapshot().project.documents[0].processes[0]
+                .data_objects
+                .len(),
+            1
+        );
         app.history(Request::Undo);
         assert!(
             app.ctl.session.snapshot().project.documents[0].processes[0]

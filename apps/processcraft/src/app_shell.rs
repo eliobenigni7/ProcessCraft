@@ -334,7 +334,8 @@ impl ProcessCraft {
         let toolbar_room = ui.available_width() >= 500.0;
         ui.spacing_mut().item_spacing.y = 3.0;
         let can_undo = snap.undo_count > 0 || self.has_drafts();
-        let can_redo = snap.redo_count > 0 && !self.has_drafts();
+        // Redo first applies open drafts; an unchanged draft leaves the redo stack intact.
+        let can_redo = snap.redo_count > 0;
         let session = self.ctl.session.id();
         if self.shell.session != session {
             self.shell.session = session;
@@ -963,7 +964,7 @@ impl ProcessCraft {
             self.ctl.error = "Save or discard the dictionary draft before navigating.".into();
             false
         } else {
-            self.commit_draft()
+            self.commit_all_drafts()
         }
     }
     fn new_model(&mut self) {
@@ -1049,14 +1050,23 @@ impl ProcessCraft {
                 .diagrams
                 .iter()
                 .find(|diagram| self.diagram_id.as_ref().is_none_or(|id| diagram.id == *id))?;
-            processcraft_core::queries::choreography_scopes(document)
-                .into_iter()
+            self.choreography_scope_infos(document, snap.generation)
+                .iter()
                 .find(|scope| scope.owner == diagram.plane)
-                .map(|scope| (document, scope))
+                .map(|scope| (document, scope.owner.clone(), scope.graph))
         });
-        if let Some((document, scope)) = active_choreography {
+        if let Some((document, owner, graph)) = active_choreography {
             ui.label("Choreography scope");
-            if scope.root.graph.is_none() {
+            // The borrowed scope is only needed when an element is added.
+            let add = |app: &mut Self, kind: &str| {
+                if let Some(scope) = processcraft_core::queries::choreography_scopes(document)
+                    .into_iter()
+                    .find(|scope| scope.owner == owner)
+                {
+                    app.add_choreography_element(document, &scope, kind, snap.generation);
+                }
+            };
+            if !graph {
                 ui.label("Convert the legacy choreography to a graph from the Diagram menu before adding graph elements.");
             } else {
                 ui.add_enabled_ui(editable, |ui| {
@@ -1071,7 +1081,7 @@ impl ProcessCraft {
                         "Sequence flow",
                     ] {
                         if ui.button(kind).clicked() {
-                            self.add_choreography_element(document, &scope, kind, snap.generation);
+                            add(self, kind);
                         }
                     }
                     ui.menu_button("More choreography elements…", |ui| {
@@ -1084,12 +1094,7 @@ impl ProcessCraft {
                             "Event-based gateway",
                         ] {
                             if ui.button(kind).clicked() {
-                                self.add_choreography_element(
-                                    document,
-                                    &scope,
-                                    kind,
-                                    snap.generation,
-                                );
+                                add(self, kind);
                                 ui.close();
                             }
                         }
@@ -1120,34 +1125,22 @@ impl ProcessCraft {
                         self.add(kind);
                     } else if item.drag_started() {
                         // Drag onto the canvas to place it there.
-                        self.canvas.palette_drag = Some(kind);
+                        self.canvas.palette_drag = Some(kind.into());
                     }
                 }
             });
             ui.menu_button("More BPMN elements…", |ui| {
                 ui.add_enabled_ui(editable, |ui| {
-                    for (label, kind) in [
-                        ("Text annotation", NodeKind::TextAnnotation),
-                        ("Service task", NodeKind::ServiceTask),
-                        ("Send task", NodeKind::SendTask),
-                        ("Receive task", NodeKind::ReceiveTask),
-                        ("Script task", NodeKind::ScriptTask),
-                        ("Business rule task", NodeKind::BusinessRuleTask),
-                        ("Inclusive gateway", NodeKind::InclusiveGateway),
-                        ("Complex gateway", NodeKind::ComplexGateway),
-                        ("Event-based gateway", NodeKind::EventBasedGateway),
-                        ("Intermediate throw event", NodeKind::IntermediateThrowEvent),
-                        ("Intermediate catch event", NodeKind::IntermediateCatchEvent),
-                        (
-                            "Boundary timer on selected activity",
-                            NodeKind::BoundaryEvent,
-                        ),
-                        ("Subprocess", NodeKind::SubProcess),
-                        ("Ad-hoc subprocess", NodeKind::AdHocSubProcess),
-                        ("Transaction", NodeKind::Transaction),
-                    ] {
-                        if ui.button(label).clicked() {
-                            self.add(kind);
+                    for (label, entry) in more_palette_entries() {
+                        // Click places the element; drag it onto the canvas to drop it there.
+                        let item = ui
+                            .add(egui::Button::new(label).sense(egui::Sense::click_and_drag()))
+                            .on_hover_text("Click to add, or drag onto the canvas");
+                        if item.clicked() {
+                            self.add_entry(entry);
+                            ui.close();
+                        } else if item.drag_started() {
+                            self.canvas.palette_drag = Some(entry);
                             ui.close();
                         }
                     }
@@ -1718,6 +1711,46 @@ fn diagram_label(doc: &BpmnDocument, diagram: &Diagram, index: usize) -> String 
         })
         .filter(|name| !name.is_empty())
         .unwrap_or_else(|| format!("Diagram {}", index + 1))
+}
+/// "More BPMN elements" palette entries; catch and boundary events name their trigger, so no
+/// trigger (or timer) is picked silently.
+pub(super) fn more_palette_entries() -> Vec<(&'static str, super::canvas::PaletteEntry)> {
+    use processcraft_core::replace::Trigger;
+    let entry = |kind, trigger| super::canvas::PaletteEntry { kind, trigger };
+    vec![
+        ("Text annotation", NodeKind::TextAnnotation.into()),
+        ("Service task", NodeKind::ServiceTask.into()),
+        ("Send task", NodeKind::SendTask.into()),
+        ("Receive task", NodeKind::ReceiveTask.into()),
+        ("Script task", NodeKind::ScriptTask.into()),
+        ("Business rule task", NodeKind::BusinessRuleTask.into()),
+        ("Inclusive gateway", NodeKind::InclusiveGateway.into()),
+        ("Complex gateway", NodeKind::ComplexGateway.into()),
+        ("Event-based gateway", NodeKind::EventBasedGateway.into()),
+        (
+            "Intermediate throw event",
+            NodeKind::IntermediateThrowEvent.into(),
+        ),
+        (
+            "Message intermediate catch event",
+            entry(NodeKind::IntermediateCatchEvent, Some(Trigger::Message)),
+        ),
+        (
+            "Timer intermediate catch event",
+            entry(NodeKind::IntermediateCatchEvent, Some(Trigger::Timer)),
+        ),
+        (
+            "Message boundary event (selected activity)",
+            entry(NodeKind::BoundaryEvent, Some(Trigger::Message)),
+        ),
+        (
+            "Timer boundary event (selected activity)",
+            entry(NodeKind::BoundaryEvent, Some(Trigger::Timer)),
+        ),
+        ("Subprocess", NodeKind::SubProcess.into()),
+        ("Ad-hoc subprocess", NodeKind::AdHocSubProcess.into()),
+        ("Transaction", NodeKind::Transaction.into()),
+    ]
 }
 fn palette_item(ui: &mut egui::Ui, kind: NodeKind, label: &str) -> egui::Response {
     let (rect, response) = ui.allocate_exact_size(

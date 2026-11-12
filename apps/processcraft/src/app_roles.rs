@@ -453,8 +453,24 @@ impl ProcessCraft {
                 egui::Button::new("Apply roles and properties"),
             )
             .clicked()
+            && self.apply_activity_roles_draft().is_ok()
         {
-            match (
+            self.restore_selection();
+        }
+        if ui
+            .add_enabled(
+                self.expression_draft.is_none(),
+                egui::Button::new("Cancel roles and properties"),
+            )
+            .clicked()
+        {
+            self.activity_roles_draft = None;
+        }
+    }
+    pub(super) fn apply_activity_roles_draft(&mut self) -> Result<(), String> {
+        self.apply_typed_draft(
+            |app| &mut app.activity_roles_draft,
+            |draft, document| match (
                 draft.roles.build(),
                 draft
                     .properties
@@ -466,27 +482,25 @@ impl ProcessCraft {
                     let mut value = draft.value.clone();
                     value.resource_roles = roles;
                     value.properties = properties;
-                    if self.ctl.mutate(vec![Mutation::SetActivityProperties {
+                    // Untouched on an element without activity properties: nothing to write.
+                    if value == Default::default()
+                        && processcraft_core::queries::find_node(document, &draft.target)
+                            .is_some_and(|node| node.activity.is_none())
+                    {
+                        return Ok(Vec::new());
+                    }
+                    Ok(vec![Mutation::SetActivityProperties {
                         document_id: document.id,
                         element_id: draft.target.clone(),
                         activity: Some(value),
-                    }]) {
-                        self.activity_roles_draft = None;
-                        self.restore_selection();
-                    }
+                    }])
                 }
-                (Err(error), _) | (_, Err(error)) => draft.error = error,
-            }
-        }
-        if ui
-            .add_enabled(
-                self.expression_draft.is_none(),
-                egui::Button::new("Cancel roles and properties"),
-            )
-            .clicked()
-        {
-            self.activity_roles_draft = None;
-        }
+                (Err(error), _) | (_, Err(error)) => {
+                    draft.error = error.clone();
+                    Err(error)
+                }
+            },
+        )
     }
 }
 
@@ -528,21 +542,53 @@ mod tests {
         assert_eq!(role_count(&app), 1);
     }
     #[test]
-    fn activity_role_draft_locks_ordinary_properties_and_navigation() {
+    fn activity_role_draft_applies_on_selection_change_or_refuses_when_invalid() {
         let mut app = ProcessCraft::default();
         app.add(NodeKind::Task);
         let target = app.selected.clone().unwrap();
-        app.activity_roles_draft = Some(ActivityRolesDraft {
+        let draft = |roles| ActivityRolesDraft {
             target: target.clone(),
             value: Default::default(),
-            roles: RolesDraft::default(),
+            roles,
             properties: vec![],
             error: String::new(),
-        });
+        };
+        // An invalid draft keeps the selection and says why.
+        let mut invalid = RolesDraft::new(&[ResourceRole {
+            id: None,
+            base: None,
+            name: None,
+            kind: ResourceRoleKind::HumanPerformer,
+            assignment: ResourceRoleAssignment::None,
+        }]);
+        invalid.roles[0].assignment = AssignmentDraft::Resource {
+            reference: Some(ReferenceDraft::Qualified(
+                super::super::catalog::QNameDraft {
+                    namespace: "urn:resource".into(),
+                    local: "invalid name".into(),
+                },
+            )),
+            bindings: vec![],
+        };
+        app.activity_roles_draft = Some(draft(invalid));
         assert!(app.ordinary_property_locked());
         assert!(!app.commit_draft());
         app.select(None);
-        assert_eq!(app.selected, Some(target));
+        assert_eq!(app.selected, Some(target.clone()));
+        assert!(
+            app.ctl
+                .error
+                .starts_with("The activity roles draft is not valid"),
+            "{}",
+            app.ctl.error
+        );
+        // An untouched draft closes without a history step.
+        app.activity_roles_draft = Some(draft(RolesDraft::default()));
+        let undo = app.ctl.session.snapshot().undo_count;
+        app.select(None);
+        assert!(app.selected.is_none(), "{}", app.ctl.error);
+        assert!(app.activity_roles_draft.is_none());
+        assert_eq!(app.ctl.session.snapshot().undo_count, undo);
     }
     #[test]
     fn role_draft_preserves_identity_metadata_and_partial_reference() {

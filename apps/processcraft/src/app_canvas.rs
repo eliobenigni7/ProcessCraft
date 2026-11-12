@@ -12,6 +12,7 @@ use processcraft_core::{
     model::{Bounds, FlowKind, NodeKind, Point, Shape},
 };
 use processcraft_render::{Appearance, HitGeometry, Viewport};
+use std::sync::Arc;
 
 const MIN_ZOOM: f32 = 0.125;
 const MAX_ZOOM: f32 = 8.0;
@@ -104,16 +105,20 @@ fn edit_route(points: &[Point], part: EdgePart, dx: f64, dy: f64) -> Vec<Point> 
     }
     out
 }
-/// Snap correction for a drag: element snapping of the first dragged shape against the shapes
-/// that are not dragged and do not contain it, then the optional 10 px grid on free axes.
+/// Snap correction for a drag (bpmn-js): the first dragged shape snaps to its siblings (shapes
+/// of elements in the same scope; for pools, lanes, and artifacts every shape that does not
+/// contain it) and its mid to the mids of the elements it is connected to, then the optional
+/// 10 px grid on free axes.
 fn snap_drag(
+    d: &processcraft_core::model::BpmnDocument,
     diagram: &processcraft_core::model::Diagram,
     items: &[(ElementSelector, Bounds)],
     offset: (f64, f64),
     tolerance: f64,
     grid: bool,
 ) -> processcraft_core::geometry::Snap {
-    let Some((_, first)) = items.first() else {
+    use processcraft_core::{bpmn_activity::ModelReference, queries, rules};
+    let Some((first_id, first)) = items.first() else {
         return Default::default();
     };
     let moved = Bounds {
@@ -127,13 +132,55 @@ fn snap_drag(
             && b.x + b.width >= moved.x + moved.width
             && b.y + b.height >= moved.y + moved.height
     };
-    let others: Vec<Bounds> = diagram
+    let element = diagram
         .shapes
         .iter()
-        .filter(|s| !items.iter().any(|(id, _)| s.id == *id) && !contains(&s.bounds))
+        .find(|s| s.id == *first_id)
+        .map(|s| s.element.clone());
+    let scope_of = |id: &ElementSelector| {
+        rules::locate(d, id)
+            .filter(|l| l.node.is_some())
+            .and_then(|l| l.scope)
+    };
+    let scope = element.as_ref().and_then(scope_of);
+    let candidates = diagram
+        .shapes
+        .iter()
+        .filter(|s| !items.iter().any(|(id, _)| s.id == *id));
+    let siblings: Vec<Bounds> = candidates
+        .clone()
+        .filter(|s| match &scope {
+            Some(scope) => scope_of(&s.element).as_ref() == Some(scope),
+            None => !contains(&s.bounds),
+        })
         .map(|s| s.bounds.clone())
         .collect();
-    let mut snap = processcraft_core::geometry::snap(&moved, &others, &[], tolerance);
+    // Elements at the other end of a flow shown in this diagram.
+    let local = |r: &Option<ModelReference>| match r {
+        Some(ModelReference::Local(id)) => Some(id.clone()),
+        _ => None,
+    };
+    let partners: Vec<ElementSelector> = element
+        .iter()
+        .flat_map(|element| {
+            diagram.edges.iter().filter_map(move |edge| {
+                let flow = queries::find_flow(d, &edge.element)?;
+                let (source, target) = (local(&flow.source)?, local(&flow.target)?);
+                if source == *element {
+                    Some(target)
+                } else if target == *element {
+                    Some(source)
+                } else {
+                    None
+                }
+            })
+        })
+        .collect();
+    let connected: Vec<Bounds> = candidates
+        .filter(|s| partners.contains(&s.element))
+        .map(|s| s.bounds.clone())
+        .collect();
+    let mut snap = processcraft_core::geometry::snap(&moved, &siblings, &connected, tolerance);
     if grid {
         let (cx, cy) = (moved.x + moved.width / 2.0, moved.y + moved.height / 2.0);
         if snap.guide_x.is_none() {
@@ -206,6 +253,178 @@ struct LabelEdit {
     center: (f64, f64),
     width: f64,
     focused: bool,
+    /// Text annotation body: multi-line, Ctrl+Enter or focus loss commits.
+    annotation: bool,
+    /// Editor height in diagram units (annotations).
+    height: f64,
+}
+/// A palette entry: the element kind and, for catch and boundary events, the trigger the user
+/// picked (message, timer) instead of a silent default.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct PaletteEntry {
+    pub(super) kind: NodeKind,
+    pub(super) trigger: Option<processcraft_core::replace::Trigger>,
+}
+impl From<NodeKind> for PaletteEntry {
+    fn from(kind: NodeKind) -> Self {
+        Self {
+            kind,
+            trigger: None,
+        }
+    }
+}
+/// Event definition the palette gives a picked trigger: a message without a message reference,
+/// a timer without a time (the user sets it in the properties).
+fn trigger_definition(
+    trigger: processcraft_core::replace::Trigger,
+) -> Option<processcraft_core::bpmn_model::EventDefinition> {
+    use processcraft_core::{bpmn_model::EventDefinition, replace::Trigger};
+    match trigger {
+        Trigger::Message => Some(EventDefinition::Message {
+            id: None,
+            base: None,
+            message_ref: None,
+            operation_ref: None,
+        }),
+        Trigger::Timer => Some(EventDefinition::Timer {
+            id: None,
+            base: None,
+            kind: None,
+            expression: None,
+        }),
+        _ => None,
+    }
+}
+/// Give an event node the picked trigger's definition.
+pub(super) fn apply_trigger(
+    node: &mut processcraft_core::model::Node,
+    trigger: Option<processcraft_core::replace::Trigger>,
+) {
+    if let Some(definition) = trigger.and_then(trigger_definition)
+        && let Some(processcraft_core::bpmn_model::NodeDetails::Event { definitions, .. }) =
+            &mut node.details
+    {
+        *definitions = vec![definition];
+    }
+}
+/// `SetNodeDetails` giving the node created by `batch` (a core builder's output) the picked
+/// trigger, to submit in the same batch after the create mutation.
+pub(super) fn trigger_mutation(
+    batch: &[Mutation],
+    node: &ElementSelector,
+    trigger: Option<processcraft_core::replace::Trigger>,
+) -> Option<Mutation> {
+    trigger?;
+    batch.iter().find_map(|m| match m {
+        Mutation::CreateElement {
+            document_id,
+            element,
+            ..
+        } if element.id == *node => {
+            let mut element = element.clone();
+            apply_trigger(&mut element, trigger);
+            Some(Mutation::SetNodeDetails {
+                document_id: *document_id,
+                element_id: node.clone(),
+                details: element.details,
+            })
+        }
+        _ => None,
+    })
+}
+/// Inline editor for `element` (bpmn-js direct editing): its name, or a text annotation's text
+/// (multi-line). Placed over `at` (the hit region) or the element's shape, or the middle of its
+/// edge. Associations have no label (`Err(None)`); an annotation whose text is rich XML content
+/// is refused with the reason, so it is never flattened.
+fn label_edit(
+    d: &processcraft_core::model::BpmnDocument,
+    diagram: &processcraft_core::model::Diagram,
+    element: &ElementSelector,
+    at: Option<&Bounds>,
+) -> Result<LabelEdit, Option<&'static str>> {
+    use processcraft_core::{bpmn_model::NodeDetails, queries};
+    if queries::find_flow(d, element).is_some_and(|f| f.kind == FlowKind::Association) {
+        return Err(None);
+    }
+    let shape = diagram.shapes.iter().find(|s| s.element == *element);
+    let (center, width, height) = if let Some(b) = at.or(shape.map(|s| &s.bounds)) {
+        (
+            (b.x + b.width / 2.0, b.y + b.height / 2.0),
+            b.width,
+            b.height,
+        )
+    } else {
+        let points = &diagram
+            .edges
+            .iter()
+            .find(|e| e.element == *element)
+            .ok_or(None)?
+            .waypoints;
+        let mid = points.get(points.len() / 2).ok_or(None)?;
+        let prev = &points[(points.len() / 2).saturating_sub(1)];
+        (((mid.x + prev.x) / 2.0, (mid.y + prev.y) / 2.0), 120.0, 0.0)
+    };
+    let node = queries::find_node(d, element);
+    let annotation = node.filter(|n| n.kind == NodeKind::TextAnnotation);
+    let original = match annotation.map(|n| &n.details) {
+        Some(Some(NodeDetails::TextAnnotation {
+            text: Some(body), ..
+        })) => body
+            .plain_text()
+            .ok_or(Some(
+                "This annotation has formatted content; edit it in the Properties panel.",
+            ))?
+            .to_owned(),
+        _ => queries::element_name(d, element)
+            .unwrap_or_default()
+            .to_owned(),
+    };
+    Ok(LabelEdit {
+        element: element.clone(),
+        text: original.clone(),
+        original,
+        center,
+        width,
+        focused: false,
+        annotation: annotation.is_some(),
+        height: height.max(60.0),
+    })
+}
+/// Popup offering elements to create where a connection was dropped on empty canvas.
+struct AppendMenu {
+    source: ElementSelector,
+    at: Point,
+    screen: Pos2,
+}
+/// Entries of the append popup (bpmn-js append menu subset).
+const APPEND_ENTRIES: [(&str, NodeKind, Option<processcraft_core::replace::Trigger>); 8] = [
+    ("Task", NodeKind::Task, None),
+    ("User task", NodeKind::UserTask, None),
+    ("Exclusive gateway", NodeKind::ExclusiveGateway, None),
+    ("Parallel gateway", NodeKind::ParallelGateway, None),
+    (
+        "Intermediate throw event",
+        NodeKind::IntermediateThrowEvent,
+        None,
+    ),
+    (
+        "Message intermediate catch event",
+        NodeKind::IntermediateCatchEvent,
+        Some(processcraft_core::replace::Trigger::Message),
+    ),
+    (
+        "Timer intermediate catch event",
+        NodeKind::IntermediateCatchEvent,
+        Some(processcraft_core::replace::Trigger::Timer),
+    ),
+    ("End event", NodeKind::EndEvent, None),
+];
+/// Whether `text` (from the OS clipboard) is a BPMN 2.0 XML document.
+fn looks_like_bpmn(text: &str) -> bool {
+    let text = text.trim_start_matches('\u{feff}').trim_start();
+    text.starts_with('<')
+        && text.contains("http://www.omg.org/spec/BPMN/20100524/MODEL")
+        && text.contains("definitions")
 }
 
 #[derive(Default)]
@@ -228,9 +447,57 @@ pub(super) struct CanvasState {
     /// Snap moved shapes to a 10 px grid (View menu).
     pub(super) grid_snap: bool,
     /// Palette entry being dragged onto the canvas.
-    pub(super) palette_drag: Option<NodeKind>,
+    pub(super) palette_drag: Option<PaletteEntry>,
+    /// Click-to-connect: the pad's connect entry was clicked on this shape; the next click on
+    /// a target connects.
+    connect_click: Option<(ElementSelector, Bounds)>,
+    /// Append popup after a connection was dropped on empty canvas.
+    append_menu: Option<AppendMenu>,
+    /// BPMN XML pasted from the OS clipboard, waiting for the import confirmation.
+    paste_bpmn: Option<String>,
     /// Space tool mode (S): canvas drags insert or remove space.
     pub(super) space_tool: bool,
+    /// Choreography scopes of the current document, rebuilt only when the generation or
+    /// document changes.
+    scope_cache: Option<(u64, processcraft_core::ids::DocumentId, Arc<Vec<ScopeInfo>>)>,
+}
+/// Owned summary of a choreography scope (see `queries::choreography_scopes`).
+pub(super) struct ScopeInfo {
+    pub(super) owner: ElementSelector,
+    pub(super) root: ElementSelector,
+    pub(super) parent: Option<ElementSelector>,
+    /// Breadcrumb label: the root or sub-choreography name.
+    pub(super) label: String,
+    /// The root choreography has a flow-element graph (not a legacy choreography).
+    pub(super) graph: bool,
+}
+fn scope_infos(document: &processcraft_core::model::BpmnDocument) -> Vec<ScopeInfo> {
+    let scopes = processcraft_core::queries::choreography_scopes(document);
+    scopes
+        .iter()
+        .map(|scope| ScopeInfo {
+            owner: scope.owner.clone(),
+            root: scope.root.id.selector(),
+            parent: scope.parent.clone(),
+            label: if scope.parent.is_none() {
+                scope
+                    .root
+                    .name
+                    .clone()
+                    .filter(|name| !name.is_empty())
+                    .unwrap_or_else(|| "Unnamed choreography".into())
+            } else {
+                scopes
+                    .iter()
+                    .flat_map(|parent| parent.activities.iter())
+                    .find(|activity| activity.id == scope.owner)
+                    .and_then(|activity| activity.name.clone())
+                    .filter(|name| !name.is_empty())
+                    .unwrap_or_else(|| "Unnamed sub-choreography".into())
+            },
+            graph: scope.root.graph.is_some(),
+        })
+        .collect()
 }
 /// Replace popup for one element: filter text and whether the field still needs focus.
 struct ReplaceMenu {
@@ -335,10 +602,31 @@ enum PadAction {
     /// Lane and pool entries (bpmn-js): add a lane, split into lanes.
     AddLane(LaneLocation),
     Split(u8),
+    /// Sequence-flow pad: turn the flow into a plain, default, or conditional flow.
+    Flow(FlowVariant),
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum FlowVariant {
+    Plain,
+    Default,
+    Conditional,
+}
+impl FlowVariant {
+    fn target(self) -> processcraft_core::replace::ReplaceTarget {
+        use processcraft_core::replace::ReplaceTarget;
+        match self {
+            Self::Plain => ReplaceTarget::SequenceFlow,
+            Self::Default => ReplaceTarget::DefaultFlow,
+            Self::Conditional => ReplaceTarget::ConditionalFlow,
+        }
+    }
 }
 impl PadAction {
     fn label(self) -> &'static str {
         match self {
+            Self::Flow(FlowVariant::Plain) => "Change to sequence flow",
+            Self::Flow(FlowVariant::Default) => "Change to default flow",
+            Self::Flow(FlowVariant::Conditional) => "Change to conditional flow",
             Self::AddLane(LaneLocation::Above) => "Add lane above",
             Self::AddLane(LaneLocation::Below) => "Add lane below",
             Self::Split(2) => "Divide into two lanes",
@@ -348,7 +636,7 @@ impl PadAction {
             Self::Append(NodeKind::IntermediateThrowEvent) => "Append intermediate event",
             Self::Append(NodeKind::EndEvent) => "Append end event",
             Self::Append(_) => "Append text annotation",
-            Self::Connect => "Connect (drag to the target)",
+            Self::Connect => "Connect (click or drag to the target)",
             Self::Replace => "Change type (R)",
             Self::Delete => "Delete",
         }
@@ -415,8 +703,44 @@ fn context_pad(
     }
     actions.push(PadAction::Delete);
     // Kept inside the canvas, so pools and lanes wider than the view still show their pad.
-    let left = (screen.right() + 6.0).min(area.right() - 3.0 * PAD_ENTRY);
-    let top = screen.top().max(area.top());
+    pad_grid(
+        actions,
+        Pos2::new(
+            (screen.right() + 6.0).min(area.right() - 3.0 * PAD_ENTRY),
+            screen.top().max(area.top()),
+        ),
+    )
+}
+/// Pad of a selected sequence flow (bpmn-js): the plain/default/conditional variants the replace
+/// rules offer, and delete; placed beside the flow's middle waypoint.
+fn flow_pad(
+    document: &processcraft_core::model::BpmnDocument,
+    flow: &ElementSelector,
+    anchor: Pos2,
+    area: Rect,
+) -> Vec<(PadAction, Rect)> {
+    use processcraft_core::replace::{ReplaceTarget, replace_options};
+    let mut actions: Vec<PadAction> = replace_options(document, flow)
+        .iter()
+        .filter_map(|target| match target {
+            ReplaceTarget::SequenceFlow => Some(PadAction::Flow(FlowVariant::Plain)),
+            ReplaceTarget::DefaultFlow => Some(PadAction::Flow(FlowVariant::Default)),
+            ReplaceTarget::ConditionalFlow => Some(PadAction::Flow(FlowVariant::Conditional)),
+            ReplaceTarget::Node { .. } => None,
+        })
+        .collect();
+    actions.push(PadAction::Delete);
+    pad_grid(
+        actions,
+        Pos2::new(
+            (anchor.x + 12.0).min(area.right() - 3.0 * PAD_ENTRY),
+            (anchor.y + 12.0).clamp(area.top(), (area.bottom() - PAD_ENTRY).max(area.top())),
+        ),
+    )
+}
+/// Lay pad entries out in a three-column grid from `origin`.
+fn pad_grid(actions: Vec<PadAction>, origin: Pos2) -> Vec<(PadAction, Rect)> {
+    let (left, top) = (origin.x, origin.y);
     actions
         .into_iter()
         .enumerate()
@@ -470,6 +794,7 @@ fn paint_pad_icon(painter: &egui::Painter, action: PadAction, r: Rect, color: Co
             painter.line_segment([at(-2.0, 2.0), at(4.0, 2.0)], stroke);
         }
         PadAction::Connect => painter.arrow(at(-6.0, 6.0), Vec2::new(11.0, -11.0), stroke),
+        PadAction::Flow(variant) => paint_replace_icon(painter, &variant.target(), r, color),
         PadAction::Replace => {
             // Wrench: a handle and a ring-shaped head.
             painter.line_segment(
@@ -597,7 +922,20 @@ fn paint_replace_icon(
             painter.circle_stroke(c, 5.5, stroke);
         }
         if let Some(t) = trigger {
-            letter(&format!("{t:?}")[..1], 8.0);
+            use processcraft_core::replace::Trigger as T;
+            let mark = match t {
+                T::Message => "M",
+                T::Timer => "T",
+                T::Conditional => "C",
+                T::Signal => "S",
+                T::Error => "E",
+                T::Escalation => "Es",
+                T::Compensate => "Cp",
+                T::Cancel => "X",
+                T::Link => "L",
+                T::Terminate => "Te",
+            };
+            letter(mark, 8.0);
         }
     } else if rules::is_gateway(*kind) {
         painter.add(egui::Shape::closed_line(
@@ -705,6 +1043,104 @@ fn paint_replace_icon(
     }
 }
 
+/// Drag-create ghost: the BPMN shape of `entry` filling `r` (event circle, gateway diamond,
+/// rounded activity box, data shapes, annotation bracket) with its marker.
+fn paint_ghost(painter: &egui::Painter, entry: PaletteEntry, r: Rect, color: Color32) {
+    use processcraft_core::{replace::ReplaceTarget, rules};
+    let kind = entry.kind;
+    let fill = color.gamma_multiply(0.15);
+    let stroke = egui::Stroke::new(2.0, color);
+    let c = r.center();
+    let marker = |painter: &egui::Painter| {
+        // The replace-menu icon carries the type and trigger marker; drawn at the centre.
+        let target = ReplaceTarget::Node {
+            kind,
+            trigger: entry.trigger,
+            non_interrupting: false,
+            event_sub_process: false,
+            collapsed: false,
+        };
+        paint_replace_icon(
+            painter,
+            &target,
+            Rect::from_center_size(c, Vec2::splat(18.0)),
+            color,
+        );
+    };
+    if rules::is_event(kind) {
+        let radius = r.width().min(r.height()) / 2.0;
+        let width = if kind == NodeKind::EndEvent { 4.0 } else { 2.0 };
+        painter.circle(c, radius, fill, egui::Stroke::new(width, color));
+        if matches!(
+            kind,
+            NodeKind::IntermediateCatchEvent
+                | NodeKind::IntermediateThrowEvent
+                | NodeKind::BoundaryEvent
+        ) {
+            painter.circle_stroke(c, (radius - 3.0).max(1.0), egui::Stroke::new(1.0, color));
+        }
+        if entry.trigger.is_some() {
+            marker(painter);
+        }
+    } else if rules::is_gateway(kind) {
+        let (w, h) = (r.width() / 2.0, r.height() / 2.0);
+        painter.add(egui::Shape::convex_polygon(
+            vec![
+                c + Vec2::new(0.0, -h),
+                c + Vec2::new(w, 0.0),
+                c + Vec2::new(0.0, h),
+                c + Vec2::new(-w, 0.0),
+            ],
+            fill,
+            stroke,
+        ));
+        let s = w.min(h) * 0.4;
+        let cross = || {
+            painter.line_segment([c + Vec2::new(-s, -s), c + Vec2::new(s, s)], stroke);
+            painter.line_segment([c + Vec2::new(-s, s), c + Vec2::new(s, -s)], stroke);
+        };
+        let plus = || {
+            painter.line_segment([c + Vec2::new(0.0, -s), c + Vec2::new(0.0, s)], stroke);
+            painter.line_segment([c + Vec2::new(-s, 0.0), c + Vec2::new(s, 0.0)], stroke);
+        };
+        match kind {
+            NodeKind::ExclusiveGateway => cross(),
+            NodeKind::ParallelGateway => plus(),
+            NodeKind::ComplexGateway => {
+                cross();
+                plus();
+            }
+            NodeKind::InclusiveGateway => {
+                painter.circle_stroke(c, s, stroke);
+            }
+            _ => {
+                painter.circle_stroke(c, s, egui::Stroke::new(1.0, color));
+                painter.circle_stroke(c, s * 0.7, egui::Stroke::new(1.0, color));
+            }
+        }
+    } else if kind == NodeKind::TextAnnotation {
+        painter.rect_filled(r, 0.0, fill);
+        painter.add(egui::Shape::line(
+            vec![
+                r.left_top() + Vec2::new(12.0, 0.0),
+                r.left_top(),
+                r.left_bottom(),
+                r.left_bottom() + Vec2::new(12.0, 0.0),
+            ],
+            stroke,
+        ));
+    } else if matches!(
+        kind,
+        NodeKind::DataObjectReference | NodeKind::DataStoreReference
+    ) {
+        painter.rect(r, 2.0, fill, stroke, egui::StrokeKind::Inside);
+        marker(painter);
+    } else {
+        painter.rect(r, 10.0, fill, stroke, egui::StrokeKind::Inside);
+        marker(painter);
+    }
+}
+
 /// Nearest free spot around `center`; shapes that fully contain a candidate (pools, lanes,
 /// expanded subprocesses) are containers, not obstacles.
 pub(super) fn vacant_bounds(
@@ -744,36 +1180,122 @@ pub(super) fn vacant_bounds(
 }
 
 impl ProcessCraft {
+    /// Choreography scopes of `document`, cached per (generation, document).
+    pub(super) fn choreography_scope_infos(
+        &mut self,
+        document: &processcraft_core::model::BpmnDocument,
+        generation: u64,
+    ) -> Arc<Vec<ScopeInfo>> {
+        match &self.canvas.scope_cache {
+            Some((g, id, infos)) if *g == generation && *id == document.id => infos.clone(),
+            _ => {
+                let infos = Arc::new(scope_infos(document));
+                self.canvas.scope_cache = Some((generation, document.id, infos.clone()));
+                infos
+            }
+        }
+    }
     /// Create a palette element dropped at `center` through the core create behaviors (scope and
     /// lane under the point, attach to an activity border, insert into a sequence flow).
-    pub(super) fn drop_new(&mut self, kind: NodeKind, center: Point) -> bool {
+    /// E: inline editing of the selected element's label or annotation text.
+    fn start_label_edit(&mut self, element: ElementSelector) {
+        if !self.commit_draft() {
+            return;
+        }
+        let snap = self.ctl.session.snapshot();
+        let Some(d) = snap.project.documents.get(self.doc) else {
+            return;
+        };
+        let Some(diagram) = self.current_diagram(d) else {
+            return;
+        };
+        match label_edit(d, diagram, &element, None) {
+            Ok(edit) => {
+                self.drag = None;
+                self.canvas.label_edit = Some(edit);
+            }
+            Err(Some(reason)) => self.ctl.error = reason.into(),
+            Err(None) => {}
+        }
+    }
+    pub(super) fn drop_new(&mut self, entry: PaletteEntry, center: Point) -> bool {
+        self.create_at(entry, center, true, None)
+    }
+    /// Create `entry` at `center` (`CreateAt`), with the picked trigger, optionally splitting
+    /// the flow under it, and optionally connected from `source`; one batch, one undo step.
+    fn create_at(
+        &mut self,
+        entry: PaletteEntry,
+        center: Point,
+        split: bool,
+        source: Option<ElementSelector>,
+    ) -> bool {
+        let kind = entry.kind;
         let snap = self.ctl.session.snapshot();
         let Some(d) = snap.project.documents.get(self.doc) else {
             return false;
         };
-        let Some(diagram) = d
-            .diagrams
-            .iter()
-            .find(|d| self.diagram_id.as_ref().is_none_or(|id| &d.id == id))
-        else {
+        let Some(diagram) = self.current_diagram(d) else {
             return false;
         };
-        let node: processcraft_core::ids::ElementIdentity = if self.create_anonymous {
-            processcraft_core::ids::ElementIdentity::anonymous()
+        let node = self.new_identity(entry.trigger.is_some() || source.is_some());
+        let shape = crate::controller::id("Shape");
+        let name = (kind != NodeKind::TextAnnotation).then(|| super::node_kind_label(kind).into());
+        let (flow, edge) = if split {
+            (
+                Some(crate::controller::id("Flow")),
+                Some(crate::controller::id("Edge")),
+            )
         } else {
-            crate::controller::id("Node").into()
+            (None, None)
         };
-        let done = self.ctl.mutate(vec![Mutation::CreateAt {
+        let mut mutations = vec![Mutation::CreateAt {
             document_id: d.id,
             diagram_id: diagram.id.selector(),
             kind,
-            name: (kind != NodeKind::TextAnnotation).then(|| super::node_kind_label(kind).into()),
-            center,
+            name: name.clone(),
+            center: center.clone(),
             node_id: node.clone(),
-            shape_id: crate::controller::id("Shape").into(),
-            flow_id: Some(crate::controller::id("Flow").into()),
-            edge_id: Some(crate::controller::id("Edge").into()),
-        }]);
+            shape_id: shape.clone().into(),
+            flow_id: flow.clone().map(Into::into),
+            edge_id: edge.clone().map(Into::into),
+        }];
+        if entry.trigger.is_some() {
+            // The core builder's node, to give it the picked trigger in the same batch.
+            let preview = processcraft_core::manipulate::create_at(
+                &mut (**d).clone(),
+                &diagram.id.selector(),
+                kind,
+                name,
+                center,
+                processcraft_core::manipulate::CreateIds {
+                    node: node.clone(),
+                    shape: shape.into(),
+                    flow: flow.map(Into::into),
+                    edge: edge.map(Into::into),
+                },
+            );
+            match preview {
+                Ok(batch) => {
+                    mutations.extend(trigger_mutation(&batch, &node.selector(), entry.trigger))
+                }
+                Err(reason) => {
+                    self.ctl.error = reason;
+                    return false;
+                }
+            }
+        }
+        if let Some(source) = source {
+            mutations.push(Mutation::Connect {
+                document_id: d.id,
+                diagram_id: diagram.id.selector(),
+                source_id: source,
+                target_id: node.selector(),
+                flow_id: crate::controller::id("Flow").into(),
+                edge_id: crate::controller::id("Edge").into(),
+            });
+        }
+        let done = self.ctl.mutate(mutations);
         if done {
             self.select(Some(node.selector()));
         }
@@ -869,6 +1391,8 @@ impl ProcessCraft {
         }
         if self.drag.is_none()
             && self.canvas.gesture.is_none()
+            && self.canvas.connect_click.is_none()
+            && self.canvas.append_menu.is_none()
             && !self.multi.is_empty()
             && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape))
         {
@@ -943,33 +1467,17 @@ impl ProcessCraft {
         } else {
             if let (Some(document), Some(diagram)) = (snap.project.documents.get(self.doc), diagram)
             {
-                let scopes = processcraft_core::queries::choreography_scopes(document);
+                let scopes = self.choreography_scope_infos(document, snap.generation);
                 if let Some(scope) = scopes.iter().find(|scope| scope.owner == diagram.plane) {
                     let mut path = Vec::new();
                     let mut cursor = Some(scope.owner.clone());
                     while let Some(owner) = cursor.take() {
                         let Some(current) = scopes.iter().find(|candidate| {
-                            candidate.owner == owner && candidate.root.id == scope.root.id
+                            candidate.owner == owner && candidate.root == scope.root
                         }) else {
                             break;
                         };
-                        let label = if current.parent.is_none() {
-                            current
-                                .root
-                                .name
-                                .clone()
-                                .filter(|name| !name.is_empty())
-                                .unwrap_or_else(|| "Unnamed choreography".into())
-                        } else {
-                            scopes
-                                .iter()
-                                .flat_map(|parent| parent.activities.iter())
-                                .find(|activity| activity.id == owner)
-                                .and_then(|activity| activity.name.clone())
-                                .filter(|name| !name.is_empty())
-                                .unwrap_or_else(|| "Unnamed sub-choreography".into())
-                        };
-                        path.push((owner, label));
+                        path.push((owner, current.label.clone()));
                         cursor = current.parent.clone();
                         if path.len() > scopes.len() {
                             break;
@@ -1040,6 +1548,8 @@ impl ProcessCraft {
         self.auto_scroll(ui.ctx());
         self.search_ui(ui.ctx());
         self.replace_ui(ui.ctx());
+        self.append_menu_ui(ui.ctx());
+        self.paste_bpmn_ui(ui.ctx());
         #[cfg(test)]
         ui.ctx().data_mut(|data| {
             data.insert_temp(egui::Id::unique("test_canvas_rect"), frame.response.rect)
@@ -1080,6 +1590,14 @@ impl ProcessCraft {
                 self.append(element, kind);
             }
             PadAction::Connect => {}
+            PadAction::Flow(variant) => {
+                let document_id = self.ctl.session.snapshot().project.documents[self.doc].id;
+                self.ctl.mutate(vec![Mutation::ReplaceElement {
+                    document_id,
+                    element_id: element,
+                    target: variant.target(),
+                }]);
+            }
             PadAction::Replace => self.open_replace(element),
             PadAction::Delete => self.delete(),
             PadAction::AddLane(location) => {
@@ -1114,6 +1632,177 @@ impl ProcessCraft {
         };
         let mutation = build(document.id, diagram.id.selector());
         self.ctl.mutate(vec![mutation]);
+    }
+    /// Connection preview from `bounds` to the pointer: the target outlined green when the rules
+    /// allow the connection, red with the reason as hover text otherwise.
+    #[allow(clippy::too_many_arguments)]
+    fn paint_connect(
+        &self,
+        painter: &egui::Painter,
+        response: &egui::Response,
+        d: &processcraft_core::model::BpmnDocument,
+        diagram: &processcraft_core::model::Diagram,
+        element: &ElementSelector,
+        bounds: &Bounds,
+        pos: Pos2,
+        rect: Rect,
+        camera: (f64, f64),
+        zoom: f32,
+        accent: Color32,
+    ) {
+        let from = to_screen(rect, camera, zoom, bounds).center();
+        let (x, y) = to_model(rect, camera, zoom, pos);
+        let mut color = accent;
+        if let Some(target) = self
+            .connect_target_at(x, y, zoom, element)
+            .and_then(|h| diagram.shapes.iter().find(|s| s.id == h.diagram_element_id))
+        {
+            let verdict = processcraft_core::rules::can_connect(d, element, &target.element);
+            color = if verdict.is_ok() {
+                CONNECT_OK
+            } else {
+                CONNECT_REFUSED
+            };
+            painter.rect_stroke(
+                to_screen(rect, camera, zoom, &target.bounds).expand(2.0),
+                2.0,
+                egui::Stroke::new(2.0, color),
+                egui::StrokeKind::Outside,
+            );
+            if let Err(reason) = verdict {
+                response.clone().on_hover_text_at_pointer(reason);
+            }
+        }
+        painter.extend(egui::Shape::dashed_line(
+            &[from, pos],
+            egui::Stroke::new(2.0, color),
+            6.0,
+            4.0,
+        ));
+        response.ctx.set_cursor_icon(egui::CursorIcon::Crosshair);
+    }
+    /// End of a connect gesture at `pos`: connect to the shape there, or, on empty canvas,
+    /// offer the append popup (bpmn-js) when `source` can start a sequence flow.
+    fn finish_connect(
+        &mut self,
+        source: ElementSelector,
+        pos: Pos2,
+        rect: Rect,
+        camera: (f64, f64),
+        zoom: f32,
+    ) {
+        let (x, y) = to_model(rect, camera, zoom, pos);
+        if let Some(target) = self.connect_target_at(x, y, zoom, &source) {
+            self.connect_elements(source, target.key.xml_id);
+        } else if rect.contains(pos) && !self.append_choices(&source).is_empty() {
+            self.canvas.append_menu = Some(AppendMenu {
+                source,
+                at: Point { x, y },
+                screen: pos,
+            });
+        }
+    }
+    /// Append popup entries the rules allow after `source`.
+    fn append_choices(&self, source: &ElementSelector) -> Vec<(&'static str, PaletteEntry)> {
+        use processcraft_core::{ids::ElementIdentity, modeling, rules};
+        let snap = self.ctl.session.snapshot();
+        let Some(node) = snap
+            .project
+            .documents
+            .get(self.doc)
+            .and_then(|d| rules::locate(d, source))
+            .and_then(|l| l.node)
+        else {
+            return Vec::new();
+        };
+        APPEND_ENTRIES
+            .iter()
+            .filter(|(_, kind, _)| {
+                let probe = modeling::new_node(*kind, ElementIdentity::anonymous(), None, None);
+                rules::sequence_refusal(node, &probe).is_none()
+            })
+            .map(|(label, kind, trigger)| {
+                (
+                    *label,
+                    PaletteEntry {
+                        kind: *kind,
+                        trigger: *trigger,
+                    },
+                )
+            })
+            .collect()
+    }
+    /// Create `entry` at `at` connected from `source` (append popup), one undo step.
+    fn create_connected(
+        &mut self,
+        source: ElementSelector,
+        entry: PaletteEntry,
+        at: Point,
+    ) -> bool {
+        if !self.commit_draft() {
+            return false;
+        }
+        self.create_at(entry, at, false, Some(source))
+    }
+    /// Append popup at the end of a connection dropped on empty canvas; Escape cancels.
+    fn append_menu_ui(&mut self, ctx: &egui::Context) {
+        let Some(menu) = self.canvas.append_menu.take() else {
+            return;
+        };
+        let choices = self.append_choices(&menu.source);
+        let palette = self.theme.palette();
+        let mut chosen = None;
+        let mut close = choices.is_empty() || ctx.input(|i| i.key_pressed(egui::Key::Escape));
+        egui::Area::new(egui::Id::unique("processcraft-append-menu"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(menu.screen + Vec2::splat(4.0))
+            .show(ctx, |ui| {
+                egui::Frame::popup(ui.style()).show(ui, |ui| {
+                    ui.set_width(240.0);
+                    ui.weak("Append and connect");
+                    for (label, entry) in &choices {
+                        let (row, response) = ui.allocate_exact_size(
+                            Vec2::new(ui.available_width(), 22.0),
+                            Sense::click(),
+                        );
+                        if response.hovered() {
+                            ui.painter().rect_filled(row, 3.0, palette.accent_soft);
+                        }
+                        paint_replace_icon(
+                            ui.painter(),
+                            &processcraft_core::replace::ReplaceTarget::Node {
+                                kind: entry.kind,
+                                trigger: entry.trigger,
+                                non_interrupting: false,
+                                event_sub_process: false,
+                                collapsed: false,
+                            },
+                            Rect::from_center_size(
+                                row.left_center() + Vec2::new(13.0, 0.0),
+                                Vec2::splat(18.0),
+                            ),
+                            palette.text,
+                        );
+                        ui.painter().text(
+                            row.left_center() + Vec2::new(28.0, 0.0),
+                            egui::Align2::LEFT_CENTER,
+                            *label,
+                            egui::FontId::proportional(13.0),
+                            palette.text,
+                        );
+                        if response.clicked() {
+                            chosen = Some(*entry);
+                            close = true;
+                        }
+                    }
+                });
+            });
+        if let Some(entry) = chosen {
+            self.create_connected(menu.source.clone(), entry, menu.at.clone());
+        }
+        if !close {
+            self.canvas.append_menu = Some(menu);
+        }
     }
     /// Topmost shape (never a label region) under the pointer other than `exclude`.
     fn connect_target_at(
@@ -1324,7 +2013,7 @@ impl ProcessCraft {
                         painter.text(
                             rect.center() + egui::vec2(0.0, 38.0),
                             egui::Align2::CENTER_CENTER,
-                            "Drag empty space to pan · Shift-drag to select · Ctrl+wheel to zoom · Double-click to rename · Select an element for its context pad",
+                            "Drag empty space to pan · Shift-drag to select · Ctrl+wheel to zoom · Double-click or E to rename · Select an element for its context pad",
                             egui::FontId::proportional(11.0),
                             palette.muted,
                         );
@@ -1459,10 +2148,29 @@ impl ProcessCraft {
                                 egui::StrokeKind::Inside,
                             );
                         }
-                        if self.canvas.gesture.is_none() && self.canvas.label_edit.is_none() {
-                            pad = context_pad(d, &shape.element, screen, rect);
-                        }
-                        for (action, r) in &pad {
+                    }
+                    let pad_idle = self.canvas.gesture.is_none()
+                        && self.canvas.label_edit.is_none()
+                        && self.canvas.connect_click.is_none();
+                    // The element the pad belongs to: the single selected shape or flow.
+                    let mut pad_owner = None;
+                    if let Some(shape) = single
+                        && pad_idle
+                    {
+                        let screen = to_screen(rect, camera, zoom, &shape.bounds);
+                        pad = context_pad(d, &shape.element, screen, rect);
+                        pad_owner = Some(shape.element.clone());
+                    } else if let Some(edge) = selected_edge
+                        && pad_idle
+                        && processcraft_core::queries::find_flow(d, &edge.element)
+                            .is_some_and(|f| f.kind == FlowKind::Sequence)
+                        && let Some(mid) = edge_screen(edge).get(edge.waypoints.len() / 2)
+                    {
+                        pad = flow_pad(d, &edge.element, *mid, rect);
+                        pad_owner = Some(edge.element.clone());
+                    }
+                    for (action, r) in &pad {
+                        {
                             let hovered = hover.is_some_and(|pos| r.contains(pos));
                             painter.rect_filled(
                                 *r,
@@ -1501,10 +2209,30 @@ impl ProcessCraft {
                     if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
                         self.canvas.gesture = None;
                         self.canvas.space_tool = false;
+                        self.canvas.connect_click = None;
+                        self.canvas.append_menu = None;
+                    }
+                    // Click-to-connect: the next click picks the target (empty canvas offers the
+                    // append popup); the preview follows the pointer meanwhile.
+                    let mut click_consumed = false;
+                    if let Some((source, bounds)) = self.canvas.connect_click.clone() {
+                        if response.clicked() || response.drag_started() {
+                            click_consumed = true;
+                            self.canvas.connect_click = None;
+                            if let Some(pos) = response.interact_pointer_pos() {
+                                self.finish_connect(source, pos, rect, camera, zoom);
+                            }
+                        } else if let Some(pos) = hover {
+                            self.paint_connect(
+                                &painter, &response, d, diagram, &source, &bounds, pos, rect,
+                                camera, zoom, accent,
+                            );
+                        }
                     }
                     let alt = ctx.input(|i| i.modifiers.alt);
                     let shift = ctx.input(|i| i.modifiers.shift);
                     if response.drag_started()
+                        && !click_consumed
                         && let Some(pos) = ctx.input(|i| i.pointer.press_origin())
                     {
                         let pan = ctx.input(|i| {
@@ -1557,11 +2285,23 @@ impl ProcessCraft {
                     }
                     .and_then(pad_at);
                     if response.clicked()
-                        && let (Some(action), Some(shape)) = (pad_pressed, single)
+                        && let (Some(action), Some(owner)) = (pad_pressed, pad_owner)
                     {
-                        self.pad_action(shape.element.clone(), action);
+                        match (action, single) {
+                            // Click-to-connect: wait for the target click.
+                            (PadAction::Connect, Some(shape)) => {
+                                self.canvas.connect_click =
+                                    Some((shape.element.clone(), shape.bounds.clone()));
+                            }
+                            _ => self.pad_action(owner, action),
+                        }
                     }
-                    if pad_pressed.is_none()
+                    // Any other canvas click or drag closes the append popup.
+                    if !click_consumed && (response.clicked() || response.drag_started()) {
+                        self.canvas.append_menu = None;
+                    }
+                    if !click_consumed
+                        && pad_pressed.is_none()
                         && ((response.drag_started() && self.canvas.gesture.is_none())
                             || response.clicked())
                         && self.commit_draft()
@@ -1720,43 +2460,25 @@ impl ProcessCraft {
                     {
                         let (x, y) = to_model(rect, camera, zoom, pos);
                         if let Some(h) = self.hit_at(x, y, zoom, alt) {
-                            let element = h.key.xml_id.clone();
-                            let annotation = processcraft_core::queries::find_node(d, &element)
-                                .is_some_and(|n| n.kind == NodeKind::TextAnnotation);
-                            let association = processcraft_core::queries::find_flow(d, &element)
-                                .is_some_and(|f| f.kind == FlowKind::Association);
-                            let (center, width) = match &h.geometry {
-                                HitGeometry::Edge(points) => {
-                                    let mid = &points[points.len() / 2];
-                                    let prev = &points[(points.len() / 2).saturating_sub(1)];
-                                    (((mid.x + prev.x) / 2.0, (mid.y + prev.y) / 2.0), 120.0)
-                                }
+                            let bounds = match &h.geometry {
+                                HitGeometry::Edge(_) => None,
                                 HitGeometry::Shape(b)
                                 | HitGeometry::Ellipse(b)
                                 | HitGeometry::Diamond(b)
                                 | HitGeometry::Hexagon(b)
                                 | HitGeometry::DataObject(b)
-                                | HitGeometry::DataStore(b) => {
-                                    ((b.x + b.width / 2.0, b.y + b.height / 2.0), b.width)
-                                }
+                                | HitGeometry::DataStore(b) => Some(b.clone()),
                             };
-                            if annotation {
-                                self.ctl.error =
-                                    "Edit annotation text in the Properties panel.".into();
-                            } else if !association {
-                                let original =
-                                    processcraft_core::queries::element_name(d, &element)
-                                        .unwrap_or_default()
-                                        .to_owned();
-                                self.drag = None;
-                                self.canvas.label_edit = Some(LabelEdit {
-                                    element,
-                                    text: original.clone(),
-                                    original,
-                                    center,
-                                    width,
-                                    focused: false,
-                                });
+                            match label_edit(d, diagram, &h.key.xml_id, bounds.as_ref()) {
+                                Ok(edit) => {
+                                    self.drag = None;
+                                    self.canvas.label_edit = Some(edit);
+                                }
+                                Err(reason) => {
+                                    if let Some(reason) = reason {
+                                        self.ctl.error = reason.into();
+                                    }
+                                }
                             }
                         }
                     }
@@ -1785,6 +2507,7 @@ impl ProcessCraft {
                             Default::default()
                         } else {
                             snap_drag(
+                                d,
                                 diagram,
                                 &drag.items,
                                 ((drag.offset.x / zoom) as f64, (drag.offset.y / zoom) as f64),
@@ -1984,47 +2707,10 @@ impl ProcessCraft {
                             }
                             Some(Gesture::Connect { element, bounds }) => {
                                 if let Some(pos) = pointer {
-                                    let from = to_screen(rect, camera, zoom, bounds).center();
-                                    let (x, y) = to_model(rect, camera, zoom, pos);
-                                    let mut color = accent;
-                                    if let Some(target) =
-                                        self.connect_target_at(x, y, zoom, element).and_then(|h| {
-                                            diagram
-                                                .shapes
-                                                .iter()
-                                                .find(|s| s.id == h.diagram_element_id)
-                                        })
-                                    {
-                                        // Green when the rules allow the connection, red with the
-                                        // reason otherwise.
-                                        let verdict = processcraft_core::rules::can_connect(
-                                            d,
-                                            element,
-                                            &target.element,
-                                        );
-                                        color = if verdict.is_ok() {
-                                            CONNECT_OK
-                                        } else {
-                                            CONNECT_REFUSED
-                                        };
-                                        painter.rect_stroke(
-                                            to_screen(rect, camera, zoom, &target.bounds)
-                                                .expand(2.0),
-                                            2.0,
-                                            egui::Stroke::new(2.0, color),
-                                            egui::StrokeKind::Outside,
-                                        );
-                                        if let Err(reason) = verdict {
-                                            response.clone().on_hover_text_at_pointer(reason);
-                                        }
-                                    }
-                                    painter.extend(egui::Shape::dashed_line(
-                                        &[from, pos],
-                                        egui::Stroke::new(2.0, color),
-                                        6.0,
-                                        4.0,
-                                    ));
-                                    ctx.set_cursor_icon(egui::CursorIcon::Crosshair);
+                                    self.paint_connect(
+                                        &painter, &response, d, diagram, element, bounds, pos,
+                                        rect, camera, zoom, accent,
+                                    );
                                 }
                             }
                             Some(Gesture::Bendpoint { points, part, .. }) => {
@@ -2147,12 +2833,7 @@ impl ProcessCraft {
                             }
                             Gesture::Connect { element, .. } => {
                                 if let Some(pos) = pointer {
-                                    let (x, y) = to_model(rect, camera, zoom, pos);
-                                    if let Some(target) =
-                                        self.connect_target_at(x, y, zoom, &element)
-                                    {
-                                        self.connect_elements(element, target.key.xml_id);
-                                    }
+                                    self.finish_connect(element, pos, rect, camera, zoom);
                                 }
                             }
                             Gesture::Resize {
@@ -2251,7 +2932,8 @@ impl ProcessCraft {
                         }
                     }
                     // A palette entry dragged over the canvas: ghost, feedback, drop on release.
-                    if let Some(kind) = self.canvas.palette_drag {
+                    if let Some(entry) = self.canvas.palette_drag {
+                        let kind = entry.kind;
                         let released = ctx.input(|i| !i.pointer.primary_down());
                         let over = pointer.filter(|p| rect.contains(*p));
                         if let Some(pos) = over {
@@ -2268,13 +2950,7 @@ impl ProcessCraft {
                                     height: h,
                                 },
                             );
-                            painter.rect_filled(ghost, 6.0, accent.gamma_multiply(0.15));
-                            painter.rect_stroke(
-                                ghost,
-                                6.0,
-                                egui::Stroke::new(2.0, accent),
-                                egui::StrokeKind::Inside,
-                            );
+                            paint_ghost(&painter, entry, ghost, accent);
                             let probe = processcraft_core::modeling::new_node(
                                 kind,
                                 processcraft_core::ids::ElementIdentity::anonymous(),
@@ -2297,7 +2973,7 @@ impl ProcessCraft {
                             );
                             ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
                             if released && editable {
-                                self.drop_new(kind, Point { x, y });
+                                self.drop_new(entry, Point { x, y });
                             }
                         }
                         if released {
@@ -2306,7 +2982,8 @@ impl ProcessCraft {
                             ctx.request_repaint();
                         }
                     }
-                    // Inline name editor: Enter or focus loss commits, Escape cancels.
+                    // Inline editor: a name commits on Enter, an annotation text (multi-line) on
+                    // Ctrl+Enter; focus loss commits, Escape cancels.
                     let escape = ctx.input(|i| i.key_pressed(egui::Key::Escape));
                     if let Some(edit) = &mut self.canvas.label_edit {
                         let width = (edit.width as f32 * zoom).max(140.0);
@@ -2314,23 +2991,47 @@ impl ProcessCraft {
                             rect.left() + (edit.center.0 - camera.0) as f32 * zoom,
                             rect.top() + (edit.center.1 - camera.1) as f32 * zoom,
                         );
-                        let field = ui.put(
-                            Rect::from_center_size(center, Vec2::new(width, 28.0)),
-                            egui::TextEdit::singleline(&mut edit.text)
-                                .id(egui::Id::unique("processcraft-canvas-label-edit")),
-                        );
+                        let id = egui::Id::unique("processcraft-canvas-label-edit");
+                        let (field, submit) = if edit.annotation {
+                            // Consumed before the field sees it, so no newline is inserted.
+                            let submit = ctx.input_mut(|i| {
+                                i.consume_key(egui::Modifiers::COMMAND, egui::Key::Enter)
+                            });
+                            let height = (edit.height as f32 * zoom).max(60.0);
+                            let field = ui.put(
+                                Rect::from_center_size(center, Vec2::new(width, height)),
+                                egui::TextEdit::multiline(&mut edit.text)
+                                    .id(id)
+                                    .hint_text("Annotation text · Ctrl+Enter to apply"),
+                            );
+                            (field, submit)
+                        } else {
+                            let field = ui.put(
+                                Rect::from_center_size(center, Vec2::new(width, 28.0)),
+                                egui::TextEdit::singleline(&mut edit.text).id(id),
+                            );
+                            (field, false)
+                        };
                         if !edit.focused {
                             field.request_focus();
                             edit.focused = true;
                         } else if escape {
                             self.canvas.label_edit = None;
-                        } else if field.lost_focus()
+                        } else if (field.lost_focus() || submit)
                             && let Some(edit) = self.canvas.label_edit.take()
                             && edit.text != edit.original
-                            && self.ctl.mutate(vec![Mutation::Rename {
-                                document_id: d.id,
-                                element_id: edit.element.clone(),
-                                name: Some(edit.text.clone()),
+                            && self.ctl.mutate(vec![if edit.annotation {
+                                Mutation::SetTextAnnotation {
+                                    document_id: d.id,
+                                    element_id: edit.element.clone(),
+                                    text: Some(edit.text.clone()),
+                                }
+                            } else {
+                                Mutation::Rename {
+                                    document_id: d.id,
+                                    element_id: edit.element.clone(),
+                                    name: Some(edit.text.clone()),
+                                }
                             }])
                             && self.selected.as_ref() == Some(&edit.element)
                             && !self.draft_dirty
@@ -2713,6 +3414,45 @@ impl ProcessCraft {
             }]);
         }
     }
+    /// Confirmation for BPMN XML pasted from the OS clipboard: import it as a new model through
+    /// the file import path (same parser limits and preserved-source rules).
+    fn paste_bpmn_ui(&mut self, ctx: &egui::Context) {
+        let Some(xml) = self.canvas.paste_bpmn.take() else {
+            return;
+        };
+        let (mut import, mut cancel) = (false, ctx.input(|i| i.key_pressed(egui::Key::Escape)));
+        egui::Window::new("Paste BPMN")
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
+            .show(ctx, |ui| {
+                ui.label("The clipboard holds BPMN XML. Import it as a new model?");
+                ui.horizontal(|ui| {
+                    import = ui.button("Import as new model").clicked();
+                    cancel |= ui.button("Cancel").clicked();
+                });
+            });
+        if import {
+            self.import_bpmn_text(ctx, xml);
+        } else if !cancel {
+            self.canvas.paste_bpmn = Some(xml);
+        }
+    }
+    fn import_bpmn_text(&mut self, ctx: &egui::Context, xml: String) {
+        if self.effects.busy() {
+            self.ctl.error = "Finish the current operation before importing.".into();
+            return;
+        }
+        if self.commit_draft() && self.commit_dictionary_draft() {
+            self.effects.import_bytes(
+                ctx.clone(),
+                xml.into_bytes(),
+                "Pasted BPMN".into(),
+                self.ctl.session.id(),
+                self.ctl.session.snapshot().generation,
+            );
+        }
+    }
     fn open_search(&mut self) {
         self.canvas.search = Some(String::new());
         self.canvas.search_focus = true;
@@ -2721,6 +3461,7 @@ impl ProcessCraft {
     fn edit_shortcuts(&mut self, ctx: &egui::Context, editable: bool) {
         use egui::{Key, Modifiers};
         // egui-winit turns Ctrl+C/X/V into clipboard events; plain key events cover the rest.
+        let mut pasted = None;
         let (copy, cut, paste) = ctx.input_mut(|i| {
             let mut found = (false, false, false);
             i.events.retain(|event| match event {
@@ -2732,8 +3473,9 @@ impl ProcessCraft {
                     found.1 = true;
                     false
                 }
-                egui::Event::Paste(_) => {
+                egui::Event::Paste(text) => {
                     found.2 = true;
+                    pasted = Some(text.clone());
                     false
                 }
                 _ => true,
@@ -2763,13 +3505,25 @@ impl ProcessCraft {
         {
             self.open_replace(element);
         }
+        // E: direct editing of the selected element's label (bpmn-js).
+        if editable
+            && self.multi.len() <= 1
+            && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::E))
+            && let Some(element) = self.selected.clone()
+        {
+            self.start_label_edit(element);
+        }
         if copy && !self.multi.is_empty() {
             self.copy_to_clipboard(ctx);
         }
         if editable && cut && !self.multi.is_empty() {
             self.cut_selection(ctx);
         }
-        if editable && paste {
+        // BPMN XML copied from another tool is offered as a new model; anything else pastes the
+        // in-app clipboard.
+        if paste && let Some(xml) = pasted.filter(|text| looks_like_bpmn(text)) {
+            self.canvas.paste_bpmn = Some(xml);
+        } else if editable && paste {
             self.paste_here(ctx);
         }
         if editable && duplicate && !self.multi.is_empty() {
@@ -2808,7 +3562,7 @@ impl ProcessCraft {
         match prepare(d, &diagram_id, &shapes) {
             Ok(prepared) => {
                 if self.ctl.apply(prepared.request) && !prepared.warnings.is_empty() {
-                    self.ctl.error = prepared.warnings.join("; ");
+                    self.ctl.notify(prepared.warnings.join("; "));
                 }
             }
             Err(e) => self.ctl.error = format!("Could not arrange the selection: {e}."),
@@ -3644,6 +4398,344 @@ mod tests {
                 || o.x + o.width + 20.0 <= moved.x
                 || moved.y + moved.height + 20.0 <= o.y
                 || o.y + o.height + 20.0 <= moved.y
+        );
+    }
+
+    /// Frames running the editor shortcuts and the canvas on one egui context.
+    fn shortcut_runner() -> impl FnMut(&mut ProcessCraft, Vec<egui::Event>) {
+        let context = egui::Context::default();
+        move |app: &mut ProcessCraft, events: Vec<egui::Event>| {
+            let mut output = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(900., 600.))),
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    app.canvas_shortcuts(ui.ctx());
+                    app.canvas_ui(ui)
+                },
+            );
+            output.textures_delta.clear();
+        }
+    }
+    fn key(key: egui::Key, modifiers: egui::Modifiers) -> egui::Event {
+        egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers,
+        }
+    }
+    fn node_of(app: &ProcessCraft, id: &ElementSelector) -> processcraft_core::model::Node {
+        processcraft_core::queries::find_node(&app.ctl.session.snapshot().project.documents[0], id)
+            .unwrap()
+            .clone()
+    }
+
+    #[test]
+    fn e_edits_names_and_annotation_text_inline() {
+        use processcraft_core::bpmn_model::NodeDetails;
+        let mut app = ProcessCraft::default();
+        app.add(NodeKind::Task);
+        let task = app.selected.clone().unwrap();
+        let mut frame = shortcut_runner();
+        // E opens the single-line name editor; Enter commits.
+        frame(&mut app, vec![key(egui::Key::E, egui::Modifiers::NONE)]);
+        assert!(
+            app.canvas
+                .label_edit
+                .as_ref()
+                .is_some_and(|e| !e.annotation)
+        );
+        frame(&mut app, vec![]);
+        app.canvas.label_edit.as_mut().unwrap().text = "Review order".into();
+        frame(&mut app, vec![key(egui::Key::Enter, egui::Modifiers::NONE)]);
+        assert!(app.canvas.label_edit.is_none());
+        assert_eq!(node_of(&app, &task).name.as_deref(), Some("Review order"));
+        // A text annotation edits its text in a multi-line editor; Escape cancels.
+        app.select(None);
+        app.add(NodeKind::TextAnnotation);
+        let note = app.selected.clone().unwrap();
+        let text = |app: &ProcessCraft| match node_of(app, &note).details {
+            Some(NodeDetails::TextAnnotation { text: Some(t), .. }) => {
+                t.plain_text().unwrap_or_default().to_owned()
+            }
+            _ => String::new(),
+        };
+        frame(&mut app, vec![key(egui::Key::E, egui::Modifiers::NONE)]);
+        assert!(app.canvas.label_edit.as_ref().is_some_and(|e| e.annotation));
+        frame(&mut app, vec![]);
+        app.canvas.label_edit.as_mut().unwrap().text = "discarded".into();
+        frame(
+            &mut app,
+            vec![key(egui::Key::Escape, egui::Modifiers::NONE)],
+        );
+        assert!(app.canvas.label_edit.is_none());
+        assert_eq!(text(&app), "");
+        // Ctrl+Enter commits the multi-line text.
+        frame(&mut app, vec![key(egui::Key::E, egui::Modifiers::NONE)]);
+        frame(&mut app, vec![]);
+        app.canvas.label_edit.as_mut().unwrap().text = "Line one\nLine two".into();
+        let ctrl = egui::Modifiers {
+            ctrl: true,
+            command: true,
+            ..Default::default()
+        };
+        frame(&mut app, vec![key(egui::Key::Enter, ctrl)]);
+        assert!(app.canvas.label_edit.is_none(), "{}", app.ctl.error);
+        assert_eq!(text(&app), "Line one\nLine two");
+    }
+
+    #[test]
+    fn flow_pad_switches_a_gateway_flow_to_default() {
+        use processcraft_core::bpmn_model::NodeDetails;
+        let mut app = ProcessCraft::default();
+        app.add(NodeKind::ExclusiveGateway);
+        let gateway = app.selected.clone().unwrap();
+        app.add(NodeKind::Task);
+        let snap = app.ctl.session.snapshot();
+        let document = &snap.project.documents[0];
+        let flow = document.processes[0].flows[0].id.selector();
+        let pad = flow_pad(document, &flow, Pos2::ZERO, Rect::EVERYTHING);
+        let actions: Vec<PadAction> = pad.iter().map(|(a, _)| *a).collect();
+        // Gateways offer default flows; conditional flows are offered from activities.
+        assert!(actions.contains(&PadAction::Flow(FlowVariant::Default)));
+        assert!(actions.contains(&PadAction::Delete));
+        // The current type (plain) is not offered.
+        assert!(!actions.contains(&PadAction::Flow(FlowVariant::Plain)));
+        app.select(Some(flow.clone()));
+        app.pad_action(flow.clone(), PadAction::Flow(FlowVariant::Default));
+        assert!(
+            matches!(node_of(&app, &gateway).details, Some(NodeDetails::Gateway { default_flow: Some(ref f), .. }) if *f == flow),
+            "{}",
+            app.ctl.error
+        );
+    }
+
+    #[test]
+    fn click_to_connect_and_drop_on_empty_canvas_offers_append() {
+        let mut app = ProcessCraft::default();
+        app.add(NodeKind::StartEvent);
+        let start = app.selected.clone().unwrap();
+        app.select(None);
+        app.add(NodeKind::Task);
+        let task = app.selected.clone().unwrap();
+        app.select(Some(start.clone()));
+        let mut run = canvas_runner(&mut app);
+        let flows = |app: &ProcessCraft| {
+            app.ctl.session.snapshot().project.documents[0].processes[0]
+                .flows
+                .len()
+        };
+        // Click the connect entry, then click the target.
+        let (_, entry) = on_screen(&app, &start, PadAction::Connect);
+        run(&mut app, vec![egui::Event::PointerMoved(entry)]);
+        run(&mut app, vec![button(entry, true)]);
+        run(&mut app, vec![button(entry, false)]);
+        assert!(app.canvas.connect_click.is_some());
+        let (target, _) = on_screen(&app, &task, PadAction::Delete);
+        run(&mut app, vec![egui::Event::PointerMoved(target.center())]);
+        run(&mut app, vec![button(target.center(), true)]);
+        run(&mut app, vec![button(target.center(), false)]);
+        assert!(app.canvas.connect_click.is_none());
+        assert_eq!(flows(&app), 1, "{}", app.ctl.error);
+        // Dropping a connection on empty canvas opens the append popup; Escape closes it.
+        app.select(Some(task.clone()));
+        run(&mut app, vec![]);
+        let (_, handle) = on_screen(&app, &task, PadAction::Connect);
+        let empty = app.canvas.rect.unwrap().right_bottom() - Vec2::new(40.0, 40.0);
+        drag_on(&mut app, &mut run, handle, empty);
+        assert!(app.canvas.append_menu.is_some(), "{}", app.ctl.error);
+        run(
+            &mut app,
+            vec![key(egui::Key::Escape, egui::Modifiers::NONE)],
+        );
+        assert!(app.canvas.append_menu.is_none());
+        drag_on(&mut app, &mut run, handle, empty);
+        let menu = app.canvas.append_menu.take().unwrap();
+        assert!(
+            app.append_choices(&menu.source)
+                .iter()
+                .any(|(_, e)| e.kind == NodeKind::EndEvent)
+        );
+        let before = app.ctl.session.snapshot().undo_count;
+        assert!(app.create_connected(menu.source, NodeKind::EndEvent.into(), menu.at));
+        assert_eq!(app.ctl.session.snapshot().undo_count, before + 1);
+        assert_eq!(flows(&app), 2);
+        let end = app.selected.clone().unwrap();
+        assert_eq!(node_of(&app, &end).kind, NodeKind::EndEvent);
+        // An end event cannot start a sequence flow: no append popup entries.
+        assert!(app.append_choices(&end).is_empty());
+    }
+
+    #[test]
+    fn palette_triggers_are_explicit_and_timers_start_empty() {
+        use processcraft_core::{
+            bpmn_model::{EventDefinition, NodeDetails},
+            replace::Trigger,
+        };
+        let entry = |kind, trigger| PaletteEntry {
+            kind,
+            trigger: Some(trigger),
+        };
+        let definitions =
+            |app: &ProcessCraft| match node_of(app, app.selected.as_ref().unwrap()).details {
+                Some(NodeDetails::Event { definitions, .. }) => definitions,
+                _ => panic!("not an event"),
+            };
+        let mut app = ProcessCraft::default();
+        app.add_entry(entry(NodeKind::IntermediateCatchEvent, Trigger::Message));
+        assert!(matches!(
+            definitions(&app).as_slice(),
+            [EventDefinition::Message {
+                message_ref: None,
+                ..
+            }]
+        ));
+        app.select(None);
+        app.add_entry(entry(NodeKind::IntermediateCatchEvent, Trigger::Timer));
+        assert!(matches!(
+            definitions(&app).as_slice(),
+            [EventDefinition::Timer {
+                kind: None,
+                expression: None,
+                ..
+            }]
+        ));
+        // Appended after a task (one undo step) and as a boundary event of it.
+        app.select(None);
+        app.add(NodeKind::Task);
+        let task = app.selected.clone().unwrap();
+        let undo = app.ctl.session.snapshot().undo_count;
+        app.add_entry(entry(NodeKind::IntermediateCatchEvent, Trigger::Message));
+        assert_eq!(app.ctl.session.snapshot().undo_count, undo + 1);
+        assert!(matches!(
+            definitions(&app).as_slice(),
+            [EventDefinition::Message { .. }]
+        ));
+        app.select(Some(task.clone()));
+        app.add_entry(entry(NodeKind::BoundaryEvent, Trigger::Timer));
+        assert_eq!(
+            node_of(&app, app.selected.as_ref().unwrap()).kind,
+            NodeKind::BoundaryEvent
+        );
+        assert!(matches!(
+            definitions(&app).as_slice(),
+            [EventDefinition::Timer {
+                expression: None,
+                ..
+            }]
+        ));
+        // Dropped from a drag: the core create path gets the same trigger.
+        app.select(None);
+        assert!(app.drop_new(
+            entry(NodeKind::IntermediateCatchEvent, Trigger::Message),
+            Point {
+                x: -600.0,
+                y: -600.0
+            }
+        ));
+        assert!(matches!(
+            definitions(&app).as_slice(),
+            [EventDefinition::Message { .. }]
+        ));
+        // The palette never offers a catch or boundary event without its trigger.
+        assert!(
+            super::super::shell::more_palette_entries()
+                .iter()
+                .all(|(_, e)| !matches!(
+                    e.kind,
+                    NodeKind::IntermediateCatchEvent | NodeKind::BoundaryEvent
+                ) || e.trigger.is_some())
+        );
+    }
+
+    #[test]
+    fn snapping_uses_siblings_not_shapes_of_other_scopes() {
+        let mut app = ProcessCraft::default();
+        app.add(NodeKind::Task);
+        let task = app.selected.clone().unwrap();
+        app.select(None);
+        app.add(NodeKind::SubProcess);
+        let sub = app.selected.clone().unwrap();
+        let s = shape_bounds(&app, &sub);
+        app.select(None);
+        assert!(app.drop_new(
+            NodeKind::Task.into(),
+            Point {
+                x: s.x + 80.0,
+                y: s.y + 60.0
+            }
+        ));
+        let inner = app.selected.clone().unwrap();
+        let snap = app.ctl.session.snapshot();
+        let d = &snap.project.documents[0];
+        assert_eq!(
+            processcraft_core::rules::locate(d, &inner).and_then(|l| l.scope),
+            Some(sub.clone())
+        );
+        let diagram = &d.diagrams[0];
+        let shape = diagram.shapes.iter().find(|s| s.element == task).unwrap();
+        let a = shape.bounds.clone();
+        let items = vec![(shape.id.selector(), a.clone())];
+        // Mid 2 below the inner task's mid (another scope): no snap.
+        let dx = s.x - 1000.0 - a.x;
+        let dy = s.y + 62.0 - (a.y + a.height / 2.0);
+        let free = snap_drag(d, diagram, &items, (dx, dy), 7.0, false);
+        assert_eq!((free.dy, free.guide_y), (0.0, None));
+        // Mid 3 below the subprocess mid (a sibling): snaps.
+        let dy = s.y + 103.0 - (a.y + a.height / 2.0);
+        let snapped = snap_drag(d, diagram, &items, (dx, dy), 7.0, false);
+        assert_eq!(snapped.dy, -3.0);
+    }
+
+    #[test]
+    fn choreography_scopes_are_cached_per_generation() {
+        let mut app = ProcessCraft::default();
+        let snap = app.ctl.session.snapshot();
+        let first = app.choreography_scope_infos(&snap.project.documents[0], snap.generation);
+        let again = app.choreography_scope_infos(&snap.project.documents[0], snap.generation);
+        assert!(Arc::ptr_eq(&first, &again));
+        app.add(NodeKind::Task);
+        let snap = app.ctl.session.snapshot();
+        let next = app.choreography_scope_infos(&snap.project.documents[0], snap.generation);
+        assert!(!Arc::ptr_eq(&first, &next));
+    }
+
+    #[test]
+    fn pasted_bpmn_xml_is_offered_as_a_new_model() {
+        let xml = include_str!("../../../tests/fixtures/bpmn/minimal.bpmn");
+        assert!(looks_like_bpmn(xml));
+        assert!(!looks_like_bpmn("Task\nReview order"));
+        assert!(!looks_like_bpmn("<html><body>definitions</body></html>"));
+        let mut app = ProcessCraft::default();
+        let mut frame = shortcut_runner();
+        frame(&mut app, vec![egui::Event::Paste("Task".into())]);
+        assert!(app.canvas.paste_bpmn.is_none());
+        assert!(
+            app.ctl.error.contains("Nothing to paste"),
+            "{}",
+            app.ctl.error
+        );
+        frame(&mut app, vec![egui::Event::Paste(xml.into())]);
+        assert!(app.canvas.paste_bpmn.is_some());
+        // Importing goes through the file import preparation in the background.
+        let ctx = egui::Context::default();
+        let pasted = app.canvas.paste_bpmn.take().unwrap();
+        app.import_bpmn_text(&ctx, pasted);
+        let mut result = None;
+        for _ in 0..500 {
+            result = app.effects.poll();
+            if result.is_some() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(
+            matches!(result, Some(crate::effects::ResultValue::Import { .. })),
+            "import did not prepare"
         );
     }
 }

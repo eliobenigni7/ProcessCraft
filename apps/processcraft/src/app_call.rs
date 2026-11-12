@@ -98,23 +98,27 @@ impl ProcessCraft {
         if !draft.error.is_empty() {
             ui.label(&draft.error);
         }
-        if ui.button("Apply called element").clicked() {
-            match q_build(&draft.called) {
-                Ok(called_element) => {
-                    if self.ctl.mutate(vec![Mutation::SetNodeDetails {
-                        document_id: document.id,
-                        element_id: draft.target.clone(),
-                        details: Some(NodeDetails::CallActivity { called_element }),
-                    }]) {
-                        self.call_draft = None;
-                        self.restore_selection();
-                    }
-                }
-                Err(error) => draft.error = error,
-            }
+        if ui.button("Apply called element").clicked() && self.apply_call_draft().is_ok() {
+            self.restore_selection();
         }
         if ui.button("Cancel called element").clicked() {
             self.call_draft = None;
         }
+    }
+    pub(super) fn apply_call_draft(&mut self) -> Result<(), String> {
+        let Some(draft) = self.call_draft.as_mut() else {
+            return Ok(());
+        };
+        let called_element = q_build(&draft.called).inspect_err(|e| draft.error = e.clone())?;
+        let document_id = self.ctl.session.snapshot().project.documents[self.doc].id;
+        if !self.ctl.mutate(vec![Mutation::SetNodeDetails {
+            document_id,
+            element_id: draft.target.clone(),
+            details: Some(NodeDetails::CallActivity { called_element }),
+        }]) {
+            return Err(self.ctl.error.clone());
+        }
+        self.call_draft = None;
+        Ok(())
     }
 }

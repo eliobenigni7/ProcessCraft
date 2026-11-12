@@ -236,19 +236,21 @@ impl ProcessCraft {
             ui.label(&draft.error);
         }
         if ui.button("Apply diagram fonts and details").clicked() {
-            let id = self.ctl.session.snapshot().project.documents[self.doc].id;
-            match draft.changes(id) {
-                Ok(changes) => {
-                    if self.ctl.mutate(changes) {
-                        self.style_draft = None;
-                    }
-                }
-                Err(error) => draft.error = error,
-            }
+            let _ = self.apply_style_draft();
         }
         if ui.button("Cancel diagram fonts and details").clicked() {
             self.style_draft = None;
         }
+    }
+    pub(super) fn apply_style_draft(&mut self) -> Result<(), String> {
+        self.apply_typed_draft(
+            |app| &mut app.style_draft,
+            |draft, document| {
+                draft
+                    .changes(document.id)
+                    .inspect_err(|e| draft.error = e.clone())
+            },
+        )
     }
 }
 

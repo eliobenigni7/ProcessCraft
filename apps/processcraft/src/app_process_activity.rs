@@ -490,20 +490,9 @@ impl ProcessCraft {
                 egui::Button::new("Apply process behavior"),
             )
             .clicked()
+            && self.apply_process_activity_draft().is_ok()
         {
-            match draft.build() {
-                Ok(metadata) => {
-                    if self.ctl.mutate(vec![Mutation::SetProcessActivityMetadata {
-                        document_id: document.id,
-                        process_id: draft.target.clone(),
-                        metadata,
-                    }]) {
-                        self.process_activity_draft = None;
-                        self.restore_selection();
-                    }
-                }
-                Err(error) => draft.error = error,
-            }
+            self.restore_selection();
         }
         if ui
             .add_enabled(
@@ -514,6 +503,19 @@ impl ProcessCraft {
         {
             self.process_activity_draft = None;
         }
+    }
+    pub(super) fn apply_process_activity_draft(&mut self) -> Result<(), String> {
+        self.apply_typed_draft(
+            |app| &mut app.process_activity_draft,
+            |draft, document| {
+                let metadata = draft.build().inspect_err(|e| draft.error = e.clone())?;
+                Ok(vec![Mutation::SetProcessActivityMetadata {
+                    document_id: document.id,
+                    process_id: draft.target.clone(),
+                    metadata,
+                }])
+            },
+        )
     }
 }
 
