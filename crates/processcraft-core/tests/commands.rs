@@ -1210,13 +1210,20 @@ fn choreography_sequence_flow_metadata_is_undoable_and_message_flow_rejected() {
         })
         .collect();
     let activity = |name| ChoreographyActivity {
+        loop_type: None,
+        details: None,
         id: id(name),
         base: None,
         name: Some(name.into()),
         flow_metadata: None,
         correlation_keys: vec![],
-        participant_refs: vec![id("buyer"), id("seller")],
-        initiating_participant: id("buyer"),
+        participant_refs: vec![
+            processcraft_core::bpmn_activity::ModelReference::Local(id("buyer")),
+            processcraft_core::bpmn_activity::ModelReference::Local(id("seller")),
+        ],
+        initiating_participant: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+            "buyer",
+        ))),
         message_flow_refs: vec![],
     };
     let flow = |name, kind, source, target| Flow {
@@ -1239,6 +1246,8 @@ fn choreography_sequence_flow_metadata_is_undoable_and_message_flow_rejected() {
     Arc::make_mut(&mut data.documents[0])
         .choreographies
         .push(Choreography {
+            graph: None,
+            kind: None,
             extras: None,
             conversation_nodes: vec![],
             conversation_links: vec![],
@@ -2852,6 +2861,21 @@ fn descriptors_match_protocol_tags() {
         "createChoreography",
         "updateChoreography",
         "deleteChoreography",
+        "promoteChoreographyGraph",
+        "createChoreographyFlowElement",
+        "updateChoreographyFlowElement",
+        "deleteChoreographyFlowElement",
+        "reorderChoreographyFlowElement",
+        "reparentChoreographyFlowElement",
+        "createChoreographyArtifact",
+        "updateChoreographyArtifact",
+        "deleteChoreographyArtifact",
+        "reorderChoreographyArtifact",
+        "reparentChoreographyArtifact",
+        "createChoreographyDataAssociation",
+        "updateChoreographyDataAssociation",
+        "deleteChoreographyDataAssociation",
+        "reorderChoreographyDataAssociation",
         "createChoreographyActivity",
         "updateChoreographyActivity",
         "deleteChoreographyActivity",

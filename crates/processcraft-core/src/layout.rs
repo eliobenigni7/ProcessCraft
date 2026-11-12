@@ -37,6 +37,8 @@ pub struct LayoutProposal {
     pub generation: u64,
     pub document_id: DocumentId,
     pub diagram_id: ElementSelector,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub choreography_scope_shape: Option<ElementSelector>,
     pub original: LayoutGeometry,
     pub proposed: LayoutGeometry,
 }
@@ -146,13 +148,24 @@ pub fn validate_proposal(
         }
     }
     let cancelled = AtomicBool::new(false);
-    let computed = propose_layout(
-        document,
-        &proposal.diagram_id,
-        &proposal.session_id,
-        proposal.generation,
-        &cancelled,
-    )?;
+    let computed = if let Some(shape) = &proposal.choreography_scope_shape {
+        propose_choreography_scope_layout(
+            document,
+            &proposal.diagram_id,
+            shape,
+            &proposal.session_id,
+            proposal.generation,
+            &cancelled,
+        )?
+    } else {
+        propose_layout(
+            document,
+            &proposal.diagram_id,
+            &proposal.session_id,
+            proposal.generation,
+            &cancelled,
+        )?
+    };
     if !same(&computed.proposed, &proposal.proposed) {
         return Err(err(
             "invalid_geometry",
@@ -160,6 +173,824 @@ pub fn validate_proposal(
         ));
     }
     Ok(())
+}
+
+/// Lay out one unambiguous direct choreography scope using the existing bounded
+/// router, then translate each actual participant-band representation with its owner.
+/// Expanded nested geometry and ambiguous views require an explicit representation
+/// selector and remain outside this profile.
+fn propose_choreography_layout(
+    document: &BpmnDocument,
+    diagram: &Diagram,
+    session_id: &str,
+    generation: u64,
+    cancel: &AtomicBool,
+) -> Result<LayoutProposal, LayoutError> {
+    use crate::bpmn_collaboration::ChoreographyActivityDetails;
+    use crate::model::{DiReference, Node, Process};
+    let scopes = crate::queries::choreography_scopes(document);
+    let scope = scopes
+        .iter()
+        .find(|s| s.owner == diagram.plane)
+        .ok_or_else(|| err("identity", "Choreography scope not found"))?;
+    let owner_id = if scope.parent.is_none() {
+        scope.root.id.clone()
+    } else {
+        scopes
+            .iter()
+            .flat_map(|s| &s.activities)
+            .find(|a| a.id.selector() == scope.owner)
+            .ok_or_else(|| err("identity", "SubChoreography scope owner not found"))?
+            .id
+            .clone()
+    };
+    let mut nodes: Vec<Node> = scope
+        .activities
+        .iter()
+        .map(|a| Node {
+            flow_metadata: None,
+            item_aware: None,
+            id: a.id.clone(),
+            name: a.name.clone(),
+            documentation: String::new().into(),
+            base_extras: None,
+            kind: NodeKind::Task,
+            details: None,
+            loop_characteristics: None,
+            io_specification: None,
+            activity: None,
+            owner: String::new(),
+            contact: String::new(),
+        })
+        .collect();
+    for node in scope.events.iter().chain(&scope.gateways) {
+        let mut node = (*node).clone();
+        // The shared router distinguishes rectangular activities from other
+        // shapes for port placement. Preserve the authored dimensions while
+        // selecting its non-activity routing class in this transient view.
+        node.kind = match node.kind {
+            NodeKind::StartEvent
+            | NodeKind::EndEvent
+            | NodeKind::ExclusiveGateway
+            | NodeKind::ParallelGateway => node.kind,
+            NodeKind::IntermediateCatchEvent | NodeKind::IntermediateThrowEvent => {
+                NodeKind::StartEvent
+            }
+            NodeKind::InclusiveGateway | NodeKind::ComplexGateway | NodeKind::EventBasedGateway => {
+                NodeKind::ExclusiveGateway
+            }
+            NodeKind::BoundaryEvent => {
+                return Err(err(
+                    "unsupported",
+                    "Boundary event layout needs attachment-aware routing",
+                ));
+            }
+            _ => return Err(err("unsupported", "Unsupported choreography node kind")),
+        };
+        node.details = None;
+        node.flow_metadata = None;
+        nodes.push(node);
+    }
+    let node_ids: BTreeSet<_> = nodes.iter().map(|n| n.id.selector()).collect();
+    let flow_ids: BTreeSet<_> = scope.flows.iter().map(|f| f.id.selector()).collect();
+    if scope
+        .activities
+        .iter()
+        .any(|a| matches!(a.details, Some(ChoreographyActivityDetails::Sub { .. })))
+        && diagram.shapes.iter().any(|s| {
+            scopes.iter().any(|child| {
+                child.parent.as_ref() == Some(&scope.owner)
+                    && (child
+                        .activities
+                        .iter()
+                        .any(|a| a.id.selector() == s.element)
+                        || child
+                            .events
+                            .iter()
+                            .chain(&child.gateways)
+                            .any(|n| n.id.selector() == s.element))
+            })
+        })
+    {
+        return Err(err(
+            "unsupported",
+            "Expanded nested choreography requires explicit representation selection",
+        ));
+    }
+    let mut bands = Vec::new();
+    let mut basic_shapes = Vec::new();
+    for shape in &diagram.shapes {
+        if node_ids.contains(&shape.element) && shape.participant_band_kind.is_none() {
+            basic_shapes.push(shape.clone());
+        } else if let (Some(_), Some(DiReference::Local(owner))) = (
+            shape.participant_band_kind,
+            &shape.choreography_activity_shape,
+        ) {
+            let owner_shape = diagram
+                .shapes
+                .iter()
+                .find(|candidate| {
+                    candidate.id.selector() == *owner && node_ids.contains(&candidate.element)
+                })
+                .ok_or_else(|| err("invalid_di", "Participant band owner is unresolved"))?;
+            if shape.bounds.x < owner_shape.bounds.x
+                || shape.bounds.y < owner_shape.bounds.y
+                || shape.bounds.x + shape.bounds.width
+                    > owner_shape.bounds.x + owner_shape.bounds.width
+                || shape.bounds.y + shape.bounds.height
+                    > owner_shape.bounds.y + owner_shape.bounds.height
+            {
+                return Err(err(
+                    "unsupported",
+                    "Participant band extends outside its activity shape",
+                ));
+            }
+            let activity = scope
+                .activities
+                .iter()
+                .find(|a| a.id.selector() == owner_shape.element)
+                .ok_or_else(|| err("invalid_di", "Participant band owner is not an activity"))?;
+            let index = crate::reference_resolution::ReferenceIndex::new(document);
+            if !activity.participant_refs.iter().any(|r| matches!(index.resolve(r), crate::reference_resolution::ReferenceResolution::Resolved(id) if id == shape.element)) {
+                return Err(err("invalid_di", "Participant band membership is unresolved"));
+            }
+            bands.push((shape, owner.clone()));
+        } else {
+            return Err(err(
+                "unsupported",
+                "Diagram contains an unqualified choreography representation",
+            ));
+        }
+    }
+    if diagram.edges.iter().any(|e| !flow_ids.contains(&e.element)) {
+        return Err(err(
+            "unsupported",
+            "Diagram contains an unqualified choreography edge",
+        ));
+    }
+    for edge in &diagram.edges {
+        let flow = scope
+            .flows
+            .iter()
+            .find(|f| f.id.selector() == edge.element)
+            .ok_or_else(|| err("invalid_di", "Sequence flow edge is unresolved"))?;
+        for (representation, endpoint) in [
+            (&edge.source_element, &flow.source),
+            (&edge.target_element, &flow.target),
+        ] {
+            if let Some(representation) = representation {
+                let Some(shape) = basic_shapes
+                    .iter()
+                    .find(|s| s.id.selector() == *representation)
+                else {
+                    return Err(err(
+                        "invalid_di",
+                        "Sequence flow representation endpoint is unresolved",
+                    ));
+                };
+                if endpoint.as_ref()
+                    != Some(&crate::bpmn_activity::ModelReference::Local(
+                        shape.element.clone(),
+                    ))
+                {
+                    return Err(err(
+                        "invalid_di",
+                        "Sequence flow representation does not match its semantic endpoint",
+                    ));
+                }
+            }
+        }
+    }
+    let mut temporary = document.clone();
+    temporary.choreographies.clear();
+    temporary.collaboration = None;
+    temporary.additional_collaborations.clear();
+    temporary.processes = vec![Process {
+        activity_metadata: None,
+        is_executable: None,
+        io_specification: None,
+        lane_set_id: None,
+        lane_set_base: None,
+        groups: vec![],
+        data_objects: vec![],
+        data_associations: vec![],
+        id: owner_id,
+        name: None,
+        documentation: String::new().into(),
+        base_extras: None,
+        nodes,
+        lanes: vec![],
+        flows: scope.flows.iter().map(|f| (*f).clone()).collect(),
+    }];
+    let mut synthetic_diagram = diagram.clone();
+    synthetic_diagram.shapes = basic_shapes;
+    temporary.diagrams = vec![synthetic_diagram];
+    let computed = propose_layout(
+        &temporary,
+        &diagram.id.selector(),
+        session_id,
+        generation,
+        cancel,
+    )?;
+    let original = geometry(diagram);
+    let mut proposed = original.clone();
+    for shape in &computed.proposed.shapes {
+        let target = proposed
+            .shapes
+            .iter_mut()
+            .find(|s| s.id == shape.id)
+            .ok_or_else(|| err("identity", "Shape missing from proposal"))?;
+        *target = shape.clone();
+    }
+    for edge in &computed.proposed.edges {
+        let target = proposed
+            .edges
+            .iter_mut()
+            .find(|e| e.id == edge.id)
+            .ok_or_else(|| err("identity", "Edge missing from proposal"))?;
+        *target = edge.clone();
+    }
+    for (band, owner) in bands {
+        let before = original
+            .shapes
+            .iter()
+            .find(|s| s.id == owner)
+            .ok_or_else(|| err("identity", "Band owner missing"))?;
+        let after = proposed
+            .shapes
+            .iter()
+            .find(|s| s.id == owner)
+            .ok_or_else(|| err("identity", "Band owner missing"))?;
+        let (dx, dy) = (
+            after.bounds.x - before.bounds.x,
+            after.bounds.y - before.bounds.y,
+        );
+        let target = proposed
+            .shapes
+            .iter_mut()
+            .find(|s| s.id == band.id.selector())
+            .ok_or_else(|| err("identity", "Band missing"))?;
+        target.bounds.x += dx;
+        target.bounds.y += dy;
+        if let Some(label) = &mut target.label_bounds {
+            label.x += dx;
+            label.y += dy;
+        }
+    }
+    if !valid_geometry(&proposed) {
+        return Err(err("invalid_geometry", "Computed geometry exceeds bounds"));
+    }
+    Ok(LayoutProposal {
+        session_id: session_id.into(),
+        generation,
+        document_id: document.id,
+        diagram_id: diagram.id.selector(),
+        choreography_scope_shape: None,
+        original,
+        proposed,
+    })
+}
+
+/// Layout direct children of a selected expanded SubChoreography representation.
+/// Other representations stay untouched; ambiguous ownership or edges fail closed.
+pub fn propose_choreography_scope_layout(
+    document: &BpmnDocument,
+    diagram_id: &ElementSelector,
+    scope_shape_id: &ElementSelector,
+    session_id: &str,
+    generation: u64,
+    cancel: &AtomicBool,
+) -> Result<LayoutProposal, LayoutError> {
+    propose_choreography_scope_impl(
+        document,
+        diagram_id,
+        Some(scope_shape_id),
+        session_id,
+        generation,
+        cancel,
+    )
+}
+
+fn propose_choreography_scope_impl(
+    document: &BpmnDocument,
+    diagram_id: &ElementSelector,
+    scope_shape_id: Option<&ElementSelector>,
+    session_id: &str,
+    generation: u64,
+    cancel: &AtomicBool,
+) -> Result<LayoutProposal, LayoutError> {
+    cancelled(cancel)?;
+    if !matches!(document.capability, Capability::Editable) {
+        return Err(err("unsupported", "Document is not editable"));
+    }
+    let diagram = document
+        .diagrams
+        .iter()
+        .find(|d| d.id.selector() == *diagram_id)
+        .ok_or_else(|| err("identity", "Diagram not found"))?;
+    if diagram.shapes.len() > 400
+        || diagram.edges.len() > 500
+        || diagram.shapes.len() + diagram.edges.len() > 1000
+    {
+        return Err(err("limit", "Diagram exceeds layout limits"));
+    }
+    let owner = if let Some(id) = scope_shape_id {
+        let shape = diagram
+            .shapes
+            .iter()
+            .find(|s| s.id.selector() == *id)
+            .ok_or_else(|| err("identity", "Scope representation not found"))?;
+        if shape.is_expanded != Some(true) || shape.participant_band_kind.is_some() {
+            return Err(err(
+                "unsupported",
+                "Select an explicitly expanded SubChoreography shape",
+            ));
+        }
+        Some(shape)
+    } else {
+        None
+    };
+    let scopes = crate::queries::choreography_scopes(document);
+    let scope = scopes
+        .iter()
+        .find(|s| match owner {
+            Some(shape) => s.parent.is_some() && s.owner == shape.element,
+            None => s.owner == diagram.plane,
+        })
+        .ok_or_else(|| err("identity", "Choreography scope not found"))?;
+    let inside = |inner: &Bounds, outer: &Bounds| {
+        inner.x >= outer.x
+            && inner.y >= outer.y
+            && inner.x + inner.width <= outer.x + outer.width
+            && inner.y + inner.height <= outer.y + outer.height
+    };
+    let within = |bounds: &Bounds| owner.is_none_or(|shape| inside(bounds, &shape.bounds));
+    let point_within = |point: &Point| {
+        owner.is_none_or(|shape| {
+            point.x >= shape.bounds.x
+                && point.y >= shape.bounds.y
+                && point.x <= shape.bounds.x + shape.bounds.width
+                && point.y <= shape.bounds.y + shape.bounds.height
+        })
+    };
+    let members: BTreeSet<_> = scope
+        .activities
+        .iter()
+        .map(|a| a.id.selector())
+        .chain(
+            scope
+                .events
+                .iter()
+                .chain(&scope.gateways)
+                .map(|n| n.id.selector()),
+        )
+        .collect();
+    let mut shapes: Vec<_> = diagram
+        .shapes
+        .iter()
+        .filter(|s| {
+            members.contains(&s.element) && s.participant_band_kind.is_none() && within(&s.bounds)
+        })
+        .cloned()
+        .collect();
+    if let Some(owner) = owner
+        && shapes.iter().any(|s| {
+            diagram.shapes.iter().any(|other| {
+                other.id != owner.id
+                    && other.element == owner.element
+                    && other.is_expanded == Some(true)
+                    && inside(&s.bounds, &other.bounds)
+            })
+        })
+    {
+        return Err(err(
+            "unsupported",
+            "A nested representation belongs to multiple scope shapes",
+        ));
+    }
+    let selected_ids: BTreeSet<_> = shapes.iter().map(|s| s.id.selector()).collect();
+    for band in diagram
+        .shapes
+        .iter()
+        .filter(|s| s.participant_band_kind.is_some())
+    {
+        if let Some(crate::model::DiReference::Local(id)) = &band.choreography_activity_shape
+            && selected_ids.contains(id)
+        {
+            shapes.push(band.clone());
+        }
+    }
+    let accepted: BTreeSet<_> = shapes.iter().map(|s| s.id.selector()).collect();
+    let expanded_children: Vec<_> = shapes
+        .iter()
+        .filter(|s| {
+            s.is_expanded == Some(true)
+                && scopes.iter().any(|child| {
+                    child.parent.as_ref() == Some(&scope.owner) && child.owner == s.element
+                })
+        })
+        .cloned()
+        .collect();
+    let mut nested_shapes = BTreeSet::new();
+    for shape in diagram.shapes.iter().filter(|s| {
+        owner.is_none_or(|owner| s.id != owner.id)
+            && !matches!((&s.choreography_activity_shape, scope_shape_id), (Some(crate::model::DiReference::Local(id)), Some(owner)) if id == owner)
+            && within(&s.bounds)
+            && !accepted.contains(&s.id.selector())
+    }) {
+        let parents: Vec<_> = expanded_children
+            .iter()
+            .filter(|parent| inside(&shape.bounds, &parent.bounds))
+            .collect();
+        if parents.len() != 1
+            || shape
+                .label
+                .as_ref()
+                .and_then(|label| label.bounds.as_ref())
+                .is_some_and(|label| !inside(label, &parents[0].bounds))
+        {
+            return Err(err(
+                "unsupported",
+                "The selected scope contains an unqualified shape, band, or label",
+            ));
+        }
+        nested_shapes.insert(shape.id.selector());
+    }
+    let mut nested_edges = BTreeSet::new();
+    let mut edges = Vec::new();
+    for edge in &diagram.edges {
+        let flow = scope.flows.iter().find(|f| f.id.selector() == edge.element);
+        let touches = edge
+            .source_element
+            .as_ref()
+            .is_some_and(|id| selected_ids.contains(id))
+            || edge
+                .target_element
+                .as_ref()
+                .is_some_and(|id| selected_ids.contains(id));
+        if let Some(flow) = flow {
+            let endpoint = |reference: &Option<crate::bpmn_activity::ModelReference>,
+                            representation: &Option<ElementSelector>|
+             -> Option<bool> {
+                let Some(crate::bpmn_activity::ModelReference::Local(semantic)) = reference else {
+                    return None;
+                };
+                if let Some(id) = representation {
+                    return Some(selected_ids.contains(id));
+                }
+                let all: Vec<_> = diagram
+                    .shapes
+                    .iter()
+                    .filter(|s| s.participant_band_kind.is_none() && s.element == *semantic)
+                    .collect();
+                (all.len() == 1).then(|| selected_ids.contains(&all[0].id.selector()))
+            };
+            match (
+                endpoint(&flow.source, &edge.source_element),
+                endpoint(&flow.target, &edge.target_element),
+            ) {
+                (Some(true), Some(true)) => edges.push(edge.clone()),
+                (Some(false), Some(false)) => {}
+                _ => {
+                    return Err(err(
+                        "unsupported",
+                        "Scope edge endpoints are ambiguous or cross the selected representation",
+                    ));
+                }
+            }
+        } else {
+            let contained = expanded_children
+                .iter()
+                .filter(|parent| {
+                    edge.waypoints.iter().all(|point| {
+                        point.x >= parent.bounds.x
+                            && point.y >= parent.bounds.y
+                            && point.x <= parent.bounds.x + parent.bounds.width
+                            && point.y <= parent.bounds.y + parent.bounds.height
+                    })
+                })
+                .count();
+            if contained == 1 && !edge.waypoints.is_empty() {
+                let parent = expanded_children
+                    .iter()
+                    .find(|parent| {
+                        edge.waypoints.iter().all(|p| {
+                            p.x >= parent.bounds.x
+                                && p.y >= parent.bounds.y
+                                && p.x <= parent.bounds.x + parent.bounds.width
+                                && p.y <= parent.bounds.y + parent.bounds.height
+                        })
+                    })
+                    .ok_or_else(|| err("identity", "Nested edge parent missing"))?;
+                if edge
+                    .label
+                    .as_ref()
+                    .and_then(|label| label.bounds.as_ref())
+                    .is_some_and(|label| !inside(label, &parent.bounds))
+                {
+                    return Err(err(
+                        "unsupported",
+                        "Nested edge label lies outside its parent",
+                    ));
+                }
+                nested_edges.insert(edge.id.selector());
+            } else if contained > 1
+                || touches
+                || (edge.source_element.is_none() && edge.target_element.is_none())
+            {
+                return Err(err(
+                    "unsupported",
+                    "An external edge may be connected to the selected scope",
+                ));
+            }
+        }
+    }
+    let mut temporary = document.clone();
+    let mut selected = diagram.clone();
+    selected.plane = scope.owner.clone();
+    selected.shapes = shapes;
+    selected.edges = edges;
+    temporary.diagrams = vec![selected.clone()];
+    let computed =
+        propose_choreography_layout(&temporary, &selected, session_id, generation, cancel)?;
+    let original = geometry(diagram);
+    let mut proposed = original.clone();
+    let (dx, dy) = owner.map_or((0.0, 0.0), |owner| {
+        (owner.bounds.x + 20.0, owner.bounds.y + 20.0)
+    });
+    for shape in &computed.proposed.shapes {
+        let mut moved = shape.clone();
+        moved.bounds.x += dx;
+        moved.bounds.y += dy;
+        if let Some(label) = &mut moved.label_bounds {
+            label.x += dx;
+            label.y += dy;
+        }
+        if !within(&moved.bounds) || moved.label_bounds.as_ref().is_some_and(|b| !within(b)) {
+            return Err(err(
+                "unsupported",
+                "Expanded scope is too small for the proposed layout",
+            ));
+        }
+        let slot = proposed
+            .shapes
+            .iter_mut()
+            .find(|s| s.id == moved.id)
+            .ok_or_else(|| err("identity", "Shape missing"))?;
+        *slot = moved;
+    }
+    for edge in &computed.proposed.edges {
+        let mut moved = edge.clone();
+        for point in &mut moved.waypoints {
+            point.x += dx;
+            point.y += dy;
+            if !point_within(point) {
+                return Err(err(
+                    "unsupported",
+                    "A proposed route leaves the expanded scope",
+                ));
+            }
+        }
+        if let Some(label) = &mut moved.label_bounds {
+            label.x += dx;
+            label.y += dy;
+            if !within(label) {
+                return Err(err(
+                    "unsupported",
+                    "An edge label leaves the expanded scope",
+                ));
+            }
+        }
+        let slot = proposed
+            .edges
+            .iter_mut()
+            .find(|e| e.id == moved.id)
+            .ok_or_else(|| err("identity", "Edge missing"))?;
+        *slot = moved;
+    }
+    // Move expanded direct children rigidly through the shared geometry proof.
+    // The direct scope routes have already been computed; only descendant
+    // mutations are incorporated from this request.
+    let direct_shape_ids: BTreeSet<_> = computed
+        .proposed
+        .shapes
+        .iter()
+        .map(|s| s.id.clone())
+        .collect();
+    let direct_edge_ids: BTreeSet<_> = computed
+        .proposed
+        .edges
+        .iter()
+        .map(|e| e.id.clone())
+        .collect();
+    let moves: Vec<_> = expanded_children
+        .iter()
+        .filter_map(|shape| {
+            let target = proposed
+                .shapes
+                .iter()
+                .find(|s| s.id == shape.id.selector())?;
+            (target.bounds != shape.bounds).then(|| crate::commands::ShapeBounds {
+                diagram_id: diagram_id.clone(),
+                shape_id: shape.id.selector(),
+                bounds: target.bounds.clone(),
+            })
+        })
+        .collect();
+    let mut moved_descendants = BTreeSet::new();
+    let mut moved_nested_edges = BTreeSet::new();
+    if !moves.is_empty() {
+        let prepared = crate::geometry::prepare_move(document, diagram_id, moves)
+            .map_err(|message| err("unsupported", message))?;
+        if !prepared.warnings.is_empty() {
+            return Err(err(
+                "routing",
+                "Moving the nested scope would require an unqualified route",
+            ));
+        }
+        let crate::commands::Request::Batch { mutations } = prepared.request else {
+            return Err(err("unsupported", "Unexpected geometry request"));
+        };
+        for mutation in mutations {
+            match mutation {
+                crate::commands::Mutation::MoveShape {
+                    shape_id, bounds, ..
+                } if !direct_shape_ids.contains(&shape_id) => {
+                    if !nested_shapes.contains(&shape_id) {
+                        return Err(err("unsupported", "Nested move affects an unrelated shape"));
+                    }
+                    let target = proposed
+                        .shapes
+                        .iter_mut()
+                        .find(|s| s.id == shape_id)
+                        .ok_or_else(|| err("identity", "Nested shape missing"))?;
+                    let (dx, dy) = (bounds.x - target.bounds.x, bounds.y - target.bounds.y);
+                    target.bounds = bounds;
+                    if let Some(label) = &mut target.label_bounds {
+                        label.x += dx;
+                        label.y += dy;
+                    }
+                    if !within(&target.bounds)
+                        || target
+                            .label_bounds
+                            .as_ref()
+                            .is_some_and(|label| !within(label))
+                    {
+                        return Err(err(
+                            "unsupported",
+                            "A nested shape leaves the selected scope",
+                        ));
+                    }
+                    moved_descendants.insert(shape_id);
+                }
+                crate::commands::Mutation::Reroute {
+                    edge_id, waypoints, ..
+                } if !direct_edge_ids.contains(&edge_id) => {
+                    if !nested_edges.contains(&edge_id) {
+                        return Err(err("unsupported", "Nested move affects an unrelated edge"));
+                    }
+                    let target = proposed
+                        .edges
+                        .iter_mut()
+                        .find(|e| e.id == edge_id)
+                        .ok_or_else(|| err("identity", "Nested edge missing"))?;
+                    if waypoints.iter().any(|p| !point_within(p)) {
+                        return Err(err(
+                            "unsupported",
+                            "A nested route leaves the selected scope",
+                        ));
+                    }
+                    target.waypoints = waypoints;
+                    moved_nested_edges.insert(edge_id);
+                }
+                crate::commands::Mutation::SetLabelBounds {
+                    representation_id,
+                    bounds,
+                    ..
+                } if !direct_edge_ids.contains(&representation_id) => {
+                    if !nested_edges.contains(&representation_id) || !within(&bounds) {
+                        return Err(err("unsupported", "A nested edge label is unqualified"));
+                    }
+                    proposed
+                        .edges
+                        .iter_mut()
+                        .find(|e| e.id == representation_id)
+                        .ok_or_else(|| err("identity", "Nested edge missing"))?
+                        .label_bounds = Some(bounds);
+                }
+                crate::commands::Mutation::MoveShape { .. }
+                | crate::commands::Mutation::Reroute { .. }
+                | crate::commands::Mutation::SetLabelBounds { .. } => {}
+                _ => return Err(err("unsupported", "Unexpected nested geometry mutation")),
+            }
+        }
+        // A geometrically contained object not found by the semantic move proof
+        // cannot be silently left behind when its parent moves.
+        for shape_id in &nested_shapes {
+            let shape = diagram
+                .shapes
+                .iter()
+                .find(|s| s.id.selector() == *shape_id)
+                .ok_or_else(|| err("identity", "Nested shape missing"))?;
+            if expanded_children.iter().any(|parent| {
+                inside(&shape.bounds, &parent.bounds)
+                    && proposed
+                        .shapes
+                        .iter()
+                        .find(|s| s.id == parent.id.selector())
+                        .is_some_and(|s| s.bounds != parent.bounds)
+            }) && !moved_descendants.contains(shape_id)
+            {
+                return Err(err("unsupported", "Nested shape ownership is unproven"));
+            }
+        }
+        for edge_id in &nested_edges {
+            let edge = diagram
+                .edges
+                .iter()
+                .find(|e| e.id.selector() == *edge_id)
+                .ok_or_else(|| err("identity", "Nested edge missing"))?;
+            if expanded_children.iter().any(|parent| {
+                edge.waypoints.iter().all(|p| {
+                    p.x >= parent.bounds.x
+                        && p.y >= parent.bounds.y
+                        && p.x <= parent.bounds.x + parent.bounds.width
+                        && p.y <= parent.bounds.y + parent.bounds.height
+                }) && proposed
+                    .shapes
+                    .iter()
+                    .find(|s| s.id == parent.id.selector())
+                    .is_some_and(|s| s.bounds != parent.bounds)
+            }) && !moved_nested_edges.contains(edge_id)
+            {
+                return Err(err("unsupported", "Nested edge ownership is unproven"));
+            }
+        }
+    }
+    if !valid_geometry(&proposed) {
+        return Err(err("invalid_geometry", "Computed geometry exceeds bounds"));
+    }
+    let mut selected_shape_ids: BTreeSet<_> = computed
+        .proposed
+        .shapes
+        .iter()
+        .map(|s| s.id.clone())
+        .collect();
+    selected_shape_ids.extend(nested_shapes);
+    let mut selected_edge_ids: BTreeSet<_> = computed
+        .proposed
+        .edges
+        .iter()
+        .map(|e| e.id.clone())
+        .collect();
+    selected_edge_ids.extend(nested_edges);
+    for selected in proposed
+        .shapes
+        .iter()
+        .filter(|s| selected_shape_ids.contains(&s.id))
+    {
+        if proposed
+            .shapes
+            .iter()
+            .filter(|s| !selected_shape_ids.contains(&s.id) && scope_shape_id != Some(&s.id))
+            .any(|other| {
+                overlap(&selected.bounds, &other.bounds)
+                    || other
+                        .label_bounds
+                        .as_ref()
+                        .is_some_and(|label| overlap(&selected.bounds, label))
+            })
+        {
+            return Err(err(
+                "collision",
+                "Selected scope overlaps another representation",
+            ));
+        }
+        if proposed
+            .edges
+            .iter()
+            .filter(|e| !selected_edge_ids.contains(&e.id))
+            .any(|edge| {
+                edge.waypoints
+                    .windows(2)
+                    .any(|segment| segment_hits(&segment[0], &segment[1], &selected.bounds))
+            })
+        {
+            return Err(err(
+                "collision",
+                "Another representation's route crosses the selected scope",
+            ));
+        }
+    }
+    Ok(LayoutProposal {
+        session_id: session_id.into(),
+        generation,
+        document_id: document.id,
+        diagram_id: diagram_id.clone(),
+        choreography_scope_shape: scope_shape_id.cloned(),
+        original,
+        proposed,
+    })
 }
 
 fn overlap(a: &Bounds, b: &Bounds) -> bool {
@@ -188,6 +1019,18 @@ pub fn propose_layout(
             "unsupported",
             "Document contains preserved source or extensions",
         ));
+    }
+    if let Some(diagram) = document
+        .diagrams
+        .iter()
+        .find(|d| &d.id.selector() == diagram_id)
+        && crate::queries::choreography_scopes(document)
+            .iter()
+            .any(|scope| scope.owner == diagram.plane)
+    {
+        return propose_choreography_scope_impl(
+            document, diagram_id, None, session_id, generation, cancel,
+        );
     }
     if document.processes.len() != 1 {
         return Err(err("unsupported", "Exactly one process is required"));
@@ -738,6 +1581,7 @@ pub fn propose_layout(
         generation,
         document_id: document.id,
         diagram_id: diagram_id.clone(),
+        choreography_scope_shape: None,
         original,
         proposed: result,
     };

@@ -450,7 +450,7 @@ impl ProcessCraft {
                         .filter(|(_, s)| {
                             document.choreographies.iter().any(|c| {
                                 c.activities.iter().any(|a| {
-                                    a.id == s.element && a.participant_refs.contains(&selected)
+                                    a.id == s.element && a.participant_refs.contains(&processcraft_core::bpmn_activity::ModelReference::Local(selected.clone()))
                                 })
                             })
                         })

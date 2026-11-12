@@ -66,6 +66,449 @@ pub fn activity_reference_issues(
 }
 use crate::bpmn_model::EventResource as EventDefinitionResource;
 
+/// Bounded choreography graph checks. External names remain unresolved, not valid local targets.
+pub(crate) fn choreography_graph_diagnostics(
+    doc: &crate::model::BpmnDocument,
+) -> Vec<(ElementSelector, &'static str, &'static str)> {
+    use crate::bpmn_activity::ModelReference;
+    use crate::bpmn_collaboration::{ChoreographyActivityDetails, ChoreographyRootKind};
+    use crate::reference_resolution::{ReferenceIndex, ReferenceResolution};
+    fn preceding<'a>(
+        scope: &queries::ChoreographyScope<'a>,
+        target: &ElementSelector,
+        active: &mut HashSet<ElementSelector>,
+        depth: usize,
+        budget: &mut usize,
+    ) -> Option<Vec<&'a crate::bpmn_collaboration::ChoreographyActivity>> {
+        use crate::bpmn_activity::ModelReference;
+        use crate::bpmn_collaboration::ChoreographyActivityDetails;
+        let work = scope.flows.len().max(1);
+        if depth > 128 || *budget < work || !active.insert(target.clone()) {
+            return None;
+        }
+        *budget -= work;
+        let incoming: Vec<_> = scope
+            .flows
+            .iter()
+            .filter(|f| {
+                f.kind == FlowKind::Sequence
+                    && f.target.as_ref() == Some(&ModelReference::Local(target.clone()))
+            })
+            .collect();
+        if incoming.is_empty() {
+            active.remove(target);
+            return None;
+        }
+        let mut result = Vec::new();
+        for flow in incoming {
+            if flow.condition.is_some() {
+                active.remove(target);
+                return None;
+            }
+            let Some(ModelReference::Local(source)) = &flow.source else {
+                active.remove(target);
+                return None;
+            };
+            if let Some(activity) = scope.activities.iter().find(|a| a.id.selector() == *source) {
+                if matches!(
+                    activity.details,
+                    Some(ChoreographyActivityDetails::Call { .. })
+                ) {
+                    active.remove(target);
+                    return None;
+                }
+                result.push(*activity);
+            } else if scope
+                .gateways
+                .iter()
+                .any(|g| g.id.selector() == *source && g.kind == NodeKind::ExclusiveGateway)
+            {
+                let Some(mut previous) = preceding(scope, source, active, depth + 1, budget) else {
+                    active.remove(target);
+                    return None;
+                };
+                result.append(&mut previous);
+            } else {
+                active.remove(target);
+                return None;
+            }
+        }
+        active.remove(target);
+        Some(result)
+    }
+    let index = ReferenceIndex::new(doc);
+    let scopes = queries::choreography_scopes(doc);
+    let mut issues = Vec::new();
+    for root in &doc.choreographies {
+        if let Some(ChoreographyRootKind::Global {
+            initiating_participant_ref: Some(reference),
+        }) = &root.kind
+        {
+            match index.resolve(reference) {
+                ReferenceResolution::MissingLocal => issues.push((root.id.selector(), "globalChoreographyInitiatorMissing", "The local global choreography initiator is unresolved; BPMN 2.0.2 §11.5.4.")),
+                ReferenceResolution::Resolved(id) if !root.participants.iter().any(|p| p.id.selector() == id) => issues.push((root.id.selector(), "globalChoreographyInitiatorWrongOwner", "The global choreography initiator does not belong to this choreography; BPMN 2.0.2 §11.5.4.")),
+                _ => {}
+            }
+        }
+        if root.graph.is_some() && (!root.activities.is_empty() || !root.sequence_flows.is_empty())
+        {
+            issues.push((root.id.selector(), "mixedChoreographyAuthority", "A graph and legacy flow elements both have authority; retain only one representation."));
+        }
+        if matches!(root.kind, Some(ChoreographyRootKind::Global { .. }))
+            && scopes
+                .iter()
+                .find(|s| s.owner == root.id.selector())
+                .is_some_and(|s| !s.ordered.is_empty())
+        {
+            issues.push((
+                root.id.selector(),
+                "globalChoreographyFlowElements",
+                "GlobalChoreographyTask MUST NOT contain Flow Elements; BPMN 2.0.2 §11.5.4.",
+            ));
+        }
+    }
+    for scope in &scopes {
+        let graph = if scope.parent.is_none() {
+            scope.root.graph.as_ref()
+        } else {
+            scopes
+                .iter()
+                .flat_map(|parent| &parent.activities)
+                .find(|activity| activity.id.selector() == scope.owner)
+                .and_then(|activity| match &activity.details {
+                    Some(ChoreographyActivityDetails::Sub { graph, .. }) => Some(graph.as_ref()),
+                    _ => None,
+                })
+        };
+        if let Some(graph) = graph {
+            for association in &graph.data_associations {
+                if association
+                    .sources
+                    .iter()
+                    .chain(std::iter::once(&association.target))
+                    .any(|reference| {
+                        doc.data_stores.iter().any(|store| {
+                            store
+                                .id
+                                .as_ref()
+                                .is_some_and(|id| id.selector() == *reference)
+                        })
+                    })
+                {
+                    issues.push((
+                        association
+                            .id
+                            .as_ref()
+                            .map_or_else(|| association.owner.clone(), |id| id.selector()),
+                        "choreographyDataRepositoryUse",
+                        "Choreographies do not use data repositories; BPMN 2.0.2 §11.3.",
+                    ));
+                }
+            }
+        }
+        let root_participants: HashSet<_> = scope
+            .root
+            .participants
+            .iter()
+            .map(|p| p.id.selector())
+            .collect();
+        let nodes: HashSet<_> = scope
+            .activities
+            .iter()
+            .map(|a| a.id.selector())
+            .chain(scope.events.iter().map(|n| n.id.selector()))
+            .chain(scope.gateways.iter().map(|n| n.id.selector()))
+            .collect();
+        let parent_participants: Option<HashSet<_>> = scope.parent.as_ref().and_then(|parent| {
+            scopes
+                .iter()
+                .find(|s| &s.owner == parent)?
+                .activities
+                .iter()
+                .find(|a| a.id.selector() == scope.owner)
+                .map(|a| {
+                    a.participant_refs
+                        .iter()
+                        .filter_map(|r| match index.resolve(r) {
+                            ReferenceResolution::Resolved(id) => Some(id),
+                            _ => None,
+                        })
+                        .collect()
+                })
+        });
+        let incoming_targets: HashSet<_> = scope
+            .flows
+            .iter()
+            .filter_map(|f| match &f.target {
+                Some(ModelReference::Local(id)) if f.kind == FlowKind::Sequence => Some(id.clone()),
+                _ => None,
+            })
+            .collect();
+        let mut preceding_budget = 100_000;
+        for activity in &scope.activities {
+            let owner = activity.id.selector();
+            if activity.participant_refs.len() < 2 {
+                issues.push((owner.clone(), "choreographyParticipantsIncomplete", "A choreography activity requires at least two participant references; BPMN 2.0.2 Table 11.1."));
+            }
+            if activity.details.is_none() && activity.participant_refs.len() > 2 {
+                issues.push((owner.clone(), "choreographyTaskParticipantCount", "A Choreography Task represents an exchange between two participants; BPMN 2.0.2 §11.5.1."));
+            }
+            if activity.details.is_none() && !(1..=2).contains(&activity.message_flow_refs.len()) {
+                issues.push((owner.clone(), "choreographyTaskMessageFlowSchemaCardinality", "The pinned XSD requires one or two messageFlowRef values; Table 11.2 describes one or more."));
+            }
+            if activity.details.is_some() && !activity.message_flow_refs.is_empty() {
+                issues.push((owner.clone(), "choreographyTaskOnlyMessageFlows", "Message flow references belong to Choreography Task, not Sub or Call Choreography; BPMN 2.0.2 Tables 11.2–11.4."));
+            }
+            for r in &activity.participant_refs {
+                match index.resolve(r) {
+                    ReferenceResolution::MissingLocal => issues.push((owner.clone(), "choreographyParticipantMissing", "A local participant reference is unresolved; BPMN 2.0.2 Table 11.1.")),
+                    ReferenceResolution::Resolved(id) if !root_participants.contains(&id) => issues.push((owner.clone(), "choreographyParticipantWrongOwner", "A participant reference does not belong to this choreography; BPMN 2.0.2 Table 11.1.")),
+                    ReferenceResolution::Resolved(id) if parent_participants.as_ref().is_some_and(|p| !p.contains(&id)) => {
+                        // A parent with unresolved references cannot prove non-membership.
+                        let parent_complete = scope.parent.as_ref().and_then(|p| scopes.iter().find(|s| &s.owner == p)).and_then(|s| s.activities.iter().find(|a| a.id.selector() == scope.owner)).is_some_and(|a| a.participant_refs.iter().all(|r| matches!(index.resolve(r), ReferenceResolution::Resolved(_))));
+                        if parent_complete { issues.push((owner.clone(), "subChoreographyParticipantSubset", "A nested activity participant is not among its SubChoreography participants; BPMN 2.0.2 §11.5.2.")); }
+                    }
+                    _ => {}
+                }
+            }
+            match &activity.initiating_participant {
+                None => issues.push((owner.clone(), "choreographyInitiatorMissing", "The initiating participant is required; BPMN 2.0.2 Table 11.1.")),
+                Some(r) => match index.resolve(r) {
+                    ReferenceResolution::MissingLocal => issues.push((owner.clone(), "choreographyInitiatorUnresolved", "The local initiating participant is unresolved; BPMN 2.0.2 Table 11.1.")),
+                    ReferenceResolution::Resolved(id) if activity.participant_refs.iter().all(|p| matches!(index.resolve(p), ReferenceResolution::Resolved(_))) && !activity.participant_refs.iter().any(|p| index.resolve(p) == ReferenceResolution::Resolved(id.clone())) => issues.push((owner.clone(), "choreographyInitiatorNotParticipant", "The initiating participant must be one of the activity participants; BPMN 2.0.2 Table 11.1.")),
+                    _ => {}
+                }
+            }
+            // Exclusive paths are evaluated only when every predecessor resolves
+            // to an activity; a start, event, call, cycle or incomplete edge leaves
+            // the sequencing claim unqualified.
+            let previous = preceding(scope, &owner, &mut HashSet::new(), 0, &mut preceding_budget);
+            let resolved_initiator =
+                activity
+                    .initiating_participant
+                    .as_ref()
+                    .and_then(|r| match index.resolve(r) {
+                        ReferenceResolution::Resolved(id) => Some(id),
+                        _ => None,
+                    });
+            let proven = previous.as_ref().is_some_and(|items| {
+                items.iter().all(|a| {
+                    a.participant_refs
+                        .iter()
+                        .all(|r| matches!(index.resolve(r), ReferenceResolution::Resolved(_)))
+                })
+            }) && resolved_initiator.is_some();
+            if proven
+                && previous.as_ref().is_some_and(|items| {
+                    items.iter().any(|a| {
+                        !a.participant_refs.iter().any(|r| {
+                            index.resolve(r)
+                                == ReferenceResolution::Resolved(
+                                    resolved_initiator.clone().unwrap(),
+                                )
+                        })
+                    })
+                })
+            {
+                issues.push((owner.clone(), "choreographyInitiatorNotPreviouslyInvolved", "The initiator was not involved in a preceding activity on every resolved exclusive path; BPMN 2.0.2 §11.5.6."));
+            } else if !proven && incoming_targets.contains(&owner) {
+                issues.push((owner.clone(), "choreographyInitiatorSequenceUnqualified", "Preceding participant involvement cannot be established from the modeled paths; BPMN 2.0.2 §11.5.6."));
+            }
+            for r in &activity.message_flow_refs {
+                match index.resolve(r) {
+                    ReferenceResolution::MissingLocal => issues.push((owner.clone(), "choreographyMessageFlowMissing", "A local message flow reference is unresolved; BPMN 2.0.2 Table 11.2.")),
+                    ReferenceResolution::Resolved(id) if !scope.root.message_flows.iter().any(|f| f.id.selector() == id && f.kind == FlowKind::Message) => issues.push((owner.clone(), "choreographyMessageFlowWrongOwner", "A message flow reference does not identify a message flow of this choreography; BPMN 2.0.2 Table 11.2.")),
+                    _ => {}
+                }
+            }
+            if let Some(ChoreographyActivityDetails::Call {
+                called_choreography_ref,
+                participant_associations,
+            }) = &activity.details
+            {
+                if let Some(r) = called_choreography_ref {
+                    match index.resolve(r) {
+                        ReferenceResolution::MissingLocal => issues.push((owner.clone(), "calledChoreographyMissing", "The local called choreography is unresolved; BPMN 2.0.2 §11.5.3.")),
+                        ReferenceResolution::Resolved(id) if !doc.choreographies.iter().any(|c| c.id.selector() == id) => issues.push((owner.clone(), "calledChoreographyWrongType", "The called element must be a choreography or global choreography task; BPMN 2.0.2 §11.5.3.")),
+                        _ => {}
+                    }
+                }
+                for a in participant_associations {
+                    let association_owner =
+                        a.id.as_ref()
+                            .map_or_else(|| owner.clone(), |id| id.selector());
+                    if a.inner.is_none() || a.outer.is_none() {
+                        issues.push((association_owner.clone(), "callParticipantAssociationIncomplete", "Both inner and outer participant references are required; BPMN 2.0.2 Table 9.4."));
+                    }
+                    for reference in [&a.inner, &a.outer].into_iter().flatten() {
+                        if matches!(index.resolve(reference), ReferenceResolution::MissingLocal) {
+                            issues.push((association_owner.clone(), "callParticipantAssociationMissing", "A local participant association reference is unresolved; BPMN 2.0.2 §11.5.3."));
+                        }
+                    }
+                    if let Some(r) = &a.outer
+                        && let ReferenceResolution::Resolved(id) = index.resolve(r)
+                        && !root_participants.contains(&id)
+                    {
+                        issues.push((association_owner.clone(), "callParticipantAssociationOuterWrongOwner", "The outer participant must belong to the calling choreography; BPMN 2.0.2 §11.5.3."));
+                    }
+                    if let (Some(inner), Some(called)) = (&a.inner, called_choreography_ref)
+                        && let (
+                            ReferenceResolution::Resolved(inner_id),
+                            ReferenceResolution::Resolved(called_id),
+                        ) = (index.resolve(inner), index.resolve(called))
+                        && let Some(target) = doc
+                            .choreographies
+                            .iter()
+                            .find(|c| c.id.selector() == called_id)
+                        && !target
+                            .participants
+                            .iter()
+                            .any(|p| p.id.selector() == inner_id)
+                    {
+                        issues.push((association_owner, "callParticipantAssociationInnerWrongOwner", "The inner participant must belong to the called choreography; BPMN 2.0.2 §11.5.3."));
+                    }
+                }
+            }
+        }
+        for flow in &scope.flows {
+            if flow.kind != FlowKind::Sequence {
+                issues.push((
+                    flow.id.selector(),
+                    "choreographyFlowWrongType",
+                    "A choreography graph sequence flow must be a SequenceFlow; BPMN 2.0.2 §11.5.",
+                ));
+            }
+            for reference in [&flow.source, &flow.target] {
+                match reference {
+                    None => issues.push((flow.id.selector(), "choreographySequenceEndpointMissing", "A sequence flow endpoint is required; BPMN 2.0.2 Table 8.34.")),
+                    Some(ModelReference::Qualified(_)) => issues.push((flow.id.selector(), "choreographySequenceEndpointNotIdref", "Sequence flow endpoints are local IDREF values; BPMN 2.0.2 Table 8.34.")),
+                    Some(ModelReference::Local(id)) if !nodes.contains(id) => issues.push((flow.id.selector(), "choreographySequenceEndpointWrongScope", "A sequence flow endpoint must be a flow node in the same choreography scope; BPMN 2.0.2 §10.3.4.")),
+                    _ => {}
+                }
+            }
+        }
+        for n in &scope.events {
+            if !matches!(
+                n.kind,
+                NodeKind::StartEvent
+                    | NodeKind::EndEvent
+                    | NodeKind::IntermediateCatchEvent
+                    | NodeKind::IntermediateThrowEvent
+                    | NodeKind::BoundaryEvent
+            ) {
+                issues.push((
+                    n.id.selector(),
+                    "choreographyEventWrongContext",
+                    "This node is not a supported choreography event; BPMN 2.0.2 §11.4.",
+                ));
+            }
+            if let Some(NodeDetails::Event {
+                definitions,
+                definition_refs,
+                attached_to,
+                cancel_activity,
+                ..
+            }) = &n.details
+            {
+                let resolved: Vec<_> = definition_refs
+                    .iter()
+                    .filter_map(|r| match index.resolve(r) {
+                        ReferenceResolution::Resolved(id) => doc
+                            .root_event_definitions
+                            .iter()
+                            .find(|d| d.id().is_some_and(|identity| identity.selector() == id)),
+                        _ => None,
+                    })
+                    .collect();
+                let known: Vec<_> = definitions.iter().chain(resolved.iter().copied()).collect();
+                let unsupported = known.iter().any(|definition| match n.kind {
+                    NodeKind::StartEvent => !matches!(
+                        definition,
+                        EventDefinition::Timer { .. }
+                            | EventDefinition::Conditional { .. }
+                            | EventDefinition::Signal { .. }
+                    ),
+                    NodeKind::EndEvent => !matches!(definition, EventDefinition::Terminate { .. }),
+                    NodeKind::IntermediateCatchEvent => !matches!(
+                        definition,
+                        EventDefinition::Timer { .. }
+                            | EventDefinition::Conditional { .. }
+                            | EventDefinition::Signal { .. }
+                            | EventDefinition::Link { .. }
+                    ),
+                    NodeKind::IntermediateThrowEvent => {
+                        !matches!(definition, EventDefinition::Link { .. })
+                    }
+                    NodeKind::BoundaryEvent => !matches!(
+                        definition,
+                        EventDefinition::Message { .. }
+                            | EventDefinition::Timer { .. }
+                            | EventDefinition::Cancel { .. }
+                            | EventDefinition::Compensate { .. }
+                            | EventDefinition::Conditional { .. }
+                            | EventDefinition::Signal { .. }
+                    ),
+                    _ => false,
+                });
+                if unsupported {
+                    issues.push((n.id.selector(), "choreographyEventDefinitionWrongContext", "This event definition is not applicable in this choreography event context; BPMN 2.0.2 §11.6, Tables 11.6–11.8."));
+                }
+                if n.kind == NodeKind::BoundaryEvent {
+                    if known
+                        .iter()
+                        .any(|d| matches!(d, EventDefinition::Cancel { .. }))
+                        && *cancel_activity == Some(false)
+                    {
+                        issues.push((n.id.selector(), "choreographyCancelBoundaryNonInterrupting", "A choreography boundary Cancel Event must interrupt; BPMN 2.0.2 Table 11.7."));
+                    }
+                    if known
+                        .iter()
+                        .any(|d| matches!(d, EventDefinition::Message { .. }))
+                        && let Some(reference) = attached_to
+                        && let ReferenceResolution::Resolved(id) = index.resolve(reference)
+                        && let Some(activity) =
+                            scope.activities.iter().find(|a| a.id.selector() == id)
+                        && activity.details.is_some()
+                    {
+                        issues.push((n.id.selector(), "choreographyMessageBoundaryWrongActivity", "A choreography boundary Message Event applies only to a Choreography Task; BPMN 2.0.2 Table 11.7."));
+                    }
+                }
+                if n.kind == NodeKind::EndEvent && known.len() > 1 {
+                    issues.push((n.id.selector(), "choreographyEndMultipleWrongContext", "A choreography End Event cannot have multiple results; BPMN 2.0.2 Table 11.8."));
+                }
+                if n.kind == NodeKind::StartEvent
+                    && known.len() > 1
+                    && known.iter().any(|d| {
+                        !matches!(
+                            d,
+                            EventDefinition::Timer { .. } | EventDefinition::Signal { .. }
+                        )
+                    })
+                {
+                    issues.push((n.id.selector(), "choreographyStartMultipleWrongContext", "Multiple choreography start triggers may contain only signals or timers; BPMN 2.0.2 Table 11.6."));
+                }
+            }
+        }
+        for n in &scope.gateways {
+            if !matches!(
+                n.kind,
+                NodeKind::ExclusiveGateway
+                    | NodeKind::ParallelGateway
+                    | NodeKind::InclusiveGateway
+                    | NodeKind::ComplexGateway
+                    | NodeKind::EventBasedGateway
+            ) {
+                issues.push((
+                    n.id.selector(),
+                    "choreographyGatewayWrongContext",
+                    "This node is not a gateway; BPMN 2.0.2 §11.4.",
+                ));
+            }
+        }
+    }
+    issues
+}
+
 fn io_incomplete(io: &crate::bpmn_data::IoSpecification) -> bool {
     if io.input_sets.is_empty() || io.output_sets.is_empty() {
         return true;
@@ -293,6 +736,9 @@ impl ProjectData {
                     "Referenced inner association ownership cannot be established from modeled references; BPMN 2.0.2 §§9.3.1, 9.4.2 and 9.5.8.",
                 );
             }
+            for (owner, code, message) in choreography_graph_diagnostics(doc) {
+                emit(owner, code, message);
+            }
             for choreography in &doc.choreographies {
                 emit(
                     choreography.id.selector(),
@@ -361,12 +807,13 @@ impl ProjectData {
                         if shape.is_message_visible == Some(true)
                             && let Some((choreography, activity)) =
                                 doc.choreographies.iter().find_map(|c| {
-                                    c.activities
-                                        .iter()
+                                    queries::choreography_scopes(doc).into_iter()
+                                        .filter(|scope| scope.root.id == c.id)
+                                        .flat_map(|scope| scope.activities)
                                         .find(|activity| activity.id.selector() == owner.element)
                                         .map(|activity| (c, activity))
                                 })
-                            && activity.participant_refs.contains(&shape.element)
+                            && activity.participant_refs.iter().any(|r| matches!(crate::reference_resolution::ReferenceIndex::new(doc).resolve(r), crate::reference_resolution::ReferenceResolution::Resolved(id) if id == shape.element))
                         {
                             use crate::model::ParticipantBandKind;
                             if matches!(
@@ -387,7 +834,7 @@ impl ProjectData {
                                 .iter()
                                 .map(|reference| {
                                     choreography.message_flows.iter().find(|flow| {
-                                        flow.id.selector() == *reference
+                                        matches!(crate::reference_resolution::ReferenceIndex::new(doc).resolve(reference), crate::reference_resolution::ReferenceResolution::Resolved(id) if flow.id.selector() == id)
                                             && flow.kind == FlowKind::Message
                                     })
                                 })
@@ -1293,6 +1740,252 @@ pub fn activity_family_reference_issues(
     activity_family_reference_scan(doc).0
 }
 
+/// Proven missing or wrong-kind/owner local choreography references. External
+/// and ownership-unqualified references are excluded from mutation enforcement.
+pub fn choreography_reference_issues(
+    doc: &crate::model::BpmnDocument,
+) -> Vec<ActivityReferenceIssue> {
+    use crate::bpmn_collaboration::ChoreographyActivityDetails;
+    use crate::reference_resolution::{ReferenceIndex, ReferenceResolution};
+    let index = ReferenceIndex::new(doc);
+    let mut issues = Vec::new();
+    for scope in queries::choreography_scopes(doc) {
+        let mut check = |owner: ElementSelector,
+                         field: &'static str,
+                         r: &crate::bpmn_activity::ModelReference,
+                         allowed: &[ElementSelector]| {
+            let bad = match index.resolve(r) {
+                ReferenceResolution::MissingLocal => true,
+                ReferenceResolution::Resolved(id) => !allowed.contains(&id),
+                _ => false,
+            };
+            if bad {
+                issues.push(ActivityReferenceIssue {
+                    owner,
+                    field,
+                    target: r.clone(),
+                });
+            }
+        };
+        let participants: Vec<_> = scope
+            .root
+            .participants
+            .iter()
+            .map(|p| p.id.selector())
+            .collect();
+        if scope.parent.is_none()
+            && let Some(crate::bpmn_collaboration::ChoreographyRootKind::Global {
+                initiating_participant_ref: Some(reference),
+            }) = &scope.root.kind
+        {
+            check(
+                scope.root.id.selector(),
+                "globalChoreography.initiatingParticipantRef",
+                reference,
+                &participants,
+            );
+        }
+        let messages: Vec<_> = scope
+            .root
+            .message_flows
+            .iter()
+            .filter(|f| f.kind == FlowKind::Message)
+            .map(|f| f.id.selector())
+            .collect();
+        let roots: Vec<_> = doc.choreographies.iter().map(|c| c.id.selector()).collect();
+        let flow_nodes: Vec<_> = scope
+            .activities
+            .iter()
+            .map(|a| a.id.selector())
+            .chain(scope.events.iter().map(|n| n.id.selector()))
+            .chain(scope.gateways.iter().map(|n| n.id.selector()))
+            .collect();
+        for flow in &scope.flows {
+            for (field, reference) in [
+                ("choreography.sequenceFlow.sourceRef", &flow.source),
+                ("choreography.sequenceFlow.targetRef", &flow.target),
+            ] {
+                if let Some(reference) = reference {
+                    check(flow.id.selector(), field, reference, &flow_nodes);
+                }
+            }
+        }
+        let categories: Vec<_> = doc
+            .categories
+            .iter()
+            .flat_map(|c| &c.values)
+            .map(|v| v.id.selector())
+            .collect();
+        let base_elements: Vec<_> = doc.base_element_selectors().into_iter().collect();
+        for artifact in &scope.artifacts {
+            match artifact {
+                crate::bpmn_collaboration::CollaborationArtifact::Group(group) => {
+                    if let Some(r) = &group.category_value_ref {
+                        check(
+                            group.id.selector(),
+                            "group.categoryValueRef",
+                            r,
+                            &categories,
+                        );
+                    }
+                }
+                crate::bpmn_collaboration::CollaborationArtifact::Association(flow) => {
+                    for (field, reference) in [
+                        ("association.sourceRef", &flow.source),
+                        ("association.targetRef", &flow.target),
+                    ] {
+                        if let Some(r) = reference {
+                            check(flow.id.selector(), field, r, &base_elements);
+                        }
+                    }
+                }
+                crate::bpmn_collaboration::CollaborationArtifact::TextAnnotation(_) => {}
+            }
+        }
+        let activities: Vec<_> = scope.activities.iter().map(|a| a.id.selector()).collect();
+        for event in &scope.events {
+            let attachment = match &event.details {
+                Some(NodeDetails::Event { attached_to, .. }) => attached_to.as_ref(),
+                Some(NodeDetails::BoundaryEvent { attached_to, .. }) => Some(attached_to),
+                _ => None,
+            };
+            if let Some(reference) = attachment {
+                check(
+                    event.id.selector(),
+                    "boundaryEvent.attachedToRef",
+                    reference,
+                    &activities,
+                );
+            }
+        }
+        let metadata = scope
+            .activities
+            .iter()
+            .map(|a| (&a.id, &a.flow_metadata))
+            .chain(
+                scope
+                    .events
+                    .iter()
+                    .chain(&scope.gateways)
+                    .map(|n| (&n.id, &n.flow_metadata)),
+            );
+        for (id, metadata) in metadata {
+            if let Some(metadata) = metadata {
+                for (field, refs, incoming) in [
+                    ("flow.incoming", &metadata.incoming, true),
+                    ("flow.outgoing", &metadata.outgoing, false),
+                ] {
+                    let flows: Vec<_> = scope
+                        .flows
+                        .iter()
+                        .filter(|f| {
+                            f.kind == FlowKind::Sequence
+                                && if incoming {
+                                    f.target.as_ref()
+                                        == Some(&crate::bpmn_activity::ModelReference::Local(
+                                            id.selector(),
+                                        ))
+                                } else {
+                                    f.source.as_ref()
+                                        == Some(&crate::bpmn_activity::ModelReference::Local(
+                                            id.selector(),
+                                        ))
+                                }
+                        })
+                        .map(|f| f.id.selector())
+                        .collect();
+                    for r in refs {
+                        check(id.selector(), field, r, &flows);
+                    }
+                }
+                for r in &metadata.category_value_refs {
+                    check(id.selector(), "flow.categoryValueRef", r, &categories);
+                }
+            }
+        }
+        for flow in &scope.flows {
+            if let Some(metadata) = &flow.flow_metadata {
+                for r in &metadata.category_value_refs {
+                    check(flow.id.selector(), "flow.categoryValueRef", r, &categories);
+                }
+            }
+        }
+        for activity in scope.activities {
+            let owner = activity.id.selector();
+            for r in &activity.participant_refs {
+                check(
+                    owner.clone(),
+                    "choreography.participantRef",
+                    r,
+                    &participants,
+                );
+            }
+            if let Some(r) = &activity.initiating_participant {
+                check(
+                    owner.clone(),
+                    "choreography.initiatingParticipantRef",
+                    r,
+                    &participants,
+                );
+            }
+            for r in &activity.message_flow_refs {
+                check(owner.clone(), "choreography.messageFlowRef", r, &messages);
+            }
+            if let Some(ChoreographyActivityDetails::Call {
+                called_choreography_ref,
+                participant_associations,
+            }) = &activity.details
+            {
+                if let Some(r) = called_choreography_ref {
+                    check(
+                        owner.clone(),
+                        "callChoreography.calledChoreographyRef",
+                        r,
+                        &roots,
+                    );
+                }
+                let target =
+                    called_choreography_ref
+                        .as_ref()
+                        .and_then(|r| match index.resolve(r) {
+                            ReferenceResolution::Resolved(id) => {
+                                doc.choreographies.iter().find(|c| c.id.selector() == id)
+                            }
+                            _ => None,
+                        });
+                for association in participant_associations {
+                    let owner = association
+                        .id
+                        .as_ref()
+                        .map_or_else(|| owner.clone(), |id| id.selector());
+                    if let Some(r) = &association.outer {
+                        check(
+                            owner.clone(),
+                            "callChoreography.participantAssociation.outerRef",
+                            r,
+                            &participants,
+                        );
+                    }
+                    if let (Some(r), Some(target)) = (&association.inner, target) {
+                        let ids: Vec<_> = target
+                            .participants
+                            .iter()
+                            .map(|p| p.id.selector())
+                            .collect();
+                        check(
+                            owner,
+                            "callChoreography.participantAssociation.innerRef",
+                            r,
+                            &ids,
+                        );
+                    }
+                }
+            }
+        }
+    }
+    issues
+}
+
 /// Inner association references whose referenced owner cannot be proven from
 /// currently modeled choreography and CallConversation paths. External QNames
 /// are inert and excluded. Caller and called process definitional collaboration
@@ -1465,6 +2158,47 @@ pub fn association_inner_scope_unqualified(
                     reference,
                     &flows,
                 );
+            }
+        }
+    }
+    // CallChoreography mappings refer to the explicitly called root, including
+    // calls nested inside SubChoreography scopes. Never infer a target root.
+    for scope in queries::choreography_scopes(doc) {
+        for activity in scope.activities {
+            if let Some(crate::bpmn_collaboration::ChoreographyActivityDetails::Call {
+                called_choreography_ref,
+                participant_associations,
+            }) = &activity.details
+            {
+                let target =
+                    called_choreography_ref
+                        .as_ref()
+                        .and_then(|r| match index.resolve(r) {
+                            ReferenceResolution::Resolved(id) => {
+                                doc.choreographies.iter().find(|c| c.id.selector() == id)
+                            }
+                            _ => None,
+                        });
+                for association in participant_associations {
+                    let Some(reference) = &association.inner else {
+                        continue;
+                    };
+                    match index.resolve(reference) {
+                        ReferenceResolution::External | ReferenceResolution::NamespaceUnknown => {}
+                        ReferenceResolution::Resolved(id)
+                            if target.is_some_and(|c| {
+                                c.participants.iter().any(|p| p.id.selector() == id)
+                            }) => {}
+                        _ => result.push(ActivityReferenceIssue {
+                            owner: association
+                                .id
+                                .as_ref()
+                                .map_or_else(|| activity.id.selector(), |id| id.selector()),
+                            field: "callChoreography.participantAssociation.innerRef",
+                            target: reference.clone(),
+                        }),
+                    }
+                }
             }
         }
     }
@@ -1777,7 +2511,11 @@ fn activity_family_reference_scan(
                     .map(|key| (conversation.id.selector(), key)),
             );
         }
-        for activity in &choreography.activities {
+        for activity in queries::choreography_scopes(doc)
+            .into_iter()
+            .filter(|scope| scope.root.id == choreography.id)
+            .flat_map(|scope| scope.activities)
+        {
             keys.extend(
                 activity
                     .correlation_keys
@@ -2567,14 +3305,12 @@ fn activity_family_reference_scan(
                     .iter()
                     .filter(|candidate| {
                         doc.choreographies.iter().any(|choreography| {
-                            choreography.activities.iter().any(|activity| {
+                            queries::choreography_scopes(doc).into_iter().filter(|scope| scope.root.id == choreography.id).flat_map(|scope| scope.activities).any(|activity| {
                                 activity.id.selector() == candidate.element
                                     && (shape.participant_band_kind.is_none()
                                         || (choreography.participants.iter().any(|participant| {
                                             participant.id.selector() == shape.element
-                                        }) && activity
-                                            .participant_refs
-                                            .contains(&shape.element)))
+                                        }) && activity.participant_refs.iter().any(|r| matches!(crate::reference_resolution::ReferenceIndex::new(doc).resolve(r), crate::reference_resolution::ReferenceResolution::Resolved(id) if id == shape.element))))
                             })
                         })
                     })
@@ -2749,39 +3485,233 @@ fn activity_family_reference_scan(
         .iter()
         .filter_map(|definition| definition.id())
         .collect();
-    for choreography in &doc.choreographies {
-        for activity in &choreography.activities {
-            if let Some(metadata) = &activity.flow_metadata {
+    for scope in queries::choreography_scopes(doc) {
+        for artifact in scope.artifacts.iter().filter(|_| scope.parent.is_some()) {
+            match artifact {
+                crate::bpmn_collaboration::CollaborationArtifact::Group(group) => {
+                    if let Some(reference) = &group.category_value_ref {
+                        check(
+                            group.id.selector(),
+                            "group.categoryValueRef",
+                            reference,
+                            categories.clone(),
+                        );
+                    }
+                }
+                crate::bpmn_collaboration::CollaborationArtifact::Association(flow) => {
+                    for (field, reference) in [
+                        ("association.sourceRef", &flow.source),
+                        ("association.targetRef", &flow.target),
+                    ] {
+                        if let Some(reference) = reference {
+                            check(flow.id.selector(), field, reference, base_elements.clone());
+                        }
+                    }
+                }
+                crate::bpmn_collaboration::CollaborationArtifact::TextAnnotation(_) => {}
+            }
+        }
+        let links: Vec<_> = scope
+            .events
+            .iter()
+            .filter_map(|n| match &n.details {
+                Some(NodeDetails::Event { definitions, .. }) => Some(definitions),
+                _ => None,
+            })
+            .flatten()
+            .filter_map(|d| match d {
+                EventDefinition::Link { id, .. } => id.as_ref(),
+                _ => None,
+            })
+            .collect();
+        for node in &scope.events {
+            if let Some(NodeDetails::Event {
+                definitions,
+                definition_refs,
+                properties,
+                io,
+                ..
+            }) = &node.details
+            {
+                let owner = node.id.selector();
+                if let Some(io) = io {
+                    let (ports, set) = match io {
+                        EventIo::Catch {
+                            outputs,
+                            output_set,
+                        } => (outputs, output_set),
+                        EventIo::Throw { inputs, input_set } => (inputs, input_set),
+                    };
+                    let port_ids: Vec<_> =
+                        ports.iter().filter_map(|port| port.id.as_ref()).collect();
+                    for port in ports {
+                        if let Some(reference) = port
+                            .item_aware
+                            .as_ref()
+                            .and_then(|i| i.item_subject_ref.as_ref())
+                        {
+                            check(
+                                port.id
+                                    .as_ref()
+                                    .map_or_else(|| owner.clone(), |id| id.selector()),
+                                "event.port.itemSubjectRef",
+                                &ModelReference::Qualified(reference.clone()),
+                                item_definitions.clone(),
+                            );
+                        }
+                    }
+                    if let Some(set) = set {
+                        let set_owner = set
+                            .id
+                            .as_ref()
+                            .map_or_else(|| owner.clone(), |id| id.selector());
+                        for reference in set
+                            .data_refs
+                            .iter()
+                            .chain(&set.optional_refs)
+                            .chain(&set.while_executing_refs)
+                        {
+                            check(
+                                set_owner.clone(),
+                                "event.set.dataRef",
+                                &ModelReference::Local(reference.clone()),
+                                port_ids.clone(),
+                            );
+                        }
+                    }
+                }
+                for reference in definition_refs {
+                    check(
+                        owner.clone(),
+                        "event.eventDefinitionRef",
+                        reference,
+                        event_definitions.clone(),
+                    );
+                }
+                for property in properties {
+                    if let Some(reference) = property
+                        .item_aware
+                        .as_ref()
+                        .and_then(|i| i.item_subject_ref.as_ref())
+                    {
+                        check(
+                            property
+                                .id
+                                .as_ref()
+                                .map_or_else(|| owner.clone(), |id| id.selector()),
+                            "event.property.itemSubjectRef",
+                            &ModelReference::Qualified(reference.clone()),
+                            item_definitions.clone(),
+                        );
+                    }
+                }
+                for definition in definitions {
+                    let definition_owner = definition
+                        .id()
+                        .map_or_else(|| owner.clone(), |id| id.selector());
+                    match definition {
+                        EventDefinition::Message {
+                            message_ref,
+                            operation_ref,
+                            ..
+                        } => {
+                            if let Some(r) = message_ref {
+                                check(
+                                    definition_owner.clone(),
+                                    "event.messageRef",
+                                    r,
+                                    messages.clone(),
+                                );
+                            }
+                            if let Some(r) = operation_ref {
+                                check(
+                                    definition_owner,
+                                    "event.operationRef",
+                                    r,
+                                    operations.clone(),
+                                );
+                            }
+                        }
+                        EventDefinition::Signal {
+                            signal_ref: Some(r),
+                            ..
+                        } => check(definition_owner, "event.signalRef", r, signals.clone()),
+                        EventDefinition::Error {
+                            error_ref: Some(r), ..
+                        } => check(definition_owner, "event.errorRef", r, errors.clone()),
+                        EventDefinition::Escalation {
+                            escalation_ref: Some(r),
+                            ..
+                        } => check(
+                            definition_owner,
+                            "event.escalationRef",
+                            r,
+                            escalations.clone(),
+                        ),
+                        EventDefinition::Compensate {
+                            activity_ref: Some(r),
+                            ..
+                        } => check(
+                            definition_owner,
+                            "event.activityRef",
+                            r,
+                            scope.activities.iter().map(|a| &a.id).collect(),
+                        ),
+                        EventDefinition::Link {
+                            sources, target, ..
+                        } => {
+                            for r in sources.iter().chain(target.iter()) {
+                                check(definition_owner.clone(), "event.linkRef", r, links.clone());
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        let node_metadata = scope
+            .activities
+            .iter()
+            .map(|a| (&a.id, &a.flow_metadata))
+            .chain(
+                scope
+                    .events
+                    .iter()
+                    .chain(&scope.gateways)
+                    .map(|n| (&n.id, &n.flow_metadata)),
+            );
+        for (node_id, metadata) in node_metadata {
+            if let Some(metadata) = metadata {
                 for (field, references, incoming) in [
                     ("flow.incoming", &metadata.incoming, true),
                     ("flow.outgoing", &metadata.outgoing, false),
                 ] {
-                    let candidates: Vec<_> = choreography
-                        .sequence_flows
+                    let candidates: Vec<_> = scope
+                        .flows
                         .iter()
                         .filter(|flow| {
                             flow.kind == FlowKind::Sequence
                                 && if incoming {
                                     flow.target.as_ref()
                                         == Some(&crate::bpmn_model::EventReference::Local(
-                                            activity.id.selector(),
+                                            node_id.selector(),
                                         ))
                                 } else {
                                     flow.source.as_ref()
                                         == Some(&crate::bpmn_model::EventReference::Local(
-                                            activity.id.selector(),
+                                            node_id.selector(),
                                         ))
                                 }
                         })
                         .map(|flow| &flow.id)
                         .collect();
                     for reference in references {
-                        check(activity.id.selector(), field, reference, candidates.clone());
+                        check(node_id.selector(), field, reference, candidates.clone());
                     }
                 }
                 for reference in &metadata.category_value_refs {
                     check(
-                        activity.id.selector(),
+                        node_id.selector(),
                         "flow.categoryValueRef",
                         reference,
                         categories.clone(),

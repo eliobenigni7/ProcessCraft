@@ -120,10 +120,17 @@ impl Default for Controller {
 }
 impl Controller {
     pub fn apply_changes(&mut self, request: Request) -> Option<ChangeSet> {
+        self.apply_changes_at_generation(self.session.snapshot().generation, request)
+    }
+    pub fn apply_changes_at_generation(
+        &mut self,
+        generation: u64,
+        request: Request,
+    ) -> Option<ChangeSet> {
         let env = Envelope {
             request_id: uuid::Uuid::new_v4().to_string(),
             session_id: self.session.id(),
-            expected_generation: Some(self.session.snapshot().generation),
+            expected_generation: Some(generation),
         };
         match self.session.apply(env, request) {
             Ok(changes) => Some(changes),
@@ -141,6 +148,10 @@ impl Controller {
     }
     pub fn mutate(&mut self, mutations: Vec<Mutation>) -> bool {
         self.mutate_changes(mutations).is_some()
+    }
+    pub fn mutate_at_generation(&mut self, generation: u64, mutations: Vec<Mutation>) -> bool {
+        self.apply_changes_at_generation(generation, Request::Batch { mutations })
+            .is_some()
     }
     pub fn open(&mut self, path: PathBuf) {
         let grant = match FileGrant::new(&path, Access::Write) {

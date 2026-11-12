@@ -1669,6 +1669,7 @@ fn participant_band_follows_only_its_own_di_representation() {
 #[test]
 fn valid_choreography_band_moves_with_only_its_owner_and_undoes() {
     use processcraft_core::{
+        bpmn_activity::ModelReference,
         bpmn_collaboration::{Choreography, ChoreographyActivity},
         commands::{Request, Session, ShapeBounds},
         model::{DiReference, Flow, FlowKind, Label, Participant, ParticipantBandKind},
@@ -1686,6 +1687,8 @@ fn valid_choreography_band_moves_with_only_its_owner_and_undoes() {
         multiplicity: None,
     };
     document.choreographies.push(Choreography {
+        kind: None,
+        graph: None,
         extras: None,
         conversation_nodes: vec![],
         conversation_links: vec![],
@@ -1712,11 +1715,16 @@ fn valid_choreography_band_moves_with_only_its_owner_and_undoes() {
             message_ref: None,
         }],
         activities: vec![ChoreographyActivity {
+            loop_type: None,
+            details: None,
             id: "exchange".parse().unwrap(),
             name: Some("Exchange".into()),
-            participant_refs: vec!["buyer".parse().unwrap(), "seller".parse().unwrap()],
-            initiating_participant: "buyer".parse().unwrap(),
-            message_flow_refs: vec!["message".parse().unwrap()],
+            participant_refs: vec![
+                ModelReference::Local("buyer".parse().unwrap()),
+                ModelReference::Local("seller".parse().unwrap()),
+            ],
+            initiating_participant: Some(ModelReference::Local("buyer".parse().unwrap())),
+            message_flow_refs: vec![ModelReference::Local("message".parse().unwrap())],
             base: None,
             correlation_keys: vec![],
             flow_metadata: None,
@@ -1787,6 +1795,166 @@ fn valid_choreography_band_moves_with_only_its_owner_and_undoes() {
     assert_eq!(session.snapshot().content_id, before.content_id);
     apply_session(&mut session, Request::Redo);
     assert_eq!(session.snapshot().content_id, after.content_id);
+
+    use processcraft_core::bpmn_collaboration::{
+        ChoreographyActivityDetails, ChoreographyFlowElement, ChoreographyGraph,
+    };
+    use processcraft_core::commands::Mutation;
+    let mut document = (*before.project.documents[0]).clone();
+    let mut first = document.choreographies[0].activities[0].clone();
+    first.id = "nested1".parse().unwrap();
+    first.message_flow_refs.clear();
+    let mut second = first.clone();
+    second.id = "nested2".parse().unwrap();
+    let mut grandchild = first.clone();
+    grandchild.id = "grandchild".parse().unwrap();
+    second.details = Some(ChoreographyActivityDetails::Sub {
+        graph: Box::new(ChoreographyGraph {
+            data_associations: vec![],
+            flow_elements: vec![ChoreographyFlowElement::Activity(Box::new(grandchild))],
+        }),
+        artifacts: vec![],
+    });
+    let mut flow = document.choreographies[0].message_flows[0].clone();
+    flow.id = "nested_flow".parse().unwrap();
+    flow.kind = FlowKind::Sequence;
+    flow.source = Some(ModelReference::Local("nested1".parse().unwrap()));
+    flow.target = Some(ModelReference::Local("nested2".parse().unwrap()));
+    document.choreographies[0].activities[0].details = Some(ChoreographyActivityDetails::Sub {
+        graph: Box::new(ChoreographyGraph {
+            data_associations: vec![],
+            flow_elements: vec![
+                ChoreographyFlowElement::Activity(Box::new(first)),
+                ChoreographyFlowElement::Activity(Box::new(second)),
+                ChoreographyFlowElement::SequenceFlow(Box::new(flow)),
+            ],
+        }),
+        artifacts: vec![],
+    });
+    document.choreographies[0].activities[0]
+        .message_flow_refs
+        .clear();
+    let parent = document.choreographies[0].activities.remove(0);
+    document.choreographies[0].graph = Some(ChoreographyGraph {
+        data_associations: vec![],
+        flow_elements: vec![ChoreographyFlowElement::Activity(Box::new(parent))],
+    });
+    let edge_template = document.diagrams[0].edges[0].clone();
+    let diagram = document.diagrams.last_mut().unwrap();
+    let mut child1 = diagram.shapes[0].clone();
+    child1.id = "child1".parse().unwrap();
+    child1.element = "nested1".parse().unwrap();
+    child1.bounds = rect(15.0, 30.0, 20.0, 20.0);
+    let mut child2 = child1.clone();
+    child2.id = "child2".parse().unwrap();
+    child2.element = "nested2".parse().unwrap();
+    child2.bounds.x = 75.0;
+    let mut child3 = child1.clone();
+    child3.id = "child3".parse().unwrap();
+    child3.bounds.x += 300.0;
+    let mut child4 = child2.clone();
+    child4.id = "child4".parse().unwrap();
+    child4.bounds.x += 300.0;
+    let mut grandchild1 = child1.clone();
+    grandchild1.id = "grandchild1".parse().unwrap();
+    grandchild1.element = "grandchild".parse().unwrap();
+    grandchild1.bounds = rect(80.0, 35.0, 8.0, 8.0);
+    let mut grandchild2 = grandchild1.clone();
+    grandchild2.id = "grandchild2".parse().unwrap();
+    grandchild2.bounds.x += 300.0;
+    diagram
+        .shapes
+        .extend([child1, child2, child3, child4, grandchild1, grandchild2]);
+    let mut edge = edge_template;
+    edge.id = "nested_edge1".parse().unwrap();
+    edge.element = "nested_flow".parse().unwrap();
+    edge.source_element = None;
+    edge.target_element = None;
+    edge.waypoints = vec![p(35.0, 40.0), p(55.0, 45.0), p(75.0, 40.0)];
+    edge.label = Some(Label {
+        id: None,
+        bounds: Some(rect(45.0, 50.0, 20.0, 10.0)),
+        style: None,
+        style_ref: None,
+        di_metadata: None,
+    });
+    let mut edge2 = edge.clone();
+    edge2.id = "nested_edge2".parse().unwrap();
+    for point in &mut edge2.waypoints {
+        point.x += 300.0;
+    }
+    diagram.edges.extend([edge, edge2]);
+    let request = prepare_move(
+        &document,
+        &diagram_id,
+        vec![ShapeBounds {
+            diagram_id: diagram_id.clone(),
+            shape_id: "owner1".parse().unwrap(),
+            bounds: rect(10.0, 15.0, 120.0, 100.0),
+        }],
+    )
+    .unwrap()
+    .request;
+    let mut graph_project = (*before.project).clone();
+    graph_project.documents[0] = std::sync::Arc::new(document.clone());
+    let mut graph_session = Session::new(graph_project).unwrap();
+    let graph_before = graph_session.snapshot().content_id;
+    apply_session(&mut graph_session, request.clone());
+    let graph_after = graph_session.snapshot().content_id;
+    apply_session(&mut graph_session, Request::Undo);
+    assert_eq!(graph_session.snapshot().content_id, graph_before);
+    apply_session(&mut graph_session, Request::Redo);
+    assert_eq!(graph_session.snapshot().content_id, graph_after);
+    let Request::Batch { mutations } = request else {
+        panic!("expected batch")
+    };
+    assert!(mutations.iter().any(|m| matches!(m, Mutation::MoveShape { shape_id, bounds, .. } if shape_id == &"child1".parse::<processcraft_core::ids::ElementSelector>().unwrap() && *bounds == rect(25.0, 45.0, 20.0, 20.0))));
+    assert!(mutations.iter().any(|m| matches!(m, Mutation::MoveShape { shape_id, bounds, .. } if shape_id == &"grandchild1".parse::<processcraft_core::ids::ElementSelector>().unwrap() && *bounds == rect(90.0, 50.0, 8.0, 8.0))));
+    assert!(!mutations.iter().any(|m| matches!(m, Mutation::MoveShape { shape_id, .. } if shape_id == &"child3".parse::<processcraft_core::ids::ElementSelector>().unwrap())));
+    assert!(mutations.iter().any(|m| matches!(m, Mutation::Reroute { edge_id, waypoints, .. } if edge_id == &"nested_edge1".parse::<processcraft_core::ids::ElementSelector>().unwrap() && waypoints == &vec![p(45.0, 55.0), p(65.0, 60.0), p(85.0, 55.0)])));
+    assert!(!mutations.iter().any(|m| matches!(m, Mutation::Reroute { edge_id, .. } if edge_id == &"nested_edge2".parse::<processcraft_core::ids::ElementSelector>().unwrap())));
+    assert!(mutations.iter().any(|m| matches!(m, Mutation::SetLabelBounds { representation_id, bounds, .. } if representation_id == &"nested_edge1".parse::<processcraft_core::ids::ElementSelector>().unwrap() && *bounds == rect(55.0, 65.0, 20.0, 10.0))));
+    let mut orphaned = document.clone();
+    orphaned.diagrams.last_mut().unwrap().shapes[6].bounds.x = 600.0;
+    assert!(
+        prepare_move(
+            &orphaned,
+            &diagram_id,
+            vec![ShapeBounds {
+                diagram_id: diagram_id.clone(),
+                shape_id: "owner1".parse().unwrap(),
+                bounds: rect(10.0, 15.0, 120.0, 100.0)
+            }]
+        )
+        .is_err()
+    );
+    let mut detached = document.clone();
+    detached.diagrams.last_mut().unwrap().edges[0].waypoints[0].x = 50.0;
+    assert!(
+        prepare_move(
+            &detached,
+            &diagram_id,
+            vec![ShapeBounds {
+                diagram_id: diagram_id.clone(),
+                shape_id: "owner1".parse().unwrap(),
+                bounds: rect(10.0, 15.0, 120.0, 100.0)
+            }]
+        )
+        .is_err()
+    );
+    document.diagrams.last_mut().unwrap().shapes[2].bounds.x = 0.0;
+    assert!(
+        prepare_move(
+            &document,
+            &diagram_id,
+            vec![ShapeBounds {
+                diagram_id: diagram_id.clone(),
+                shape_id: "owner1".parse().unwrap(),
+                bounds: rect(10.0, 15.0, 120.0, 100.0)
+            }]
+        )
+        .is_err()
+    );
 }
 
 #[test]
@@ -1837,4 +2005,168 @@ fn unresolved_qualified_endpoint_is_never_retargeted_by_local_name() {
         result.is_err(),
         "moving the known endpoint of an unresolved connection must be refused"
     );
+}
+
+#[test]
+fn moving_event_or_gateway_keeps_route_outside_endpoint_owners_and_undoes() {
+    use processcraft_core::commands::{Request, Session, ShapeBounds};
+    let cases = [
+        (
+            rect(100.0, 100.0, 36.0, 36.0),
+            rect(280.0, 100.0, 50.0, 50.0),
+            vec![
+                p(136.0, 118.0),
+                p(148.0, 118.0),
+                p(148.0, 125.0),
+                p(280.0, 125.0),
+            ],
+            "shape_start",
+            rect(140.0, 172.0, 36.0, 36.0),
+        ),
+        (
+            rect(100.0, 100.0, 36.0, 36.0),
+            rect(280.0, 100.0, 50.0, 50.0),
+            vec![
+                p(136.0, 118.0),
+                p(148.0, 118.0),
+                p(148.0, 125.0),
+                p(280.0, 125.0),
+            ],
+            "shape_review",
+            rect(240.0, 172.0, 50.0, 50.0),
+        ),
+        (
+            rect(100.0, 100.0, 36.0, 36.0),
+            rect(100.0, 280.0, 50.0, 50.0),
+            vec![
+                p(118.0, 136.0),
+                p(118.0, 148.0),
+                p(125.0, 148.0),
+                p(125.0, 280.0),
+            ],
+            "shape_start",
+            rect(172.0, 140.0, 36.0, 36.0),
+        ),
+        (
+            rect(100.1, 100.1, 36.0, 36.0),
+            rect(280.1, 100.1, 50.0, 50.0),
+            vec![
+                p(136.1, 118.1),
+                p(148.1, 118.1),
+                p(148.1, 125.1),
+                p(280.1, 125.1),
+            ],
+            "shape_start",
+            rect(140.3, 172.4, 36.0, 36.0),
+        ),
+    ];
+    for (source_bounds, target_bounds, waypoints, moved_id, moved_bounds) in cases {
+        let (initial, _) = session_fixture();
+        let mut project = (*initial.snapshot().project).clone();
+        let doc = std::sync::Arc::make_mut(&mut project.documents[0]);
+        doc.processes[0]
+            .nodes
+            .iter_mut()
+            .find(|n| n.id.to_string() == "review")
+            .unwrap()
+            .kind = NodeKind::ExclusiveGateway;
+        let diagram = doc
+            .diagrams
+            .iter_mut()
+            .find(|d| d.id.to_string() == "diagram")
+            .unwrap();
+        diagram.shapes[0].bounds = source_bounds;
+        diagram.shapes[1].bounds = target_bounds;
+        diagram.edges[0].waypoints = waypoints.clone();
+        let mut session = Session::new(project).unwrap();
+        let before = session.snapshot();
+        let diagram_id = "diagram".parse().unwrap();
+        let mut ambiguous = (*before.project.documents[0]).clone();
+        let diagram = ambiguous
+            .diagrams
+            .iter_mut()
+            .find(|d| d.id == diagram_id)
+            .unwrap();
+        let mut duplicate = diagram.shapes[0].clone();
+        duplicate.id = "duplicate_event_representation".parse().unwrap();
+        duplicate.bounds.x += 500.0;
+        diagram.shapes.push(duplicate);
+        assert!(
+            prepare_move(
+                &ambiguous,
+                &diagram_id,
+                vec![ShapeBounds {
+                    diagram_id: diagram_id.clone(),
+                    shape_id: moved_id.parse().unwrap(),
+                    bounds: moved_bounds.clone()
+                }]
+            )
+            .is_err()
+        );
+        let mut unproven = (*before.project.documents[0]).clone();
+        let diagram = unproven
+            .diagrams
+            .iter_mut()
+            .find(|d| d.id == diagram_id)
+            .unwrap();
+        diagram.edges[0].waypoints[0].x -= 1.0;
+        diagram.edges[0].waypoints[0].y -= 1.0;
+        assert!(
+            prepare_move(
+                &unproven,
+                &diagram_id,
+                vec![ShapeBounds {
+                    diagram_id: diagram_id.clone(),
+                    shape_id: moved_id.parse().unwrap(),
+                    bounds: moved_bounds.clone()
+                }]
+            )
+            .is_err()
+        );
+        let request = prepare_move(
+            &before.project.documents[0],
+            &diagram_id,
+            vec![ShapeBounds {
+                diagram_id: diagram_id.clone(),
+                shape_id: moved_id.parse().unwrap(),
+                bounds: moved_bounds,
+            }],
+        )
+        .unwrap()
+        .request;
+        apply_session(&mut session, request);
+        let after = session.snapshot();
+        let diagram = after.project.documents[0]
+            .diagrams
+            .iter()
+            .find(|d| d.id == diagram_id)
+            .unwrap();
+        let repaired = &diagram.edges[0].waypoints;
+        for bend in &waypoints[1..waypoints.len() - 1] {
+            assert!(repaired.contains(bend));
+        }
+        for pair in repaired.windows(2) {
+            assert!(pair[0].x == pair[1].x || pair[0].y == pair[1].y);
+            for shape in &diagram.shapes {
+                let b = &shape.bounds;
+                let crossing = if pair[0].x == pair[1].x {
+                    pair[0].x > b.x
+                        && pair[0].x < b.x + b.width
+                        && pair[0].y.max(pair[1].y) > b.y
+                        && pair[0].y.min(pair[1].y) < b.y + b.height
+                } else {
+                    pair[0].y > b.y
+                        && pair[0].y < b.y + b.height
+                        && pair[0].x.max(pair[1].x) > b.x
+                        && pair[0].x.min(pair[1].x) < b.x + b.width
+                };
+                assert!(!crossing, "route {repaired:?} crosses {:?}", b);
+            }
+        }
+        let after_id = after.content_id;
+        apply_session(&mut session, Request::Undo);
+        assert_eq!(session.snapshot().content_id, before.content_id);
+        apply_session(&mut session, Request::Redo);
+        assert_eq!(session.snapshot().content_id, after_id);
+    }
 }

@@ -39,6 +39,61 @@ const COMMON_METADATA_CAPABILITY: &str = "bpmn-common-metadata-v1";
 const EXPANDED_ACTIVITIES_CAPABILITY: &str = "bpmn-expanded-activities-v1";
 const DI_CHOREOGRAPHY_CAPABILITY: &str = "bpmn-di-choreography-v1";
 const EXPANDED_COLLABORATION_CAPABILITY: &str = "bpmn-expanded-collaboration-v1";
+const CHOREOGRAPHY_GRAPH_CAPABILITY: &str = "bpmn-choreography-graph-v1";
+const QUALIFIED_BOUNDARY_CAPABILITY: &str = "bpmn-qualified-boundary-reference-v1";
+
+fn has_qualified_boundary_reference(document: &BpmnDocument) -> bool {
+    use processcraft_core::bpmn_model::{EventReference, NodeDetails};
+    let qualified = |node: &processcraft_core::model::Node| match &node.details {
+        Some(NodeDetails::BoundaryEvent { attached_to, .. }) => {
+            matches!(attached_to, EventReference::Qualified(_))
+        }
+        Some(NodeDetails::Event { attached_to, .. }) => {
+            matches!(attached_to, Some(EventReference::Qualified(_)))
+        }
+        _ => false,
+    };
+    let mut pending: Vec<_> = document
+        .processes
+        .iter()
+        .map(|p| p.nodes.as_slice())
+        .collect();
+    while let Some(nodes) = pending.pop() {
+        for node in nodes {
+            if qualified(node) {
+                return true;
+            }
+            if let Some(NodeDetails::SubProcess { content }) = &node.details {
+                pending.push(&content.nodes);
+            }
+        }
+    }
+    processcraft_core::queries::choreography_scopes(document)
+        .iter()
+        .flat_map(|s| s.events.iter().chain(&s.gateways))
+        .any(|n| qualified(n))
+}
+
+fn has_choreography_graph_features(document: &BpmnDocument) -> bool {
+    use processcraft_core::bpmn_model::EventReference;
+    document.choreographies.iter().any(|choreography| {
+        choreography.kind.is_some()
+            || choreography.graph.is_some()
+            || choreography.activities.iter().any(|activity| {
+                activity.loop_type.is_some()
+                    || activity.details.is_some()
+                    || !matches!(
+                        activity.initiating_participant,
+                        Some(EventReference::Local(_))
+                    )
+                    || activity
+                        .participant_refs
+                        .iter()
+                        .chain(&activity.message_flow_refs)
+                        .any(|reference| matches!(reference, EventReference::Qualified(_)))
+            })
+    })
+}
 
 fn has_native_identity_features(
     documents: &[Arc<BpmnDocument>],
@@ -79,6 +134,18 @@ fn has_empty_activity_bindings(document: &BpmnDocument) -> bool {
 
 fn has_extended_event_definitions(document: &BpmnDocument) -> bool {
     use processcraft_core::bpmn_model::{EventDefinition, NodeDetails};
+    let extended = |node: &processcraft_core::model::Node| {
+        matches!(&node.details,
+        Some(NodeDetails::Event { definitions, .. }) if definitions.iter().any(|d| matches!(d,
+            EventDefinition::Link { .. } | EventDefinition::Cancel { .. } | EventDefinition::Compensate { .. })))
+    };
+    if processcraft_core::queries::choreography_scopes(document)
+        .iter()
+        .flat_map(|scope| scope.events.iter().chain(&scope.gateways))
+        .any(|node| extended(node))
+    {
+        return true;
+    }
     let mut pending: Vec<_> = document
         .processes
         .iter()
@@ -88,18 +155,7 @@ fn has_extended_event_definitions(document: &BpmnDocument) -> bool {
         for node in nodes {
             match &node.details {
                 Some(NodeDetails::SubProcess { content }) => pending.push(&content.nodes),
-                Some(NodeDetails::Event { definitions, .. })
-                    if definitions.iter().any(|d| {
-                        matches!(
-                            d,
-                            EventDefinition::Link { .. }
-                                | EventDefinition::Cancel { .. }
-                                | EventDefinition::Compensate { .. }
-                        )
-                    }) =>
-                {
-                    return true;
-                }
+                _ if extended(node) => return true,
                 _ => {}
             }
         }
@@ -400,6 +456,32 @@ pub fn write_bytes(project: &ProjectData) -> Result<Vec<u8>, NativeError> {
     {
         required_capabilities.push(EXPANDED_COLLABORATION_CAPABILITY.into());
     }
+    if project
+        .documents
+        .iter()
+        .any(|d| has_choreography_graph_features(d))
+        || project.checkpoints.iter().any(|c| {
+            c.content
+                .documents
+                .iter()
+                .any(|d| has_choreography_graph_features(d))
+        })
+    {
+        required_capabilities.push(CHOREOGRAPHY_GRAPH_CAPABILITY.into());
+    }
+    if project
+        .documents
+        .iter()
+        .any(|d| has_qualified_boundary_reference(d))
+        || project.checkpoints.iter().any(|c| {
+            c.content
+                .documents
+                .iter()
+                .any(|d| has_qualified_boundary_reference(d))
+        })
+    {
+        required_capabilities.push(QUALIFIED_BOUNDARY_CAPABILITY.into());
+    }
     let manifest = Manifest {
         format: "processcraft".into(),
         schema: 3,
@@ -414,6 +496,10 @@ pub fn write_bytes(project: &ProjectData) -> Result<Vec<u8>, NativeError> {
     if json.len() > JSON_LIMIT || manifest.len() > JSON_LIMIT {
         return Err(err("JSON exceeds limit"));
     }
+    // The reader performs bounded, duplicate-aware and lossless parsing. Apply exactly the
+    // same checks before constructing an archive so a successful save is always reopenable.
+    let _: Manifest = parse_json(&manifest)?;
+    let _: ProjectDto = parse_json(&json)?;
     let mut payloads = Vec::new();
     for checkpoint in &project.checkpoints {
         let c = &checkpoint.content;
@@ -433,6 +519,7 @@ pub fn write_bytes(project: &ProjectData) -> Result<Vec<u8>, NativeError> {
         if bytes.len() > JSON_LIMIT {
             return Err(err("checkpoint JSON exceeds limit"));
         }
+        let _: FrozenDto = parse_json(&bytes)?;
         payloads.push((format!("checkpoints/{}.json", checkpoint.id), bytes));
     }
     let mut unique = HashMap::new();
@@ -600,6 +687,8 @@ fn load_with_limits(
                 && cap != EXPANDED_ACTIVITIES_CAPABILITY
                 && cap != DI_CHOREOGRAPHY_CAPABILITY
                 && cap != EXPANDED_COLLABORATION_CAPABILITY
+                && cap != CHOREOGRAPHY_GRAPH_CAPABILITY
+                && cap != QUALIFIED_BOUNDARY_CAPABILITY
         })
         || (manifest.schema < 3 && !manifest.required_capabilities.is_empty())
         || (manifest.schema == 3
@@ -827,6 +916,38 @@ fn load_with_limits(
     {
         return Err(err("expanded collaboration requires capability"));
     }
+    if (dto
+        .documents
+        .iter()
+        .any(|d| has_choreography_graph_features(d))
+        || frozen.iter().any(|(_, c)| {
+            c.documents
+                .iter()
+                .any(|d| has_choreography_graph_features(d))
+        }))
+        && !manifest
+            .required_capabilities
+            .iter()
+            .any(|cap| cap == CHOREOGRAPHY_GRAPH_CAPABILITY)
+    {
+        return Err(err("choreography graph requires capability"));
+    }
+    if (dto
+        .documents
+        .iter()
+        .any(|d| has_qualified_boundary_reference(d))
+        || frozen.iter().any(|(_, c)| {
+            c.documents
+                .iter()
+                .any(|d| has_qualified_boundary_reference(d))
+        }))
+        && !manifest
+            .required_capabilities
+            .iter()
+            .any(|cap| cap == QUALIFIED_BOUNDARY_CAPABILITY)
+    {
+        return Err(err("qualified boundary reference requires capability"));
+    }
     for resources in std::iter::once(&dto.resources).chain(frozen.iter().map(|(_, c)| &c.resources))
     {
         let mut declared_size = 0u64;
@@ -1009,6 +1130,282 @@ fn validate_preview(data: &[u8]) -> Result<(), NativeError> {
 #[cfg(test)]
 mod limit_tests {
     use super::*;
+
+    #[test]
+    fn choreography_graph_capability_detects_presence_without_changing_legacy() {
+        use processcraft_core::bpmn_collaboration::{
+            Choreography, ChoreographyActivity, ChoreographyGraph, ChoreographyLoopType,
+            ChoreographyRootKind,
+        };
+        use processcraft_core::bpmn_model::EventReference;
+        let mut d = BpmnDocument::new("document".into(), "defs".parse().unwrap());
+        d.choreographies.push(Choreography {
+            id: "choreo".parse().unwrap(),
+            name: None,
+            kind: None,
+            graph: None,
+            extras: None,
+            base: None,
+            participants: vec![],
+            message_flows: vec![],
+            sequence_flows: vec![],
+            conversation_nodes: vec![],
+            conversation_links: vec![],
+            correlation_keys: vec![],
+            activities: vec![ChoreographyActivity {
+                id: "activity".parse().unwrap(),
+                name: None,
+                base: None,
+                flow_metadata: None,
+                correlation_keys: vec![],
+                loop_type: None,
+                details: None,
+                participant_refs: vec![EventReference::Local("p".parse().unwrap())],
+                initiating_participant: Some(EventReference::Local("p".parse().unwrap())),
+                message_flow_refs: vec![],
+            }],
+        });
+        assert!(!has_choreography_graph_features(&d));
+        d.choreographies[0].activities[0].loop_type = Some(ChoreographyLoopType::None);
+        assert!(has_choreography_graph_features(&d));
+        d.choreographies[0].activities[0].loop_type = None;
+        d.choreographies[0].activities[0].initiating_participant = None;
+        assert!(has_choreography_graph_features(&d));
+        d.choreographies[0].activities.clear();
+        d.choreographies[0].graph = Some(ChoreographyGraph::default());
+        assert!(has_choreography_graph_features(&d));
+        d.choreographies[0].graph = None;
+        d.choreographies[0].kind = Some(ChoreographyRootKind::Global {
+            initiating_participant_ref: None,
+        });
+        assert!(has_choreography_graph_features(&d));
+        let mut project = ProjectData::new("Project".into());
+        project.documents.push(Arc::new(d));
+        let frozen = FrozenProject::capture(&project);
+        Arc::make_mut(&mut project.documents[0]).choreographies[0].kind = None;
+        project.checkpoints.push(Checkpoint {
+            id: CheckpointId::new(),
+            name: "Frozen graph".into(),
+            created_unix_ms: 0,
+            content: frozen,
+        });
+        let bytes = write_bytes(&project).unwrap();
+        let mut zip = ZipArchive::new(Cursor::new(&bytes)).unwrap();
+        let mut manifest = String::new();
+        zip.by_name("manifest.json")
+            .unwrap()
+            .read_to_string(&mut manifest)
+            .unwrap();
+        let manifest: Manifest = serde_json::from_str(&manifest).unwrap();
+        assert!(
+            manifest
+                .required_capabilities
+                .iter()
+                .any(|cap| cap == CHOREOGRAPHY_GRAPH_CAPABILITY)
+        );
+        load_bytes(&bytes).unwrap();
+    }
+
+    #[test]
+    fn deeply_nested_choreography_native_round_trip() {
+        use processcraft_core::bpmn_collaboration::{
+            Choreography, ChoreographyActivity, ChoreographyActivityDetails,
+            ChoreographyFlowElement, ChoreographyGraph,
+        };
+        let mut graph = ChoreographyGraph::default();
+        for index in 0..16 {
+            graph = ChoreographyGraph {
+                data_associations: vec![],
+                flow_elements: vec![ChoreographyFlowElement::Activity(Box::new(
+                    ChoreographyActivity {
+                        id: format!("activity{index}").parse().unwrap(),
+                        name: None,
+                        base: None,
+                        flow_metadata: None,
+                        correlation_keys: vec![],
+                        loop_type: None,
+                        participant_refs: vec![],
+                        initiating_participant: None,
+                        message_flow_refs: vec![],
+                        details: Some(ChoreographyActivityDetails::Sub {
+                            graph: Box::new(graph),
+                            artifacts: vec![],
+                        }),
+                    },
+                ))],
+            };
+        }
+        let mut d = BpmnDocument::new("Document".into(), "defs".parse().unwrap());
+        d.choreographies.push(Choreography {
+            id: "choreo".parse().unwrap(),
+            name: None,
+            kind: None,
+            graph: Some(graph),
+            extras: None,
+            base: None,
+            participants: vec![],
+            message_flows: vec![],
+            activities: vec![],
+            sequence_flows: vec![],
+            conversation_nodes: vec![],
+            conversation_links: vec![],
+            correlation_keys: vec![],
+        });
+        let mut project = ProjectData::new("Project".into());
+        project.documents.push(Arc::new(d));
+        let archive = write_bytes(&project).unwrap();
+        load_bytes(&archive).unwrap();
+    }
+
+    #[test]
+    fn choreography_event_mixed_xml_and_checkpoint_round_trip() {
+        use processcraft_core::{
+            bpmn_collaboration::{
+                Choreography, ChoreographyActivity, ChoreographyActivityDetails,
+                ChoreographyFlowElement, ChoreographyGraph,
+            },
+            bpmn_metadata::{Documentation, DocumentationSet},
+            bpmn_model::{EventDefinition, NodeDetails},
+            bpmn_xml::{MixedXml, XmlContent, XmlElement, XmlNode},
+            model::{Node, NodeKind},
+        };
+        let mut child = XmlNode::Text {
+            text: "text".into(),
+        };
+        for _ in 0..3 {
+            child = XmlNode::Element {
+                element: XmlElement {
+                    namespace: String::new(),
+                    local: "part".parse().unwrap(),
+                    prefix: None,
+                    namespaces: vec![],
+                    attributes: vec![],
+                    children: vec![child],
+                },
+            };
+        }
+        let event = Node {
+            id: "event".parse().unwrap(),
+            name: None,
+            documentation: DocumentationSet::Structured(vec![Documentation {
+                id: None,
+                text_format: None,
+                content: MixedXml::Structured(XmlContent {
+                    namespaces: vec![],
+                    nodes: vec![child],
+                }),
+            }]),
+            base_extras: None,
+            kind: NodeKind::StartEvent,
+            flow_metadata: None,
+            item_aware: None,
+            loop_characteristics: None,
+            io_specification: None,
+            activity: None,
+            owner: String::new(),
+            contact: String::new(),
+            details: Some(NodeDetails::Event {
+                definitions: vec![EventDefinition::Signal {
+                    id: None,
+                    base: None,
+                    signal_ref: None,
+                }],
+                attached_to: None,
+                cancel_activity: None,
+                definition_refs: vec![],
+                parallel_multiple: None,
+                is_interrupting: None,
+                properties: vec![],
+                io: None,
+            }),
+        };
+        let mut qualified_event = event.clone();
+        if let Some(NodeDetails::Event { attached_to, .. }) = &mut qualified_event.details {
+            *attached_to = Some(processcraft_core::bpmn_model::EventReference::Qualified(
+                processcraft_core::bpmn_model::QNameRef {
+                    namespace: "urn:external".into(),
+                    local: "activity".parse().unwrap(),
+                },
+            ));
+        }
+        let mut capability_doc =
+            BpmnDocument::new("Capability".into(), "cap_defs".parse().unwrap());
+        capability_doc.choreographies.push(Choreography {
+            id: "cap_choreo".parse().unwrap(),
+            name: None,
+            kind: None,
+            graph: Some(ChoreographyGraph {
+                data_associations: vec![],
+                flow_elements: vec![ChoreographyFlowElement::Event(Box::new(qualified_event))],
+            }),
+            extras: None,
+            base: None,
+            participants: vec![],
+            message_flows: vec![],
+            activities: vec![],
+            sequence_flows: vec![],
+            conversation_nodes: vec![],
+            conversation_links: vec![],
+            correlation_keys: vec![],
+        });
+        assert!(has_qualified_boundary_reference(&capability_doc));
+        let mut graph = ChoreographyGraph {
+            data_associations: vec![],
+            flow_elements: vec![ChoreographyFlowElement::Event(Box::new(event))],
+        };
+        for index in 0..4 {
+            graph = ChoreographyGraph {
+                data_associations: vec![],
+                flow_elements: vec![ChoreographyFlowElement::Activity(Box::new(
+                    ChoreographyActivity {
+                        id: format!("activity{index}").parse().unwrap(),
+                        name: None,
+                        base: None,
+                        flow_metadata: None,
+                        correlation_keys: vec![],
+                        loop_type: None,
+                        participant_refs: vec![],
+                        initiating_participant: None,
+                        message_flow_refs: vec![],
+                        details: Some(ChoreographyActivityDetails::Sub {
+                            graph: Box::new(graph),
+                            artifacts: vec![],
+                        }),
+                    },
+                ))],
+            };
+        }
+        let mut d = BpmnDocument::new("Document".into(), "defs".parse().unwrap());
+        d.choreographies.push(Choreography {
+            id: "choreo".parse().unwrap(),
+            name: None,
+            kind: None,
+            graph: Some(graph),
+            extras: None,
+            base: None,
+            participants: vec![],
+            message_flows: vec![],
+            activities: vec![],
+            sequence_flows: vec![],
+            conversation_nodes: vec![],
+            conversation_links: vec![],
+            correlation_keys: vec![],
+        });
+        let mut project = ProjectData::new("Project".into());
+        project.documents.push(Arc::new(d));
+        project.checkpoints.push(Checkpoint {
+            id: CheckpointId::new(),
+            name: "Frozen".into(),
+            created_unix_ms: 0,
+            content: FrozenProject::capture(&project),
+        });
+        let archive = write_bytes(&project).unwrap();
+        let loaded = load_bytes(&archive).unwrap();
+        assert_eq!(
+            project.content_identity().unwrap(),
+            loaded.project.content_identity().unwrap()
+        );
+    }
 
     #[test]
     fn expanded_data_traversal_covers_independent_nested_representations() {

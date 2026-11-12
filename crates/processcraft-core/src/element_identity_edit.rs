@@ -75,6 +75,99 @@ fn optional_reference_selector(
         event_ref_selector(reference, visit);
     }
 }
+fn choreography_activity_selectors(
+    a: &mut crate::bpmn_collaboration::ChoreographyActivity,
+    visit: &mut impl FnMut(&mut ElementSelector),
+) {
+    use crate::bpmn_collaboration::ChoreographyActivityDetails;
+    flow_metadata_selectors(&mut a.flow_metadata, visit);
+    correlation_key_selectors(&mut a.correlation_keys, visit);
+    for r in a
+        .participant_refs
+        .iter_mut()
+        .chain(&mut a.message_flow_refs)
+    {
+        event_ref_selector(r, visit);
+    }
+    optional_reference_selector(&mut a.initiating_participant, visit);
+    match &mut a.details {
+        Some(ChoreographyActivityDetails::Sub { graph, artifacts }) => {
+            choreography_graph_selectors(graph, visit);
+            for artifact in artifacts {
+                use crate::bpmn_collaboration::CollaborationArtifact;
+                match artifact {
+                    CollaborationArtifact::Group(g) => {
+                        optional_reference_selector(&mut g.category_value_ref, visit)
+                    }
+                    CollaborationArtifact::Association(f) => {
+                        optional_reference_selector(&mut f.source, visit);
+                        optional_reference_selector(&mut f.target, visit);
+                    }
+                    CollaborationArtifact::TextAnnotation(n) => scope_selectors(
+                        std::slice::from_mut(n.as_mut()),
+                        &mut [],
+                        &mut [],
+                        &mut [],
+                        &mut [],
+                        &mut [],
+                        visit,
+                    ),
+                }
+            }
+        }
+        Some(ChoreographyActivityDetails::Call {
+            participant_associations,
+            called_choreography_ref,
+        }) => {
+            optional_reference_selector(called_choreography_ref, visit);
+            for a in participant_associations {
+                optional_reference_selector(&mut a.inner, visit);
+                optional_reference_selector(&mut a.outer, visit);
+            }
+        }
+        None => {}
+    }
+}
+fn choreography_graph_selectors(
+    graph: &mut crate::bpmn_collaboration::ChoreographyGraph,
+    visit: &mut impl FnMut(&mut ElementSelector),
+) {
+    use crate::bpmn_collaboration::ChoreographyFlowElement;
+    scope_selectors(
+        &mut [],
+        &mut [],
+        &mut [],
+        &mut [],
+        &mut [],
+        &mut graph.data_associations,
+        visit,
+    );
+    for element in &mut graph.flow_elements {
+        match element {
+            ChoreographyFlowElement::Activity(a) => choreography_activity_selectors(a, visit),
+            ChoreographyFlowElement::Event(n) | ChoreographyFlowElement::Gateway(n) => {
+                scope_selectors(
+                    std::slice::from_mut(n.as_mut()),
+                    &mut [],
+                    &mut [],
+                    &mut [],
+                    &mut [],
+                    &mut [],
+                    visit,
+                )
+            }
+            ChoreographyFlowElement::SequenceFlow(f) => scope_selectors(
+                &mut [],
+                &mut [],
+                std::slice::from_mut(f.as_mut()),
+                &mut [],
+                &mut [],
+                &mut [],
+                visit,
+            ),
+        }
+    }
+}
 fn participant_selectors(
     participant: &mut Participant,
     visit: &mut impl FnMut(&mut ElementSelector),
@@ -296,7 +389,9 @@ fn scope_selectors(
             Some(NodeDetails::DataStoreReference {
                 data_store_ref: Some(crate::bpmn_data::DataStoreRef::Legacy(reference)),
             }) => visit(reference),
-            Some(NodeDetails::BoundaryEvent { attached_to, .. }) => visit(attached_to),
+            Some(NodeDetails::BoundaryEvent { attached_to, .. }) => {
+                event_ref_selector(attached_to, visit)
+            }
             Some(NodeDetails::Event {
                 definitions,
                 definition_refs,
@@ -305,7 +400,7 @@ fn scope_selectors(
                 ..
             }) => {
                 if let Some(reference) = attached_to {
-                    visit(reference);
+                    event_ref_selector(reference, visit);
                 }
                 for definition in definitions {
                     event_definition_selectors(definition, visit);
@@ -594,16 +689,17 @@ fn document_selectors(d: &mut BpmnDocument, visit: &mut impl FnMut(&mut ElementS
                 event_ref_selector(reference, visit);
             }
         }
+        if let Some(crate::bpmn_collaboration::ChoreographyRootKind::Global {
+            initiating_participant_ref,
+        }) = &mut choreography.kind
+        {
+            optional_reference_selector(initiating_participant_ref, visit);
+        }
         for activity in &mut choreography.activities {
-            flow_metadata_selectors(&mut activity.flow_metadata, visit);
-            correlation_key_selectors(&mut activity.correlation_keys, visit);
-            for reference in &mut activity.participant_refs {
-                visit(reference);
-            }
-            visit(&mut activity.initiating_participant);
-            for reference in &mut activity.message_flow_refs {
-                visit(reference);
-            }
+            choreography_activity_selectors(activity, visit);
+        }
+        if let Some(graph) = &mut choreography.graph {
+            choreography_graph_selectors(graph, visit);
         }
     }
     for diagram in &mut d.diagrams {
@@ -817,6 +913,77 @@ fn flow_id(flow: &mut Flow, visit: &mut impl FnMut(&mut ElementIdentity)) {
     visit(&mut flow.id);
     if let Some(condition) = &mut flow.condition {
         expression_id(condition, visit);
+    }
+}
+fn choreography_activity_ids(
+    a: &mut crate::bpmn_collaboration::ChoreographyActivity,
+    visit: &mut impl FnMut(&mut ElementIdentity),
+) {
+    use crate::bpmn_collaboration::{ChoreographyActivityDetails, CollaborationArtifact};
+    visit(&mut a.id);
+    flow_metadata_ids(&mut a.flow_metadata, visit);
+    key_ids(&mut a.correlation_keys, visit);
+    match &mut a.details {
+        Some(ChoreographyActivityDetails::Sub { graph, artifacts }) => {
+            choreography_graph_ids(graph, visit);
+            for artifact in artifacts {
+                match artifact {
+                    CollaborationArtifact::Group(g) => visit(&mut g.id),
+                    CollaborationArtifact::TextAnnotation(n) => scope_ids(
+                        std::slice::from_mut(n.as_mut()),
+                        &mut [],
+                        &mut [],
+                        &mut [],
+                        &mut [],
+                        &mut [],
+                        &mut None,
+                        visit,
+                    ),
+                    CollaborationArtifact::Association(f) => flow_id(f, visit),
+                }
+            }
+        }
+        Some(ChoreographyActivityDetails::Call {
+            participant_associations,
+            ..
+        }) => {
+            for a in participant_associations {
+                optional_identity(&mut a.id, visit);
+            }
+        }
+        None => {}
+    }
+}
+fn choreography_graph_ids(
+    graph: &mut crate::bpmn_collaboration::ChoreographyGraph,
+    visit: &mut impl FnMut(&mut ElementIdentity),
+) {
+    use crate::bpmn_collaboration::ChoreographyFlowElement;
+    scope_ids(
+        &mut [],
+        &mut [],
+        &mut [],
+        &mut [],
+        &mut [],
+        &mut graph.data_associations,
+        &mut None,
+        visit,
+    );
+    for element in &mut graph.flow_elements {
+        match element {
+            ChoreographyFlowElement::Activity(a) => choreography_activity_ids(a, visit),
+            ChoreographyFlowElement::Event(n) | ChoreographyFlowElement::Gateway(n) => scope_ids(
+                std::slice::from_mut(n.as_mut()),
+                &mut [],
+                &mut [],
+                &mut [],
+                &mut [],
+                &mut [],
+                &mut None,
+                visit,
+            ),
+            ChoreographyFlowElement::SequenceFlow(f) => flow_id(f, visit),
+        }
     }
 }
 #[allow(clippy::too_many_arguments)]
@@ -1197,9 +1364,10 @@ fn document_ids(d: &mut BpmnDocument, visit: &mut impl FnMut(&mut ElementIdentit
             flow_id(flow, visit);
         }
         for activity in &mut choreography.activities {
-            flow_metadata_ids(&mut activity.flow_metadata, visit);
-            key_ids(&mut activity.correlation_keys, visit);
-            visit(&mut activity.id);
+            choreography_activity_ids(activity, visit);
+        }
+        if let Some(graph) = &mut choreography.graph {
+            choreography_graph_ids(graph, visit);
         }
     }
     for diagram in &mut d.diagrams {
@@ -1478,6 +1646,85 @@ fn flow_qnames(
         expression_qnames(value, visit);
     }
 }
+fn choreography_activity_qnames(
+    a: &mut crate::bpmn_collaboration::ChoreographyActivity,
+    visit: &mut impl FnMut(&mut crate::bpmn_model::QNameRef, QNameKind),
+) {
+    use crate::bpmn_collaboration::{ChoreographyActivityDetails, CollaborationArtifact};
+    flow_metadata_qnames(&mut a.flow_metadata, visit);
+    keys_qnames(&mut a.correlation_keys, visit);
+    for r in &mut a.participant_refs {
+        event_ref_qname(r, QNameKind::Participant, visit);
+    }
+    optional_reference_qname(&mut a.initiating_participant, QNameKind::Participant, visit);
+    for r in &mut a.message_flow_refs {
+        event_ref_qname(r, QNameKind::MessageFlow, visit);
+    }
+    match &mut a.details {
+        Some(ChoreographyActivityDetails::Sub { graph, artifacts }) => {
+            choreography_graph_qnames(graph, visit);
+            for artifact in artifacts {
+                match artifact {
+                    CollaborationArtifact::Group(g) => optional_reference_qname(
+                        &mut g.category_value_ref,
+                        QNameKind::CategoryValue,
+                        visit,
+                    ),
+                    CollaborationArtifact::Association(f) => flow_qnames(f, visit),
+                    CollaborationArtifact::TextAnnotation(n) => scope_qnames(
+                        std::slice::from_mut(n.as_mut()),
+                        &mut [],
+                        &mut [],
+                        &mut [],
+                        &mut [],
+                        visit,
+                    ),
+                }
+            }
+        }
+        Some(ChoreographyActivityDetails::Call {
+            participant_associations,
+            called_choreography_ref,
+        }) => {
+            optional_reference_qname(called_choreography_ref, QNameKind::Choreography, visit);
+            for a in participant_associations {
+                optional_reference_qname(&mut a.inner, QNameKind::Participant, visit);
+                optional_reference_qname(&mut a.outer, QNameKind::Participant, visit);
+            }
+        }
+        None => {}
+    }
+}
+fn choreography_graph_qnames(
+    graph: &mut crate::bpmn_collaboration::ChoreographyGraph,
+    visit: &mut impl FnMut(&mut crate::bpmn_model::QNameRef, QNameKind),
+) {
+    use crate::bpmn_collaboration::ChoreographyFlowElement;
+    scope_qnames(
+        &mut [],
+        &mut [],
+        &mut [],
+        &mut graph.data_associations,
+        &mut [],
+        visit,
+    );
+    for element in &mut graph.flow_elements {
+        match element {
+            ChoreographyFlowElement::Activity(a) => choreography_activity_qnames(a, visit),
+            ChoreographyFlowElement::Event(n) | ChoreographyFlowElement::Gateway(n) => {
+                scope_qnames(
+                    std::slice::from_mut(n.as_mut()),
+                    &mut [],
+                    &mut [],
+                    &mut [],
+                    &mut [],
+                    visit,
+                )
+            }
+            ChoreographyFlowElement::SequenceFlow(f) => flow_qnames(f, visit),
+        }
+    }
+}
 fn scope_qnames(
     nodes: &mut [Node],
     groups: &mut [crate::bpmn_model::Group],
@@ -1603,6 +1850,9 @@ fn scope_qnames(
             }
         }
         match &mut node.details {
+            Some(NodeDetails::BoundaryEvent { attached_to, .. }) => {
+                event_ref_qname(attached_to, QNameKind::Activity, visit)
+            }
             Some(NodeDetails::CallActivity { called_element }) => {
                 optional_qname(called_element, QNameKind::Callable, visit)
             }
@@ -1618,8 +1868,10 @@ fn scope_qnames(
                 definition_refs,
                 properties,
                 io,
+                attached_to,
                 ..
             }) => {
+                optional_reference_qname(attached_to, QNameKind::Activity, visit);
                 for definition in definitions {
                     event_definition_qnames(definition, visit);
                 }
@@ -1889,9 +2141,17 @@ fn document_qnames(
             optional_reference_qname(&mut link.source, QNameKind::Interaction, visit);
             optional_reference_qname(&mut link.target, QNameKind::Interaction, visit);
         }
+        if let Some(crate::bpmn_collaboration::ChoreographyRootKind::Global {
+            initiating_participant_ref,
+        }) = &mut choreography.kind
+        {
+            optional_reference_qname(initiating_participant_ref, QNameKind::Participant, visit);
+        }
         for activity in &mut choreography.activities {
-            flow_metadata_qnames(&mut activity.flow_metadata, visit);
-            keys_qnames(&mut activity.correlation_keys, visit);
+            choreography_activity_qnames(activity, visit);
+        }
+        if let Some(graph) = &mut choreography.graph {
+            choreography_graph_qnames(graph, visit);
         }
         for flow in choreography
             .sequence_flows

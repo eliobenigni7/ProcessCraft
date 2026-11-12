@@ -46,7 +46,14 @@ pub fn prepare_import(bytes: &[u8], source_name: &str) -> Result<PreparedImport,
     let projected = initial.and_then(|document| {
         let check = (document.has_semantic_common_metadata_features()
             || document.has_di_choreography_features()
-            || document.has_expanded_collaboration())
+            || document.has_expanded_collaboration()
+            || document.choreographies.iter().any(|c| {
+                c.kind.is_some()
+                    || c.graph.is_some()
+                    || c.activities
+                        .iter()
+                        .any(|a| a.loop_type.is_some() || a.details.is_some())
+            }))
         .then(|| export_document(&document, std::slice::from_ref(&resource), true));
         if let Some(Err(_)) = check {
             None
@@ -306,6 +313,9 @@ fn supported_base_owner(name: &str) -> bool {
             | "conversationLink"
             | "choreography"
             | "choreographyTask"
+            | "subChoreography"
+            | "callChoreography"
+            | "globalChoreographyTask"
             | "messageEventDefinition"
             | "signalEventDefinition"
             | "errorEventDefinition"
@@ -468,6 +478,8 @@ fn is_flow_element(name: &str) -> bool {
             | "dataObjectReference"
             | "dataStoreReference"
             | "choreographyTask"
+            | "subChoreography"
+            | "callChoreography"
             | "event"
     )
 }
@@ -763,6 +775,15 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                                     "sourceRef" | "targetRef"
                                 )
                                 | ("callConversation", "calledCollaborationRef")
+                                | ("boundaryEvent", "attachedToRef")
+                                | (
+                                    "choreographyTask"
+                                        | "subChoreography"
+                                        | "callChoreography"
+                                        | "globalChoreographyTask",
+                                    "initiatingParticipantRef"
+                                )
+                                | ("callChoreography", "calledChoreographyRef")
                                 | (
                                     "conversationAssociation",
                                     "innerConversationNodeRef" | "outerConversationNodeRef"
@@ -841,12 +862,13 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                     if matches!(
                         (item.ns.as_str(), item.name.as_str(), key),
                         (B, "sequenceFlow", "sourceRef" | "targetRef")
-                            | (B, "boundaryEvent", "attachedToRef")
-                            | (B, "choreographyTask", "initiatingParticipantRef")
                             | (BD, "BPMNPlane" | "BPMNShape" | "BPMNEdge", "bpmnElement")
                             | (BD, "BPMNEdge", "sourceElement" | "targetElement")
                     ) {
-                        if item.name == "sequenceFlow" && !value.contains(':') {
+                        if item.name == "sequenceFlow" {
+                            if value.contains(':') {
+                                return None;
+                            }
                             item.attrs.insert(key.into(), value);
                             continue;
                         }
@@ -935,6 +957,7 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
             Event::Text(t) => {
                 if let Some(last) = stack.last_mut() {
                     if last.opaque
+                        || (last.ns == DI && last.name == "extension")
                         || last.ns == B
                             && matches!(
                                 last.name.as_str(),
@@ -1004,6 +1027,7 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
             Event::GeneralRef(value) => {
                 let last = stack.last_mut()?;
                 if !last.opaque
+                    && !(last.ns == DI && last.name == "extension")
                     && (last.ns != B
                         || !matches!(
                             last.name.as_str(),
@@ -1048,6 +1072,7 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
             Event::CData(t) => {
                 let last = stack.last_mut()?;
                 if !last.opaque
+                    && !(last.ns == DI && last.name == "extension")
                     && (last.ns != B
                         || !matches!(
                             last.name.as_str(),
@@ -1079,6 +1104,7 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
             Event::PI(pi) => {
                 let last = stack.last_mut()?;
                 if !last.opaque
+                    && !(last.ns == DI && last.name == "extension")
                     && !(last.ns == B
                         && (matches!(last.name.as_str(), "documentation" | "script" | "text")
                             || is_expression(&last.name)))
@@ -2419,7 +2445,10 @@ fn parse_event(
         }
     }
     let attached_to = if kind == NodeKind::BoundaryEvent {
-        Some(selector(e, "attachedToRef")?)
+        Some(event_reference(
+            e.catalog_qnames.get("attachedToRef")?,
+            target_namespace,
+        ))
     } else {
         None
     };
@@ -3779,12 +3808,487 @@ fn parse_collaboration(e: &Elem, namespace: &str) -> Option<Collaboration> {
     }
     Some(c)
 }
+fn choreography_node_scopes<'a>(
+    node: &'a Node,
+    scopes: &mut Vec<&'a [processcraft_core::bpmn_xml::NamespaceBinding]>,
+) {
+    use processcraft_core::{bpmn_metadata::DocumentationSet, bpmn_xml::MixedXml};
+    if let DocumentationSet::Structured(docs) = &node.documentation {
+        for doc in docs {
+            if let MixedXml::Structured(body) = &doc.content {
+                scopes.push(&body.namespaces);
+            }
+        }
+    }
+    if let Some(extras) = &node.base_extras {
+        if !extras.namespaces.is_empty() {
+            scopes.push(&extras.namespaces);
+        }
+        if let Some(ext) = &extras.extension_elements {
+            scopes.push(&ext.content.namespaces);
+        }
+    }
+    if let Some(NodeDetails::TextAnnotation {
+        text: Some(MixedXml::Structured(body)),
+        ..
+    }) = &node.details
+    {
+        scopes.push(&body.namespaces);
+    }
+}
+fn choreography_child_scopes<'a>(
+    graph: &'a processcraft_core::bpmn_collaboration::ChoreographyGraph,
+    artifacts: &'a [processcraft_core::bpmn_collaboration::CollaborationArtifact],
+    scopes: &mut Vec<&'a [processcraft_core::bpmn_xml::NamespaceBinding]>,
+) {
+    use processcraft_core::bpmn_collaboration::{
+        ChoreographyActivityDetails as Details, ChoreographyFlowElement as Element,
+        CollaborationArtifact as Artifact,
+    };
+    for artifact in artifacts {
+        match artifact {
+            Artifact::Group(group) => collaboration_base_scopes(group.base.as_ref(), scopes),
+            Artifact::TextAnnotation(node) => choreography_node_scopes(node, scopes),
+            Artifact::Association(flow) => scopes.extend(collaboration_flow_scopes(flow)),
+        }
+    }
+    for element in &graph.flow_elements {
+        match element {
+            Element::Activity(activity) => {
+                collaboration_base_scopes(activity.base.as_ref(), scopes);
+                for key in &activity.correlation_keys {
+                    collaboration_base_scopes(key.base.as_ref(), scopes);
+                }
+                if let Some(Details::Sub { graph, artifacts }) = &activity.details {
+                    choreography_child_scopes(graph, artifacts, scopes);
+                }
+                if let Some(Details::Call {
+                    participant_associations,
+                    ..
+                }) = &activity.details
+                {
+                    for association in participant_associations {
+                        collaboration_base_scopes(association.base.as_ref(), scopes);
+                    }
+                }
+            }
+            Element::Event(node) | Element::Gateway(node) => choreography_node_scopes(node, scopes),
+            Element::SequenceFlow(flow) => scopes.extend(collaboration_flow_scopes(flow)),
+        }
+    }
+}
+fn write_choreography_graph(
+    xml: &mut String,
+    graph: &processcraft_core::bpmn_collaboration::ChoreographyGraph,
+    namespace: &str,
+    context: &ExportContext,
+    depth: usize,
+) -> bool {
+    use processcraft_core::bpmn_collaboration::{
+        ChoreographyActivityDetails as Details, ChoreographyFlowElement as Element,
+        CollaborationExtras,
+    };
+    if depth > 16 {
+        return false;
+    }
+    for element in &graph.flow_elements {
+        match element {
+            Element::Activity(a) => {
+                let Some(initiator) = a.initiating_participant.as_ref() else {
+                    return false;
+                };
+                if a.participant_refs.len() < 2 {
+                    return false;
+                }
+                let mut refs = vec![("initiatingParticipantRef", initiator)];
+                let tag = match &a.details {
+                    None => {
+                        if !(1..=2).contains(&a.message_flow_refs.len()) {
+                            return false;
+                        }
+                        "choreographyTask"
+                    }
+                    Some(Details::Sub { .. }) => {
+                        if !a.message_flow_refs.is_empty() {
+                            return false;
+                        }
+                        "subChoreography"
+                    }
+                    Some(Details::Call {
+                        called_choreography_ref,
+                        ..
+                    }) => {
+                        if !a.message_flow_refs.is_empty() {
+                            return false;
+                        }
+                        if let Some(called) = called_choreography_ref {
+                            refs.push(("calledChoreographyRef", called));
+                        }
+                        "callChoreography"
+                    }
+                };
+                let mut scopes = Vec::new();
+                collaboration_base_scopes(a.base.as_ref(), &mut scopes);
+                for key in &a.correlation_keys {
+                    collaboration_base_scopes(key.base.as_ref(), &mut scopes);
+                }
+                if let Some(Details::Sub { graph, artifacts }) = &a.details {
+                    choreography_child_scopes(graph, artifacts, &mut scopes);
+                }
+                let tag =
+                    write_collaboration_qname_owner(xml, tag, &refs, namespace, context, &scopes);
+                write_xml_id(xml, &a.id);
+                write_xml_name(xml, a.name.as_deref());
+                if let Some(loop_type) = a.loop_type {
+                    use processcraft_core::bpmn_collaboration::ChoreographyLoopType;
+                    let value = match loop_type {
+                        ChoreographyLoopType::None => "None",
+                        ChoreographyLoopType::Standard => "Standard",
+                        ChoreographyLoopType::MultiInstanceSequential => "MultiInstanceSequential",
+                        ChoreographyLoopType::MultiInstanceParallel => "MultiInstanceParallel",
+                    };
+                    xml.push_str(&format!(" loopType=\"{value}\""));
+                }
+                anonymous_base_attributes(xml, Some(&a.id), a.base.as_ref());
+                xml.push('>');
+                anonymous_base_children(xml, Some(&a.id), a.base.as_ref());
+                write_flow_metadata(xml, a.flow_metadata.as_ref(), namespace, context);
+                for reference in &a.participant_refs {
+                    write_event_qname_text(xml, "participantRef", reference, namespace, context);
+                }
+                for key in &a.correlation_keys {
+                    write_correlation_key(xml, key, namespace, context);
+                }
+                match &a.details {
+                    None => {
+                        for reference in &a.message_flow_refs {
+                            write_event_qname_text(
+                                xml,
+                                "messageFlowRef",
+                                reference,
+                                namespace,
+                                context,
+                            );
+                        }
+                    }
+                    Some(Details::Sub { graph, artifacts }) => {
+                        if !write_choreography_graph(xml, graph, namespace, context, depth + 1) {
+                            return false;
+                        }
+                        let extras = CollaborationExtras {
+                            artifacts: artifacts.clone(),
+                            ..Default::default()
+                        };
+                        write_collaboration_artifacts(xml, Some(&extras), namespace, context);
+                    }
+                    Some(Details::Call {
+                        participant_associations,
+                        ..
+                    }) => {
+                        for association in participant_associations {
+                            if association.inner.is_none() || association.outer.is_none() {
+                                return false;
+                            }
+                            write_participant_association(xml, association, namespace, context);
+                        }
+                    }
+                }
+                xml.push_str(&format!("</{tag}>"));
+            }
+            Element::Event(node) | Element::Gateway(node) => {
+                let valid = match element {
+                    Element::Event(_) => matches!(
+                        node.kind,
+                        NodeKind::StartEvent
+                            | NodeKind::EndEvent
+                            | NodeKind::IntermediateCatchEvent
+                            | NodeKind::IntermediateThrowEvent
+                            | NodeKind::BoundaryEvent
+                    ),
+                    Element::Gateway(_) => matches!(
+                        node.kind,
+                        NodeKind::ExclusiveGateway
+                            | NodeKind::InclusiveGateway
+                            | NodeKind::ParallelGateway
+                            | NodeKind::ComplexGateway
+                            | NodeKind::EventBasedGateway
+                    ),
+                    _ => false,
+                };
+                if !valid {
+                    return false;
+                }
+                write_scope(
+                    xml,
+                    std::slice::from_ref(node.as_ref()),
+                    &[],
+                    &[],
+                    &graph.data_associations,
+                    &[],
+                    context,
+                    namespace,
+                );
+            }
+            Element::SequenceFlow(flow) => {
+                if flow.kind != FlowKind::Sequence
+                    || !matches!(flow.source, Some(EventReference::Local(_)))
+                    || !matches!(flow.target, Some(EventReference::Local(_)))
+                {
+                    return false;
+                }
+                write_scope(
+                    xml,
+                    &[],
+                    std::slice::from_ref(flow.as_ref()),
+                    &[],
+                    &[],
+                    &[],
+                    context,
+                    namespace,
+                );
+            }
+        }
+    }
+    true
+}
+fn parse_choreography_flow(
+    e: &Elem,
+    namespace: &str,
+    depth: usize,
+    data_associations: &mut Vec<processcraft_core::bpmn_data::DataAssociation>,
+) -> Option<processcraft_core::bpmn_collaboration::ChoreographyFlowElement> {
+    use processcraft_core::bpmn_collaboration::{
+        ChoreographyActivity, ChoreographyActivityDetails as Details,
+        ChoreographyFlowElement as Element, ChoreographyGraph, ChoreographyLoopType,
+    };
+    if depth > 16 || e.ns != B {
+        return None;
+    }
+    if matches!(
+        e.name.as_str(),
+        "choreographyTask" | "subChoreography" | "callChoreography"
+    ) {
+        if !attrs(
+            e,
+            &[
+                "id",
+                "name",
+                "initiatingParticipantRef",
+                "loopType",
+                "calledChoreographyRef",
+            ],
+        ) || (e.name != "callChoreography" && e.attrs.contains_key("calledChoreographyRef"))
+        {
+            return None;
+        }
+        let mut participants = Vec::new();
+        let mut messages = Vec::new();
+        let mut keys = Vec::new();
+        let mut graph = ChoreographyGraph::default();
+        let mut artifacts = Vec::new();
+        let mut associations = Vec::new();
+        let mut phase = 0;
+        for child in &e.children {
+            if child.ns != B {
+                return None;
+            }
+            match child.name.as_str() {
+                "participantRef"
+                    if phase == 0 && attrs(child, &[]) && child.children.is_empty() =>
+                {
+                    participants.push(event_reference(
+                        child.catalog_text_qname.as_ref()?,
+                        namespace,
+                    ))
+                }
+                "correlationKey" if phase <= 1 => {
+                    phase = 1;
+                    keys.push(parse_correlation_key(child, namespace)?);
+                }
+                "messageFlowRef"
+                    if e.name == "choreographyTask"
+                        && phase <= 2
+                        && attrs(child, &[])
+                        && child.children.is_empty() =>
+                {
+                    phase = 2;
+                    messages.push(event_reference(
+                        child.catalog_text_qname.as_ref()?,
+                        namespace,
+                    ));
+                }
+                "participantAssociation" if e.name == "callChoreography" && phase <= 2 => {
+                    phase = 2;
+                    associations.push(parse_participant_association(child, namespace)?);
+                }
+                "group" | "textAnnotation" | "association" if e.name == "subChoreography" => {
+                    phase = 3;
+                    artifacts.push(parse_collaboration_artifact(child, namespace)?);
+                }
+                _ if e.name == "subChoreography" && phase <= 2 => {
+                    phase = 2;
+                    let element = parse_choreography_flow(
+                        child,
+                        namespace,
+                        depth + 1,
+                        &mut graph.data_associations,
+                    )?;
+                    graph.flow_elements.push(element);
+                }
+                _ => return None,
+            }
+        }
+        if participants.len() < 2
+            || (e.name == "choreographyTask" && !(1..=2).contains(&messages.len()))
+        {
+            return None;
+        }
+        let details = match e.name.as_str() {
+            "subChoreography" => Some(Details::Sub {
+                graph: Box::new(graph),
+                artifacts,
+            }),
+            "callChoreography" => Some(Details::Call {
+                participant_associations: associations,
+                called_choreography_ref: e
+                    .catalog_qnames
+                    .get("calledChoreographyRef")
+                    .map(|q| event_reference(q, namespace)),
+            }),
+            _ => None,
+        };
+        let loop_type = match e.attrs.get("loopType").map(String::as_str) {
+            None => None,
+            Some("None") => Some(ChoreographyLoopType::None),
+            Some("Standard") => Some(ChoreographyLoopType::Standard),
+            Some("MultiInstanceSequential") => Some(ChoreographyLoopType::MultiInstanceSequential),
+            Some("MultiInstanceParallel") => Some(ChoreographyLoopType::MultiInstanceParallel),
+            _ => return None,
+        };
+        return Some(Element::Activity(Box::new(ChoreographyActivity {
+            loop_type,
+            details,
+            flow_metadata: take_flow_metadata(e),
+            correlation_keys: keys,
+            base: take_anonymous_base(e),
+            id: element_identity(e)?,
+            name: e.attrs.get("name").cloned(),
+            initiating_participant: Some(event_reference(
+                e.catalog_qnames.get("initiatingParticipantRef")?,
+                namespace,
+            )),
+            participant_refs: participants,
+            message_flow_refs: messages,
+        })));
+    }
+    if e.name == "sequenceFlow"
+        && attrs(e, &["id", "name", "sourceRef", "targetRef", "isImmediate"])
+    {
+        let (doc, condition) = flow_parts(e)?;
+        return Some(Element::SequenceFlow(Box::new(Flow {
+            message_ref: None,
+            flow_metadata: take_flow_metadata(e),
+            base_extras: anonymous_extras(e),
+            association_direction: None,
+            id: element_identity(e)?,
+            kind: FlowKind::Sequence,
+            source: Some(EventReference::Local(selector(e, "sourceRef")?)),
+            target: Some(EventReference::Local(selector(e, "targetRef")?)),
+            name: e.attrs.get("name").cloned(),
+            documentation: anonymous_documentation(e, doc),
+            condition,
+        })));
+    }
+    let kind = match e.name.as_str() {
+        "startEvent" => NodeKind::StartEvent,
+        "endEvent" => NodeKind::EndEvent,
+        "intermediateThrowEvent" => NodeKind::IntermediateThrowEvent,
+        "intermediateCatchEvent" => NodeKind::IntermediateCatchEvent,
+        "boundaryEvent" => NodeKind::BoundaryEvent,
+        "exclusiveGateway" => NodeKind::ExclusiveGateway,
+        "parallelGateway" => NodeKind::ParallelGateway,
+        "inclusiveGateway" => NodeKind::InclusiveGateway,
+        "complexGateway" => NodeKind::ComplexGateway,
+        "eventBasedGateway" => NodeKind::EventBasedGateway,
+        _ => return None,
+    };
+    let gateway = matches!(
+        kind,
+        NodeKind::ExclusiveGateway
+            | NodeKind::ParallelGateway
+            | NodeKind::InclusiveGateway
+            | NodeKind::ComplexGateway
+            | NodeKind::EventBasedGateway
+    );
+    if !attrs(
+        e,
+        if gateway {
+            &[
+                "id",
+                "name",
+                "default",
+                "gatewayDirection",
+                "instantiate",
+                "eventGatewayType",
+            ]
+        } else if kind == NodeKind::BoundaryEvent {
+            &[
+                "id",
+                "name",
+                "attachedToRef",
+                "cancelActivity",
+                "parallelMultiple",
+            ]
+        } else if kind == NodeKind::StartEvent {
+            &["id", "name", "parallelMultiple", "isInterrupting"]
+        } else if kind == NodeKind::IntermediateCatchEvent {
+            &["id", "name", "parallelMultiple"]
+        } else {
+            &["id", "name"]
+        },
+    ) {
+        return None;
+    }
+    let id = element_identity(e)?;
+    let (doc, details) = if gateway {
+        gateway_details(e)?
+    } else {
+        let (doc, details, associations) = parse_event(e, kind, &id.selector(), namespace)?;
+        data_associations.extend(associations);
+        (doc, details)
+    };
+    let node = Box::new(Node {
+        flow_metadata: take_flow_metadata(e),
+        base_extras: anonymous_extras(e),
+        item_aware: None,
+        id,
+        name: e.attrs.get("name").cloned(),
+        documentation: anonymous_documentation(e, doc),
+        kind,
+        details,
+        owner: String::new(),
+        contact: String::new(),
+        activity: None,
+        io_specification: None,
+        loop_characteristics: None,
+    });
+    Some(if gateway {
+        Element::Gateway(node)
+    } else {
+        Element::Event(node)
+    })
+}
 fn parse_choreography(
     e: &Elem,
     namespace: &str,
 ) -> Option<processcraft_core::bpmn_collaboration::Choreography> {
-    use processcraft_core::bpmn_collaboration::{Choreography, ChoreographyActivity};
-    if !e.text.trim().is_empty() || !attrs(e, &["id", "name", "isClosed"]) {
+    use processcraft_core::bpmn_collaboration::{
+        Choreography, ChoreographyFlowElement, ChoreographyGraph, ChoreographyRootKind,
+    };
+    if !e.text.trim().is_empty()
+        || !attrs(e, &["id", "name", "isClosed", "initiatingParticipantRef"])
+        || (e.name != "globalChoreographyTask" && e.attrs.contains_key("initiatingParticipantRef"))
+    {
         return None;
     }
     let mut extras = processcraft_core::bpmn_collaboration::CollaborationExtras {
@@ -3792,6 +4296,17 @@ fn parse_choreography(
         ..Default::default()
     };
     let mut c = Choreography {
+        kind: if e.name == "globalChoreographyTask" {
+            Some(ChoreographyRootKind::Global {
+                initiating_participant_ref: e
+                    .catalog_qnames
+                    .get("initiatingParticipantRef")
+                    .map(|q| event_reference(q, namespace)),
+            })
+        } else {
+            None
+        },
+        graph: None,
         extras: None,
         conversation_nodes: Vec::new(),
         conversation_links: Vec::new(),
@@ -3805,6 +4320,9 @@ fn parse_choreography(
         sequence_flows: vec![],
     };
     let mut phase = 0;
+    let mut graph = ChoreographyGraph::default();
+    let mut needs_graph = e.name == "globalChoreographyTask";
+    let mut seen_sequence = false;
     for child in &e.children {
         let next = collaboration_child_phase(&child.name).unwrap_or(10);
         if next < phase {
@@ -3870,75 +4388,51 @@ fn parse_choreography(
                         )),
                     })
             }
-            "choreographyTask" if attrs(child, &["id", "name", "initiatingParticipantRef"]) => {
-                let mut participants = Vec::new();
-                let mut messages = Vec::new();
-                let mut correlation_keys = Vec::new();
-                for reference in &child.children {
-                    if reference.ns == B && reference.name == "correlationKey" {
-                        correlation_keys.push(parse_correlation_key(reference, namespace)?);
-                        continue;
-                    }
-                    if reference.ns != B
-                        || !reference.attrs.is_empty()
-                        || !reference.children.is_empty()
-                    {
-                        return None;
-                    }
-                    match reference.name.as_str() {
-                        "participantRef" => {
-                            match event_reference(reference.catalog_text_qname.as_ref()?, namespace)
-                            {
-                                EventReference::Local(id) => participants.push(id),
-                                _ => return None,
-                            }
-                        }
-                        "messageFlowRef" => {
-                            match event_reference(reference.catalog_text_qname.as_ref()?, namespace)
-                            {
-                                EventReference::Local(id) => messages.push(id),
-                                _ => return None,
-                            }
-                        }
-                        _ => return None,
-                    }
+            "choreographyTask"
+            | "subChoreography"
+            | "callChoreography"
+            | "startEvent"
+            | "endEvent"
+            | "intermediateThrowEvent"
+            | "intermediateCatchEvent"
+            | "boundaryEvent"
+            | "exclusiveGateway"
+            | "parallelGateway"
+            | "inclusiveGateway"
+            | "complexGateway"
+            | "eventBasedGateway"
+            | "sequenceFlow" => {
+                let element =
+                    parse_choreography_flow(child, namespace, 0, &mut graph.data_associations)?;
+                if !matches!(&element, ChoreographyFlowElement::Activity(a) if a.details.is_none())
+                    && !matches!(&element, ChoreographyFlowElement::SequenceFlow(_))
+                {
+                    needs_graph = true;
                 }
-                if participants.len() < 2 || !(1..=2).contains(&messages.len()) {
-                    return None;
+                if matches!(&element, ChoreographyFlowElement::Activity(_)) && seen_sequence {
+                    needs_graph = true;
                 }
-                c.activities.push(ChoreographyActivity {
-                    flow_metadata: take_flow_metadata(child),
-                    correlation_keys,
-                    base: take_anonymous_base(child),
-                    id: element_identity(child)?,
-                    name: child.attrs.get("name").cloned(),
-                    initiating_participant: selector(child, "initiatingParticipantRef")?,
-                    participant_refs: participants,
-                    message_flow_refs: messages,
-                });
-            }
-            "sequenceFlow"
-                if attrs(
-                    child,
-                    &["id", "name", "sourceRef", "targetRef", "isImmediate"],
-                ) =>
-            {
-                c.sequence_flows.push(Flow {
-                    message_ref: None,
-                    flow_metadata: take_flow_metadata(child),
-                    base_extras: anonymous_extras(child),
-                    association_direction: None,
-                    id: element_identity(child)?,
-                    name: child.attrs.get("name").cloned(),
-                    kind: FlowKind::Sequence,
-                    source: Some(EventReference::Local(selector(child, "sourceRef")?)),
-                    target: Some(EventReference::Local(selector(child, "targetRef")?)),
-                    documentation: anonymous_documentation(child, flow_parts(child)?.0),
-                    condition: flow_parts(child)?.1,
-                })
+                if matches!(&element, ChoreographyFlowElement::SequenceFlow(_)) {
+                    seen_sequence = true;
+                }
+                graph.flow_elements.push(element);
             }
             _ if parse_collaboration_extras_child(child, namespace, &mut extras)? => {}
             _ => return None,
+        }
+    }
+    if e.name == "globalChoreographyTask" && !graph.flow_elements.is_empty() {
+        return None;
+    }
+    if needs_graph {
+        c.graph = Some(graph);
+    } else {
+        for element in graph.flow_elements {
+            match element {
+                ChoreographyFlowElement::Activity(a) => c.activities.push(*a),
+                ChoreographyFlowElement::SequenceFlow(f) => c.sequence_flows.push(*f),
+                _ => unreachable!(),
+            }
         }
     }
     if extras != Default::default() {
@@ -4141,7 +4635,7 @@ fn imported_root_selector(document: &mut BpmnDocument, name: &str) -> Option<Ele
             | EventResource::Error { id, .. }
             | EventResource::Escalation { id, .. } => id.selector(),
         },
-        "choreography" => document.choreographies.last()?.id.selector(),
+        "choreography" | "globalChoreographyTask" => document.choreographies.last()?.id.selector(),
         "collaboration" | "globalConversation" => document
             .additional_collaborations
             .last()
@@ -4534,7 +5028,7 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                         base: take_anonymous_base(e),
                     });
             }
-            (B, "choreography") => {
+            (B, "choreography" | "globalChoreographyTask") => {
                 d.choreographies
                     .push(parse_choreography(e, &target_namespace)?);
             }
@@ -4881,10 +5375,7 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                 attached_to: Some(target),
                 ..
             }) = &node.details
-                && !p
-                    .nodes
-                    .iter()
-                    .any(|n| n.id == *target && n.kind.is_activity())
+                && matches!(target, EventReference::Local(selector) if !p.nodes.iter().any(|n| n.id == *selector && n.kind.is_activity()))
             {
                 return None;
             }
@@ -4927,13 +5418,42 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
         {
             return None;
         }
-        if let Some(c) = d.choreographies.iter().find(|c| c.id == dia.plane) {
+        let choreography_scopes = processcraft_core::queries::choreography_scopes(&d);
+        if let Some(first) = choreography_scopes
+            .iter()
+            .find(|scope| scope.owner == dia.plane)
+        {
+            let mut contained = std::collections::HashSet::new();
+            contained.insert(first.owner.clone());
+            for scope in &choreography_scopes {
+                if scope
+                    .parent
+                    .as_ref()
+                    .is_some_and(|parent| contained.contains(parent))
+                {
+                    contained.insert(scope.owner.clone());
+                }
+            }
+            let scopes: Vec<_> = choreography_scopes
+                .iter()
+                .filter(|scope| contained.contains(&scope.owner))
+                .collect();
+            let c = first.root;
+            use processcraft_core::bpmn_collaboration::CollaborationArtifact;
             if dia.shapes.iter().any(|s| {
                 !c.participants.iter().any(|p| p.id == s.element)
-                    && !c.activities.iter().any(|a| a.id == s.element)
+                    && !scopes.iter().any(|scope| scope.activities.iter().any(|a| a.id == s.element)
+                        || scope.events.iter().chain(&scope.gateways).any(|n| n.id == s.element)
+                        || scope.artifacts.iter().any(|a| match a {
+                            CollaborationArtifact::Group(g) => g.id == s.element,
+                            CollaborationArtifact::TextAnnotation(n) => n.id == s.element,
+                            CollaborationArtifact::Association(_) => false,
+                        }))
             }) || dia.edges.iter().any(|e| {
-                !c.message_flows.iter().any(|f| f.id == e.element)
-                    && !c.sequence_flows.iter().any(|f| f.id == e.element)
+                !c.message_flows.iter().any(|flow| flow.id == e.element && scopes.iter().any(|scope| scope.activities.iter().any(|activity| activity.message_flow_refs.iter().any(|reference| reference.matches_identity(&flow.id, Some(&target_namespace))))))
+                    && !scopes.iter().any(|scope| scope.flows.iter().any(|f| f.id == e.element)
+                        || scope.data_associations.iter().any(|a| a.id.as_ref().is_some_and(|id| id == &e.element))
+                        || scope.artifacts.iter().any(|a| matches!(a, CollaborationArtifact::Association(f) if f.id == e.element)))
             }) {
                 return None;
             }
@@ -5804,18 +6324,6 @@ fn write_conversations(
             }
         }
         xml.push_str(&format!("</{tag}>"));
-    }
-}
-fn write_local_qname_text(xml: &mut String, tag: &str, id: &XmlId, namespace: &str) {
-    if namespace.is_empty() {
-        xml.push_str(&format!(
-            "<pc_q:{tag} xmlns:pc_q=\"{B}\" xmlns=\"\">{id}</pc_q:{tag}>"
-        ));
-    } else {
-        xml.push_str(&format!(
-            "<{tag} xmlns:tns=\"{}\">tns:{id}</{tag}>",
-            esc(namespace)
-        ));
     }
 }
 fn local_qname_value(id: &XmlId, namespace: &str) -> String {
@@ -7316,6 +7824,7 @@ fn write_scope(
                 })
             );
         let unqualified = local_owner_qname
+            || matches!(&n.details, Some(NodeDetails::Event { attached_to: Some(EventReference::Qualified(q)), .. }) if q.namespace.is_empty())
             || refs.iter().flatten().any(|q| q.namespace.is_empty())
             || n.item_aware
                 .as_ref()
@@ -7475,18 +7984,8 @@ fn write_scope(
                     .unwrap_or("tns"),
                 _ => "tns",
             };
-            if namespace.is_empty() {
-                xml.push_str(&format!(
-                    " attachedToRef=\"{}\"",
-                    xml_reference(document, id)
-                ));
-            } else {
-                xml.push_str(&format!(
-                    " xmlns:{prefix}=\"{}\" attachedToRef=\"{prefix}:{}\"",
-                    esc(namespace),
-                    xml_reference(document, id)
-                ));
-            }
+            let q = event_reference_qname(id, namespace, document);
+            write_catalog_qname_attribute(xml, "attachedToRef", &q, prefix);
             if let Some(cancel) = cancel_activity {
                 xml.push_str(&format!(" cancelActivity=\"{}\"", cancel));
             }
@@ -8386,7 +8885,10 @@ fn missing_xml_reference(document: &ExportContext) -> Option<ElementSelector> {
                 Some(NodeDetails::DataStoreReference {
                     data_store_ref: Some(processcraft_core::bpmn_data::DataStoreRef::Legacy(r)),
                 }) => vec![r],
-                Some(NodeDetails::BoundaryEvent { attached_to, .. }) => vec![attached_to],
+                Some(NodeDetails::BoundaryEvent {
+                    attached_to: EventReference::Local(attached_to),
+                    ..
+                }) => vec![attached_to],
                 Some(NodeDetails::Event {
                     definitions,
                     definition_refs,
@@ -8394,7 +8896,16 @@ fn missing_xml_reference(document: &ExportContext) -> Option<ElementSelector> {
                     io,
                     ..
                 }) => {
-                    let mut refs: Vec<_> = attached_to.iter().collect();
+                    let mut refs: Vec<_> = attached_to
+                        .iter()
+                        .filter_map(|r| {
+                            if let EventReference::Local(id) = r {
+                                Some(id)
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
                     for definition in definitions {
                         refs.extend(event_local_selectors(definition));
                     }
@@ -8493,9 +9004,9 @@ fn missing_xml_reference(document: &ExportContext) -> Option<ElementSelector> {
                 .participant_refs
                 .iter()
                 .chain(&a.message_flow_refs)
-                .chain(std::iter::once(&a.initiating_participant))
+                .chain(a.initiating_participant.iter())
             {
-                if let Some(missing) = check(document, r) {
+                if let Some(missing) = check_ref(document, r) {
                     return Some(missing);
                 }
             }
@@ -8733,7 +9244,11 @@ fn export_document(
                     _ => None,
                 }),
         )
-        .any(|n| !n.owner.is_empty() || !n.contact.is_empty());
+        .any(|n| !n.owner.is_empty() || !n.contact.is_empty())
+        || processcraft_core::queries::choreography_scopes(document).iter().any(|scope| {
+            scope.events.iter().chain(&scope.gateways).any(|n| !n.owner.is_empty() || !n.contact.is_empty())
+                || scope.artifacts.iter().any(|artifact| matches!(artifact, processcraft_core::bpmn_collaboration::CollaborationArtifact::TextAnnotation(node) if !node.owner.is_empty() || !node.contact.is_empty()))
+        });
     if native_nodes {
         report
             .omitted
@@ -9170,6 +9685,25 @@ fn export_document(
     }
     for c in &document.choreographies {
         let start = xml.len();
+        if c.kind.is_some()
+            && (c
+                .graph
+                .as_ref()
+                .is_some_and(|g| !g.flow_elements.is_empty())
+                || !c.activities.is_empty()
+                || !c.sequence_flows.is_empty())
+        {
+            report.blocked.push(
+                "BPMN 2.0.2 §11.5.4 forbids Flow Elements in a Global Choreography Task".into(),
+            );
+            return Err(ExportFailure { report });
+        }
+        if c.graph.is_some() && (!c.activities.is_empty() || !c.sequence_flows.is_empty()) {
+            report
+                .blocked
+                .push("Choreography contains both graph and legacy flow elements".into());
+            return Err(ExportFailure { report });
+        }
         if c.activities
             .iter()
             .any(|a| a.participant_refs.len() < 2 || !(1..=2).contains(&a.message_flow_refs.len()))
@@ -9177,7 +9711,30 @@ fn export_document(
             report.blocked.push("Incomplete choreography task".into());
             return Err(ExportFailure { report });
         }
-        xml.push_str("<choreography");
+        let root_tag = match &c.kind {
+            None => {
+                xml.push_str("<choreography");
+                "choreography".to_owned()
+            }
+            Some(processcraft_core::bpmn_collaboration::ChoreographyRootKind::Global {
+                initiating_participant_ref,
+            }) => {
+                let refs: Vec<_> = initiating_participant_ref
+                    .iter()
+                    .map(|r| ("initiatingParticipantRef", r))
+                    .collect();
+                let mut scopes = Vec::new();
+                collaboration_base_scopes(c.base.as_ref(), &mut scopes);
+                write_collaboration_qname_owner(
+                    &mut xml,
+                    "globalChoreographyTask",
+                    &refs,
+                    &namespace,
+                    &context,
+                    &scopes,
+                )
+            }
+        };
         write_xml_id(&mut xml, &c.id);
         write_xml_name(&mut xml, c.name.as_deref());
         if let Some(value) = c.extras.as_ref().and_then(|e| e.is_closed) {
@@ -9200,39 +9757,68 @@ fn export_document(
         }
         write_collaboration_refs(&mut xml, c.extras.as_ref(), &namespace, &context);
         write_conversation_links(&mut xml, &c.conversation_links, &namespace, &context);
+        if let Some(graph) = &c.graph
+            && !write_choreography_graph(&mut xml, graph, &namespace, &context, 0)
+        {
+            report
+                .blocked
+                .push("Incomplete or unsupported choreography graph".into());
+            return Err(ExportFailure { report });
+        }
         for a in &c.activities {
-            let tag = write_local_qname_open(&mut xml, "choreographyTask", &namespace);
+            if a.details.is_some() || a.initiating_participant.is_none() {
+                report
+                    .blocked
+                    .push("Choreography activity cannot be represented by this XML writer".into());
+                return Err(ExportFailure { report });
+            }
+            let refs = [(
+                "initiatingParticipantRef",
+                a.initiating_participant.as_ref().expect("checked"),
+            )];
+            let mut scopes = Vec::new();
+            collaboration_base_scopes(a.base.as_ref(), &mut scopes);
+            for key in &a.correlation_keys {
+                collaboration_base_scopes(key.base.as_ref(), &mut scopes);
+            }
+            let tag = write_collaboration_qname_owner(
+                &mut xml,
+                "choreographyTask",
+                &refs,
+                &namespace,
+                &context,
+                &scopes,
+            );
             write_xml_id(&mut xml, &a.id);
             write_xml_name(&mut xml, a.name.as_deref());
-            xml.push_str(&format!(
-                " initiatingParticipantRef=\"{}\"",
-                local_qname_value(
-                    xml_reference(&context, &a.initiating_participant),
-                    &namespace
-                )
-            ));
+            if let Some(loop_type) = a.loop_type {
+                use processcraft_core::bpmn_collaboration::ChoreographyLoopType;
+                let value = match loop_type {
+                    ChoreographyLoopType::None => "None",
+                    ChoreographyLoopType::Standard => "Standard",
+                    ChoreographyLoopType::MultiInstanceSequential => "MultiInstanceSequential",
+                    ChoreographyLoopType::MultiInstanceParallel => "MultiInstanceParallel",
+                };
+                xml.push_str(&format!(" loopType=\"{value}\""));
+            }
             anonymous_base_attributes(&mut xml, Some(&a.id), a.base.as_ref());
             xml.push('>');
             anonymous_base_children(&mut xml, Some(&a.id), a.base.as_ref());
             write_flow_metadata(&mut xml, a.flow_metadata.as_ref(), &namespace, &context);
             for participant in &a.participant_refs {
-                write_local_qname_text(
+                write_event_qname_text(
                     &mut xml,
                     "participantRef",
-                    xml_reference(&context, participant),
+                    participant,
                     &namespace,
-                );
-            }
-            for flow in &a.message_flow_refs {
-                write_local_qname_text(
-                    &mut xml,
-                    "messageFlowRef",
-                    xml_reference(&context, flow),
-                    &namespace,
+                    &context,
                 );
             }
             for key in &a.correlation_keys {
                 write_correlation_key(&mut xml, key, &namespace, &context);
+            }
+            for flow in &a.message_flow_refs {
+                write_event_qname_text(&mut xml, "messageFlowRef", flow, &namespace, &context);
             }
             xml.push_str(&format!("</{tag}>"));
         }
@@ -9257,7 +9843,7 @@ fn export_document(
             }
             xml.push_str("</sequenceFlow>");
         }
-        xml.push_str("</choreography>");
+        xml.push_str(&format!("</{root_tag}>"));
         record_root!(Some(&c.id), start);
     }
     for c in document

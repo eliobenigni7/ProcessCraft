@@ -221,6 +221,17 @@ pub(crate) fn node_activity_read(n: &crate::model::Node) -> ActivityRead<'_> {
 }
 fn add_node<'a>(v: &mut ActivityRead<'a>, n: &'a crate::model::Node) {
     v.flow(&n.flow_metadata);
+    match &n.details {
+        Some(crate::bpmn_model::NodeDetails::BoundaryEvent { attached_to, .. }) => {
+            v.native_references |= attached_to.is_native();
+            if let ModelReference::Qualified(qname) = attached_to {
+                v.qualified_references = true;
+                v.qnames.push(qname);
+            }
+        }
+        Some(crate::bpmn_model::NodeDetails::Event { attached_to, .. }) => v.reference(attached_to),
+        _ => {}
+    }
     if let Some(a) = &n.activity {
         for p in &a.properties {
             v.property(p)
@@ -351,6 +362,110 @@ pub(crate) fn activity_read(d: &BpmnDocument) -> ActivityRead<'_> {
             v.flow(&a.flow_metadata);
             for k in &a.correlation_keys {
                 v.key(k)
+            }
+        }
+    }
+    for scope in crate::queries::choreography_scopes(d) {
+        if scope.parent.is_none()
+            && let Some(crate::bpmn_collaboration::ChoreographyRootKind::Global {
+                initiating_participant_ref,
+            }) = &scope.root.kind
+        {
+            v.reference(initiating_participant_ref);
+        }
+        for a in scope.activities {
+            v.refs(&a.participant_refs);
+            v.reference(&a.initiating_participant);
+            v.refs(&a.message_flow_refs);
+            if scope.root.graph.is_some() {
+                v.flow(&a.flow_metadata);
+                for k in &a.correlation_keys {
+                    v.key(k);
+                }
+            }
+            if let Some(crate::bpmn_collaboration::ChoreographyActivityDetails::Call {
+                called_choreography_ref,
+                participant_associations,
+            }) = &a.details
+            {
+                v.reference(called_choreography_ref);
+                for association in participant_associations {
+                    v.owner(&association.id, &association.base);
+                    v.reference(&association.inner);
+                    v.reference(&association.outer);
+                }
+            }
+        }
+        if scope.root.graph.is_some() {
+            for n in scope.events.into_iter().chain(scope.gateways) {
+                add_node(&mut v, n);
+                if let Some(crate::bpmn_model::NodeDetails::Event {
+                    definitions,
+                    definition_refs,
+                    properties,
+                    io,
+                    ..
+                }) = &n.details
+                {
+                    v.refs(definition_refs);
+                    for property in properties {
+                        if let Some(qname) = property
+                            .item_aware
+                            .as_ref()
+                            .and_then(|m| m.item_subject_ref.as_ref())
+                        {
+                            v.qualified_references = true;
+                            v.qnames.push(qname);
+                        }
+                    }
+                    if let Some(io) = io {
+                        use crate::bpmn_model::EventIo;
+                        let ports = match io {
+                            EventIo::Catch { outputs, .. } => outputs,
+                            EventIo::Throw { inputs, .. } => inputs,
+                        };
+                        for port in ports {
+                            if let Some(qname) = port
+                                .item_aware
+                                .as_ref()
+                                .and_then(|m| m.item_subject_ref.as_ref())
+                            {
+                                v.qualified_references = true;
+                                v.qnames.push(qname);
+                            }
+                        }
+                    }
+                    for definition in definitions {
+                        match definition {
+                            EventDefinition::Message {
+                                message_ref,
+                                operation_ref,
+                                ..
+                            } => {
+                                v.reference(message_ref);
+                                v.reference(operation_ref);
+                            }
+                            EventDefinition::Signal { signal_ref, .. } => v.reference(signal_ref),
+                            EventDefinition::Error { error_ref, .. } => v.reference(error_ref),
+                            EventDefinition::Escalation { escalation_ref, .. } => {
+                                v.reference(escalation_ref)
+                            }
+                            EventDefinition::Link {
+                                sources, target, ..
+                            } => {
+                                v.refs(sources);
+                                v.reference(target);
+                            }
+                            EventDefinition::Compensate { activity_ref, .. } => {
+                                v.reference(activity_ref)
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            for f in scope.flows {
+                v.flow(&f.flow_metadata);
             }
         }
     }

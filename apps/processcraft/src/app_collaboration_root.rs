@@ -4,6 +4,7 @@ use processcraft_core::bpmn_collaboration::CollaborationRootKind;
 pub(super) struct RootDraft {
     generation: u64,
     value: Collaboration,
+    global_initiator: Option<super::event::ReferenceDraft>,
 }
 pub(super) struct RootOrderDraft {
     generation: u64,
@@ -42,6 +43,7 @@ impl ProcessCraft {
                 self.collaboration.root_details = Some(RootDraft {
                     generation,
                     value: root.clone(),
+                    global_initiator: document.choreographies.iter().find(|c| c.id == root.id).and_then(|c| match &c.kind { Some(processcraft_core::bpmn_collaboration::ChoreographyRootKind::Global { initiating_participant_ref }) => initiating_participant_ref.as_ref().map(super::event::ReferenceDraft::new), _ => None }),
                 });
             }
             if ui
@@ -77,10 +79,20 @@ impl ProcessCraft {
                 super::catalog::optional_text(ui, "Name", &mut draft.value.name);
                 let mut global = draft.value.kind.is_some();
                 if !document.choreographies.iter().any(|value| value.id == draft.value.id) && ui.checkbox(&mut global, "Global conversation").changed() { draft.value.kind = global.then_some(CollaborationRootKind::GlobalConversation); }
+                if document.choreographies.iter().any(|c| c.id == draft.value.id && c.kind.is_some()) {
+                    let choices = draft.value.participants.iter().enumerate().map(|(i, p)| (p.id.selector(), super::event::local_choice_label(p.name.as_deref(), "Participant", &p.id, i + 1))).collect::<Vec<_>>();
+                    super::event::ref_ui(ui, "Global initiating participant", &mut draft.global_initiator, &choices);
+                }
                 ui.horizontal(|ui| {
                     if ui.button("Apply collaboration").clicked() {
                         if draft.generation != self.ctl.session.snapshot().generation || draft.value.id != root.id { self.ctl.error = "The model changed while this draft was open. Discard it and reopen the editor.".into(); }
-                        else if self.ctl.mutate(vec![super::collaboration::update_root(document, draft.value.clone())]) { if document.collaboration.as_ref().is_some_and(|first| first.id == draft.value.id) { self.collaboration_name = draft.value.name.clone(); } close = true; }
+                        else {
+                            let mut mutation = super::collaboration::update_root(document, draft.value.clone());
+                            if let Mutation::UpdateChoreography { choreography, .. } = &mut mutation && let Some(processcraft_core::bpmn_collaboration::ChoreographyRootKind::Global { initiating_participant_ref }) = &mut choreography.kind {
+                                match draft.global_initiator.as_ref().map(super::event::ReferenceDraft::build).transpose() { Ok(value) => *initiating_participant_ref = value, Err(error) => { self.ctl.error = error; return; } }
+                            }
+                            if self.ctl.mutate(vec![mutation]) { if document.collaboration.as_ref().is_some_and(|first| first.id == draft.value.id) { self.collaboration_name = draft.value.name.clone(); } close = true; }
+                        }
                     }
                     if ui.button("Discard collaboration draft").clicked() { close = true; }
                 });

@@ -1,7 +1,8 @@
 use crate::{DiagramScene, RenderError, TextEngine, TextRequest};
 use processcraft_core::{
     bpmn_collaboration::{
-        Choreography, ChoreographyActivity, ConversationKind, ConversationLink, ConversationNode,
+        Choreography, ChoreographyActivity, ChoreographyActivityDetails, ChoreographyLoopType,
+        ConversationKind, ConversationLink, ConversationNode,
     },
     bpmn_data::{DataAssociation, DataObject, DataPort},
     bpmn_model::{
@@ -58,7 +59,9 @@ struct SemanticIndex<'a> {
     data_objects: Vec<&'a DataObject>,
     ports: Vec<(&'a DataPort, bool)>,
     activity_ports: std::collections::BTreeSet<ElementSelector>,
-    choreographies: Vec<&'a Choreography>,
+    choreographies: Vec<(&'a Choreography, &'a ChoreographyActivity)>,
+    choreography_owners: std::collections::BTreeSet<ElementSelector>,
+    target_namespace: Option<String>,
 }
 impl<'a> SemanticIndex<'a> {
     fn new(document: &'a BpmnDocument) -> Result<Self, RenderError> {
@@ -76,7 +79,12 @@ impl<'a> SemanticIndex<'a> {
             data_objects: Vec::new(),
             ports: Vec::new(),
             activity_ports: std::collections::BTreeSet::new(),
-            choreographies: document.choreographies.iter().collect(),
+            choreographies: Vec::new(),
+            choreography_owners: std::collections::BTreeSet::new(),
+            target_namespace: document
+                .definitions
+                .as_ref()
+                .map(|d| d.target_namespace.clone()),
         };
         for process in &document.processes {
             if let Some(io) = &process.io_specification {
@@ -177,7 +185,6 @@ impl<'a> SemanticIndex<'a> {
         }
         for choreography in &document.choreographies {
             result.flows.extend(&choreography.message_flows);
-            result.flows.extend(&choreography.sequence_flows);
             result
                 .conversations
                 .extend(&choreography.conversation_nodes);
@@ -215,6 +222,45 @@ impl<'a> SemanticIndex<'a> {
                     .and_then(|node| node.parent.as_ref())
                 {
                     result.parents.insert(link.id.selector(), parent.clone());
+                }
+            }
+        }
+        for scope in processcraft_core::queries::choreography_scopes(document) {
+            let nested = scope.parent.is_some();
+            if nested {
+                result.choreography_owners.insert(scope.owner.clone());
+            }
+            for activity in &scope.activities {
+                result.choreographies.push((scope.root, activity));
+                if nested {
+                    result
+                        .parents
+                        .insert(activity.id.selector(), scope.owner.clone());
+                }
+            }
+            for node in scope.events.iter().chain(&scope.gateways) {
+                result.nodes.push((node, usize::from(nested)));
+                if nested {
+                    result
+                        .parents
+                        .insert(node.id.selector(), scope.owner.clone());
+                }
+            }
+            for flow in &scope.flows {
+                result.flows.push(flow);
+                if nested {
+                    result
+                        .parents
+                        .insert(flow.id.selector(), scope.owner.clone());
+                }
+            }
+            if nested {
+                for artifact in &scope.artifacts {
+                    match artifact {
+                        processcraft_core::bpmn_collaboration::CollaborationArtifact::Group(group) => { result.groups.push(group); result.parents.insert(group.id.selector(), scope.owner.clone()); },
+                        processcraft_core::bpmn_collaboration::CollaborationArtifact::TextAnnotation(node) => { result.nodes.push((node, 1)); result.parents.insert(node.id.selector(), scope.owner.clone()); },
+                        processcraft_core::bpmn_collaboration::CollaborationArtifact::Association(flow) => { result.flows.push(flow); result.parents.insert(flow.id.selector(), scope.owner.clone()); },
+                    }
                 }
             }
         }
@@ -285,33 +331,115 @@ impl<'a> SemanticIndex<'a> {
             .copied()
             .find(|participant| &participant.id == id)
     }
-    fn hidden(&self, id: &ElementSelector, diagram: &processcraft_core::model::Diagram) -> bool {
+    // Flat DI has no general parent pointer. Only a unique containing owner
+    // representation proves which expanded/collapsed view owns a child.
+    fn visibility(
+        &self,
+        id: &ElementSelector,
+        bounds: &Bounds,
+        diagram: &processcraft_core::model::Diagram,
+    ) -> (bool, bool) {
         let mut parent = self.parents.get(id);
+        let mut ambiguous = false;
         for _ in 0..=32 {
-            let Some(id) = parent else {
-                return false;
+            let Some(owner) = parent else {
+                return (false, ambiguous);
             };
-            if diagram
+            if &diagram.plane == owner {
+                return (false, ambiguous);
+            }
+            if self.choreography_owners.contains(owner) {
+                let candidates: Vec<_> = diagram
+                    .shapes
+                    .iter()
+                    .filter(|shape| {
+                        &shape.element == owner
+                            && shape.bounds.x <= bounds.x
+                            && shape.bounds.y <= bounds.y
+                            && shape.bounds.x + shape.bounds.width >= bounds.x + bounds.width
+                            && shape.bounds.y + shape.bounds.height >= bounds.y + bounds.height
+                    })
+                    .collect();
+                match candidates.as_slice() {
+                    [shape] if shape.is_expanded == Some(false) => return (true, ambiguous),
+                    [_] => {}
+                    _ => {
+                        ambiguous = true;
+                        return (false, ambiguous);
+                    }
+                }
+            } else if diagram
                 .shapes
                 .iter()
-                .any(|shape| &shape.element == id && shape.is_expanded == Some(false))
+                .any(|shape| &shape.element == owner && shape.is_expanded == Some(false))
             {
-                return true;
+                return (true, ambiguous);
             }
-            parent = self.parents.get(id);
+            parent = self.parents.get(owner);
         }
-        true
+        (false, true)
+    }
+    fn shape_visibility(
+        &self,
+        shape: &processcraft_core::model::Shape,
+        diagram: &processcraft_core::model::Diagram,
+    ) -> (bool, bool) {
+        let owner = match &shape.choreography_activity_shape {
+            Some(processcraft_core::model::DiReference::Local(id)) => {
+                diagram.shapes.iter().find(|s| &s.id == id)
+            }
+            Some(processcraft_core::model::DiReference::Qualified(q)) => {
+                diagram.shapes.iter().find(|s| {
+                    s.id.xml_id() == Some(&q.local)
+                        && self.target_namespace.as_ref() == Some(&q.namespace)
+                })
+            }
+            None => None,
+        };
+        if let Some(owner) = owner {
+            return self.visibility(&owner.element, &owner.bounds, diagram);
+        }
+        self.visibility(&shape.element, &shape.bounds, diagram)
+    }
+    fn edge_visibility(
+        &self,
+        edge: &processcraft_core::model::Edge,
+        diagram: &processcraft_core::model::Diagram,
+    ) -> (bool, bool) {
+        let Some(first) = edge.waypoints.first() else {
+            return (
+                false,
+                self.parents.get(&edge.element).is_some_and(|owner| {
+                    self.choreography_owners.contains(owner) && &diagram.plane != owner
+                }),
+            );
+        };
+        let (mut x, mut y, mut right, mut bottom) = (first.x, first.y, first.x, first.y);
+        for p in &edge.waypoints {
+            x = x.min(p.x);
+            y = y.min(p.y);
+            right = right.max(p.x);
+            bottom = bottom.max(p.y);
+        }
+        self.visibility(
+            &edge.element,
+            &Bounds {
+                x,
+                y,
+                width: right - x,
+                height: bottom - y,
+            },
+            diagram,
+        )
     }
     fn choreography(
         &self,
         id: &ElementSelector,
     ) -> Option<(&'a Choreography, &'a ChoreographyActivity)> {
-        self.choreographies.iter().find_map(|c| {
-            c.activities
-                .iter()
-                .find(|activity| &activity.id == id)
-                .map(|activity| (*c, activity))
-        })
+        self.choreographies
+            .iter()
+            .copied()
+            .find(|(_, activity)| &activity.id == id)
     }
     fn group_label<'b>(&self, id: &ElementSelector, document: &'b BpmnDocument) -> Option<&'b str> {
         let group = self.groups.iter().find(|g| &g.id == id)?;
@@ -746,7 +874,7 @@ impl BpmnScene {
             if semantics.activity_ports.contains(&shape.element) {
                 continue;
             }
-            if semantics.hidden(&shape.element, diagram) {
+            if semantics.shape_visibility(shape, diagram).0 {
                 continue;
             }
             let b = &shape.bounds;
@@ -765,7 +893,7 @@ impl BpmnScene {
             }
         }
         for edge in &diagram.edges {
-            if semantics.hidden(&edge.element, diagram) {
+            if semantics.edge_visibility(edge, diagram).0 {
                 continue;
             }
             for p in &edge.waypoints {
@@ -778,7 +906,7 @@ impl BpmnScene {
         }
         let (mut minx, mut miny, mut maxx, mut maxy) = extents.unwrap_or((0.0, 0.0, 1.0, 1.0));
         for edge in &diagram.edges {
-            if semantics.hidden(&edge.element, diagram) {
+            if semantics.edge_visibility(edge, diagram).0 {
                 continue;
             }
             if label_visible(edge.label.as_ref(), edge.label_visibility)
@@ -817,6 +945,17 @@ impl BpmnScene {
         scene.add_background_rect(0.0, 0.0, scene.width(), scene.height(), bg)?;
         let mut hits = Vec::new();
         let mut diagnostics = Vec::new();
+        if diagram
+            .shapes
+            .iter()
+            .any(|shape| semantics.shape_visibility(shape, diagram).1)
+            || diagram
+                .edges
+                .iter()
+                .any(|edge| semantics.edge_visibility(edge, diagram).1)
+        {
+            diagnostics.push("Choreography representation ownership is ambiguous; affected elements remain visible".into());
+        }
         if has_uninterpreted_di(diagram) {
             diagnostics.push(DI_EXTENSION_DIAGNOSTIC.into());
         }
@@ -830,7 +969,7 @@ impl BpmnScene {
         let mut ordered_shapes: Vec<_> = diagram
             .shapes
             .iter()
-            .filter(|shape| !semantics.hidden(&shape.element, diagram))
+            .filter(|shape| !semantics.shape_visibility(shape, diagram).0)
             .collect();
         ordered_shapes.sort_by_key(|shape| {
             if semantics.groups.iter().any(|g| g.id == shape.element)
@@ -876,7 +1015,15 @@ impl BpmnScene {
                 };
                 let context = owner.and_then(|owner| semantics.choreography(&owner.element));
                 let participant = context.and_then(|(scope, _)| {
-                    scope.participants.iter().find(|p| p.id == shape.element)
+                    scope.participants.iter().find(|p| {
+                        p.id == shape.element
+                            && context.is_some_and(|(_, activity)| {
+                                activity
+                                    .participant_refs
+                                    .iter()
+                                    .any(|r| self_reference_resolves(&semantics, r, &shape.element))
+                            })
+                    })
                 });
                 let Some(participant) = participant else {
                     diagnostics.push(format!("Participant band {} has an unresolved activity representation or participant", shape.id));
@@ -1024,7 +1171,8 @@ impl BpmnScene {
                     } else if context.is_some_and(|(scope, activity)| {
                         activity.message_flow_refs.iter().any(|id| {
                             scope.message_flows.iter().any(|flow| {
-                                &flow.id == id
+                                semantics.resolved(&Some(id.clone())).as_ref()
+                                    == Some(&flow.id.selector())
                                     && semantics.resolved(&flow.source).as_ref()
                                         == Some(&shape.element)
                             })
@@ -1203,7 +1351,15 @@ impl BpmnScene {
                 name = Some(p.name.as_deref().unwrap_or(""));
             }
             let Some(name) = name else {
-                diagnostics.push(format!("Unknown shape element {}", shape.element));
+                if document
+                    .choreographies
+                    .iter()
+                    .any(|root| root.id == shape.element && root.kind.is_some())
+                {
+                    diagnostics.push(format!("Global choreography {} has no standalone shape specified by BPMN 2.0.2 section 11.5.4; representation omitted", shape.element));
+                } else {
+                    diagnostics.push(format!("Unknown shape element {}", shape.element));
+                }
                 continue;
             };
             let display_name = if let Some((port, _)) = port {
@@ -1240,11 +1396,13 @@ impl BpmnScene {
                     Some(NodeDetails::Event { attached_to, .. }) => attached_to.as_ref(),
                     _ => None,
                 };
-                if attached.is_none_or(|id| {
+                let attached_id = semantics.resolved(&attached.cloned());
+                if attached_id.as_ref().is_none_or(|id| {
                     !semantics
                         .nodes
                         .iter()
                         .any(|(n, _)| &n.id == id && n.kind.is_activity())
+                        && semantics.choreography(id).is_none()
                 }) {
                     diagnostics.push(format!(
                         "Boundary event {} has no valid attached activity",
@@ -1362,7 +1520,9 @@ impl BpmnScene {
             if let Some(p) = path.finish() {
                 scene.add_path(p, fc)?;
             }
-            if choreography.is_some() {
+            if choreography.is_some_and(|(root, _)| root.graph.is_none())
+                && diagram.plane_order.is_none()
+            {
                 let band_h = (h * 0.22).clamp(12.0, 24.0).min((h - 2.0).max(0.0));
                 let band_color = if appearance == Appearance::Dark {
                     [60, 74, 90]
@@ -1581,7 +1741,18 @@ impl BpmnScene {
                     let mut p = PathBuilder::new();
                     rounded(&mut p, x, y, w, h);
                     if let Some(path) = p.finish() {
-                        outline(&mut scene, &path, stroke, 1.5)?;
+                        outline(
+                            &mut scene,
+                            &path,
+                            stroke,
+                            if choreography.is_some_and(|(_, a)| {
+                                matches!(a.details, Some(ChoreographyActivityDetails::Call { .. }))
+                            }) {
+                                3.0
+                            } else {
+                                1.5
+                            },
+                        )?;
                     }
                 }
                 _ if conversation.is_some() => {
@@ -1672,7 +1843,10 @@ impl BpmnScene {
                         | NodeKind::CallActivity
                 )
             );
-            let collapsed = expandable
+            let collapsed = choreography.is_some_and(|(_, a)| {
+                matches!(a.details, Some(ChoreographyActivityDetails::Sub { .. }))
+                    && shape.is_expanded == Some(false)
+            }) || expandable
                 && match (kind, call_target) {
                     (Some(NodeKind::CallActivity), CalledTarget::Process) => {
                         shape.is_expanded != Some(true)
@@ -1691,11 +1865,14 @@ impl BpmnScene {
                 ));
             }
             let loop_marker = node.and_then(|node| node.loop_characteristics.as_ref());
+            let choreography_loop = choreography
+                .and_then(|(_, a)| a.loop_type)
+                .filter(|v| *v != ChoreographyLoopType::None);
             let compensation = node
                 .and_then(|node| node.activity.as_ref())
                 .is_some_and(|activity| activity.is_for_compensation == Some(true));
             let ad_hoc = matches!(kind, Some(NodeKind::AdHocSubProcess));
-            let marker_count = usize::from(loop_marker.is_some())
+            let marker_count = usize::from(loop_marker.is_some() || choreography_loop.is_some())
                 + usize::from(compensation)
                 + usize::from(collapsed)
                 + usize::from(ad_hoc);
@@ -1707,9 +1884,25 @@ impl BpmnScene {
                     ));
                 } else {
                     let mut cx = x + w / 2.0 - (marker_count as f32 - 1.0) * 9.0;
-                    let cy = y + h - 10.0;
+                    let cy = if choreography.is_some() {
+                        let bottom_band = diagram.shapes.iter().filter(|band| {
+                            let owner = match &band.choreography_activity_shape {
+                                Some(processcraft_core::model::DiReference::Local(id)) => id == &shape.id.selector(),
+                                Some(processcraft_core::model::DiReference::Qualified(q)) => document.definitions.as_ref().is_some_and(|defs| defs.target_namespace == q.namespace) && shape.id.xml_id() == Some(&q.local),
+                                None => false,
+                            };
+                            owner && matches!(band.participant_band_kind, Some(processcraft_core::model::ParticipantBandKind::BottomInitiating | processcraft_core::model::ParticipantBandKind::BottomNonInitiating))
+                        }).map(|band| band.bounds.y as f32 - origin.1 as f32).fold(y + h, f32::min);
+                        bottom_band - 10.0
+                    } else {
+                        y + h - 10.0
+                    };
                     if let Some(characteristics) = loop_marker {
                         draw_loop_marker(&mut scene, characteristics, cx, cy, stroke)?;
+                        cx += 18.0;
+                    }
+                    if let Some(marker) = choreography_loop {
+                        draw_choreography_loop(&mut scene, marker, cx, cy, stroke)?;
                         cx += 18.0;
                     }
                     if compensation {
@@ -1784,26 +1977,28 @@ impl BpmnScene {
                     shape.element
                 ));
             }
-            if let Some((scope, activity)) =
-                choreography.filter(|_| !has_explicit_bands && diagram.plane_order.is_none())
-            {
+            if let Some((scope, activity)) = choreography.filter(|(root, _)| {
+                root.graph.is_none() && !has_explicit_bands && diagram.plane_order.is_none()
+            }) {
                 if activity.participant_refs.len() != 2 {
                     diagnostics.push(format!(
                         "Choreography {} participant band order is not represented",
                         activity.id
                     ));
                 }
+                let initiating = semantics.resolved(&activity.initiating_participant);
                 let other = activity
                     .participant_refs
                     .iter()
-                    .find(|id| **id != activity.initiating_participant);
+                    .filter_map(|r| semantics.resolved(&Some(r.clone())))
+                    .find(|id| Some(id) != initiating.as_ref());
                 let top = scope
                     .participants
                     .iter()
-                    .find(|p| p.id == activity.initiating_participant)
+                    .find(|p| Some(&p.id.selector()) == initiating.as_ref())
                     .map(|p| p.name.as_deref().unwrap_or(""));
                 let bottom = other
-                    .and_then(|id| scope.participants.iter().find(|p| &p.id == id))
+                    .and_then(|id| scope.participants.iter().find(|p| p.id == id))
                     .map(|p| p.name.as_deref().unwrap_or(""));
                 let band_h = (h * 0.22).clamp(12.0, 24.0);
                 lines(
@@ -2123,7 +2318,7 @@ impl BpmnScene {
             if let Some(ranks) = &paint_ranks {
                 scene.set_paint_rank(*ranks.get(&edge.id.selector()).unwrap_or(&(ranks.len() + 1)));
             }
-            if semantics.hidden(&edge.element, diagram) {
+            if semantics.edge_visibility(edge, diagram).0 {
                 continue;
             }
             if semantics.data_association(&edge.element).is_some() {
@@ -2408,7 +2603,7 @@ fn group_label_collision(
         .filter(|shape| {
             &shape.id != shape_id
                 && semantics.node(&shape.element).is_some()
-                && !semantics.hidden(&shape.element, diagram)
+                && !semantics.shape_visibility(shape, diagram).0
         })
         .any(|shape| {
             let b = &shape.bounds;
@@ -3250,6 +3445,46 @@ fn marker_polygon(
     }
     Ok(())
 }
+fn self_reference_resolves(
+    index: &SemanticIndex<'_>,
+    reference: &processcraft_core::bpmn_activity::ModelReference,
+    id: &ElementSelector,
+) -> bool {
+    index.resolved(&Some(reference.clone())).as_ref() == Some(id)
+}
+fn draw_choreography_loop(
+    scene: &mut DiagramScene,
+    marker: ChoreographyLoopType,
+    cx: f32,
+    cy: f32,
+    color: [u8; 3],
+) -> Result<(), RenderError> {
+    if marker == ChoreographyLoopType::Standard {
+        let mut points = Vec::new();
+        for i in 0..=16 {
+            let a = (-0.15 + i as f32 / 16.0 * 1.65) * std::f32::consts::PI;
+            points.push((cx + a.cos() * 5.0, cy + a.sin() * 5.0));
+        }
+        lines(scene, &points, color, 1.3)?;
+        let tip = points[16];
+        lines(
+            scene,
+            &[(tip.0 - 3.0, tip.1 - 1.0), tip, (tip.0 - 1.0, tip.1 + 3.0)],
+            color,
+            1.2,
+        )?;
+    } else {
+        for offset in [-3.5_f32, 0.0, 3.5] {
+            let points = if marker == ChoreographyLoopType::MultiInstanceSequential {
+                [(cx - 5.0, cy + offset), (cx + 5.0, cy + offset)]
+            } else {
+                [(cx + offset, cy - 5.0), (cx + offset, cy + 5.0)]
+            };
+            lines(scene, &points, color, 1.4)?;
+        }
+    }
+    Ok(())
+}
 fn draw_loop_marker(
     scene: &mut DiagramScene,
     marker: &LoopCharacteristics,
@@ -3514,9 +3749,20 @@ impl BpmnViewport {
             b.y -= view.y;
         };
         let mut viewport_diagnostics = Vec::new();
+        if original_diagram
+            .shapes
+            .iter()
+            .any(|shape| visibility.shape_visibility(shape, original_diagram).1)
+            || original_diagram
+                .edges
+                .iter()
+                .any(|edge| visibility.edge_visibility(edge, original_diagram).1)
+        {
+            viewport_diagnostics.push("Choreography representation ownership is ambiguous; affected elements remain visible".into());
+        }
         diagram
             .shapes
-            .retain(|s| !visibility.hidden(&s.element, original_diagram));
+            .retain(|s| !visibility.shape_visibility(s, original_diagram).0);
         diagram.shapes.retain(|s| {
             if !inside(&s.bounds) {
                 return false;
@@ -3595,9 +3841,40 @@ impl BpmnViewport {
                 );
             }
             if semantics.activity_ports.contains(&shape.element)
-                || semantics.hidden(&shape.element, original)
+                || semantics.shape_visibility(shape, original).0
             {
                 continue;
+            }
+            if shape.participant_band_kind.is_some() {
+                let owner = match &shape.choreography_activity_shape {
+                    Some(processcraft_core::model::DiReference::Local(id)) => {
+                        original.shapes.iter().find(|s| &s.id == id)
+                    }
+                    Some(processcraft_core::model::DiReference::Qualified(q))
+                        if document
+                            .definitions
+                            .as_ref()
+                            .is_some_and(|defs| defs.target_namespace == q.namespace) =>
+                    {
+                        original
+                            .shapes
+                            .iter()
+                            .find(|s| s.id.xml_id() == Some(&q.local))
+                    }
+                    _ => None,
+                };
+                let valid = owner
+                    .and_then(|owner| semantics.choreography(&owner.element))
+                    .is_some_and(|(root, activity)| {
+                        root.participants.iter().any(|p| p.id == shape.element)
+                            && activity
+                                .participant_refs
+                                .iter()
+                                .any(|r| self_reference_resolves(&semantics, r, &shape.element))
+                    });
+                if !valid {
+                    continue;
+                }
             }
             let node = semantics.node(&shape.element).map(|(node, _)| node);
             let port = semantics.port(&shape.element);
@@ -3642,7 +3919,7 @@ impl BpmnViewport {
                     semantics
                         .choreographies
                         .iter()
-                        .flat_map(|c| &c.participants)
+                        .flat_map(|(c, _)| &c.participants)
                         .find(|p| p.id == shape.element)
                         .map(|p| p.name.as_deref().unwrap_or(""))
                 });
@@ -3862,7 +4139,7 @@ impl BpmnViewport {
                     .scene
                     .set_paint_rank(*ranks.get(&edge.id.selector()).unwrap_or(&(ranks.len() + 1)));
             }
-            if semantics.hidden(&edge.element, original) {
+            if semantics.edge_visibility(edge, original).0 {
                 continue;
             }
             if semantics.data_association(&edge.element).is_some() {

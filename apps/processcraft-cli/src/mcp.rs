@@ -207,6 +207,8 @@ enum Query {
         document_id: processcraft_core::ids::DocumentId,
         #[serde(rename = "diagramId")]
         diagram_id: processcraft_core::ids::ElementSelector,
+        #[serde(default, rename = "choreographyScopeShape")]
+        choreography_scope_shape: Option<processcraft_core::ids::ElementSelector>,
     },
     Library {
         text: String,
@@ -378,10 +380,14 @@ impl ServerHandler for Server {
                     Query::Comments { offset, limit } => (snapshot.project.comments.iter().map(|c| json!({"comment":c,"orphan":processcraft_core::queries::comment_is_orphan(&snapshot.project,c)})).collect(), offset, limit),
                     Query::Checkpoints { offset, limit } => (snapshot.project.checkpoints.iter().map(|c| json!({"id":c.id,"name":c.name,"createdUnixMs":c.created_unix_ms,"reference":snapshot.project.reference_checkpoint == Some(c.id)})).collect(), offset, limit),
                     Query::CompareCheckpoint { checkpoint_id, offset, limit } => (vec![json!(processcraft_core::queries::compare_checkpoint(&snapshot.project, checkpoint_id).ok_or_else(|| ErrorData::invalid_params("checkpoint not found", None))?)], offset, limit),
-                    Query::LayoutPreview { session_id, expected_generation, document_id, diagram_id } => {
+                    Query::LayoutPreview { session_id, expected_generation, document_id, diagram_id, choreography_scope_shape } => {
                         if session_id != state.session.id() || expected_generation != snapshot.generation { return Err(ErrorData::invalid_params("session or generation mismatch", None)); }
                         let doc = snapshot.project.documents.iter().find(|d| d.id == document_id).ok_or_else(|| ErrorData::invalid_params("document not found",None))?;
-                        let proposal = processcraft_core::layout::propose_layout(doc, &diagram_id, &session_id, expected_generation, &std::sync::atomic::AtomicBool::new(false)).map_err(|e| ErrorData::invalid_params(e.to_string(),None))?;
+                        let cancel = std::sync::atomic::AtomicBool::new(false);
+                        let proposal = match choreography_scope_shape {
+                            Some(shape) => processcraft_core::layout::propose_choreography_scope_layout(doc, &diagram_id, &shape, &session_id, expected_generation, &cancel),
+                            None => processcraft_core::layout::propose_layout(doc, &diagram_id, &session_id, expected_generation, &cancel),
+                        }.map_err(|e| ErrorData::invalid_params(e.to_string(),None))?;
                         let value = json!({"proposal":proposal});
                         if serde_json::to_vec(&value).map_or(true, |v| v.len() > 3 * 1024 * 1024) { return Err(ErrorData::invalid_params("proposal exceeds response limit",None)); }
                         return Ok(CallToolResult::structured(value).into());

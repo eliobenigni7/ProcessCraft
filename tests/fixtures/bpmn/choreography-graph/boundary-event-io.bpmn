@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:t="urn:boundary-graph" id="defs" targetNamespace="urn:boundary-graph">
+  <choreography id="choreo">
+    <participant id="buyer"/><participant id="seller"/>
+    <subChoreography id="sub" initiatingParticipantRef="t:buyer"><participantRef>t:buyer</participantRef><participantRef>t:seller</participantRef></subChoreography>
+    <boundaryEvent id="boundary1" attachedToRef="t:sub" cancelActivity="false">
+      <property id="property1"/><dataOutput id="output1"/>
+      <dataOutputAssociation id="association1"><sourceRef>output1</sourceRef><targetRef>property1</targetRef></dataOutputAssociation>
+      <outputSet id="set1"><dataOutputRefs>output1</dataOutputRefs></outputSet>
+      <timerEventDefinition id="timer1"/>
+    </boundaryEvent>
+    <boundaryEvent id="boundary2" attachedToRef="t:sub">
+      <property id="property2"/><dataOutput id="output2"/>
+      <dataOutputAssociation id="association2"><sourceRef>output2</sourceRef><targetRef>property2</targetRef></dataOutputAssociation>
+      <outputSet id="set2"><dataOutputRefs>output2</dataOutputRefs></outputSet>
+      <signalEventDefinition id="signal2"/>
+    </boundaryEvent>
+  </choreography>
+</definitions>

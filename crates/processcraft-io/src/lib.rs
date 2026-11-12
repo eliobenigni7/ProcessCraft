@@ -1,6 +1,7 @@
 //! Explicit file capabilities and a qualified local file replacement boundary.
 mod access;
 mod activity_export;
+mod choreography_export;
 mod collaboration_export;
 pub mod recovery;
 mod root_order_export;

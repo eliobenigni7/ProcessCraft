@@ -1,7 +1,7 @@
 use super::*;
 use processcraft_core::{
     ids::{CheckpointId, CommentId, ElementKey},
-    layout::{LayoutProposal, propose_layout},
+    layout::{LayoutProposal, propose_choreography_scope_layout, propose_layout},
 };
 use std::sync::{
     Arc,
@@ -350,6 +350,12 @@ impl ProcessCraft {
             .map(|(_, doc)| doc.clone())
     }
     pub(super) fn start_layout(&mut self, ctx: &egui::Context) {
+        self.start_layout_target(ctx, false);
+    }
+    pub(super) fn start_selected_choreography_layout(&mut self, ctx: &egui::Context) {
+        self.start_layout_target(ctx, true);
+    }
+    fn start_layout_target(&mut self, ctx: &egui::Context, selected_scope: bool) {
         if self.m3.worker.is_some() || !self.prepare_navigation() {
             return;
         }
@@ -357,14 +363,40 @@ impl ProcessCraft {
         let Some(doc) = snap.project.documents.get(self.doc).cloned() else {
             return;
         };
-        let Some(diagram) = doc
+        let Some(diagram_value) = doc
             .diagrams
             .iter()
             .find(|d| self.diagram_id.as_ref().is_none_or(|id| id == &d.id))
-            .map(|d| d.id.selector())
         else {
             self.ctl.error = "This model has no diagram to arrange.".into();
             return;
+        };
+        let diagram = diagram_value.id.selector();
+        let scope_shape = if selected_scope {
+            let shape = if self.representation_diagram.as_ref() == Some(&diagram)
+                && self.representation_selection.len() == 1
+            {
+                diagram_value
+                    .shapes
+                    .iter()
+                    .find(|shape| {
+                        shape.id == self.representation_selection[0]
+                            && shape.is_expanded == Some(true)
+                            && processcraft_core::queries::choreography_scopes(&doc)
+                                .iter()
+                                .any(|scope| scope.parent.is_some() && scope.owner == shape.element)
+                    })
+                    .map(|shape| shape.id.selector())
+            } else {
+                None
+            };
+            let Some(shape) = shape else {
+                self.ctl.error = "Select one expanded sub-choreography representation before arranging its contents.".into();
+                return;
+            };
+            Some(shape)
+        } else {
+            None
         };
         let session = self.ctl.session.id();
         let cancel = Arc::new(AtomicBool::new(false));
@@ -375,8 +407,19 @@ impl ProcessCraft {
         self.m3.worker = Some(rx);
         self.m3.cancel = Some(cancel);
         std::thread::spawn(move || {
-            let result = propose_layout(&doc, &diagram, &session, snap.generation, &work_cancel)
-                .map_err(|e| e.to_string());
+            let result = if let Some(shape) = scope_shape {
+                propose_choreography_scope_layout(
+                    &doc,
+                    &diagram,
+                    &shape,
+                    &session,
+                    snap.generation,
+                    &work_cancel,
+                )
+            } else {
+                propose_layout(&doc, &diagram, &session, snap.generation, &work_cancel)
+            }
+            .map_err(|e| e.to_string());
             let _ = tx.send(result);
             ctx.request_repaint();
         });
@@ -1309,6 +1352,7 @@ mod tests {
         let snapshot = app.ctl.session.snapshot();
         let document = snapshot.project.documents[0].clone();
         let proposal = LayoutProposal {
+            choreography_scope_shape: None,
             session_id: app.ctl.session.id(),
             generation: snapshot.generation,
             document_id: document.id,
@@ -1341,6 +1385,7 @@ mod tests {
         app.m3.session = app.ctl.session.id();
         let doc = &before.project.documents[0];
         let proposal = LayoutProposal {
+            choreography_scope_shape: None,
             session_id: app.ctl.session.id(),
             generation: before.generation,
             document_id: doc.id,

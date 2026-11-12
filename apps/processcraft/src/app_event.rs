@@ -71,24 +71,29 @@ pub(super) fn ref_ui(
         }
         match value {
             ReferenceDraft::Local(target) => {
-                egui::ComboBox::from_label("Local target")
-                    .selected_text(target.as_ref().map_or_else(
-                        || "Select target".to_owned(),
-                        |id| {
-                            choices
-                                .iter()
-                                .find(|(candidate, _)| candidate == id)
-                                .map_or_else(
-                                    || unavailable_target_label(id),
-                                    |(_, name)| name.clone(),
-                                )
-                        },
-                    ))
+                let selected = target.as_ref().map_or_else(
+                    || "Select target".to_owned(),
+                    |id| {
+                        choices
+                            .iter()
+                            .find(|(candidate, _)| candidate == id)
+                            .map_or_else(|| unavailable_target_label(id), |(_, name)| name.clone())
+                    },
+                );
+                let selected_line = selected.split_whitespace().collect::<Vec<_>>().join(" ");
+                let target_label = ui.label("Local target");
+                egui::ComboBox::from_id_salt("local_target")
+                    .width(ui.available_width().clamp(1.0, 300.0))
+                    .truncate()
+                    .selected_text(selected_line)
                     .show_ui(ui, |ui| {
                         for (id, name) in choices {
                             ui.selectable_value(target, Some(id.clone()), name);
                         }
-                    });
+                    })
+                    .response
+                    .labelled_by(target_label.id)
+                    .on_hover_text(selected);
             }
             ReferenceDraft::Qualified(qname) => {
                 let label = ui.label("Namespace");
@@ -353,6 +358,8 @@ impl EventIoDraft {
 }
 pub(super) struct EventDraft {
     element: ElementSelector,
+    choreography_scope: Option<(ElementSelector, ElementSelector, u64)>,
+    attached: Option<ReferenceDraft>,
     base: NodeDetails,
     definitions: Vec<DefinitionDraft>,
     references: Vec<ReferenceDraft>,
@@ -373,6 +380,13 @@ impl EventDraft {
         {
             Some(Self {
                 element,
+                choreography_scope: None,
+                attached: match details {
+                    NodeDetails::Event { attached_to, .. } => {
+                        attached_to.as_ref().map(ReferenceDraft::new)
+                    }
+                    _ => None,
+                },
                 base: details.clone(),
                 definitions: definitions.iter().map(DefinitionDraft::new).collect(),
                 references: definition_refs.iter().map(ReferenceDraft::new).collect(),
@@ -392,9 +406,15 @@ impl EventDraft {
             definition_refs,
             properties,
             io,
+            attached_to,
             ..
         } = &mut result
         {
+            *attached_to = self
+                .attached
+                .as_ref()
+                .map(ReferenceDraft::build)
+                .transpose()?;
             *definitions = self
                 .definitions
                 .iter()
@@ -462,6 +482,41 @@ pub(super) fn local_choices(
         }
     }
     if kind == "Activity" || kind == "Link" {
+        if let Some(graph_scope) = scope.and_then(|id| {
+            processcraft_core::queries::choreography_scopes(document)
+                .into_iter()
+                .find(|candidate| candidate.owner == *id)
+        }) {
+            if kind == "Activity" {
+                for activity in graph_scope.activities {
+                    out.push((
+                        activity.id.selector(),
+                        local_choice_label(
+                            activity.name.as_deref(),
+                            "Choreography activity",
+                            &activity.id,
+                            out.len() + 1,
+                        ),
+                    ));
+                }
+            } else {
+                for node in graph_scope.events {
+                    if let Some(NodeDetails::Event { definitions, .. }) = &node.details {
+                        for definition in definitions {
+                            if matches!(definition, D::Link { .. })
+                                && let Some(id) = definition_id(definition)
+                            {
+                                out.push((
+                                    id.selector(),
+                                    local_choice_label(None, "Link", id, out.len() + 1),
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+            return out;
+        }
         for local_scope in processcraft_core::queries::scopes(document)
             .into_iter()
             .filter(|s| scope.is_none_or(|id| s.id == id))
@@ -967,7 +1022,25 @@ impl ProcessCraft {
         let Some(selected) = self.selected.clone() else {
             return;
         };
-        let Some(node) = processcraft_core::queries::find_node(document, &selected) else {
+        let graph_node = processcraft_core::queries::choreography_scopes(document)
+            .into_iter()
+            .find_map(|scope| {
+                scope
+                    .events
+                    .iter()
+                    .find(|node| node.id == selected)
+                    .map(|node| {
+                        (
+                            (*node).clone(),
+                            scope.root.id.selector(),
+                            scope.owner.clone(),
+                        )
+                    })
+            });
+        let node = processcraft_core::queries::find_node(document, &selected)
+            .cloned()
+            .or_else(|| graph_node.as_ref().map(|(node, _, _)| node.clone()));
+        let Some(node) = node else {
             return;
         };
         if !matches!(
@@ -1013,13 +1086,23 @@ impl ProcessCraft {
                     },
                 };
                 self.event_draft = EventDraft::new(selected, &base);
+                if let (Some(draft), Some((_, root, scope))) = (&mut self.event_draft, &graph_node)
+                {
+                    draft.choreography_scope =
+                        Some((root.clone(), scope.clone(), snapshot.generation));
+                }
             }
             return;
         }
-        let scope = processcraft_core::queries::scopes(document)
-            .into_iter()
-            .find(|scope| scope.nodes.iter().any(|candidate| candidate.id == selected))
-            .map(|scope| scope.id.selector());
+        let scope = graph_node
+            .as_ref()
+            .map(|(_, _, scope)| scope.clone())
+            .or_else(|| {
+                processcraft_core::queries::scopes(document)
+                    .into_iter()
+                    .find(|scope| scope.nodes.iter().any(|candidate| candidate.id == selected))
+                    .map(|scope| scope.id.selector())
+            });
         let parent = scope
             .as_ref()
             .and_then(|id| processcraft_core::queries::find_node(document, id));
@@ -1038,7 +1121,10 @@ impl ProcessCraft {
             _ => None,
         };
         let transaction_attachment = attached
-            .and_then(|id| processcraft_core::queries::find_node(document, id))
+            .and_then(|reference| match reference {
+                R::Local(id) => processcraft_core::queries::find_node(document, id),
+                R::Qualified(_) => None,
+            })
             .is_some_and(|activity| activity.kind == NodeKind::Transaction);
         let mut allowed = vec!["Message", "Signal"];
         if matches!(
@@ -1074,7 +1160,6 @@ impl ProcessCraft {
         let draft = self.event_draft.as_mut().unwrap();
         ui.strong("Event properties");
         if let NodeDetails::Event {
-            attached_to,
             cancel_activity,
             parallel_multiple,
             is_interrupting,
@@ -1083,24 +1168,7 @@ impl ProcessCraft {
         {
             if node.kind == NodeKind::BoundaryEvent {
                 let activities = local_choices(document, "Activity", scope.as_ref());
-                egui::ComboBox::from_label("Attached activity")
-                    .selected_text(attached_to.as_ref().map_or_else(
-                        || "Select activity".into(),
-                        |id| {
-                            activities
-                                .iter()
-                                .find(|(candidate, _)| candidate == id)
-                                .map_or_else(
-                                    || unavailable_target_label(id),
-                                    |(_, name)| name.clone(),
-                                )
-                        },
-                    ))
-                    .show_ui(ui, |ui| {
-                        for (id, name) in activities {
-                            ui.selectable_value(attached_to, Some(id), name);
-                        }
-                    });
+                ref_ui(ui, "Attached activity", &mut draft.attached, &activities);
                 optional_bool(ui, "Interrupt activity", cancel_activity);
             }
             if matches!(
@@ -1247,11 +1315,56 @@ impl ProcessCraft {
                 return false;
             }
         };
-        if !self.ctl.mutate(vec![Mutation::SetNodeDetails {
-            document_id,
-            element_id: draft.element.clone(),
-            details: Some(details.clone()),
-        }]) {
+        let mutation = if let Some((root, scope_id, generation)) = &draft.choreography_scope {
+            let snapshot = self.ctl.session.snapshot();
+            if snapshot.generation != *generation {
+                draft.error = "The model changed; cancel and reopen this draft.".into();
+                return false;
+            }
+            let Some(mut node) = snapshot
+                .project
+                .documents
+                .get(self.doc)
+                .and_then(|document| {
+                    processcraft_core::queries::choreography_scopes(document)
+                        .into_iter()
+                        .find(|scope| &scope.owner == scope_id && scope.root.id == *root)
+                        .and_then(|scope| {
+                            scope
+                                .events
+                                .into_iter()
+                                .find(|node| node.id == draft.element)
+                                .cloned()
+                        })
+                })
+            else {
+                draft.error = "The event is no longer available.".into();
+                return false;
+            };
+            node.details = Some(details.clone());
+            Mutation::UpdateChoreographyFlowElement {
+                document_id,
+                choreography_id: root.clone(),
+                scope_id: scope_id.clone(),
+                element: processcraft_core::bpmn_collaboration::ChoreographyFlowElement::Event(
+                    Box::new(node),
+                ),
+            }
+        } else {
+            Mutation::SetNodeDetails {
+                document_id,
+                element_id: draft.element.clone(),
+                details: Some(details.clone()),
+            }
+        };
+        let expected_generation = draft.choreography_scope.as_ref().map_or_else(
+            || self.ctl.session.snapshot().generation,
+            |(_, _, generation)| *generation,
+        );
+        if !self
+            .ctl
+            .mutate_at_generation(expected_generation, vec![mutation])
+        {
             return false;
         }
         self.bpmn_details = Some(details);
@@ -1399,6 +1512,42 @@ mod tests {
             local_choice_label(Some("Review"), "Activity", &with_id, 1),
             "Review · SharedTimer"
         );
+    }
+
+    #[test]
+    fn local_reference_control_keeps_long_selected_text_on_one_line() {
+        fn height(label: &str) -> f32 {
+            let ctx = egui::Context::default();
+            let mut height = 0.0;
+            let id: ElementSelector = "LongTarget".parse().unwrap();
+            let mut value = Some(ReferenceDraft::Local(Some(id.clone())));
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(220.0, 600.0),
+                    )),
+                    ..Default::default()
+                },
+                |ui| {
+                    ui.set_width(180.0);
+                    let before = ui.cursor().top();
+                    ref_ui(ui, "Source", &mut value, &[(id.clone(), label.to_owned())]);
+                    height = ui.cursor().top() - before;
+                },
+            );
+            output.textures_delta.clear();
+            assert!(
+                matches!(value, Some(ReferenceDraft::Local(Some(ref selected))) if selected == &id)
+            );
+            height
+        }
+        let short = height("Start event");
+        let long = height(&format!(
+            "Start event · {}\nmore",
+            "long identifier ".repeat(40)
+        ));
+        assert!((long - short).abs() < 4.0, "short={short}, long={long}");
     }
 
     #[test]

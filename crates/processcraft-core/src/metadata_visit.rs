@@ -436,6 +436,9 @@ pub fn visit_base_metadata_mut(
                 metadata(multiplicity.id.as_ref(), &mut multiplicity.base, &mut visit);
             }
         }
+        if let Some(graph) = &mut c.graph {
+            graph_base(graph, &mut visit);
+        }
         for a in &mut c.activities {
             flow_metadata(&mut a.flow_metadata, &mut visit);
             keys(&mut a.correlation_keys, &mut visit);
@@ -443,6 +446,72 @@ pub fn visit_base_metadata_mut(
         }
         for flow in c.sequence_flows.iter_mut().chain(&mut c.message_flows) {
             flow_metadata(&mut flow.flow_metadata, &mut visit);
+        }
+    }
+}
+fn graph_base(
+    graph: &mut crate::bpmn_collaboration::ChoreographyGraph,
+    visit: &mut impl FnMut(Option<&ElementIdentity>, &mut Option<BaseMetadata>),
+) {
+    use crate::bpmn_collaboration::{
+        ChoreographyActivityDetails, ChoreographyFlowElement, CollaborationArtifact,
+    };
+    for association in &mut graph.data_associations {
+        metadata(association.id.as_ref(), &mut association.base, visit);
+        for assignment in &mut association.assignments {
+            metadata(assignment.id.as_ref(), &mut assignment.base, visit);
+        }
+    }
+    for element in &mut graph.flow_elements {
+        match element {
+            ChoreographyFlowElement::Activity(a) => {
+                metadata(Some(&a.id), &mut a.base, visit);
+                flow_metadata(&mut a.flow_metadata, visit);
+                keys(&mut a.correlation_keys, visit);
+                match &mut a.details {
+                    Some(ChoreographyActivityDetails::Sub { graph, artifacts }) => {
+                        graph_base(graph, visit);
+                        for artifact in artifacts {
+                            match artifact {
+                                CollaborationArtifact::Group(g) => {
+                                    metadata(Some(&g.id), &mut g.base, visit)
+                                }
+                                CollaborationArtifact::TextAnnotation(n) => scope(
+                                    std::slice::from_mut(n),
+                                    &mut [],
+                                    &mut [],
+                                    &mut [],
+                                    &mut [],
+                                    &mut [],
+                                    visit,
+                                ),
+                                CollaborationArtifact::Association(f) => {
+                                    flow_metadata(&mut f.flow_metadata, visit)
+                                }
+                            }
+                        }
+                    }
+                    Some(ChoreographyActivityDetails::Call {
+                        participant_associations,
+                        ..
+                    }) => {
+                        for a in participant_associations {
+                            metadata(a.id.as_ref(), &mut a.base, visit);
+                        }
+                    }
+                    None => {}
+                }
+            }
+            ChoreographyFlowElement::Event(n) | ChoreographyFlowElement::Gateway(n) => scope(
+                std::slice::from_mut(n),
+                &mut [],
+                &mut [],
+                &mut [],
+                &mut [],
+                &mut [],
+                visit,
+            ),
+            ChoreographyFlowElement::SequenceFlow(f) => flow_metadata(&mut f.flow_metadata, visit),
         }
     }
 }
@@ -506,8 +575,46 @@ pub fn visit_legacy_metadata_mut(
     }
     for c in &mut d.choreographies {
         extras_legacy(&mut c.extras, &mut visit);
+        if let Some(graph) = &mut c.graph {
+            graph_legacy(graph, &mut visit);
+        }
         for flow in c.sequence_flows.iter_mut().chain(&mut c.message_flows) {
             visit(&flow.id, &mut flow.documentation, &mut flow.base_extras);
+        }
+    }
+}
+fn graph_legacy(
+    graph: &mut crate::bpmn_collaboration::ChoreographyGraph,
+    visit: &mut impl FnMut(&ElementIdentity, &mut DocumentationSet, &mut Option<BaseExtras>),
+) {
+    use crate::bpmn_collaboration::{
+        ChoreographyActivityDetails, ChoreographyFlowElement, CollaborationArtifact,
+    };
+    for element in &mut graph.flow_elements {
+        match element {
+            ChoreographyFlowElement::Activity(a) => {
+                if let Some(ChoreographyActivityDetails::Sub { graph, artifacts }) = &mut a.details
+                {
+                    graph_legacy(graph, visit);
+                    for artifact in artifacts {
+                        match artifact {
+                            CollaborationArtifact::TextAnnotation(n) => {
+                                visit(&n.id, &mut n.documentation, &mut n.base_extras)
+                            }
+                            CollaborationArtifact::Association(f) => {
+                                visit(&f.id, &mut f.documentation, &mut f.base_extras)
+                            }
+                            CollaborationArtifact::Group(_) => {}
+                        }
+                    }
+                }
+            }
+            ChoreographyFlowElement::Event(n) | ChoreographyFlowElement::Gateway(n) => {
+                scope_legacy(std::slice::from_mut(n), &mut [], visit)
+            }
+            ChoreographyFlowElement::SequenceFlow(f) => {
+                visit(&f.id, &mut f.documentation, &mut f.base_extras)
+            }
         }
     }
 }
@@ -692,6 +799,9 @@ pub fn visit_expressions_mut(
     }
     for c in &mut d.choreographies {
         extras_expressions(&mut c.extras, &mut visit);
+        if let Some(graph) = &mut c.graph {
+            graph_expressions(graph, &mut visit);
+        }
         for flow in c.sequence_flows.iter_mut().chain(&mut c.message_flows) {
             if let Some(expression) = &mut flow.condition {
                 visit(expression);
@@ -709,6 +819,49 @@ fn extras_expressions(
                 && let Some(expression) = &mut flow.condition
             {
                 visit(expression);
+            }
+        }
+    }
+}
+
+fn graph_expressions(
+    graph: &mut crate::bpmn_collaboration::ChoreographyGraph,
+    visit: &mut impl FnMut(&mut crate::bpmn_model::Expression),
+) {
+    use crate::bpmn_collaboration::{
+        ChoreographyActivityDetails, ChoreographyFlowElement, CollaborationArtifact,
+    };
+    for association in &mut graph.data_associations {
+        if let Some(expression) = &mut association.transformation {
+            visit(expression);
+        }
+        for assignment in &mut association.assignments {
+            visit(&mut assignment.from);
+            visit(&mut assignment.to);
+        }
+    }
+    for element in &mut graph.flow_elements {
+        match element {
+            ChoreographyFlowElement::Activity(a) => {
+                if let Some(ChoreographyActivityDetails::Sub { graph, artifacts }) = &mut a.details
+                {
+                    graph_expressions(graph, visit);
+                    for artifact in artifacts {
+                        if let CollaborationArtifact::Association(f) = artifact
+                            && let Some(expression) = &mut f.condition
+                        {
+                            visit(expression);
+                        }
+                    }
+                }
+            }
+            ChoreographyFlowElement::Event(n) | ChoreographyFlowElement::Gateway(n) => {
+                expression_scope(std::slice::from_mut(n), &mut [], &mut [], visit)
+            }
+            ChoreographyFlowElement::SequenceFlow(f) => {
+                if let Some(expression) = &mut f.condition {
+                    visit(expression);
+                }
             }
         }
     }

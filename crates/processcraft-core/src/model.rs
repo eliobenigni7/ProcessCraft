@@ -342,7 +342,18 @@ impl BpmnDocument {
                     || c.conversation_links.iter().any(link)
             })
             || self.choreographies.iter().any(|c| {
-                c.extras.is_some()
+                c.kind.is_some()
+                    || c.graph.is_some()
+                    || c.activities.iter().any(|a| {
+                        a.loop_type.is_some()
+                            || a.details.is_some()
+                            || !matches!(a.initiating_participant, Some(ModelReference::Local(_)))
+                            || a.participant_refs
+                                .iter()
+                                .chain(&a.message_flow_refs)
+                                .any(|r| matches!(r, ModelReference::Qualified(_)))
+                    })
+                    || c.extras.is_some()
                     || !c.conversation_nodes.is_empty()
                     || !c.conversation_links.is_empty()
                     || !c.correlation_keys.is_empty()
@@ -637,6 +648,81 @@ impl BpmnDocument {
                 out.push(&activity.id);
             }
         }
+        for scope in crate::queries::choreography_scopes(self) {
+            if scope.root.graph.is_none() {
+                continue;
+            }
+            for activity in scope.activities {
+                out.push(&activity.id);
+            }
+            for node in scope.events.into_iter().chain(scope.gateways) {
+                out.push(&node.id);
+                if let Some(io) = &node.io_specification {
+                    io_ids(io, &mut out);
+                }
+                if let Some(NodeDetails::Event {
+                    definitions,
+                    properties,
+                    io,
+                    ..
+                }) = &node.details
+                {
+                    for definition in definitions {
+                        out.extend(definition.id());
+                    }
+                    for property in properties {
+                        out.extend(property.id.iter());
+                        if let Some(state) = property
+                            .item_aware
+                            .as_ref()
+                            .and_then(|m| m.data_state.as_ref())
+                        {
+                            out.extend(state.id.iter());
+                        }
+                    }
+                    if let Some(io) = io {
+                        use crate::bpmn_model::EventIo;
+                        let (ports, set) = match io {
+                            EventIo::Catch {
+                                outputs,
+                                output_set,
+                            } => (outputs, output_set),
+                            EventIo::Throw { inputs, input_set } => (inputs, input_set),
+                        };
+                        for port in ports {
+                            out.extend(port.id.iter());
+                            if let Some(state) =
+                                port.item_aware.as_ref().and_then(|m| m.data_state.as_ref())
+                            {
+                                out.extend(state.id.iter());
+                            }
+                        }
+                        if let Some(set) = set {
+                            out.extend(set.id.iter());
+                        }
+                    }
+                }
+            }
+            for flow in scope.flows {
+                out.push(&flow.id);
+            }
+            for association in scope.data_associations {
+                out.extend(association.id.iter());
+                for assignment in &association.assignments {
+                    out.extend(assignment.id.iter());
+                }
+            }
+            if scope.parent.is_some() {
+                for artifact in scope.artifacts {
+                    use crate::bpmn_collaboration::CollaborationArtifact;
+                    match artifact {
+                        CollaborationArtifact::Group(g) => out.push(&g.id),
+                        CollaborationArtifact::TextAnnotation(n) => out.push(&n.id),
+                        CollaborationArtifact::Association(f) => out.push(&f.id),
+                    }
+                }
+            }
+        }
         for diagram in &self.diagrams {
             out.push(&diagram.id);
             out.push(&diagram.plane_id);
@@ -809,10 +895,10 @@ impl BpmnDocument {
                     })
                     | Some(NodeDetails::DataObjectReference {
                         data_object_ref: Some(r),
-                    })
-                    | Some(NodeDetails::BoundaryEvent { attached_to: r, .. })
-                        if r.is_native() =>
-                    {
+                    }) if r.is_native() => {
+                        return true;
+                    }
+                    Some(NodeDetails::BoundaryEvent { attached_to: r, .. }) if r.is_native() => {
                         return true;
                     }
                     Some(NodeDetails::DataStoreReference {
@@ -959,7 +1045,9 @@ impl BpmnDocument {
                         || f.message_ref.as_ref().is_some_and(|r| r.is_native())
                 })
                 || c.activities.iter().any(|a| {
-                    a.initiating_participant.is_native()
+                    a.initiating_participant
+                        .as_ref()
+                        .is_some_and(|r| r.is_native())
                         || a.participant_refs
                             .iter()
                             .chain(&a.message_flow_refs)
@@ -1115,6 +1203,49 @@ impl BpmnDocument {
                     .filter_map(|f| f.condition.as_ref()),
             );
         }
+        for scope in crate::queries::choreography_scopes(self) {
+            if scope.root.graph.is_some() {
+                for node in scope.events.into_iter().chain(scope.gateways) {
+                    match &node.details {
+                        Some(NodeDetails::Gateway {
+                            activation_condition,
+                            ..
+                        }) => result.extend(activation_condition.iter()),
+                        Some(NodeDetails::Event { definitions, .. }) => {
+                            for definition in definitions {
+                                match definition {
+                                    EventDefinition::Conditional { expression, .. } => {
+                                        result.push(expression)
+                                    }
+                                    EventDefinition::Timer { expression, .. } => {
+                                        result.extend(expression.iter())
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                result.extend(scope.flows.into_iter().filter_map(|f| f.condition.as_ref()));
+                for association in scope.data_associations {
+                    result.extend(association.transformation.iter());
+                    for assignment in &association.assignments {
+                        result.push(&assignment.from);
+                        result.push(&assignment.to);
+                    }
+                }
+                if scope.parent.is_some() {
+                    for artifact in scope.artifacts {
+                        if let crate::bpmn_collaboration::CollaborationArtifact::Association(f) =
+                            artifact
+                        {
+                            result.extend(f.condition.iter());
+                        }
+                    }
+                }
+            }
+        }
         result.extend(crate::collaboration_read::collaboration_read(self).expressions);
         result.extend(crate::activity_read::activity_read(self).expressions);
         result
@@ -1126,9 +1257,13 @@ impl BpmnDocument {
     }
     pub fn has_expanded_data(&self) -> bool {
         use crate::bpmn_data::DataStoreRef;
-        self.data_stores
+        crate::queries::choreography_scopes(self)
             .iter()
-            .any(|s| s.id.is_none() || s.name.is_none() || s.item_aware.is_some())
+            .any(|s| !s.data_associations.is_empty())
+            || self
+                .data_stores
+                .iter()
+                .any(|s| s.id.is_none() || s.name.is_none() || s.item_aware.is_some())
             || self.processes.iter().any(|p| p.io_specification.is_some())
             || crate::queries::scopes(self).iter().any(|scope| {
                 scope

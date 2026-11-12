@@ -46,6 +46,10 @@ pub struct ConversationLink {
 #[serde(deny_unknown_fields)]
 pub struct Choreography {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<ChoreographyRootKind>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub graph: Option<ChoreographyGraph>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub extras: Option<CollaborationExtras>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub conversation_nodes: Vec<ConversationNode>,
@@ -63,10 +67,14 @@ pub struct Choreography {
     pub activities: Vec<ChoreographyActivity>,
     pub sequence_flows: Vec<crate::model::Flow>,
 }
-/// The qualified subset models choreography tasks, not gateways or events.
+/// An interaction task, a nested choreography scope, or a reusable choreography call.
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ChoreographyActivity {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub loop_type: Option<ChoreographyLoopType>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub details: Option<ChoreographyActivityDetails>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub flow_metadata: Option<crate::bpmn_activity::FlowElementMetadata>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -76,9 +84,70 @@ pub struct ChoreographyActivity {
 
     pub id: crate::ids::ElementIdentity,
     pub name: Option<String>,
-    pub participant_refs: Vec<crate::ids::ElementSelector>,
-    pub initiating_participant: crate::ids::ElementSelector,
-    pub message_flow_refs: Vec<crate::ids::ElementSelector>,
+    pub participant_refs: Vec<ModelReference>,
+    pub initiating_participant: Option<ModelReference>,
+    pub message_flow_refs: Vec<ModelReference>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(
+    tag = "type",
+    content = "value",
+    rename_all = "camelCase",
+    deny_unknown_fields
+)]
+pub enum ChoreographyRootKind {
+    Global {
+        initiating_participant_ref: Option<ModelReference>,
+    },
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ChoreographyGraph {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub data_associations: Vec<crate::bpmn_data::DataAssociation>,
+    pub flow_elements: Vec<ChoreographyFlowElement>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(
+    tag = "type",
+    content = "value",
+    rename_all = "camelCase",
+    deny_unknown_fields
+)]
+pub enum ChoreographyFlowElement {
+    Activity(Box<ChoreographyActivity>),
+    Event(Box<crate::model::Node>),
+    Gateway(Box<crate::model::Node>),
+    SequenceFlow(Box<crate::model::Flow>),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub enum ChoreographyLoopType {
+    None,
+    Standard,
+    MultiInstanceSequential,
+    MultiInstanceParallel,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(
+    tag = "type",
+    content = "value",
+    rename_all = "camelCase",
+    deny_unknown_fields
+)]
+pub enum ChoreographyActivityDetails {
+    Sub {
+        graph: Box<ChoreographyGraph>,
+        artifacts: Vec<CollaborationArtifact>,
+    },
+    Call {
+        participant_associations: Vec<ParticipantAssociation>,
+        called_choreography_ref: Option<ModelReference>,
+    },
 }
 
 use crate::{bpmn_activity::ModelReference, bpmn_metadata::BaseMetadata, ids::ElementIdentity};

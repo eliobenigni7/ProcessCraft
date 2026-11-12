@@ -9,6 +9,7 @@ enum KeyOwner {
     Collaboration(Box<Collaboration>),
     Conversation(Box<Collaboration>, Box<ConversationNode>),
     Choreography(ElementSelector, Box<ChoreographyActivity>),
+    Graph(ElementSelector, ElementSelector, Box<ChoreographyActivity>),
 }
 struct KeyDraft {
     value: CorrelationKey,
@@ -59,6 +60,38 @@ impl ProcessCraft {
     ) {
         if self.correlation_keys_draft.is_none() {
             ui.menu_button("Edit correlation keys…", |ui| {
+                for scope in processcraft_core::queries::choreography_scopes(document)
+                    .into_iter()
+                    .filter(|scope| scope.root.graph.is_some())
+                {
+                    for (i, activity) in scope.activities.iter().enumerate() {
+                        let label = local_choice_label(
+                            activity.name.as_deref(),
+                            "Choreography activity",
+                            &activity.id,
+                            i + 1,
+                        );
+                        if ui
+                            .add_enabled(
+                                editable && !self.draft_dirty,
+                                egui::Button::new(format!("{label} keys")),
+                            )
+                            .clicked()
+                            && self.commit_draft()
+                        {
+                            self.correlation_keys_draft = Some(CorrelationKeysDraft::new(
+                                KeyOwner::Graph(
+                                    scope.root.id.selector(),
+                                    scope.owner.clone(),
+                                    Box::new((*activity).clone()),
+                                ),
+                                &activity.correlation_keys,
+                                self.ctl.session.snapshot().generation,
+                            ));
+                            ui.close();
+                        }
+                    }
+                }
                 let roots = document
                     .collaboration
                     .iter()
@@ -227,9 +260,18 @@ impl ProcessCraft {
                                 activity,
                             }
                         }
+                        KeyOwner::Graph(root, scope, activity) => {
+                            let mut activity = activity.as_ref().clone();
+                            activity.correlation_keys = keys;
+                            Mutation::UpdateChoreographyFlowElement { document_id: document.id, choreography_id: root.clone(), scope_id: scope.clone(), element: processcraft_core::bpmn_collaboration::ChoreographyFlowElement::Activity(Box::new(activity)) }
+                        }
                     };
-                    if self.ctl.mutate(vec![mutation]) {
+                    if self
+                        .ctl
+                        .mutate_at_generation(draft.generation, vec![mutation])
+                    {
                         self.correlation_keys_draft = None;
+                        self.restore_selection();
                     }
                 }
                 Err(error) => draft.error = error,

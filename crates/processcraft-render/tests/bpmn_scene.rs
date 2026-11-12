@@ -750,7 +750,9 @@ fn non_interrupting_boundary_and_compensation_have_distinct_shared_vectors() {
             wait_for_completion: None,
             activity_ref: None,
         }],
-        attached_to: Some(id("activity")),
+        attached_to: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+            "activity",
+        ))),
         cancel_activity: Some(false),
     });
     let non_interrupting = build(&d, Appearance::Light);
@@ -1329,6 +1331,8 @@ fn choreography_task_shows_participant_bands_and_sequence_flow() {
     };
     let mut d = fixture();
     d.choreographies.push(Choreography {
+        kind: None,
+        graph: None,
         extras: None,
         conversation_nodes: vec![],
         conversation_links: vec![],
@@ -1358,13 +1362,20 @@ fn choreography_task_shows_participant_bands_and_sequence_flow() {
         ],
         message_flows: vec![],
         activities: vec![ChoreographyActivity {
+            loop_type: None,
+            details: None,
             flow_metadata: None,
             correlation_keys: vec![],
             base: None,
             id: id("exchange"),
             name: Some("Exchange".into()),
-            participant_refs: vec![id("buyer"), id("seller")],
-            initiating_participant: id("buyer"),
+            participant_refs: vec![
+                processcraft_core::bpmn_activity::ModelReference::Local(id("buyer")),
+                processcraft_core::bpmn_activity::ModelReference::Local(id("seller")),
+            ],
+            initiating_participant: Some(processcraft_core::bpmn_activity::ModelReference::Local(
+                id("buyer"),
+            )),
             message_flow_refs: vec![],
         }],
         sequence_flows: vec![Flow {
@@ -1608,9 +1619,9 @@ fn choreography_task_shows_participant_bands_and_sequence_flow() {
         "buyer",
     )));
     d.choreographies[0].message_flows.push(response);
-    d.choreographies[0].activities[0]
-        .message_flow_refs
-        .push(id("response"));
+    d.choreographies[0].activities[0].message_flow_refs.push(
+        processcraft_core::bpmn_activity::ModelReference::Local(id("response")),
+    );
     d.diagrams[0]
         .shapes
         .iter_mut()
@@ -1777,6 +1788,169 @@ fn choreography_task_shows_participant_bands_and_sequence_flow() {
             .any(|v| v.contains("no explicit participant band representations"))
     );
     assert!(!missing.scene.to_svg().contains("Buyer"));
+
+    use processcraft_core::bpmn_collaboration::{
+        ChoreographyActivityDetails, ChoreographyFlowElement, ChoreographyGraph,
+    };
+    let mut child = d.choreographies[0].activities[0].clone();
+    child.id = id("nested_task");
+    child.name = Some("Nested exchange".into());
+    let mut parent = d.choreographies[0].activities.remove(0);
+    parent.details = Some(ChoreographyActivityDetails::Sub {
+        graph: Box::new(ChoreographyGraph {
+            data_associations: vec![],
+            flow_elements: vec![ChoreographyFlowElement::Activity(Box::new(child))],
+        }),
+        artifacts: vec![],
+    });
+    let flow = d.choreographies[0].sequence_flows.remove(0);
+    d.choreographies[0].graph = Some(ChoreographyGraph {
+        data_associations: vec![],
+        flow_elements: vec![
+            ChoreographyFlowElement::Activity(Box::new(parent)),
+            ChoreographyFlowElement::SequenceFlow(Box::new(flow)),
+        ],
+    });
+    let mut child_shape = d.diagrams[0].shapes[0].clone();
+    child_shape.id = id("nested_di");
+    child_shape.element = id("nested_task");
+    child_shape.bounds.x += 20.0;
+    child_shape.bounds.y += 30.0;
+    child_shape.bounds.width = 100.0;
+    child_shape.bounds.height = 60.0;
+    d.diagrams[0].shapes[0].is_expanded = Some(true);
+    d.diagrams[0].shapes.push(child_shape);
+    d.diagrams[0].plane_order = None;
+    let expanded = build(&d, Appearance::Light);
+    assert!(expanded.scene.to_svg().contains("Nested exchange"));
+    assert!(expanded.hits.iter().any(
+        |h| h.diagram_element_id == id::<processcraft_core::ids::ElementSelector>("nested_di")
+    ));
+    d.diagrams[0].shapes[0].is_expanded = Some(false);
+    let collapsed = build(&d, Appearance::Light);
+    assert!(!collapsed.hits.iter().any(
+        |h| h.diagram_element_id == id::<processcraft_core::ids::ElementSelector>("nested_di")
+    ));
+    let mut other_parent = d.diagrams[0].shapes[0].clone();
+    other_parent.id = id("other_parent");
+    other_parent.bounds.x = 400.0;
+    other_parent.is_expanded = Some(true);
+    let mut other_child = d.diagrams[0].shapes[1].clone();
+    other_child.id = id("other_child");
+    other_child.bounds.x = 420.0;
+    d.diagrams[0].shapes.extend([other_parent, other_child]);
+    let mixed = build(&d, Appearance::Light);
+    assert!(!mixed.hits.iter().any(
+        |h| h.diagram_element_id == id::<processcraft_core::ids::ElementSelector>("nested_di")
+    ));
+    assert!(
+        mixed.hits.iter().any(|h| h.diagram_element_id
+            == id::<processcraft_core::ids::ElementSelector>("other_child"))
+    );
+    let mixed_view = processcraft_render::BpmnViewport::build(
+        &d,
+        &id("diagram"),
+        Appearance::Light,
+        &mut TextEngine::new(),
+        "Noto Sans",
+        processcraft_render::Viewport {
+            x: 0.0,
+            y: 0.0,
+            width: 700.0,
+            height: 200.0,
+            zoom: 1.0,
+        },
+    )
+    .unwrap();
+    assert!(!mixed_view.hits.iter().any(
+        |h| h.diagram_element_id == id::<processcraft_core::ids::ElementSelector>("nested_di")
+    ));
+    assert!(
+        mixed_view.hits.iter().any(|h| h.diagram_element_id
+            == id::<processcraft_core::ids::ElementSelector>("other_child"))
+    );
+    d.diagrams[0].plane = id("exchange");
+    let direct = build(&d, Appearance::Light);
+    assert!(direct.hits.iter().any(
+        |h| h.diagram_element_id == id::<processcraft_core::ids::ElementSelector>("nested_di")
+    ));
+    d.diagrams[0].plane = id("choreo");
+    d.diagrams[0].shapes[2].bounds.x = 0.0;
+    let ambiguous = build(&d, Appearance::Light);
+    assert!(ambiguous.hits.iter().any(
+        |h| h.diagram_element_id == id::<processcraft_core::ids::ElementSelector>("nested_di")
+    ));
+    assert!(
+        ambiguous
+            .diagnostics
+            .iter()
+            .any(|d| d.contains("ownership is ambiguous"))
+    );
+    let mut boundary = d.processes[0].nodes[0].clone();
+    boundary.id = id("choreo_boundary");
+    boundary.kind = NodeKind::BoundaryEvent;
+    boundary.details = Some(processcraft_core::bpmn_model::NodeDetails::BoundaryEvent {
+        attached_to: processcraft_core::bpmn_activity::ModelReference::Local(id("exchange")),
+        cancel_activity: false,
+    });
+    d.choreographies[0]
+        .graph
+        .as_mut()
+        .unwrap()
+        .flow_elements
+        .push(ChoreographyFlowElement::Event(Box::new(boundary)));
+    let mut boundary_shape = d.diagrams[0].shapes[0].clone();
+    boundary_shape.id = id("boundary_di");
+    boundary_shape.element = id("choreo_boundary");
+    boundary_shape.bounds = Bounds {
+        x: 220.0,
+        y: 100.0,
+        width: 30.0,
+        height: 30.0,
+    };
+    d.diagrams[0].shapes.push(boundary_shape);
+    let boundary_scene = build(&d, Appearance::Light);
+    assert!(
+        boundary_scene.hits.iter().any(|h| h.diagram_element_id
+            == id::<processcraft_core::ids::ElementSelector>("boundary_di"))
+    );
+    if let ChoreographyFlowElement::Event(event) = d.choreographies[0]
+        .graph
+        .as_mut()
+        .unwrap()
+        .flow_elements
+        .last_mut()
+        .unwrap()
+    {
+        event.details = Some(processcraft_core::bpmn_model::NodeDetails::BoundaryEvent {
+            attached_to: processcraft_core::bpmn_activity::ModelReference::Qualified(
+                processcraft_core::bpmn_model::QNameRef {
+                    namespace: "urn:external".into(),
+                    local: id("exchange"),
+                },
+            ),
+            cancel_activity: false,
+        });
+    }
+    let external_boundary = build(&d, Appearance::Light);
+    assert!(
+        !external_boundary.hits.iter().any(|h| h.diagram_element_id
+            == id::<processcraft_core::ids::ElementSelector>("boundary_di"))
+    );
+    d.choreographies[0].kind = Some(
+        processcraft_core::bpmn_collaboration::ChoreographyRootKind::Global {
+            initiating_participant_ref: None,
+        },
+    );
+    d.diagrams[0].shapes[0].element = id("choreo");
+    let global = build(&d, Appearance::Light);
+    assert!(
+        global
+            .diagnostics
+            .iter()
+            .any(|d| d.contains("no standalone shape specified"))
+    );
+    assert!(!global.hits.iter().any(|h| h.diagram_element_id == id::<processcraft_core::ids::ElementSelector>("shape")));
 }
 #[test]
 fn data_object_collection_marker_comes_from_referenced_definition() {
@@ -2344,7 +2518,9 @@ fn cancel_boundary_and_end_use_hollow_and_filled_crosses() {
             base: None,
             id: None,
         }],
-        attached_to: Some(id("transaction")),
+        attached_to: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+            "transaction",
+        ))),
         cancel_activity: Some(true),
     });
     assert_valid_event_document(&d);
@@ -2397,7 +2573,9 @@ fn compensation_boundary_and_throw_render_distinct_markers() {
             wait_for_completion: None,
             activity_ref: None,
         }],
-        attached_to: Some(id("activity")),
+        attached_to: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+            "activity",
+        ))),
         cancel_activity: Some(true),
     });
     assert_valid_event_document(&d);

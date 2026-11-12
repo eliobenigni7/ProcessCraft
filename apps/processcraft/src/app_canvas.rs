@@ -39,6 +39,54 @@ impl ProcessCraft {
         if preview.is_some() {
             ui.label("Auto-fit preview");
         } else {
+            if let (Some(document), Some(diagram)) = (snap.project.documents.get(self.doc), diagram)
+            {
+                let scopes = processcraft_core::queries::choreography_scopes(document);
+                if let Some(scope) = scopes.iter().find(|scope| scope.owner == diagram.plane) {
+                    let mut path = Vec::new();
+                    let mut cursor = Some(scope.owner.clone());
+                    while let Some(owner) = cursor.take() {
+                        let Some(current) = scopes.iter().find(|candidate| {
+                            candidate.owner == owner && candidate.root.id == scope.root.id
+                        }) else {
+                            break;
+                        };
+                        let label = if current.parent.is_none() {
+                            current
+                                .root
+                                .name
+                                .clone()
+                                .filter(|name| !name.is_empty())
+                                .unwrap_or_else(|| "Unnamed choreography".into())
+                        } else {
+                            scopes
+                                .iter()
+                                .flat_map(|parent| parent.activities.iter())
+                                .find(|activity| activity.id == owner)
+                                .and_then(|activity| activity.name.clone())
+                                .filter(|name| !name.is_empty())
+                                .unwrap_or_else(|| "Unnamed sub-choreography".into())
+                        };
+                        path.push((owner, label));
+                        cursor = current.parent.clone();
+                        if path.len() > scopes.len() {
+                            break;
+                        }
+                    }
+                    path.reverse();
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label("Scope:");
+                        for (index, (owner, label)) in path.iter().enumerate() {
+                            if index > 0 {
+                                ui.label("›");
+                            }
+                            ui.push_id(owner, |ui| {
+                                self.scope_diagram_ui(ui, document, owner, label, snap.generation)
+                            });
+                        }
+                    });
+                }
+            }
             ui.horizontal(|ui| {
                 if icon_button(ui, Icon::ZoomOut, "Zoom out", false).clicked() {
                     self.zoom = (self.zoom / 1.25).max(0.125);

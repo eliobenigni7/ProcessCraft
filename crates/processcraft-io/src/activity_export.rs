@@ -218,6 +218,7 @@ pub(crate) fn validate(document: &BpmnDocument, effective_namespace: &str) -> Re
             Cow::Borrowed(document)
         };
     crate::collaboration_export::validate(&checked)?;
+    crate::choreography_export::validate(&checked)?;
     let check = Check {
         xml_ids: checked
             .element_identities()
@@ -309,6 +310,25 @@ pub(crate) fn validate(document: &BpmnDocument, effective_namespace: &str) -> Re
             }
         }
         check.scope(&process.nodes, &path)?;
+    }
+    for (index, scope) in processcraft_core::queries::choreography_scopes(&checked)
+        .iter()
+        .enumerate()
+    {
+        for node in scope.events.iter().chain(&scope.gateways) {
+            check.scope(
+                std::slice::from_ref(*node),
+                &format!("choreography_scopes[{index}]"),
+            )?;
+        }
+        for (association_index, association) in scope.data_associations.iter().enumerate() {
+            let path =
+                format!("choreography_scopes[{index}].data_associations[{association_index}]");
+            check.selector(&association.target, &format!("{path}.targetRef"))?;
+            for source in &association.sources {
+                check.selector(source, &format!("{path}.sourceRef"))?;
+            }
+        }
     }
     Ok(())
 }

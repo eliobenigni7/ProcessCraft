@@ -1,0 +1,316 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:tns="urn:processcraft:fixtures:di-choreography" xmlns:ext="urn:processcraft:fixtures:di-extension" id="Definitions" targetNamespace="urn:processcraft:fixtures:di-choreography">
+  <bpmn:message id="Message_AB" name="Order"/>
+  <bpmn:message id="Message_CA" name="Receipt"/>
+  <bpmn:choreography id="Choreography" name="Order choreography">
+    <bpmn:participant id="A" name="Buyer"/>
+    <bpmn:participant id="B" name="Seller">
+      <bpmn:participantMultiplicity id="B_multiplicity" minimum="1" maximum="3"/>
+    </bpmn:participant>
+    <bpmn:participant id="C" name="Carrier"/>
+    <bpmn:messageFlow id="MF_AB" sourceRef="tns:A" targetRef="tns:B" messageRef="tns:Message_AB"/>
+    <bpmn:messageFlow id="MF_CA" sourceRef="tns:A" targetRef="tns:C" messageRef="tns:Message_CA"/>
+    <bpmn:startEvent id="Start"/>
+    <bpmn:exclusiveGateway id="Gateway"/>
+    <bpmn:choreographyTask id="Task_AB" name="Task_AB" initiatingParticipantRef="tns:A">
+      <bpmn:participantRef>tns:A</bpmn:participantRef>
+      <bpmn:participantRef>tns:B</bpmn:participantRef>
+      <bpmn:messageFlowRef>tns:MF_AB</bpmn:messageFlowRef>
+    </bpmn:choreographyTask>
+    <bpmn:choreographyTask id="Task_CA" name="Task_CA" initiatingParticipantRef="tns:A">
+      <bpmn:participantRef>tns:C</bpmn:participantRef>
+      <bpmn:participantRef>tns:A</bpmn:participantRef>
+      <bpmn:messageFlowRef>tns:MF_CA</bpmn:messageFlowRef>
+    </bpmn:choreographyTask>
+    <bpmn:subChoreography id="Sub_B" name="Sub_B" initiatingParticipantRef="tns:B">
+      <bpmn:participantRef>tns:A</bpmn:participantRef>
+      <bpmn:participantRef>tns:B</bpmn:participantRef>
+      <bpmn:participantRef>tns:C</bpmn:participantRef>
+      <bpmn:startEvent id="Sub_B_start"/>
+      <bpmn:endEvent id="Sub_B_end"/>
+      <bpmn:sequenceFlow id="Sub_B_flow" sourceRef="Sub_B_start" targetRef="Sub_B_end"/>
+    </bpmn:subChoreography>
+    <bpmn:subChoreography id="Sub_A" name="Sub_A" initiatingParticipantRef="tns:A">
+      <bpmn:participantRef>tns:A</bpmn:participantRef>
+      <bpmn:participantRef>tns:B</bpmn:participantRef>
+      <bpmn:participantRef>tns:C</bpmn:participantRef>
+      <bpmn:startEvent id="Sub_A_start"/>
+      <bpmn:endEvent id="Sub_A_end"/>
+      <bpmn:sequenceFlow id="Sub_A_flow" sourceRef="Sub_A_start" targetRef="Sub_A_end"/>
+    </bpmn:subChoreography>
+    <bpmn:callChoreography id="Call" name="Call global choreography" initiatingParticipantRef="tns:A" calledChoreographyRef="tns:Global">
+      <bpmn:participantRef>tns:A</bpmn:participantRef>
+      <bpmn:participantRef>tns:B</bpmn:participantRef>
+      <bpmn:participantAssociation id="Assoc_GA">
+        <bpmn:innerParticipantRef>tns:GA</bpmn:innerParticipantRef>
+        <bpmn:outerParticipantRef>tns:A</bpmn:outerParticipantRef>
+      </bpmn:participantAssociation>
+      <bpmn:participantAssociation id="Assoc_GB">
+        <bpmn:innerParticipantRef>tns:GB</bpmn:innerParticipantRef>
+        <bpmn:outerParticipantRef>tns:B</bpmn:outerParticipantRef>
+      </bpmn:participantAssociation>
+    </bpmn:callChoreography>
+    <bpmn:endEvent id="End"/>
+    <bpmn:sequenceFlow id="Flow_0" sourceRef="Start" targetRef="Gateway"/>
+    <bpmn:sequenceFlow id="Flow_1" sourceRef="Gateway" targetRef="Task_AB"/>
+    <bpmn:sequenceFlow id="Flow_2" sourceRef="Task_AB" targetRef="Task_CA"/>
+    <bpmn:sequenceFlow id="Flow_3" sourceRef="Task_CA" targetRef="Sub_B"/>
+    <bpmn:sequenceFlow id="Flow_4" sourceRef="Sub_B" targetRef="Sub_A"/>
+    <bpmn:sequenceFlow id="Flow_5" sourceRef="Sub_A" targetRef="Call"/>
+    <bpmn:sequenceFlow id="Flow_6" sourceRef="Call" targetRef="End"/>
+  </bpmn:choreography>
+  <bpmn:globalChoreographyTask id="Global" name="Reusable negotiation" initiatingParticipantRef="tns:GA">
+    <bpmn:participant id="GA" name="Global buyer"/>
+    <bpmn:participant id="GB" name="Global seller"/>
+  </bpmn:globalChoreographyTask>
+  <bpmndi:BPMNDiagram id="Diagram_One" name="Choreography One">
+    <bpmndi:BPMNPlane id="Plane_One" bpmnElement="tns:Choreography">
+      <di:extension>
+        <bpmn:documentation>Synthetic DI extension, CC0.</bpmn:documentation>
+      </di:extension>
+      <bpmndi:BPMNShape id="Start_One" bpmnElement="tns:Start">
+        <dc:Bounds x="20" y="145" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow0_One" bpmnElement="tns:Flow_0">
+        <di:waypoint x="56" y="163"/>
+        <di:waypoint x="65" y="163"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNShape id="Gateway_One" bpmnElement="tns:Gateway" isMarkerVisible="true">
+        <dc:Bounds x="65" y="145" width="30" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_AB_One" bpmnElement="tns:Task_AB" isExpanded="false">
+        <dc:Bounds x="100" y="100" width="200" height="120"/>
+        <bpmndi:BPMNLabel id="Task_AB_One_label" labelStyle="tns:LabelStyle">
+          <dc:Bounds x="130" y="150" width="140" height="25"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_AB_One_band_0" bpmnElement="tns:A" participantBandKind="top_initiating" choreographyActivityShape="tns:Task_AB_One" isMessageVisible="true">
+        <dc:Bounds x="100" y="100" width="200" height="24"/>
+        <bpmndi:BPMNLabel id="Task_AB_One_band_label_0" labelStyle="tns:LabelStyle">
+          <dc:Bounds x="104" y="103" width="192" height="18"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_AB_One_band_1" bpmnElement="tns:B" participantBandKind="bottom_non_initiating" choreographyActivityShape="tns:Task_AB_One" isMessageVisible="false">
+        <dc:Bounds x="100" y="196" width="200" height="24"/>
+        <bpmndi:BPMNLabel id="Task_AB_One_band_label_1" labelStyle="tns:LabelStyle">
+          <dc:Bounds x="104" y="199" width="192" height="18"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_CA_One" bpmnElement="tns:Task_CA" isExpanded="false">
+        <dc:Bounds x="380" y="100" width="200" height="120"/>
+        <bpmndi:BPMNLabel id="Task_CA_One_label" labelStyle="tns:LabelStyle">
+          <dc:Bounds x="410" y="150" width="140" height="25"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_CA_One_band_0" bpmnElement="tns:C" participantBandKind="top_non_initiating" choreographyActivityShape="tns:Task_CA_One" isMessageVisible="false">
+        <dc:Bounds x="380" y="100" width="200" height="24"/>
+        <bpmndi:BPMNLabel id="Task_CA_One_band_label_0" labelStyle="tns:LabelStyle">
+          <dc:Bounds x="384" y="103" width="192" height="18"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_CA_One_band_1" bpmnElement="tns:A" participantBandKind="bottom_initiating" choreographyActivityShape="tns:Task_CA_One" isMessageVisible="true">
+        <dc:Bounds x="380" y="196" width="200" height="24"/>
+        <bpmndi:BPMNLabel id="Task_CA_One_band_label_1" labelStyle="tns:LabelStyle">
+          <dc:Bounds x="384" y="199" width="192" height="18"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sub_B_One" bpmnElement="tns:Sub_B" isExpanded="false">
+        <dc:Bounds x="660" y="100" width="220" height="150"/>
+        <bpmndi:BPMNLabel id="Sub_B_One_label" labelStyle="tns:LabelStyle">
+          <dc:Bounds x="690" y="150" width="160" height="25"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sub_B_One_band_0" bpmnElement="tns:A" participantBandKind="top_non_initiating" choreographyActivityShape="tns:Sub_B_One">
+        <dc:Bounds x="660" y="100" width="220" height="24"/>
+        <bpmndi:BPMNLabel id="Sub_B_One_band_label_0" labelStyle="tns:LabelStyle">
+          <dc:Bounds x="664" y="103" width="212" height="18"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sub_B_One_band_1" bpmnElement="tns:B" participantBandKind="middle_initiating" choreographyActivityShape="tns:Sub_B_One">
+        <dc:Bounds x="660" y="124" width="220" height="24"/>
+        <bpmndi:BPMNLabel id="Sub_B_One_band_label_1" labelStyle="tns:LabelStyle">
+          <dc:Bounds x="664" y="127" width="212" height="18"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sub_B_One_band_2" bpmnElement="tns:C" participantBandKind="bottom_non_initiating" choreographyActivityShape="tns:Sub_B_One">
+        <dc:Bounds x="660" y="226" width="220" height="24"/>
+        <bpmndi:BPMNLabel id="Sub_B_One_band_label_2" labelStyle="tns:LabelStyle">
+          <dc:Bounds x="664" y="229" width="212" height="18"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sub_A_One" bpmnElement="tns:Sub_A" isExpanded="false">
+        <dc:Bounds x="920" y="100" width="220" height="150"/>
+        <bpmndi:BPMNLabel id="Sub_A_One_label" labelStyle="tns:LabelStyle">
+          <dc:Bounds x="950" y="150" width="160" height="25"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sub_A_One_band_0" bpmnElement="tns:A" participantBandKind="top_initiating" choreographyActivityShape="tns:Sub_A_One">
+        <dc:Bounds x="920" y="100" width="220" height="24"/>
+        <bpmndi:BPMNLabel id="Sub_A_One_band_label_0" labelStyle="tns:LabelStyle">
+          <dc:Bounds x="924" y="103" width="212" height="18"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sub_A_One_band_1" bpmnElement="tns:B" participantBandKind="middle_non_initiating" choreographyActivityShape="tns:Sub_A_One">
+        <dc:Bounds x="920" y="124" width="220" height="24"/>
+        <bpmndi:BPMNLabel id="Sub_A_One_band_label_1" labelStyle="tns:LabelStyle">
+          <dc:Bounds x="924" y="127" width="212" height="18"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sub_A_One_band_2" bpmnElement="tns:C" participantBandKind="bottom_non_initiating" choreographyActivityShape="tns:Sub_A_One">
+        <dc:Bounds x="920" y="226" width="220" height="24"/>
+        <bpmndi:BPMNLabel id="Sub_A_One_band_label_2" labelStyle="tns:LabelStyle">
+          <dc:Bounds x="924" y="229" width="212" height="18"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Call_One" bpmnElement="tns:Call" isExpanded="false">
+        <dc:Bounds x="1200" y="100" width="180" height="120"/>
+        <bpmndi:BPMNLabel id="Call_One_label" labelStyle="tns:LabelStyle">
+          <dc:Bounds x="1230" y="150" width="120" height="25"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Call_One_band_0" bpmnElement="tns:A" participantBandKind="top_initiating" choreographyActivityShape="tns:Call_One">
+        <dc:Bounds x="1200" y="100" width="180" height="24"/>
+        <bpmndi:BPMNLabel id="Call_One_band_label_0" labelStyle="tns:LabelStyle">
+          <dc:Bounds x="1204" y="103" width="172" height="18"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Call_One_band_1" bpmnElement="tns:B" participantBandKind="bottom_non_initiating" choreographyActivityShape="tns:Call_One">
+        <dc:Bounds x="1200" y="196" width="180" height="24"/>
+        <bpmndi:BPMNLabel id="Call_One_band_label_1" labelStyle="tns:LabelStyle">
+          <dc:Bounds x="1204" y="199" width="172" height="18"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_One" bpmnElement="tns:End">
+        <dc:Bounds x="1430" y="145" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+    </bpmndi:BPMNPlane>
+    <bpmndi:BPMNLabelStyle id="LabelStyle">
+      <dc:Font name="Noto Sans" size="12" isBold="false"/>
+    </bpmndi:BPMNLabelStyle>
+  </bpmndi:BPMNDiagram>
+  <bpmndi:BPMNDiagram id="Diagram_Two" name="Choreography Two">
+    <bpmndi:BPMNPlane id="Plane_Two" bpmnElement="tns:Choreography">
+      <di:extension>
+        <bpmn:documentation>Synthetic DI extension, CC0.</bpmn:documentation>
+      </di:extension>
+      <bpmndi:BPMNShape id="Start_Two" bpmnElement="tns:Start">
+        <dc:Bounds x="20" y="145" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow0_Two" bpmnElement="tns:Flow_0">
+        <di:waypoint x="56" y="163"/>
+        <di:waypoint x="65" y="163"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNShape id="Gateway_Two" bpmnElement="tns:Gateway" isMarkerVisible="true">
+        <dc:Bounds x="65" y="145" width="30" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_AB_Two" bpmnElement="tns:Task_AB" isExpanded="false">
+        <dc:Bounds x="100" y="100" width="200" height="120"/>
+        <bpmndi:BPMNLabel id="Task_AB_Two_label" labelStyle="tns:LabelStyleTwo">
+          <dc:Bounds x="130" y="150" width="140" height="25"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_AB_Two_band_0" bpmnElement="tns:A" participantBandKind="top_initiating" choreographyActivityShape="tns:Task_AB_Two" isMessageVisible="true">
+        <dc:Bounds x="100" y="100" width="200" height="24"/>
+        <bpmndi:BPMNLabel id="Task_AB_Two_band_label_0" labelStyle="tns:LabelStyleTwo">
+          <dc:Bounds x="104" y="103" width="192" height="18"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_AB_Two_band_1" bpmnElement="tns:B" participantBandKind="bottom_non_initiating" choreographyActivityShape="tns:Task_AB_Two" isMessageVisible="false">
+        <dc:Bounds x="100" y="196" width="200" height="24"/>
+        <bpmndi:BPMNLabel id="Task_AB_Two_band_label_1" labelStyle="tns:LabelStyleTwo">
+          <dc:Bounds x="104" y="199" width="192" height="18"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_CA_Two" bpmnElement="tns:Task_CA" isExpanded="false">
+        <dc:Bounds x="380" y="100" width="200" height="120"/>
+        <bpmndi:BPMNLabel id="Task_CA_Two_label" labelStyle="tns:LabelStyleTwo">
+          <dc:Bounds x="410" y="150" width="140" height="25"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_CA_Two_band_0" bpmnElement="tns:C" participantBandKind="top_non_initiating" choreographyActivityShape="tns:Task_CA_Two" isMessageVisible="false">
+        <dc:Bounds x="380" y="100" width="200" height="24"/>
+        <bpmndi:BPMNLabel id="Task_CA_Two_band_label_0" labelStyle="tns:LabelStyleTwo">
+          <dc:Bounds x="384" y="103" width="192" height="18"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_CA_Two_band_1" bpmnElement="tns:A" participantBandKind="bottom_initiating" choreographyActivityShape="tns:Task_CA_Two" isMessageVisible="true">
+        <dc:Bounds x="380" y="196" width="200" height="24"/>
+        <bpmndi:BPMNLabel id="Task_CA_Two_band_label_1" labelStyle="tns:LabelStyleTwo">
+          <dc:Bounds x="384" y="199" width="192" height="18"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sub_B_Two" bpmnElement="tns:Sub_B" isExpanded="false">
+        <dc:Bounds x="660" y="100" width="220" height="150"/>
+        <bpmndi:BPMNLabel id="Sub_B_Two_label" labelStyle="tns:LabelStyleTwo">
+          <dc:Bounds x="690" y="150" width="160" height="25"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sub_B_Two_band_0" bpmnElement="tns:A" participantBandKind="top_non_initiating" choreographyActivityShape="tns:Sub_B_Two">
+        <dc:Bounds x="660" y="100" width="220" height="24"/>
+        <bpmndi:BPMNLabel id="Sub_B_Two_band_label_0" labelStyle="tns:LabelStyleTwo">
+          <dc:Bounds x="664" y="103" width="212" height="18"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sub_B_Two_band_1" bpmnElement="tns:B" participantBandKind="middle_initiating" choreographyActivityShape="tns:Sub_B_Two">
+        <dc:Bounds x="660" y="124" width="220" height="24"/>
+        <bpmndi:BPMNLabel id="Sub_B_Two_band_label_1" labelStyle="tns:LabelStyleTwo">
+          <dc:Bounds x="664" y="127" width="212" height="18"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sub_B_Two_band_2" bpmnElement="tns:C" participantBandKind="bottom_non_initiating" choreographyActivityShape="tns:Sub_B_Two">
+        <dc:Bounds x="660" y="226" width="220" height="24"/>
+        <bpmndi:BPMNLabel id="Sub_B_Two_band_label_2" labelStyle="tns:LabelStyleTwo">
+          <dc:Bounds x="664" y="229" width="212" height="18"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sub_A_Two" bpmnElement="tns:Sub_A" isExpanded="false">
+        <dc:Bounds x="920" y="100" width="220" height="150"/>
+        <bpmndi:BPMNLabel id="Sub_A_Two_label" labelStyle="tns:LabelStyleTwo">
+          <dc:Bounds x="950" y="150" width="160" height="25"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sub_A_Two_band_0" bpmnElement="tns:A" participantBandKind="top_initiating" choreographyActivityShape="tns:Sub_A_Two">
+        <dc:Bounds x="920" y="100" width="220" height="24"/>
+        <bpmndi:BPMNLabel id="Sub_A_Two_band_label_0" labelStyle="tns:LabelStyleTwo">
+          <dc:Bounds x="924" y="103" width="212" height="18"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sub_A_Two_band_1" bpmnElement="tns:B" participantBandKind="middle_non_initiating" choreographyActivityShape="tns:Sub_A_Two">
+        <dc:Bounds x="920" y="124" width="220" height="24"/>
+        <bpmndi:BPMNLabel id="Sub_A_Two_band_label_1" labelStyle="tns:LabelStyleTwo">
+          <dc:Bounds x="924" y="127" width="212" height="18"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sub_A_Two_band_2" bpmnElement="tns:C" participantBandKind="bottom_non_initiating" choreographyActivityShape="tns:Sub_A_Two">
+        <dc:Bounds x="920" y="226" width="220" height="24"/>
+        <bpmndi:BPMNLabel id="Sub_A_Two_band_label_2" labelStyle="tns:LabelStyleTwo">
+          <dc:Bounds x="924" y="229" width="212" height="18"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Call_Two" bpmnElement="tns:Call" isExpanded="false">
+        <dc:Bounds x="1200" y="100" width="180" height="120"/>
+        <bpmndi:BPMNLabel id="Call_Two_label" labelStyle="tns:LabelStyleTwo">
+          <dc:Bounds x="1230" y="150" width="120" height="25"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Call_Two_band_0" bpmnElement="tns:A" participantBandKind="top_initiating" choreographyActivityShape="tns:Call_Two">
+        <dc:Bounds x="1200" y="100" width="180" height="24"/>
+        <bpmndi:BPMNLabel id="Call_Two_band_label_0" labelStyle="tns:LabelStyleTwo">
+          <dc:Bounds x="1204" y="103" width="172" height="18"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Call_Two_band_1" bpmnElement="tns:B" participantBandKind="bottom_non_initiating" choreographyActivityShape="tns:Call_Two">
+        <dc:Bounds x="1200" y="196" width="180" height="24"/>
+        <bpmndi:BPMNLabel id="Call_Two_band_label_1" labelStyle="tns:LabelStyleTwo">
+          <dc:Bounds x="1204" y="199" width="172" height="18"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_Two" bpmnElement="tns:End">
+        <dc:Bounds x="1430" y="145" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+    </bpmndi:BPMNPlane>
+    <bpmndi:BPMNLabelStyle id="LabelStyleTwo">
+      <dc:Font name="Noto Sans" size="12" isBold="false"/>
+    </bpmndi:BPMNLabelStyle>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

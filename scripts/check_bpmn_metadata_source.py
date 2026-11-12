@@ -78,6 +78,18 @@ COLLABORATION_QNAME_CHILDREN = {
 }
 
 
+# Choreography graph fields are compared directly from XML, including omission
+# of the XSD default and expanded QNames in the owner's namespace context.
+CHOREOGRAPHY_OWNERS = {"choreography", "globalChoreographyTask", "choreographyTask", "subChoreography", "callChoreography"}
+CHOREOGRAPHY_QNAMES = {"initiatingParticipantRef", "calledChoreographyRef"}
+CHOREOGRAPHY_REFERENCE_CHILDREN = {"participantRef", "messageFlowRef"}
+CHOREOGRAPHY_ORDER_OWNERS = {"definitions", "choreography", "globalChoreographyTask", "subChoreography", "callChoreography", "choreographyTask"}
+GRAPH_EVENT_OWNERS = {"startEvent", "endEvent", "boundaryEvent", "intermediateCatchEvent", "intermediateThrowEvent", "implicitThrowEvent"}
+GRAPH_EVENT_IO_OWNERS = GRAPH_EVENT_OWNERS | {"property", "dataInput", "dataOutput", "dataInputAssociation", "dataOutputAssociation", "inputSet", "outputSet", "signalEventDefinition", "messageEventDefinition", "errorEventDefinition", "escalationEventDefinition", "timerEventDefinition", "conditionalEventDefinition", "terminateEventDefinition", "cancelEventDefinition", "compensateEventDefinition", "linkEventDefinition"}
+GRAPH_EVENT_QNAME_CHILDREN = {"incoming", "outgoing", "eventDefinitionRef"}
+GRAPH_EVENT_IDREF_CHILDREN = {"sourceRef", "targetRef", "dataInputRefs", "optionalInputRefs", "whileExecutingInputRefs", "outputSetRefs", "dataOutputRefs", "optionalOutputRefs", "whileExecutingOutputRefs", "inputSetRefs"}
+
+
 def expanded_qname(element, value):
     value = value.strip()
     prefix, local = value.split(":", 1) if ":" in value else ("", value)
@@ -151,7 +163,7 @@ def body(element):
             "children": [{"node": body(child), "tail": child.tail or ""} for child in element]}
 
 
-def records(tree, activity_fields=False, diagram_fields=False, collaboration_fields=False):
+def records(tree, activity_fields=False, diagram_fields=False, collaboration_fields=False, choreography_fields=False):
     result = {}
 
     def visit(element, path, opaque):
@@ -181,6 +193,37 @@ def records(tree, activity_fields=False, diagram_fields=False, collaboration_fie
             result[path + "/xmlIdentity"] = {"idPresent": "id" in element.attrib,
                                               "id": element.get("id")}
         if semantic:
+            if choreography_fields:
+                if tag.localname in CHOREOGRAPHY_OWNERS:
+                    values = attributes(element)
+                    for name, value in values.items():
+                        if name in CHOREOGRAPHY_QNAMES:
+                            values[name] = expanded_qname(element, value)
+                    result[path + "/choreographyAttributes"] = values
+                parent = element.getparent()
+                if (tag.localname in CHOREOGRAPHY_REFERENCE_CHILDREN and parent is not None
+                        and parent.tag in {"{" + BPMN + "}" + name for name in CHOREOGRAPHY_OWNERS}):
+                    result[path + "/choreographyQName"] = expanded_qname(element, element.text or "")
+                if tag.localname in GRAPH_EVENT_IO_OWNERS:
+                    values = attributes(element)
+                    for name, value in values.items():
+                        if name in {"attachedToRef", "itemSubjectRef", "signalRef", "messageRef", "operationRef", "errorRef", "escalationRef", "activityRef"}:
+                            values[name] = expanded_qname(element, value)
+                        elif name in {"cancelActivity", "parallelMultiple", "isInterrupting", "isCollection"}:
+                            values[name] = value.strip() in {"true", "1"}
+                    result[path + "/choreographyEventAttributes"] = values
+                if parent is not None and parent.tag.startswith("{" + BPMN + "}"):
+                    parent_kind = E.QName(parent).localname
+                    if tag.localname in GRAPH_EVENT_QNAME_CHILDREN and parent_kind in GRAPH_EVENT_OWNERS:
+                        result[path + "/choreographyEventReference"] = expanded_qname(element, element.text or "")
+                    elif tag.localname in GRAPH_EVENT_IDREF_CHILDREN and parent_kind in GRAPH_EVENT_IO_OWNERS:
+                        result[path + "/choreographyEventReference"] = (element.text or "").strip()
+                if tag.localname in CHOREOGRAPHY_ORDER_OWNERS | GRAPH_EVENT_IO_OWNERS:
+                    result[path + "/choreographyChildren"] = [
+                        {"tag": child.tag, "idPresent": "id" in child.attrib, "id": child.get("id")}
+                        for child in element if isinstance(child.tag, str)
+                        and child.tag.startswith("{" + BPMN + "}")
+                        and E.QName(child).localname not in {"import", "extension", "documentation", "extensionElements", "relationship"}]
             if collaboration_fields:
                 if tag.localname in COLLABORATION_OWNERS:
                     values = attributes(element)
@@ -251,6 +294,8 @@ def main():
                         help="Also compare DI metadata, child order, geometry and participant/message fields")
     parser.add_argument("--collaboration-fields", action="store_true",
                         help="Also compare collaboration attributes, scoped QNames and root/artifact order")
+    parser.add_argument("--choreography-fields", action="store_true",
+                        help="Also compare choreography QName fields, loop presence and ordered graph children")
     arguments = parser.parse_args()
     schema = E.XMLSchema(E.parse(str(ROOT / "tests/fixtures/bpmn20-schema/BPMN20.xsd")))
     trees = []
@@ -261,7 +306,7 @@ def main():
         schema.assertValid(tree)
         trees.append(tree)
     expected, actual = [records(tree, arguments.activity_fields, arguments.diagram_fields,
-                               arguments.collaboration_fields) for tree in trees]
+                               arguments.collaboration_fields, arguments.choreography_fields) for tree in trees]
     differences = [{"path": path, "before": expected.get(path), "after": actual.get(path)}
                    for path in sorted(expected.keys() | actual.keys()) if expected.get(path) != actual.get(path)]
     print(json.dumps({"source": str(arguments.source), "output": str(arguments.output),
@@ -270,6 +315,7 @@ def main():
                       "activityFieldRecords": sum(path.endswith(("/activityAttributes", "/activityQName")) for path in expected),
                       "diagramFieldRecords": sum(path.endswith(("/diagramAttributes", "/diagramMetadata", "/planeChildren")) for path in expected),
                       "collaborationFieldRecords": sum(path.endswith(("/collaborationAttributes", "/collaborationQName", "/collaborationChildren")) for path in expected),
+                      "choreographyFieldRecords": sum(path.endswith(("/choreographyAttributes", "/choreographyQName", "/choreographyChildren", "/choreographyEventAttributes", "/choreographyEventReference")) for path in expected),
                       "anonymousOwnerRecords": sum(path.endswith("/metadata") and not value["idPresent"]
                                                    for path, value in expected.items()),
                       "differences": differences}, indent=2))

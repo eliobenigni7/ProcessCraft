@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:t="urn:graph" xmlns:ext="urn:external" id="defs" targetNamespace="urn:graph">
+  <choreography id="main">
+    <participant id="buyer"/><participant id="seller"/>
+    <messageFlow id="order" sourceRef="t:buyer" targetRef="t:seller"/>
+    <startEvent id="start"/>
+    <subChoreography id="sub" initiatingParticipantRef="t:buyer" loopType="None">
+      <participantRef>t:buyer</participantRef><participantRef>t:seller</participantRef>
+      <startEvent id="subStart"><outgoing>t:subFlow</outgoing><signalEventDefinition id="signalDefinition" signalRef="ext:signal"/></startEvent>
+      <exclusiveGateway id="choice"><incoming>t:subFlow</incoming></exclusiveGateway>
+      <sequenceFlow id="subFlow" sourceRef="subStart" targetRef="choice"/>
+      <textAnnotation id="note"><text>nested note</text></textAnnotation>
+    </subChoreography>
+    <callChoreography id="call" initiatingParticipantRef="t:buyer" calledChoreographyRef="t:global">
+      <participantRef>t:buyer</participantRef><participantRef>t:seller</participantRef>
+      <participantAssociation id="mapping"><innerParticipantRef>t:globalBuyer</innerParticipantRef><outerParticipantRef>t:buyer</outerParticipantRef></participantAssociation>
+    </callChoreography>
+    <choreographyTask id="task" initiatingParticipantRef="t:buyer" loopType="Standard"><participantRef>t:buyer</participantRef><participantRef>t:seller</participantRef><messageFlowRef>ext:order</messageFlowRef></choreographyTask>
+    <endEvent id="end"/>
+    <sequenceFlow id="flow" sourceRef="start" targetRef="sub"/>
+  </choreography>
+  <globalChoreographyTask id="global" initiatingParticipantRef="t:globalBuyer"><participant id="globalBuyer"/><participant id="globalSeller"/></globalChoreographyTask>
+</definitions>

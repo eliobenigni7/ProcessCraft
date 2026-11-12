@@ -219,6 +219,39 @@ pub(crate) fn visit_base_metadata<'a>(
             metadata(Some(&a.id), &a.base, &mut visit);
         }
     }
+    for graph_scope in crate::queries::choreography_scopes(d) {
+        if graph_scope.root.graph.is_none() {
+            continue;
+        }
+        for a in graph_scope.activities {
+            metadata(Some(&a.id), &a.base, &mut visit);
+        }
+        for node in graph_scope.events.into_iter().chain(graph_scope.gateways) {
+            scope(
+                std::slice::from_ref(node),
+                &[],
+                &[],
+                &[],
+                &[],
+                &[],
+                &mut visit,
+            );
+        }
+        for association in graph_scope.data_associations {
+            metadata(association.id.as_ref(), &association.base, &mut visit);
+            for assignment in &association.assignments {
+                metadata(assignment.id.as_ref(), &assignment.base, &mut visit);
+            }
+        }
+        if graph_scope.parent.is_some() {
+            use crate::bpmn_collaboration::CollaborationArtifact;
+            for artifact in graph_scope.artifacts {
+                if let CollaborationArtifact::Group(group) = artifact {
+                    metadata(Some(&group.id), &group.base, &mut visit);
+                }
+            }
+        }
+    }
 }
 fn scope_legacy<'a>(
     nodes: &'a [Node],
@@ -251,6 +284,31 @@ pub(crate) fn visit_legacy_metadata<'a>(
     for c in &d.choreographies {
         for flow in c.sequence_flows.iter().chain(&c.message_flows) {
             visit(&flow.id, &flow.documentation, &flow.base_extras);
+        }
+    }
+    for graph_scope in crate::queries::choreography_scopes(d) {
+        if graph_scope.root.graph.is_none() {
+            continue;
+        }
+        for node in graph_scope.events.into_iter().chain(graph_scope.gateways) {
+            visit(&node.id, &node.documentation, &node.base_extras);
+        }
+        for flow in graph_scope.flows {
+            visit(&flow.id, &flow.documentation, &flow.base_extras);
+        }
+        if graph_scope.parent.is_some() {
+            use crate::bpmn_collaboration::CollaborationArtifact;
+            for artifact in graph_scope.artifacts {
+                match artifact {
+                    CollaborationArtifact::TextAnnotation(n) => {
+                        visit(&n.id, &n.documentation, &n.base_extras)
+                    }
+                    CollaborationArtifact::Association(f) => {
+                        visit(&f.id, &f.documentation, &f.base_extras)
+                    }
+                    CollaborationArtifact::Group(_) => {}
+                }
+            }
         }
     }
 }
@@ -458,6 +516,15 @@ impl BpmnDocument {
                     .and_then(|a| a.script.as_ref())
                     .is_some_and(opaque_body);
                 found |= matches!(&node.details, Some(NodeDetails::TextAnnotation { text: Some(body), .. }) if opaque_body(body));
+            }
+        }
+        for scope in crate::queries::choreography_scopes(self) {
+            for artifact in scope.artifacts {
+                if let crate::bpmn_collaboration::CollaborationArtifact::TextAnnotation(node) =
+                    artifact
+                {
+                    found |= matches!(&node.details, Some(NodeDetails::TextAnnotation { text: Some(body), .. }) if opaque_body(body));
+                }
             }
         }
         found

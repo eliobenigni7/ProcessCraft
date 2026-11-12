@@ -254,6 +254,21 @@ pub fn find_node<'a>(document: &'a BpmnDocument, id: &ElementSelector) -> Option
         .into_iter()
         .find_map(|scope| scope.nodes.iter().find(|node| &node.id.selector() == id))
         .or_else(|| {
+            choreography_scopes(document).into_iter().find_map(|scope| {
+                scope
+                    .events
+                    .into_iter()
+                    .chain(scope.gateways)
+                    .chain(scope.artifacts.into_iter().filter_map(|a| match a {
+                        crate::bpmn_collaboration::CollaborationArtifact::TextAnnotation(n) => {
+                            Some(n.as_ref())
+                        }
+                        _ => None,
+                    }))
+                    .find(|node| &node.id.selector() == id)
+            })
+        })
+        .or_else(|| {
             document
                 .collaborations()
                 .filter_map(|c| c.extras.as_ref())
@@ -289,6 +304,20 @@ pub fn find_flow<'a>(document: &'a BpmnDocument, id: &ElementSelector) -> Option
     scopes(document)
         .into_iter()
         .find_map(|scope| scope.flows.iter().find(|flow| &flow.id.selector() == id))
+        .or_else(|| {
+            choreography_scopes(document).into_iter().find_map(|scope| {
+                scope
+                    .flows
+                    .into_iter()
+                    .chain(scope.artifacts.into_iter().filter_map(|a| match a {
+                        crate::bpmn_collaboration::CollaborationArtifact::Association(f) => {
+                            Some(f.as_ref())
+                        }
+                        _ => None,
+                    }))
+                    .find(|flow| &flow.id.selector() == id)
+            })
+        })
         .or_else(|| {
             document
                 .collaborations()
@@ -420,6 +449,26 @@ pub fn element_name<'a>(document: &'a BpmnDocument, id: &ElementSelector) -> Opt
             return Some(flow.name.as_deref().unwrap_or(""));
         }
     }
+    for scope in choreography_scopes(document) {
+        if let Some(activity) = scope
+            .activities
+            .into_iter()
+            .find(|a| &a.id.selector() == id)
+        {
+            return Some(activity.name.as_deref().unwrap_or(""));
+        }
+        if let Some(node) = scope
+            .events
+            .into_iter()
+            .chain(scope.gateways)
+            .find(|n| &n.id.selector() == id)
+        {
+            return Some(node.name.as_deref().unwrap_or(""));
+        }
+        if let Some(flow) = scope.flows.into_iter().find(|f| &f.id.selector() == id) {
+            return Some(flow.name.as_deref().unwrap_or(""));
+        }
+    }
     for collaboration in document.collaborations() {
         if &collaboration.id.selector() == id {
             return Some(collaboration.name.as_deref().unwrap_or(""));
@@ -504,9 +553,10 @@ pub fn find_choreography_activity<'a>(
     choreography_id: &ElementSelector,
     activity_id: &ElementSelector,
 ) -> Option<&'a crate::bpmn_collaboration::ChoreographyActivity> {
-    find_choreography(document, choreography_id)?
-        .activities
-        .iter()
+    choreography_scopes(document)
+        .into_iter()
+        .filter(|s| &s.root.id == choreography_id)
+        .flat_map(|s| s.activities)
         .find(|a| &a.id == activity_id)
 }
 pub fn library_search(project: &ProjectData, text: &str) -> Vec<DocumentId> {
@@ -1129,4 +1179,124 @@ fn property_differences(
             after: after.clone(),
         });
     }
+}
+
+/// A direct child of a choreography scope, in its authored order.
+#[derive(Clone, Copy, Debug)]
+pub enum ChoreographyElementRef<'a> {
+    Activity(&'a crate::bpmn_collaboration::ChoreographyActivity),
+    Event(&'a Node),
+    Gateway(&'a Node),
+    SequenceFlow(&'a Flow),
+}
+
+/// Read-only scope view. Legacy roots are adapted without changing the document.
+#[derive(Clone, Debug)]
+pub struct ChoreographyScope<'a> {
+    pub root: &'a crate::bpmn_collaboration::Choreography,
+    pub owner: ElementSelector,
+    pub parent: Option<ElementSelector>,
+    pub ordered: Vec<ChoreographyElementRef<'a>>,
+    pub activities: Vec<&'a crate::bpmn_collaboration::ChoreographyActivity>,
+    pub events: Vec<&'a Node>,
+    pub gateways: Vec<&'a Node>,
+    pub flows: Vec<&'a Flow>,
+    pub data_associations: Vec<&'a crate::bpmn_data::DataAssociation>,
+    pub artifacts: Vec<&'a crate::bpmn_collaboration::CollaborationArtifact>,
+}
+
+/// Enumerate root and nested choreography scopes in parent-before-child order.
+pub fn choreography_scopes(document: &BpmnDocument) -> Vec<ChoreographyScope<'_>> {
+    use crate::bpmn_collaboration::{ChoreographyActivityDetails, ChoreographyFlowElement};
+    fn visit<'a>(
+        root: &'a crate::bpmn_collaboration::Choreography,
+        owner: ElementSelector,
+        parent: Option<ElementSelector>,
+        ordered: Vec<ChoreographyElementRef<'a>>,
+        artifacts: Vec<&'a crate::bpmn_collaboration::CollaborationArtifact>,
+        data_associations: Vec<&'a crate::bpmn_data::DataAssociation>,
+        out: &mut Vec<ChoreographyScope<'a>>,
+    ) {
+        let mut pending = vec![(owner, parent, ordered, artifacts, data_associations)];
+        while let Some((owner, parent, ordered, artifacts, data_associations)) = pending.pop() {
+            let mut scope = ChoreographyScope {
+                root,
+                owner: owner.clone(),
+                parent,
+                ordered,
+                activities: Vec::new(),
+                events: Vec::new(),
+                gateways: Vec::new(),
+                flows: Vec::new(),
+                data_associations,
+                artifacts,
+            };
+            for item in &scope.ordered {
+                match item {
+                    ChoreographyElementRef::Activity(v) => scope.activities.push(v),
+                    ChoreographyElementRef::Event(v) => scope.events.push(v),
+                    ChoreographyElementRef::Gateway(v) => scope.gateways.push(v),
+                    ChoreographyElementRef::SequenceFlow(v) => scope.flows.push(v),
+                }
+            }
+            for activity in scope.activities.iter().rev() {
+                if let Some(ChoreographyActivityDetails::Sub { graph, artifacts }) =
+                    &activity.details
+                {
+                    pending.push((
+                        activity.id.selector(),
+                        Some(owner.clone()),
+                        graph.flow_elements.iter().map(map).collect(),
+                        artifacts.iter().collect(),
+                        graph.data_associations.iter().collect(),
+                    ));
+                }
+            }
+            out.push(scope);
+        }
+    }
+    fn map(element: &ChoreographyFlowElement) -> ChoreographyElementRef<'_> {
+        match element {
+            ChoreographyFlowElement::Activity(v) => ChoreographyElementRef::Activity(v),
+            ChoreographyFlowElement::Event(v) => ChoreographyElementRef::Event(v),
+            ChoreographyFlowElement::Gateway(v) => ChoreographyElementRef::Gateway(v),
+            ChoreographyFlowElement::SequenceFlow(v) => ChoreographyElementRef::SequenceFlow(v),
+        }
+    }
+    let mut out = Vec::new();
+    for root in &document.choreographies {
+        let ordered = if let Some(graph) = &root.graph {
+            graph.flow_elements.iter().map(map).collect()
+        } else {
+            root.activities
+                .iter()
+                .map(ChoreographyElementRef::Activity)
+                .chain(
+                    root.sequence_flows
+                        .iter()
+                        .map(ChoreographyElementRef::SequenceFlow),
+                )
+                .collect()
+        };
+        let artifacts = root
+            .extras
+            .as_ref()
+            .map(|x| x.artifacts.iter().collect())
+            .unwrap_or_default();
+        let data_associations = root
+            .graph
+            .as_ref()
+            .map(|g| g.data_associations.iter().collect())
+            .unwrap_or_default();
+        visit(
+            root,
+            root.id.selector(),
+            None,
+            ordered,
+            artifacts,
+            data_associations,
+            &mut out,
+        );
+    }
+    out
 }

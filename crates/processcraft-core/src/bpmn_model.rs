@@ -338,6 +338,8 @@ pub enum TimerKind {
     Cycle,
 }
 
+// Keep the existing public and serialized event fields directly addressable.
+#[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
 pub enum NodeDetails {
@@ -366,12 +368,12 @@ pub enum NodeDetails {
         called_element: Option<QNameRef>,
     },
     BoundaryEvent {
-        attached_to: crate::ids::ElementSelector,
+        attached_to: crate::bpmn_activity::ModelReference,
         cancel_activity: bool,
     },
     Event {
         definitions: Vec<EventDefinition>,
-        attached_to: Option<crate::ids::ElementSelector>,
+        attached_to: Option<crate::bpmn_activity::ModelReference>,
         cancel_activity: Option<bool>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         definition_refs: Vec<EventReference>,

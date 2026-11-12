@@ -1066,6 +1066,8 @@ fn choreography_crud_rejects_cross_scope_references_and_undoes() {
     use processcraft_core::bpmn_collaboration::{Choreography, ChoreographyActivity};
     let (mut session, key) = fixture();
     let choreography = Choreography {
+        kind: None,
+        graph: None,
         extras: None,
         conversation_nodes: vec![],
         conversation_links: vec![],
@@ -1095,13 +1097,20 @@ fn choreography_crud_rejects_cross_scope_references_and_undoes() {
         ],
         message_flows: vec![],
         activities: vec![ChoreographyActivity {
+            loop_type: None,
+            details: None,
             correlation_keys: vec![],
             flow_metadata: None,
             base: None,
             id: id("task_exchange"),
             name: Some("Exchange".into()),
-            participant_refs: vec![id("buyer"), id("seller")],
-            initiating_participant: id("buyer"),
+            participant_refs: vec![
+                processcraft_core::bpmn_activity::ModelReference::Local(id("buyer")),
+                processcraft_core::bpmn_activity::ModelReference::Local(id("seller")),
+            ],
+            initiating_participant: Some(processcraft_core::bpmn_activity::ModelReference::Local(
+                id("buyer"),
+            )),
             message_flow_refs: vec![],
         }],
         sequence_flows: vec![],
@@ -1116,13 +1125,20 @@ fn choreography_crud_rejects_cross_scope_references_and_undoes() {
     .unwrap();
     let before = session.snapshot().content_id;
     let invalid = ChoreographyActivity {
+        loop_type: None,
+        details: None,
         correlation_keys: vec![],
         flow_metadata: None,
         base: None,
         id: id("outside"),
         name: Some("Invalid".into()),
-        participant_refs: vec![id("buyer"), id("missing")],
-        initiating_participant: id("buyer"),
+        participant_refs: vec![
+            processcraft_core::bpmn_activity::ModelReference::Local(id("buyer")),
+            processcraft_core::bpmn_activity::ModelReference::Local(id("missing")),
+        ],
+        initiating_participant: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+            "buyer",
+        ))),
         message_flow_refs: vec![],
     };
     assert!(

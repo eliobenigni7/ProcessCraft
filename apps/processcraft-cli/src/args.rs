@@ -15,6 +15,9 @@ pub enum Command {
         document_id: String,
         #[arg(long)]
         diagram_id: String,
+        /// Lay out the direct children of this expanded SubChoreography representation.
+        #[arg(long)]
+        choreography_scope_shape: Option<String>,
         #[arg(long)]
         out: PathBuf,
     },

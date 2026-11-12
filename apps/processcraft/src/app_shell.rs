@@ -2,6 +2,313 @@ use super::*;
 use crate::widgets::{self, Icon};
 use processcraft_core::ids::DocumentId;
 
+fn new_choreography_element(
+    kind: &str,
+    id: processcraft_core::ids::XmlId,
+) -> processcraft_core::bpmn_collaboration::ChoreographyFlowElement {
+    use processcraft_core::bpmn_collaboration::{
+        ChoreographyActivity, ChoreographyActivityDetails, ChoreographyFlowElement,
+        ChoreographyGraph,
+    };
+    match kind {
+        "Task" | "Sub-choreography" | "Call choreography" => {
+            ChoreographyFlowElement::Activity(Box::new(ChoreographyActivity {
+                id: id.into(),
+                name: None,
+                base: None,
+                flow_metadata: None,
+                correlation_keys: Vec::new(),
+                participant_refs: Vec::new(),
+                initiating_participant: None,
+                message_flow_refs: Vec::new(),
+                loop_type: None,
+                details: match kind {
+                    "Sub-choreography" => Some(ChoreographyActivityDetails::Sub {
+                        graph: Box::new(ChoreographyGraph::default()),
+                        artifacts: Vec::new(),
+                    }),
+                    "Call choreography" => Some(ChoreographyActivityDetails::Call {
+                        participant_associations: Vec::new(),
+                        called_choreography_ref: None,
+                    }),
+                    _ => None,
+                },
+            }))
+        }
+        "Sequence flow" => ChoreographyFlowElement::SequenceFlow(Box::new(Flow {
+            id: id.into(),
+            kind: FlowKind::Sequence,
+            source: None,
+            target: None,
+            name: None,
+            documentation: String::new().into(),
+            base_extras: None,
+            condition: None,
+            association_direction: None,
+            flow_metadata: None,
+            message_ref: None,
+        })),
+        _ => {
+            let node_kind = match kind {
+                "Start event" => NodeKind::StartEvent,
+                "End event" => NodeKind::EndEvent,
+                "Intermediate catch event" => NodeKind::IntermediateCatchEvent,
+                "Intermediate throw event" => NodeKind::IntermediateThrowEvent,
+                "Boundary event" => NodeKind::BoundaryEvent,
+                "Parallel gateway" => NodeKind::ParallelGateway,
+                "Inclusive gateway" => NodeKind::InclusiveGateway,
+                "Complex gateway" => NodeKind::ComplexGateway,
+                "Event-based gateway" => NodeKind::EventBasedGateway,
+                _ => NodeKind::ExclusiveGateway,
+            };
+            let node = Box::new(Node {
+                id: id.into(),
+                name: None,
+                documentation: String::new().into(),
+                base_extras: None,
+                kind: node_kind,
+                details: None,
+                loop_characteristics: None,
+                io_specification: None,
+                activity: None,
+                flow_metadata: None,
+                item_aware: None,
+                owner: String::new(),
+                contact: String::new(),
+            });
+            if matches!(
+                node_kind,
+                NodeKind::StartEvent
+                    | NodeKind::EndEvent
+                    | NodeKind::IntermediateCatchEvent
+                    | NodeKind::IntermediateThrowEvent
+                    | NodeKind::BoundaryEvent
+            ) {
+                ChoreographyFlowElement::Event(node)
+            } else {
+                ChoreographyFlowElement::Gateway(node)
+            }
+        }
+    }
+}
+
+fn vacant_choreography_bounds(diagram: &Diagram, camera: (f64, f64), kind: &str) -> Option<Bounds> {
+    if !camera.0.is_finite() || !camera.1.is_finite() {
+        return None;
+    }
+    let (width, height) = if kind.contains("event") {
+        (36.0, 36.0)
+    } else if kind.contains("gateway") {
+        (50.0, 50.0)
+    } else {
+        (120.0, 80.0)
+    };
+    (0..1024)
+        .map(|index| Bounds {
+            x: camera.0 + 100.0 + (index % 8) as f64 * 180.0,
+            y: camera.1 + 100.0 + (index / 8) as f64 * 120.0,
+            width,
+            height,
+        })
+        .find(|candidate| {
+            diagram.shapes.iter().all(|shape| {
+                let bounds = &shape.bounds;
+                candidate.x + candidate.width + 20.0 <= bounds.x
+                    || bounds.x + bounds.width + 20.0 <= candidate.x
+                    || candidate.y + candidate.height + 20.0 <= bounds.y
+                    || bounds.y + bounds.height + 20.0 <= candidate.y
+            })
+        })
+}
+
+#[cfg(test)]
+mod choreography_graph_tests {
+    use super::*;
+    use processcraft_core::bpmn_collaboration::{
+        ChoreographyActivityDetails, ChoreographyFlowElement,
+    };
+
+    #[test]
+    fn new_sub_uses_free_position_and_is_collapsed() {
+        let mut app = ProcessCraft::default();
+        let document_id = app.ctl.session.snapshot().project.documents[0].id;
+        let choreography = super::super::collaboration::fresh_choreography(
+            [
+                "Root".parse().unwrap(),
+                "Task".parse().unwrap(),
+                "Buyer".parse().unwrap(),
+                "Seller".parse().unwrap(),
+            ],
+            [
+                "Orders".into(),
+                "Submit".into(),
+                "Buyer".into(),
+                "Seller".into(),
+            ],
+        );
+        let task_shape = Shape {
+            id: "TaskShape".parse().unwrap(),
+            element: "Task".parse().unwrap(),
+            bounds: Bounds {
+                x: 80.0,
+                y: 80.0,
+                width: 180.0,
+                height: 100.0,
+            },
+            di_metadata: None,
+            is_message_visible: None,
+            participant_band_kind: None,
+            choreography_activity_shape: None,
+            is_expanded: None,
+            is_horizontal: None,
+            is_marker_visible: None,
+            label: None,
+            label_visibility: None,
+            style: None,
+        };
+        let diagram = Diagram {
+            id: "Diagram".parse().unwrap(),
+            plane_id: "Plane".parse().unwrap(),
+            plane: "Root".parse().unwrap(),
+            name: None,
+            documentation: None,
+            resolution: None,
+            label_styles: vec![],
+            plane_metadata: None,
+            plane_order: None,
+            shapes: vec![task_shape],
+            edges: vec![],
+        };
+        let event_bounds = vacant_choreography_bounds(&diagram, (0.0, 0.0), "Start event").unwrap();
+        let gateway_bounds =
+            vacant_choreography_bounds(&diagram, (0.0, 0.0), "Exclusive gateway").unwrap();
+        assert_eq!((event_bounds.width, event_bounds.height), (36.0, 36.0));
+        assert_eq!((gateway_bounds.width, gateway_bounds.height), (50.0, 50.0));
+        assert!(app.ctl.mutate(vec![
+            Mutation::CreateChoreography {
+                document_id,
+                choreography
+            },
+            Mutation::CreateDiagram {
+                document_id,
+                diagram
+            }
+        ]));
+        app.diagram_id = Some("Diagram".parse().unwrap());
+        let snapshot = app.ctl.session.snapshot();
+        let document = &snapshot.project.documents[0];
+        let scope = processcraft_core::queries::choreography_scopes(document)
+            .into_iter()
+            .find(|scope| scope.owner == "Root".parse::<ElementSelector>().unwrap())
+            .unwrap();
+        assert!(
+            app.add_choreography_element(document, &scope, "Sub-choreography", snapshot.generation),
+            "{}",
+            app.ctl.error
+        );
+        let snapshot = app.ctl.session.snapshot();
+        let document = &snapshot.project.documents[0];
+        let diagram = document
+            .diagrams
+            .iter()
+            .find(|diagram| diagram.id == "Diagram".parse::<ElementSelector>().unwrap())
+            .unwrap();
+        let new_shape = &diagram.shapes[1];
+        assert_eq!(new_shape.is_expanded, Some(false));
+        assert_eq!(
+            (new_shape.bounds.width, new_shape.bounds.height),
+            (120.0, 80.0)
+        );
+        assert!(
+            new_shape.bounds.x
+                >= diagram.shapes[0].bounds.x + diagram.shapes[0].bounds.width + 20.0
+                || new_shape.bounds.y
+                    >= diagram.shapes[0].bounds.y + diagram.shapes[0].bounds.height + 20.0
+        );
+        let scope = processcraft_core::queries::choreography_scopes(document)
+            .into_iter()
+            .find(|scope| scope.owner == "Root".parse::<ElementSelector>().unwrap())
+            .unwrap();
+        let sub = scope
+            .activities
+            .iter()
+            .find(|activity| activity.id == new_shape.element)
+            .unwrap();
+        assert!(matches!(
+            sub.details,
+            Some(ChoreographyActivityDetails::Sub { .. })
+        ));
+        assert!(sub.participant_refs.is_empty() && sub.initiating_participant.is_none());
+    }
+
+    #[test]
+    fn new_graph_items_keep_incomplete_references_explicit() {
+        let ChoreographyFlowElement::Activity(task) =
+            new_choreography_element("Task", controller::id("Task"))
+        else {
+            panic!("task")
+        };
+        assert!(task.initiating_participant.is_none());
+        assert!(task.participant_refs.is_empty());
+        let ChoreographyFlowElement::Activity(sub) =
+            new_choreography_element("Sub-choreography", controller::id("Sub"))
+        else {
+            panic!("sub")
+        };
+        assert!(matches!(
+            sub.details,
+            Some(ChoreographyActivityDetails::Sub { .. })
+        ));
+        let ChoreographyFlowElement::SequenceFlow(flow) =
+            new_choreography_element("Sequence flow", controller::id("Flow"))
+        else {
+            panic!("flow")
+        };
+        assert!(flow.source.is_none() && flow.target.is_none());
+    }
+
+    #[test]
+    fn boundary_event_is_an_unattached_draft_with_scoped_activity_choices() {
+        let boundary = new_choreography_element("Boundary event", "Boundary".parse().unwrap());
+        assert!(
+            matches!(&boundary, ChoreographyFlowElement::Event(event) if event.kind == NodeKind::BoundaryEvent && event.details.is_none())
+        );
+        let mut document = crate::controller::blank_document();
+        let mut root = super::super::collaboration::fresh_choreography(
+            [
+                "Root".parse().unwrap(),
+                "Task".parse().unwrap(),
+                "Buyer".parse().unwrap(),
+                "Seller".parse().unwrap(),
+            ],
+            [
+                "Orders".into(),
+                "Submit".into(),
+                "Buyer".into(),
+                "Seller".into(),
+            ],
+        );
+        root.graph.as_mut().unwrap().flow_elements.push(boundary);
+        document.choreographies.push(root);
+        let scope = processcraft_core::queries::choreography_scopes(&document)
+            .into_iter()
+            .find(|scope| scope.owner == "Root".parse::<ElementSelector>().unwrap())
+            .unwrap();
+        assert!(
+            scope
+                .events
+                .iter()
+                .any(|event| event.id == "Boundary".parse::<ElementSelector>().unwrap())
+        );
+        let choices = super::super::event::local_choices(&document, "Activity", Some(&scope.owner));
+        assert_eq!(choices.len(), 1);
+        assert_eq!(choices[0].0, "Task".parse::<ElementSelector>().unwrap());
+        let diagram = &document.diagrams[0];
+        let bounds = vacant_choreography_bounds(diagram, (0.0, 0.0), "Boundary event").unwrap();
+        assert_eq!((bounds.width, bounds.height), (36.0, 36.0));
+    }
+}
+
 #[derive(Default)]
 pub(super) struct ShellState {
     session: String,
@@ -119,6 +426,13 @@ impl ProcessCraft {
                     }
                     if ui.button("Auto layout…").clicked() {
                         self.start_layout(&ctx);
+                        ui.close();
+                    }
+                    if ui
+                        .button("Auto layout selected sub-choreography…")
+                        .clicked()
+                    {
+                        self.start_selected_choreography_layout(&ctx);
                         ui.close();
                     }
                     if ui.button("Element comments…").clicked() {
@@ -664,63 +978,117 @@ impl ProcessCraft {
             .get(self.doc)
             .is_some_and(|d| d.capability.allows_structural_editing());
         widgets::section_label(ui, "BPMN elements");
-        ui.add_enabled_ui(editable, |ui| {
-            ui.checkbox(
-                &mut self.create_anonymous,
-                "New canvas elements without XML ID",
-            )
-            .on_hover_text("Assign an XML ID before exporting referenced elements to BPMN.");
-            ui.horizontal(|ui| {
-                if ui.button("Pool").clicked() {
-                    self.add_pool();
-                }
-                if ui.button("Lane").clicked() {
-                    self.add_lane();
-                }
-            });
-            for (label, kind) in [
-                ("Task", NodeKind::Task),
-                ("User task", NodeKind::UserTask),
-                ("Manual task", NodeKind::ManualTask),
-                ("Start event", NodeKind::StartEvent),
-                ("End event", NodeKind::EndEvent),
-                ("Exclusive gateway", NodeKind::ExclusiveGateway),
-                ("Parallel gateway", NodeKind::ParallelGateway),
-            ] {
-                if palette_item(ui, kind, label).clicked() {
-                    self.add(kind);
-                }
-            }
+        let active_choreography = snap.project.documents.get(self.doc).and_then(|document| {
+            let diagram = document
+                .diagrams
+                .iter()
+                .find(|diagram| self.diagram_id.as_ref().is_none_or(|id| diagram.id == *id))?;
+            processcraft_core::queries::choreography_scopes(document)
+                .into_iter()
+                .find(|scope| scope.owner == diagram.plane)
+                .map(|scope| (document, scope))
         });
-        ui.menu_button("More BPMN elements…", |ui| {
+        if let Some((document, scope)) = active_choreography {
+            ui.label("Choreography scope");
+            if scope.root.graph.is_none() {
+                ui.label("Convert the legacy choreography to a graph from the Diagram menu before adding graph elements.");
+            } else {
+                ui.add_enabled_ui(editable, |ui| {
+                    for kind in [
+                        "Task",
+                        "Sub-choreography",
+                        "Call choreography",
+                        "Start event",
+                        "End event",
+                        "Exclusive gateway",
+                        "Parallel gateway",
+                        "Sequence flow",
+                    ] {
+                        if ui.button(kind).clicked() {
+                            self.add_choreography_element(document, &scope, kind, snap.generation);
+                        }
+                    }
+                    ui.menu_button("More choreography elements…", |ui| {
+                        for kind in [
+                            "Intermediate catch event",
+                            "Intermediate throw event",
+                            "Boundary event",
+                            "Inclusive gateway",
+                            "Complex gateway",
+                            "Event-based gateway",
+                        ] {
+                            if ui.button(kind).clicked() {
+                                self.add_choreography_element(
+                                    document,
+                                    &scope,
+                                    kind,
+                                    snap.generation,
+                                );
+                                ui.close();
+                            }
+                        }
+                    });
+                });
+            }
+        } else {
             ui.add_enabled_ui(editable, |ui| {
+                ui.checkbox(
+                    &mut self.create_anonymous,
+                    "New canvas elements without XML ID",
+                )
+                .on_hover_text("Assign an XML ID before exporting referenced elements to BPMN.");
+                ui.horizontal(|ui| {
+                    if ui.button("Pool").clicked() {
+                        self.add_pool();
+                    }
+                    if ui.button("Lane").clicked() {
+                        self.add_lane();
+                    }
+                });
                 for (label, kind) in [
-                    ("Text annotation", NodeKind::TextAnnotation),
-                    ("Service task", NodeKind::ServiceTask),
-                    ("Send task", NodeKind::SendTask),
-                    ("Receive task", NodeKind::ReceiveTask),
-                    ("Script task", NodeKind::ScriptTask),
-                    ("Business rule task", NodeKind::BusinessRuleTask),
-                    ("Inclusive gateway", NodeKind::InclusiveGateway),
-                    ("Complex gateway", NodeKind::ComplexGateway),
-                    ("Event-based gateway", NodeKind::EventBasedGateway),
-                    ("Intermediate throw event", NodeKind::IntermediateThrowEvent),
-                    ("Intermediate catch event", NodeKind::IntermediateCatchEvent),
-                    (
-                        "Boundary timer on selected activity",
-                        NodeKind::BoundaryEvent,
-                    ),
-                    ("Subprocess", NodeKind::SubProcess),
-                    ("Ad-hoc subprocess", NodeKind::AdHocSubProcess),
-                    ("Transaction", NodeKind::Transaction),
+                    ("Task", NodeKind::Task),
+                    ("User task", NodeKind::UserTask),
+                    ("Manual task", NodeKind::ManualTask),
+                    ("Start event", NodeKind::StartEvent),
+                    ("End event", NodeKind::EndEvent),
+                    ("Exclusive gateway", NodeKind::ExclusiveGateway),
+                    ("Parallel gateway", NodeKind::ParallelGateway),
                 ] {
-                    if ui.button(label).clicked() {
+                    if palette_item(ui, kind, label).clicked() {
                         self.add(kind);
-                        ui.close();
                     }
                 }
             });
-        });
+            ui.menu_button("More BPMN elements…", |ui| {
+                ui.add_enabled_ui(editable, |ui| {
+                    for (label, kind) in [
+                        ("Text annotation", NodeKind::TextAnnotation),
+                        ("Service task", NodeKind::ServiceTask),
+                        ("Send task", NodeKind::SendTask),
+                        ("Receive task", NodeKind::ReceiveTask),
+                        ("Script task", NodeKind::ScriptTask),
+                        ("Business rule task", NodeKind::BusinessRuleTask),
+                        ("Inclusive gateway", NodeKind::InclusiveGateway),
+                        ("Complex gateway", NodeKind::ComplexGateway),
+                        ("Event-based gateway", NodeKind::EventBasedGateway),
+                        ("Intermediate throw event", NodeKind::IntermediateThrowEvent),
+                        ("Intermediate catch event", NodeKind::IntermediateCatchEvent),
+                        (
+                            "Boundary timer on selected activity",
+                            NodeKind::BoundaryEvent,
+                        ),
+                        ("Subprocess", NodeKind::SubProcess),
+                        ("Ad-hoc subprocess", NodeKind::AdHocSubProcess),
+                        ("Transaction", NodeKind::Transaction),
+                    ] {
+                        if ui.button(label).clicked() {
+                            self.add(kind);
+                            ui.close();
+                        }
+                    }
+                });
+            });
+        }
         ui.separator();
         egui::CollapsingHeader::new("Outline").show(ui, |ui| {
             egui::ScrollArea::vertical()
@@ -854,6 +1222,111 @@ impl ProcessCraft {
                 }
             }
             ui.separator();
+            ui.strong("Collaboration and choreography scopes");
+            for root in doc
+                .collaboration
+                .iter()
+                .chain(&doc.additional_collaborations)
+            {
+                let label = format!(
+                    "Collaboration · {}",
+                    root.name.as_deref().unwrap_or("Unnamed")
+                );
+                ui.push_id(root.id.selector(), |ui| {
+                    self.scope_diagram_ui(ui, doc, &root.id.selector(), &label, snap.generation)
+                });
+            }
+            for scope in processcraft_core::queries::choreography_scopes(doc) {
+                let label = if scope.parent.is_none() {
+                    format!(
+                        "{} · {}",
+                        if scope.root.kind.is_some() {
+                            "Global choreography"
+                        } else {
+                            "Choreography"
+                        },
+                        scope.root.name.as_deref().unwrap_or("Unnamed")
+                    )
+                } else {
+                    let name = processcraft_core::queries::choreography_scopes(doc)
+                        .iter()
+                        .flat_map(|parent| parent.activities.iter())
+                        .find(|activity| activity.id == scope.owner)
+                        .and_then(|activity| activity.name.clone())
+                        .unwrap_or_else(|| "Unnamed".to_owned());
+                    format!("Sub-choreography · {name}")
+                };
+                ui.push_id(&scope.owner, |ui| {
+                self.scope_diagram_ui(ui, doc, &scope.owner, &label, snap.generation);
+                ui.menu_button(format!("Browse {label}"), |ui| {
+                    self.graph_data_ui(ui, doc, &scope, doc.capability.allows_structural_editing(), snap.generation);
+                    self.collaboration_artifacts_ui(ui, doc, &super::collaboration::choreography_view(scope.root), snap.generation, Some(&scope));
+                    if scope.parent.is_none() && scope.root.graph.is_none() {
+                        ui.scope(|ui| { ui.set_max_width(280.0); ui.add(egui::Label::new("Convert the legacy task and flow lists into an ordered graph. Their current list order is retained; original interleaving cannot be recovered.").wrap()); });
+                        if ui.button("Convert legacy choreography to graph").clicked() && self.prepare_navigation() {
+                            if self.ctl.session.snapshot().generation != snap.generation {
+                                self.ctl.error = "The model changed; reopen this menu before converting.".into();
+                            } else if self.ctl.mutate_at_generation(snap.generation, vec![Mutation::PromoteChoreographyGraph { document_id: doc.id, choreography_id: scope.root.id.selector() }]) {
+                                ui.close();
+                            }
+                        }
+                    }
+                    if scope.root.graph.is_some() {
+                        ui.menu_button("Add flow element", |ui| {
+                            for kind in ["Task", "Sub-choreography", "Call choreography", "Start event", "End event", "Intermediate catch event", "Intermediate throw event", "Boundary event", "Exclusive gateway", "Parallel gateway", "Inclusive gateway", "Complex gateway", "Event-based gateway", "Sequence flow"] {
+                                if ui.button(kind).clicked() && self.add_choreography_element(doc, &scope, kind, snap.generation) { ui.close(); }
+                            }
+                        });
+                    }
+                    for (index, element) in scope.ordered.iter().enumerate() {
+                        use processcraft_core::queries::ChoreographyElementRef;
+                        let (id, name, kind) = match element {
+                            ChoreographyElementRef::Activity(value) => (&value.id, value.name.as_deref(), "Activity"),
+                            ChoreographyElementRef::Event(value) => (&value.id, value.name.as_deref(), "Event"),
+                            ChoreographyElementRef::Gateway(value) => (&value.id, value.name.as_deref(), "Gateway"),
+                            ChoreographyElementRef::SequenceFlow(value) => (&value.id, value.name.as_deref(), "Sequence flow"),
+                        };
+                        let element_label = super::event::local_choice_label(name, kind, id, index + 1);
+                        if ui.button(&element_label).clicked() && self.prepare_navigation() {
+                            if let Some(diagram) = doc.diagrams.iter().find(|diagram| diagram.plane == scope.owner) {
+                                self.diagram_id = Some(diagram.id.selector());
+                            }
+                            self.process_id = None;
+                            self.select(Some(id.selector()));
+                            ui.close();
+                        }
+                        if scope.root.graph.is_some() {
+                            ui.menu_button(format!("Actions for {element_label}"), |ui| {
+                                let element_id = id.selector();
+                                let mut action = None;
+                                if index > 0 && ui.button("Move earlier").clicked() {
+                                    action = Some(Mutation::ReorderChoreographyFlowElement { document_id: doc.id, choreography_id: scope.root.id.selector(), scope_id: scope.owner.clone(), element_id: element_id.clone(), index: index - 1 });
+                                }
+                                if index + 1 < scope.ordered.len() && ui.button("Move later").clicked() {
+                                    action = Some(Mutation::ReorderChoreographyFlowElement { document_id: doc.id, choreography_id: scope.root.id.selector(), scope_id: scope.owner.clone(), element_id: element_id.clone(), index: index + 1 });
+                                }
+                                for destination in processcraft_core::queries::choreography_scopes(doc).into_iter().filter(|candidate| candidate.root.id == scope.root.id && candidate.owner != scope.owner) {
+                                    let destination_name = if destination.parent.is_none() { scope.root.name.as_deref().unwrap_or("Root").to_owned() } else { processcraft_core::queries::choreography_scopes(doc).iter().flat_map(|s| s.activities.iter()).find(|a| a.id == destination.owner).and_then(|a| a.name.clone()).unwrap_or_else(|| "Unnamed sub-choreography".to_owned()) };
+                                    if ui.button(format!("Move to {destination_name}")).clicked() {
+                                        action = Some(Mutation::ReparentChoreographyFlowElement { document_id: doc.id, choreography_id: scope.root.id.selector(), source_scope_id: scope.owner.clone(), target_scope_id: destination.owner, element_id: element_id.clone(), index: destination.ordered.len() });
+                                    }
+                                }
+                                if ui.button("Delete element").clicked() {
+                                    action = Some(Mutation::DeleteChoreographyFlowElement { document_id: doc.id, choreography_id: scope.root.id.selector(), scope_id: scope.owner.clone(), element_id });
+                                }
+                                if let Some(action) = action && self.prepare_navigation() {
+                                    if self.ctl.session.snapshot().generation != snap.generation {
+                                        self.ctl.error = "The model changed; reopen this menu before editing.".into();
+                                    } else if self.ctl.mutate_at_generation(snap.generation, vec![action]) { ui.close(); }
+                                }
+                            });
+                        }
+                    }
+                    if scope.ordered.is_empty() { ui.label("No flow elements in this scope."); }
+                });
+                });
+            }
+            ui.separator();
             ui.strong("Diagrams");
             for diagram in &doc.diagrams {
                 if ui
@@ -872,6 +1345,130 @@ impl ProcessCraft {
                 }
             }
         }
+    }
+    fn add_choreography_element(
+        &mut self,
+        document: &BpmnDocument,
+        scope: &processcraft_core::queries::ChoreographyScope<'_>,
+        kind: &str,
+        generation: u64,
+    ) -> bool {
+        if !self.prepare_navigation() {
+            return false;
+        }
+        if self.ctl.session.snapshot().generation != generation {
+            self.ctl.error = "The model changed; select this scope again before editing.".into();
+            return false;
+        }
+        let id = controller::id("ChoreographyElement");
+        let mut mutations = vec![Mutation::CreateChoreographyFlowElement {
+            document_id: document.id,
+            choreography_id: scope.root.id.selector(),
+            scope_id: scope.owner.clone(),
+            index: scope.ordered.len(),
+            element: new_choreography_element(kind, id.clone()),
+        }];
+        if kind != "Sequence flow"
+            && let Some(diagram) = document.diagrams.iter().find(|diagram| {
+                self.diagram_id.as_ref().is_none_or(|id| diagram.id == *id)
+                    && diagram.plane == scope.owner
+            })
+        {
+            let Some(bounds) = vacant_choreography_bounds(diagram, self.camera, kind) else {
+                self.ctl.error = "No free position is available in this diagram.".into();
+                return false;
+            };
+            mutations.push(Mutation::CreateShape {
+                document_id: document.id,
+                diagram_id: diagram.id.selector(),
+                shape: Shape {
+                    id: controller::id("Shape").into(),
+                    element: id.clone().into(),
+                    bounds,
+                    di_metadata: None,
+                    is_message_visible: None,
+                    participant_band_kind: None,
+                    choreography_activity_shape: None,
+                    is_expanded: (kind == "Sub-choreography").then_some(false),
+                    is_horizontal: None,
+                    is_marker_visible: None,
+                    label: None,
+                    label_visibility: None,
+                    style: None,
+                },
+            });
+        }
+        if self.ctl.mutate_at_generation(generation, mutations) {
+            self.select(Some(id.into()));
+            true
+        } else {
+            false
+        }
+    }
+    pub(super) fn scope_diagram_ui(
+        &mut self,
+        ui: &mut egui::Ui,
+        doc: &BpmnDocument,
+        owner: &ElementSelector,
+        label: &str,
+        generation: u64,
+    ) {
+        ui.menu_button(label, |ui| {
+            for (index, diagram) in doc
+                .diagrams
+                .iter()
+                .filter(|diagram| &diagram.plane == owner)
+                .enumerate()
+            {
+                let title = super::event::local_choice_label(
+                    diagram.name.as_deref(),
+                    "Diagram",
+                    &diagram.id,
+                    index + 1,
+                );
+                if ui.button(format!("Open {title}")).clicked() && self.prepare_navigation() {
+                    self.diagram_id = Some(diagram.id.selector());
+                    self.process_id = None;
+                    self.select(None);
+                    ui.close();
+                }
+            }
+            if ui
+                .add_enabled(
+                    doc.capability.allows_structural_editing(),
+                    egui::Button::new("Create diagram for this scope"),
+                )
+                .clicked()
+                && self.prepare_navigation()
+            {
+                let id = controller::id("Diagram");
+                let diagram = Diagram {
+                    id: id.clone().into(),
+                    plane_id: controller::id("Plane").into(),
+                    plane: owner.clone(),
+                    name: Some(label.to_owned()),
+                    documentation: None,
+                    resolution: None,
+                    label_styles: Vec::new(),
+                    plane_metadata: None,
+                    plane_order: None,
+                    shapes: Vec::new(),
+                    edges: Vec::new(),
+                };
+                if self.ctl.mutate_at_generation(
+                    generation,
+                    vec![Mutation::CreateDiagram {
+                        document_id: doc.id,
+                        diagram,
+                    }],
+                ) {
+                    self.diagram_id = Some(id.into());
+                    self.process_id = None;
+                    self.select(None);
+                    ui.close();
+                }
+            }
+        });
     }
     fn problems_ui(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {

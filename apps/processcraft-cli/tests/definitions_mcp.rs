@@ -14,6 +14,152 @@ impl Drop for Server {
 }
 
 #[test]
+fn choreography_graph_commands_use_stdio_generation_pages_and_history() {
+    use processcraft_core::ids::ElementIdentity;
+    let mut server = Server(
+        Command::new(env!("CARGO_BIN_EXE_processcraft-cli"))
+            .args(["mcp", "--new", "Choreography graph"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap(),
+    );
+    let mut input = server.0.stdin.take().unwrap();
+    let mut output = BufReader::new(server.0.stdout.take().unwrap());
+    let mut call = |value: Value| {
+        writeln!(input, "{value}").unwrap();
+        input.flush().unwrap();
+        let mut line = String::new();
+        assert!(output.read_line(&mut line).unwrap() > 0);
+        serde_json::from_str::<Value>(&line).unwrap()
+    };
+    assert!(call(json!({"jsonrpc":"2.0","id":0,"method":"initialize","params":{
+        "protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"choreography-graph-test","version":"1"}
+    }}))["result"].is_object());
+    let inspect = |id| json!({"jsonrpc":"2.0","id":id,"method":"tools/call","params":{"name":"inspect","arguments":{}}});
+    let initial = call(inspect(1));
+    let session = initial["result"]["structuredContent"]["sessionId"].clone();
+    let envelope = |id, generation: Value, request: Value| {
+        json!({
+            "jsonrpc":"2.0","id":id,"method":"tools/call","params":{"name":"apply","arguments":{
+                "sessionId":session,"requestId":format!("graph-{id}"),"expectedGeneration":generation,"request":request
+            }}
+        })
+    };
+    let mut document = BpmnDocument::new("Graph".into(), "Definitions".parse().unwrap());
+    document.choreographies.push(serde_json::from_value(json!({
+        "id":"Choreography","name":null,"participants":[],"message_flows":[],"activities":[],"sequence_flows":[]
+    })).unwrap());
+    let document_id = document.id;
+    let created = call(envelope(
+        2,
+        json!(0),
+        json!({"type":"batch","mutations":[{"type":"createDocument","document":document}]}),
+    ));
+    assert_eq!(
+        created["result"]["structuredContent"]["ok"], true,
+        "{created}"
+    );
+    let legacy = call(inspect(3))["result"]["structuredContent"].clone();
+    let promotion = json!({"type":"batch","mutations":[{"type":"promoteChoreographyGraph","document_id":document_id,"choreography_id":"Choreography"}]});
+    let rejected = call(envelope(4, Value::Null, promotion.clone()));
+    assert_ne!(
+        rejected["result"]["structuredContent"]["ok"], true,
+        "{rejected}"
+    );
+    assert_eq!(
+        call(inspect(5))["result"]["structuredContent"]["contentId"],
+        legacy["contentId"]
+    );
+    let promoted = call(envelope(6, json!(1), promotion));
+    assert_eq!(
+        promoted["result"]["structuredContent"]["ok"], true,
+        "{promoted}"
+    );
+    let identity = ElementIdentity::anonymous();
+    let element = json!({"type":"event","value":{
+        "id":identity,"name":"Start","documentation":"","kind":"StartEvent","owner":"","contact":""
+    }});
+    let create = json!({"type":"batch","mutations":[{
+        "type":"createChoreographyFlowElement","document_id":document_id,"choreography_id":"Choreography",
+        "scope_id":"Choreography","index":0,"element":element
+    }]});
+    let changed = call(envelope(7, json!(2), create.clone()));
+    assert_eq!(
+        changed["result"]["structuredContent"]["ok"], true,
+        "{changed}"
+    );
+    let after = call(inspect(8))["result"]["structuredContent"].clone();
+    let stale = call(envelope(9, json!(2), create));
+    assert_ne!(stale["result"]["structuredContent"]["ok"], true, "{stale}");
+    assert_eq!(
+        call(inspect(10))["result"]["structuredContent"]["contentId"],
+        after["contentId"]
+    );
+    let mut offset = 0;
+    let mut rows = std::collections::BTreeMap::new();
+    loop {
+        let response = call(
+            json!({"jsonrpc":"2.0","id":100+offset,"method":"tools/call","params":{"name":"query","arguments":{
+                "kind":"model","document_id":document_id,"offset":offset,"limit":3
+            }}}),
+        );
+        let page = &response["result"]["structuredContent"];
+        assert_eq!(page["generation"], 3, "{response}");
+        assert_eq!(page["contentId"], after["contentId"]);
+        let items = page["items"].as_array().unwrap();
+        assert!(items.len() <= 3);
+        for row in items {
+            assert!(
+                rows.insert(
+                    row["path"].as_str().unwrap().to_owned(),
+                    row["value"].clone()
+                )
+                .is_none()
+            );
+        }
+        if let Some(next) = page["nextOffset"].as_u64() {
+            assert!(next as usize > offset);
+            offset = next as usize;
+        } else {
+            assert_eq!(page["total"], rows.len());
+            break;
+        }
+    }
+    assert_eq!(
+        rows["/choreographies/0/graph/flow_elements/0/value/id/native_id"],
+        serde_json::to_value(identity).unwrap()["native_id"]
+    );
+    assert_eq!(
+        rows["/choreographies/0/graph/flow_elements/0/value/id/xml_id"],
+        Value::Null
+    );
+    // Undo the insertion and then the promotion; legacy native identity is exact.
+    for (id, generation, request) in [(2000, 3, "undo"), (2001, 4, "undo")] {
+        let response = call(envelope(id, json!(generation), json!({"type":request})));
+        assert_eq!(
+            response["result"]["structuredContent"]["ok"], true,
+            "{response}"
+        );
+    }
+    assert_eq!(
+        call(inspect(2002))["result"]["structuredContent"]["contentId"],
+        legacy["contentId"]
+    );
+    for (id, generation) in [(2003, 5), (2004, 6)] {
+        let response = call(envelope(id, json!(generation), json!({"type":"redo"})));
+        assert_eq!(
+            response["result"]["structuredContent"]["ok"], true,
+            "{response}"
+        );
+    }
+    assert_eq!(
+        call(inspect(2005))["result"]["structuredContent"]["contentId"],
+        after["contentId"]
+    );
+}
+
+#[test]
 fn activity_commands_use_real_stdio_pages_and_exact_history() {
     use processcraft_core::{
         bpmn_activity::{CallableMetadata, GlobalTask, GlobalTaskKind},

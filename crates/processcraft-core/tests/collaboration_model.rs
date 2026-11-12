@@ -289,6 +289,8 @@ fn initialize_root_order_matches_legacy_writer_family_order() {
         base: None,
     });
     doc.choreographies.push(Choreography {
+        kind: None,
+        graph: None,
         id: "choreography".parse().unwrap(),
         base: None,
         extras: None,

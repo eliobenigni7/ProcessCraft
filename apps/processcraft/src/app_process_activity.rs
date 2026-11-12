@@ -56,8 +56,8 @@ fn correlation_keys(document: &BpmnDocument) -> Vec<(ElementSelector, String)> {
             }
         }
     }
-    for choreography in &document.choreographies {
-        for activity in &choreography.activities {
+    for scope in processcraft_core::queries::choreography_scopes(document) {
+        for activity in scope.activities {
             for key in &activity.correlation_keys {
                 add(key);
             }

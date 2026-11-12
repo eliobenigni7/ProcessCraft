@@ -675,10 +675,15 @@ fn activity_qname_text_reference(parent: Option<&str>, element: &str) -> bool {
             Some("conversation" | "subConversation" | "callConversation"),
             "participantRef" | "messageFlowRef",
         )
+        | (Some("choreographyTask" | "subChoreography" | "callChoreography"), "participantRef")
+        | (Some("choreographyTask"), "messageFlowRef")
         | (Some("partnerEntity" | "partnerRole"), "participantRef")
-        | (Some("collaboration" | "globalConversation" | "choreography"), "choreographyRef") => {
-            true
-        }
+        | (
+            Some(
+                "collaboration" | "globalConversation" | "choreography" | "globalChoreographyTask",
+            ),
+            "choreographyRef",
+        ) => true,
         (Some(parent), "categoryValueRef") => flow_element_name(parent),
         _ => false,
     }
@@ -747,6 +752,14 @@ fn known_reference(ns: Option<&str>, element: &str, attr: &str) -> bool {
                 "sourceRef" | "targetRef"
             ) | ("conversationLink", "sourceRef" | "targetRef")
                 | ("callConversation", "calledCollaborationRef")
+                | (
+                    "choreographyTask"
+                        | "subChoreography"
+                        | "callChoreography"
+                        | "globalChoreographyTask",
+                    "initiatingParticipantRef"
+                )
+                | ("callChoreography", "calledChoreographyRef")
                 | (
                     "conversationAssociation",
                     "innerConversationNodeRef" | "outerConversationNodeRef"

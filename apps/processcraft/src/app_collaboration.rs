@@ -1,6 +1,63 @@
 use super::*;
 use processcraft_core::bpmn_collaboration::{ConversationKind, ConversationLink, ConversationNode};
 
+pub(super) fn fresh_choreography(
+    ids: [XmlId; 4],
+    names: [String; 4],
+) -> processcraft_core::bpmn_collaboration::Choreography {
+    let [root, task, first, second] = ids;
+    let [root_name, task_name, first_name, second_name] = names;
+    use processcraft_core::bpmn_activity::ModelReference;
+    use processcraft_core::bpmn_collaboration::{
+        Choreography, ChoreographyActivity, ChoreographyFlowElement, ChoreographyGraph,
+    };
+    let participant = |id: XmlId, name: String| Participant {
+        id: id.into(),
+        name: Some(name),
+        interface_refs: vec![],
+        endpoint_refs: vec![],
+        multiplicity: None,
+        base: None,
+        process: None,
+    };
+    let activity = ChoreographyActivity {
+        id: task.into(),
+        name: Some(task_name),
+        loop_type: None,
+        details: None,
+        correlation_keys: vec![],
+        flow_metadata: None,
+        base: None,
+        participant_refs: vec![
+            ModelReference::Local(first.clone().into()),
+            ModelReference::Local(second.clone().into()),
+        ],
+        initiating_participant: Some(ModelReference::Local(first.clone().into())),
+        message_flow_refs: vec![],
+    };
+    Choreography {
+        kind: None,
+        graph: Some(ChoreographyGraph {
+            flow_elements: vec![ChoreographyFlowElement::Activity(Box::new(activity))],
+            ..Default::default()
+        }),
+        extras: None,
+        conversation_nodes: vec![],
+        conversation_links: vec![],
+        correlation_keys: vec![],
+        base: None,
+        id: root.into(),
+        name: Some(root_name),
+        participants: vec![
+            participant(first, first_name),
+            participant(second, second_name),
+        ],
+        message_flows: vec![],
+        activities: vec![],
+        sequence_flows: vec![],
+    }
+}
+
 pub(super) fn update_root(document: &BpmnDocument, root: Collaboration) -> Mutation {
     if let Some(existing) = document
         .choreographies
@@ -364,7 +421,7 @@ impl ProcessCraft {
         self.partner_catalog_ui(ui, doc, snap.generation);
         self.collaboration_data(ui, doc);
         self.collaboration_groups(ui, doc);
-        self.collaboration_choreography(ui, doc);
+        self.collaboration_choreography(ui, doc, snap.generation);
         ui.separator();
         let roots: Vec<_> = doc
             .collaboration
@@ -447,7 +504,7 @@ impl ProcessCraft {
         self.collaboration_participants_ui(ui, doc, collaboration, snap.generation);
         self.collaboration_associations_ui(ui, doc, collaboration, snap.generation);
         self.collaboration_connections_ui(ui, doc, collaboration, snap.generation);
-        self.collaboration_artifacts_ui(ui, doc, collaboration, snap.generation);
+        self.collaboration_artifacts_ui(ui, doc, collaboration, snap.generation, None);
         ui.label("Conversations");
         if collaboration.kind.is_some() {
             ui.label("Global conversations do not contain conversation nodes; such entries must be removed before BPMN export.");
@@ -1509,7 +1566,12 @@ impl ProcessCraft {
             }
         });
     }
-    fn collaboration_choreography(&mut self, ui: &mut egui::Ui, doc: &BpmnDocument) {
+    fn collaboration_choreography(
+        &mut self,
+        ui: &mut egui::Ui,
+        doc: &BpmnDocument,
+        generation: u64,
+    ) {
         ui.collapsing("Choreography tasks", |ui| {
             ui.collapsing("New choreography", |ui| {
                 let mut changed = false;
@@ -1530,6 +1592,21 @@ impl ProcessCraft {
                     self.collaboration.document = Some(doc.id);
                 }
                 ui.horizontal(|ui| {
+                    if ui.button("Create global choreography and diagram").clicked() {
+                        let root = controller::id("GlobalChoreography");
+                        let diagram = controller::id("ChoreographyDiagram");
+                        let choreography = processcraft_core::bpmn_collaboration::Choreography {
+                            kind: Some(processcraft_core::bpmn_collaboration::ChoreographyRootKind::Global { initiating_participant_ref: None }),
+                            graph: Some(Default::default()), extras: None, conversation_nodes: vec![], conversation_links: vec![], correlation_keys: vec![], base: None,
+                            id: root.clone().into(), name: if self.collaboration.root_name.is_empty() { None } else { Some(self.collaboration.root_name.clone()) }, participants: vec![], message_flows: vec![], activities: vec![], sequence_flows: vec![],
+                        };
+                        let diagram_value = Diagram { plane_metadata: None, plane_order: None, documentation: None, label_styles: Vec::new(), resolution: None, name: None, id: diagram.clone().into(), plane_id: controller::id("ChoreographyPlane").into(), plane: root.clone().into(), shapes: vec![], edges: vec![] };
+                        if self.commit_draft() && self.ctl.mutate(vec![Mutation::CreateChoreography { document_id: doc.id, choreography }, Mutation::CreateDiagram { document_id: doc.id, diagram: diagram_value }]) {
+                            self.diagram_id = Some(diagram.into()); self.process_id = None;
+                            self.collaboration.root_name.clear(); self.collaboration.root_first.clear(); self.collaboration.root_second.clear(); self.collaboration.root_task.clear(); self.collaboration.root_dirty = false;
+                            self.collaboration.choreography_id = Some(root.into());
+                        }
+                    }
                     if ui.button("Create choreography and diagram").clicked() {
                         if self.collaboration.root_name.trim().is_empty()
                             || self.collaboration.root_first.trim().is_empty()
@@ -1545,52 +1622,10 @@ impl ProcessCraft {
                         let task = controller::id("ChoreographyTask");
                         let first = controller::id("Participant");
                         let second = controller::id("Participant");
-                        let choreography = processcraft_core::bpmn_collaboration::Choreography {
-                            extras: None,
-                            conversation_nodes: vec![],
-                            conversation_links: vec![],
-                            correlation_keys: vec![],
-                            base: None,
-                            id: root.clone().into(),
-                            name: Some(self.collaboration.root_name.clone()),
-                            participants: vec![
-                                Participant {
-                                    interface_refs: vec![],
-                                    endpoint_refs: vec![],
-                                    multiplicity: None,
-                                    base: None,
-                                    id: first.clone().into(),
-                                    name: Some(self.collaboration.root_first.clone()),
-                                    process: None,
-                                },
-                                Participant {
-                                    interface_refs: vec![],
-                                    endpoint_refs: vec![],
-                                    multiplicity: None,
-                                    base: None,
-                                    id: second.clone().into(),
-                                    name: Some(self.collaboration.root_second.clone()),
-                                    process: None,
-                                },
-                            ],
-                            message_flows: vec![],
-                            activities: vec![
-                                processcraft_core::bpmn_collaboration::ChoreographyActivity {
-                                    correlation_keys: Vec::new(),
-                                    flow_metadata: None,
-                                    base: None,
-                                    id: task.clone().into(),
-                                    name: Some(self.collaboration.root_task.clone()),
-                                    participant_refs: vec![
-                                        first.clone().into(),
-                                        second.clone().into(),
-                                    ],
-                                    initiating_participant: first.clone().into(),
-                                    message_flow_refs: vec![],
-                                },
-                            ],
-                            sequence_flows: vec![],
-                        };
+                        let choreography = fresh_choreography(
+                            [root.clone(), task.clone(), first.clone(), second.clone()],
+                            [self.collaboration.root_name.clone(), self.collaboration.root_task.clone(), self.collaboration.root_first.clone(), self.collaboration.root_second.clone()],
+                        );
                         let diagram_value = Diagram {
                             plane_metadata: None,
                             plane_order: None,
@@ -1615,7 +1650,7 @@ impl ProcessCraft {
                             edges: vec![],
                         };
                         if self.commit_draft()
-                            && self.ctl.mutate(vec![
+                            && self.ctl.mutate_at_generation(generation, vec![
                                 Mutation::CreateChoreography {
                                     document_id: doc.id,
                                     choreography,
@@ -1692,7 +1727,8 @@ impl ProcessCraft {
             else {
                 return;
             };
-            for activity in &choreo.activities {
+            let scope = processcraft_core::queries::choreography_scopes(doc).into_iter().find(|scope| scope.owner == choreo.id.selector());
+            for activity in scope.iter().flat_map(|scope| scope.activities.iter()) {
                 ui.label(activity.name.as_deref().unwrap_or("Unnamed"))
                     .on_hover_text(
                         activity
@@ -1777,20 +1813,21 @@ impl ProcessCraft {
                         return;
                     }
                     let node_id = controller::id("ChoreographyTask");
-                    let mut mutations = vec![Mutation::CreateChoreographyActivity {
-                        document_id: doc.id,
-                        choreography_id: choreo.id.selector(),
-                        activity: processcraft_core::bpmn_collaboration::ChoreographyActivity {
+                    let activity = processcraft_core::bpmn_collaboration::ChoreographyActivity {
+                            loop_type: None,
+                            details: None,
                             correlation_keys: Vec::new(),
                             flow_metadata: None,
                             base: None,
                             id: node_id.clone().into(),
                             name: Some(self.collaboration.choreography_name.clone()),
-                            participant_refs: vec![first.clone(), second.clone()],
-                            initiating_participant: first.clone(),
+                            participant_refs: vec![first.clone().into(), second.clone().into()],
+                            initiating_participant: Some(first.clone().into()),
                             message_flow_refs: vec![],
-                        },
-                    }];
+                        };
+                    let mut mutations = vec![if let Some(graph) = &choreo.graph {
+                        Mutation::CreateChoreographyFlowElement { document_id: doc.id, choreography_id: choreo.id.selector(), scope_id: choreo.id.selector(), index: graph.flow_elements.len(), element: processcraft_core::bpmn_collaboration::ChoreographyFlowElement::Activity(Box::new(activity)) }
+                    } else { Mutation::CreateChoreographyActivity { document_id: doc.id, choreography_id: choreo.id.selector(), activity } }];
                     let Some(diagram) = doc.diagrams.iter().find(|d| {
                         self.diagram_id.as_ref().is_none_or(|id| &d.id == id)
                             && d.plane == choreo.id
@@ -1805,7 +1842,7 @@ impl ProcessCraft {
                         second,
                         Bounds {
                             x: self.camera.0 + 120.0,
-                            y: self.camera.1 + 80.0 + choreo.activities.len() as f64 * 110.0,
+                            y: self.camera.1 + 80.0 + scope.as_ref().map_or(0, |scope| scope.activities.len()) as f64 * 110.0,
                             width: 160.0,
                             height: 100.0,
                         },
@@ -1816,7 +1853,7 @@ impl ProcessCraft {
                             shape,
                         });
                     }
-                    if self.commit_draft() && self.ctl.mutate(mutations) {
+                    if self.commit_draft() && self.ctl.mutate_at_generation(generation, mutations) {
                         self.collaboration.choreography_name.clear();
                         self.collaboration.choreography_first = None;
                         self.collaboration.choreography_second = None;
@@ -1839,6 +1876,87 @@ impl ProcessCraft {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn fresh_choreography_graph_survives_native_round_trip_and_history() {
+        use processcraft_core::bpmn_collaboration::ChoreographyFlowElement;
+        let mut app = ProcessCraft::default();
+        let before = app.ctl.session.snapshot();
+        let document_id = before.project.documents[0].id;
+        let choreography = fresh_choreography(
+            [
+                "Root".parse().unwrap(),
+                "Task".parse().unwrap(),
+                "Buyer".parse().unwrap(),
+                "Seller".parse().unwrap(),
+            ],
+            [
+                "Orders".into(),
+                "Submit".into(),
+                "Buyer".into(),
+                "Seller".into(),
+            ],
+        );
+        assert!(choreography.activities.is_empty() && choreography.sequence_flows.is_empty());
+        assert!(
+            matches!(&choreography.graph.as_ref().unwrap().flow_elements[..], [ChoreographyFlowElement::Activity(activity)] if activity.name.as_deref() == Some("Submit"))
+        );
+        let diagram = Diagram {
+            id: "Diagram".parse().unwrap(),
+            plane_id: "Plane".parse().unwrap(),
+            plane: "Root".parse().unwrap(),
+            name: None,
+            documentation: None,
+            resolution: None,
+            label_styles: vec![],
+            plane_metadata: None,
+            plane_order: None,
+            shapes: choreography_task_shapes(
+                "Task".parse().unwrap(),
+                "Buyer".parse().unwrap(),
+                "Seller".parse().unwrap(),
+                Bounds {
+                    x: 80.0,
+                    y: 80.0,
+                    width: 180.0,
+                    height: 100.0,
+                },
+            ),
+            edges: vec![],
+        };
+        assert!(app.ctl.mutate_at_generation(
+            before.generation,
+            vec![
+                Mutation::CreateChoreography {
+                    document_id,
+                    choreography
+                },
+                Mutation::CreateDiagram {
+                    document_id,
+                    diagram
+                }
+            ]
+        ));
+        let created = app.ctl.session.snapshot();
+        let native = processcraft_io::native::write_bytes(&created.project).unwrap();
+        let loaded = processcraft_io::native::load_bytes(&native).unwrap();
+        assert_eq!(
+            loaded.project.content_identity().unwrap(),
+            created.project.content_identity().unwrap()
+        );
+        assert_eq!(
+            loaded.project.documents[0].choreographies[0]
+                .graph
+                .as_ref()
+                .unwrap()
+                .flow_elements
+                .len(),
+            1
+        );
+        app.history(Request::Undo);
+        assert_eq!(app.ctl.session.snapshot().content_id, before.content_id);
+        app.history(Request::Redo);
+        assert_eq!(app.ctl.session.snapshot().content_id, created.content_id);
+    }
     #[test]
     fn created_choreography_bands_round_trip_and_delete_by_owner() {
         use processcraft_core::bpmn_collaboration::{Choreography, ChoreographyActivity};
@@ -1871,6 +1989,8 @@ mod tests {
             message_ref: None,
         };
         let choreography = Choreography {
+            kind: None,
+            graph: None,
             extras: None,
             conversation_nodes: vec![],
             conversation_links: vec![],
@@ -1881,14 +2001,29 @@ mod tests {
             participants: vec![participant("Buyer"), participant("Seller")],
             message_flows: vec![message],
             activities: vec![ChoreographyActivity {
+                loop_type: None,
+                details: None,
                 id: "Task".parse().unwrap(),
                 name: Some("Order".into()),
                 base: None,
                 flow_metadata: None,
                 correlation_keys: vec![],
-                participant_refs: vec!["Buyer".parse().unwrap(), "Seller".parse().unwrap()],
-                initiating_participant: "Buyer".parse().unwrap(),
-                message_flow_refs: vec!["MessageFlow".parse().unwrap()],
+                participant_refs: vec![
+                    processcraft_core::bpmn_activity::ModelReference::Local(
+                        "Buyer".parse().unwrap(),
+                    ),
+                    processcraft_core::bpmn_activity::ModelReference::Local(
+                        "Seller".parse().unwrap(),
+                    ),
+                ],
+                initiating_participant: Some(
+                    processcraft_core::bpmn_activity::ModelReference::Local(
+                        "Buyer".parse().unwrap(),
+                    ),
+                ),
+                message_flow_refs: vec![processcraft_core::bpmn_activity::ModelReference::Local(
+                    "MessageFlow".parse().unwrap(),
+                )],
             }],
             sequence_flows: vec![],
         };
@@ -2078,6 +2213,8 @@ mod collaboration_scope_tests {
         let mut app = ProcessCraft::default();
         let document_id = app.ctl.session.snapshot().project.documents[0].id;
         let choreography = Choreography {
+            kind: None,
+            graph: None,
             id: "Choreography".parse().unwrap(),
             name: None,
             base: None,

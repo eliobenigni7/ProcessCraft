@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:t="urn:subplane" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="defs" targetNamespace="urn:subplane">
+  <choreography id="root">
+    <participant id="buyer"/><participant id="seller"/>
+    <subChoreography id="outer" initiatingParticipantRef="t:buyer">
+      <participantRef>t:buyer</participantRef><participantRef>t:seller</participantRef>
+      <startEvent id="start"/>
+      <subChoreography id="inner" initiatingParticipantRef="t:buyer">
+        <participantRef>t:buyer</participantRef><participantRef>t:seller</participantRef>
+        <startEvent id="innerStart"/><endEvent id="innerEnd"/>
+        <sequenceFlow id="innerFlow" sourceRef="innerStart" targetRef="innerEnd"/>
+      </subChoreography>
+      <sequenceFlow id="outerFlow" sourceRef="start" targetRef="inner"/>
+    </subChoreography>
+    <subChoreography id="sibling" initiatingParticipantRef="t:buyer"><participantRef>t:buyer</participantRef><participantRef>t:seller</participantRef></subChoreography>
+  </choreography>
+  <bpmndi:BPMNDiagram id="diagram"><bpmndi:BPMNPlane id="plane" bpmnElement="t:outer">
+    <bpmndi:BPMNShape id="startShape" bpmnElement="t:start"><dc:Bounds x="20" y="80" width="36" height="36"/></bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="innerShape" bpmnElement="t:inner" isExpanded="true"><dc:Bounds x="120" y="20" width="280" height="160"/></bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="buyerBand" bpmnElement="t:buyer" participantBandKind="top_initiating" choreographyActivityShape="t:innerShape"><dc:Bounds x="120" y="20" width="280" height="20"/></bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="sellerBand" bpmnElement="t:seller" participantBandKind="bottom_non_initiating" choreographyActivityShape="t:innerShape"><dc:Bounds x="120" y="160" width="280" height="20"/></bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="innerStartShape" bpmnElement="t:innerStart"><dc:Bounds x="150" y="80" width="36" height="36"/></bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="innerEndShape" bpmnElement="t:innerEnd"><dc:Bounds x="330" y="80" width="36" height="36"/></bpmndi:BPMNShape>
+    <bpmndi:BPMNEdge id="innerFlowEdge" bpmnElement="t:innerFlow"><di:waypoint x="186" y="98"/><di:waypoint x="330" y="98"/></bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="outerFlowEdge" bpmnElement="t:outerFlow"><di:waypoint x="56" y="98"/><di:waypoint x="120" y="98"/></bpmndi:BPMNEdge>
+  </bpmndi:BPMNPlane></bpmndi:BPMNDiagram>
+</definitions>

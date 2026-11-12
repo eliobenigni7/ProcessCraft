@@ -14,7 +14,7 @@ fn required<T>(value: &Option<T>, path: &str) -> Result<(), String> {
     })
 }
 
-fn flow(value: &Flow, path: &str) -> Result<(), String> {
+pub(crate) fn flow(value: &Flow, path: &str) -> Result<(), String> {
     required(&value.source, &format!("{path}.sourceRef"))?;
     required(&value.target, &format!("{path}.targetRef"))?;
     if value.kind == FlowKind::Sequence
@@ -80,7 +80,11 @@ fn extras(value: Option<&CollaborationExtras>, path: &str) -> Result<(), String>
         required(&association.inner, &format!("{path}.innerMessageFlowRef"))?;
         required(&association.outer, &format!("{path}.outerMessageFlowRef"))?;
     }
-    for (index, artifact) in value.artifacts.iter().enumerate() {
+    artifacts(&value.artifacts, path)
+}
+
+pub(crate) fn artifacts(values: &[CollaborationArtifact], path: &str) -> Result<(), String> {
+    for (index, artifact) in values.iter().enumerate() {
         let path = format!("{path}.artifacts[{index}]");
         match artifact {
             CollaborationArtifact::Association(association) => {
@@ -100,7 +104,7 @@ fn extras(value: Option<&CollaborationExtras>, path: &str) -> Result<(), String>
     Ok(())
 }
 
-fn participant_association(
+pub(crate) fn participant_association(
     association: &processcraft_core::bpmn_collaboration::ParticipantAssociation,
     path: &str,
 ) -> Result<(), String> {

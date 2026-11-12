@@ -133,7 +133,13 @@ impl ProcessCraft {
             .map_or_else(Vec::new, |(_, c, a, _)| {
                 c.participants
                     .iter()
-                    .filter(|p| a.participant_refs.contains(&p.id.selector()))
+                    .filter(|p| {
+                        a.participant_refs.contains(
+                            &processcraft_core::bpmn_activity::ModelReference::Local(
+                                p.id.selector(),
+                            ),
+                        )
+                    })
                     .collect::<Vec<_>>()
             });
         let old_participant = draft.participant.clone();
@@ -171,10 +177,12 @@ impl ProcessCraft {
             .as_ref()
             .and_then(|id| owners.iter().find(|(shape, _, _, _)| shape.id == *id))
             .and_then(|(_, _, activity, _)| {
-                draft
-                    .participant
-                    .as_ref()
-                    .map(|participant| activity.initiating_participant == *participant)
+                draft.participant.as_ref().map(|participant| {
+                    activity.initiating_participant
+                        == Some(processcraft_core::bpmn_activity::ModelReference::Local(
+                            participant.clone(),
+                        ))
+                })
             });
         egui::ComboBox::from_label("Band position and role")
             .selected_text(match draft.kind {
@@ -285,6 +293,8 @@ mod tests {
             message_ref: None,
         };
         let choreography = Choreography {
+            kind: None,
+            graph: None,
             extras: None,
             conversation_nodes: vec![],
             conversation_links: vec![],
@@ -295,14 +305,29 @@ mod tests {
             participants: vec![participant("Buyer"), participant("Seller")],
             message_flows: vec![message],
             activities: vec![ChoreographyActivity {
+                loop_type: None,
+                details: None,
                 id: "Task".parse().unwrap(),
                 name: Some("Order".into()),
                 base: None,
                 flow_metadata: None,
                 correlation_keys: vec![],
-                participant_refs: vec!["Buyer".parse().unwrap(), "Seller".parse().unwrap()],
-                initiating_participant: "Buyer".parse().unwrap(),
-                message_flow_refs: vec!["MessageFlow".parse().unwrap()],
+                participant_refs: vec![
+                    processcraft_core::bpmn_activity::ModelReference::Local(
+                        "Buyer".parse().unwrap(),
+                    ),
+                    processcraft_core::bpmn_activity::ModelReference::Local(
+                        "Seller".parse().unwrap(),
+                    ),
+                ],
+                initiating_participant: Some(
+                    processcraft_core::bpmn_activity::ModelReference::Local(
+                        "Buyer".parse().unwrap(),
+                    ),
+                ),
+                message_flow_refs: vec![processcraft_core::bpmn_activity::ModelReference::Local(
+                    "MessageFlow".parse().unwrap(),
+                )],
             }],
             sequence_flows: vec![],
         };

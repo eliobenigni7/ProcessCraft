@@ -490,6 +490,114 @@ fn normalize_legacy_root_order(value: &mut Value) -> Result<(), String> {
     }
     Ok(())
 }
+// Graph mode is native authoring state, not an XML wrapper. Canonicalize the
+// legacy activity-then-flow writer order before collecting native owner paths;
+// otherwise an anonymous owner gets a different path merely on reimport. Never
+// sort the graph: its interleaving is observable XML content.
+fn normalize_choreography_graphs(value: &mut Value) -> Result<(), String> {
+    let Some(roots) = value
+        .get_mut("choreographies")
+        .and_then(Value::as_array_mut)
+    else {
+        return Ok(());
+    };
+    for root in roots {
+        let root = root.as_object_mut().ok_or("Invalid choreography root")?;
+        let mut legacy = Vec::new();
+        for (field, kind) in [
+            ("activities", "activity"),
+            ("sequence_flows", "sequenceFlow"),
+        ] {
+            let elements = root
+                .remove(field)
+                .ok_or("Missing legacy choreography collection")?;
+            let elements = elements
+                .as_array()
+                .ok_or("Invalid choreography collection")?;
+            legacy.extend(
+                elements
+                    .iter()
+                    .map(|element| json!({"type": kind, "value": element})),
+            );
+        }
+        if root.get("graph").is_some_and(|graph| !graph.is_null()) {
+            if !legacy.is_empty() {
+                return Err("Choreography has competing graph and legacy content".into());
+            }
+        } else {
+            root.insert("graph".into(), json!({"flow_elements": legacy}));
+        }
+        normalize_graph_association_storage(
+            root.get_mut("graph").ok_or("Missing choreography graph")?,
+        )?;
+    }
+    Ok(())
+}
+
+fn normalize_graph_association_storage(graph: &mut Value) -> Result<(), String> {
+    let object = graph.as_object_mut().ok_or("Invalid choreography graph")?;
+    let elements = object
+        .get_mut("flow_elements")
+        .and_then(Value::as_array_mut)
+        .ok_or("Missing choreography flow elements")?;
+    let mut owners = Vec::new();
+    for element in elements {
+        match element.get("type").and_then(Value::as_str) {
+            Some("event") => {
+                let identity = element
+                    .get("value")
+                    .and_then(|node| node.get("id"))
+                    .ok_or("Missing choreography event identity")?;
+                owners.push(
+                    serde_json::from_value::<ElementIdentity>(identity.clone())
+                        .map_err(|error| format!("Invalid choreography event identity: {error}"))?,
+                );
+            }
+            Some("activity") => {
+                if let Some(details) = element
+                    .get_mut("value")
+                    .and_then(|activity| activity.get_mut("details"))
+                    && details.get("type").and_then(Value::as_str) == Some("sub")
+                {
+                    normalize_graph_association_storage(
+                        details
+                            .get_mut("value")
+                            .and_then(|payload| payload.get_mut("graph"))
+                            .ok_or("Missing SubChoreography graph")?,
+                    )?;
+                }
+            }
+            _ => {}
+        }
+    }
+    if let Some(associations) = object.get_mut("data_associations") {
+        let associations = associations
+            .as_array_mut()
+            .ok_or("Invalid choreography data associations")?;
+        let mut ordered = Vec::with_capacity(associations.len());
+        for association in std::mem::take(associations) {
+            let owner = serde_json::from_value::<ElementSelector>(
+                association
+                    .get("owner")
+                    .ok_or("Missing choreography data association owner")?
+                    .clone(),
+            )
+            .map_err(|error| format!("Invalid choreography data association owner: {error}"))?;
+            let index = owners
+                .iter()
+                .position(|identity| identity == &owner)
+                .ok_or("Choreography data association has no event owner")?;
+            ordered.push((index, association));
+        }
+        // Storage interleaving across owners has no XML representation. Stable
+        // sorting retains the actual child order inside each event, including
+        // anonymous association identity paths, assignments and sourceRef order.
+        ordered.sort_by_key(|(index, _)| *index);
+        *associations = ordered.into_iter().map(|(_, value)| value).collect();
+    }
+    Ok(())
+}
+
 fn normalize_di_storage(diagram: &mut Value) -> Result<(), String> {
     let order: Vec<ElementSelector> = serde_json::from_value(
         diagram
@@ -723,6 +831,7 @@ pub fn xml_model_value_for_export(
     }
     normalize_legacy_root_order(&mut value)?;
     normalize_legacy_di(&mut value)?;
+    normalize_choreography_graphs(&mut value)?;
     preserve_lane_wrapper_presence(&mut value)?;
     let mut targets = HashMap::new();
     collect(&value, "", &known, &mut targets)?;

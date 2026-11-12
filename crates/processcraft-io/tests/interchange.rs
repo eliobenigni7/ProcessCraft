@@ -3697,3 +3697,438 @@ fn reordered_mixed_di_elements_preserve_anonymous_representations() {
     );
     assert_eq!(project.content_identity().unwrap(), before);
 }
+
+#[test]
+fn choreography_task_loop_type_preserves_explicit_presence() {
+    use processcraft_core::bpmn_collaboration::ChoreographyLoopType;
+    let input = std::str::from_utf8(include_bytes!(
+        "../../../tests/fixtures/bpmn20-schema/choreography.bpmn"
+    ))
+    .unwrap();
+    for (attribute, expected) in [
+        ("", None),
+        (" loopType=\"None\"", Some(ChoreographyLoopType::None)),
+        (
+            " loopType=\"Standard\"",
+            Some(ChoreographyLoopType::Standard),
+        ),
+        (
+            " loopType=\"MultiInstanceSequential\"",
+            Some(ChoreographyLoopType::MultiInstanceSequential),
+        ),
+        (
+            " loopType=\"MultiInstanceParallel\"",
+            Some(ChoreographyLoopType::MultiInstanceParallel),
+        ),
+    ] {
+        let xml = input.replace(
+            "<choreographyTask id=",
+            &format!("<choreographyTask{attribute} id="),
+        );
+        let parsed = prepare_import(xml.as_bytes(), "loop presence").unwrap();
+        assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+        assert_eq!(
+            parsed.document.choreographies[0].activities[0].loop_type,
+            expected
+        );
+        let again = prepare_import(&export(&parsed).bytes, "loop round trip").unwrap();
+        assert!(again.report.editable, "{:?}", again.report.limitations);
+        assert_eq!(
+            again.document.choreographies[0].activities[0].loop_type,
+            expected
+        );
+    }
+}
+
+#[test]
+fn unimplemented_choreography_scopes_keep_original_source() {
+    let source = std::str::from_utf8(include_bytes!(
+        "../../../tests/fixtures/bpmn20-schema/choreography.bpmn"
+    ))
+    .unwrap();
+    for input in [
+        source
+            .replace("<choreography id=", "<globalChoreographyTask id=")
+            .replace("</choreography>", "</globalChoreographyTask>"),
+        source
+            .replace("<choreographyTask id=", "<subChoreography id=")
+            .replace("</choreographyTask>", "</subChoreography>"),
+        source
+            .replace("<choreographyTask id=", "<callChoreography id=")
+            .replace("</choreographyTask>", "</callChoreography>"),
+    ] {
+        let parsed = prepare_import(input.as_bytes(), "unimplemented choreography scope").unwrap();
+        assert!(!parsed.report.editable);
+        assert_eq!(export(&parsed).bytes, input.as_bytes());
+    }
+}
+
+#[test]
+fn choreography_external_qname_does_not_bind_to_same_local_id() {
+    use processcraft_core::bpmn_activity::ModelReference;
+    let source = std::str::from_utf8(include_bytes!(
+        "../../../tests/fixtures/bpmn20-schema/choreography.bpmn"
+    ))
+    .unwrap();
+    let source = source
+        .replace(
+            "xmlns:tns=\"urn:choreo\"",
+            "xmlns:tns=\"urn:choreo\" xmlns:external=\"urn:external\"",
+        )
+        .replace(
+            "<messageFlowRef>tns:order</messageFlowRef>",
+            "<messageFlowRef>external:order</messageFlowRef>",
+        );
+    let parsed = prepare_import(source.as_bytes(), "external choreography reference").unwrap();
+    assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+    assert!(
+        matches!(&parsed.document.choreographies[0].activities[0].message_flow_refs[0], ModelReference::Qualified(q) if q.namespace == "urn:external" && q.local.to_string() == "order")
+    );
+    let again = prepare_import(&export(&parsed).bytes, "external round trip").unwrap();
+    assert!(again.report.editable, "{:?}", again.report.limitations);
+    assert!(
+        matches!(&again.document.choreographies[0].activities[0].message_flow_refs[0], ModelReference::Qualified(q) if q.namespace == "urn:external" && q.local.to_string() == "order")
+    );
+}
+
+#[test]
+fn nested_choreography_graph_round_trips() {
+    use processcraft_core::bpmn_collaboration::{
+        ChoreographyActivityDetails, ChoreographyFlowElement, ChoreographyRootKind,
+    };
+    let source = include_bytes!("../../../tests/fixtures/bpmn/choreography-graph/nested.bpmn");
+    let parsed = prepare_import(source, "nested choreography").unwrap();
+    assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+    let main = &parsed.document.choreographies[0];
+    let graph = main.graph.as_ref().unwrap();
+    assert_eq!(graph.flow_elements.len(), 6);
+    let ChoreographyFlowElement::Activity(sub) = &graph.flow_elements[1] else {
+        panic!("sub choreography expected")
+    };
+    let Some(ChoreographyActivityDetails::Sub { graph, artifacts }) = &sub.details else {
+        panic!("sub content expected")
+    };
+    assert_eq!(graph.flow_elements.len(), 3);
+    let ChoreographyFlowElement::Event(event) = &graph.flow_elements[0] else {
+        panic!("nested event expected")
+    };
+    assert_eq!(event.flow_metadata.as_ref().unwrap().outgoing.len(), 1);
+    assert!(
+        matches!(&event.details, Some(processcraft_core::bpmn_model::NodeDetails::Event { definitions, .. }) if definitions.len() == 1)
+    );
+    let ChoreographyFlowElement::Gateway(gateway) = &graph.flow_elements[1] else {
+        panic!("nested gateway expected")
+    };
+    assert_eq!(gateway.flow_metadata.as_ref().unwrap().incoming.len(), 1);
+    assert_eq!(artifacts.len(), 1);
+    assert!(matches!(
+        &parsed.document.choreographies[1].kind,
+        Some(ChoreographyRootKind::Global { .. })
+    ));
+    let output = export(&parsed);
+    let again = prepare_import(&output.bytes, "nested round trip").unwrap();
+    assert!(again.report.editable, "{:?}", again.report.limitations);
+    assert_eq!(
+        again.document.choreographies[0]
+            .graph
+            .as_ref()
+            .unwrap()
+            .flow_elements
+            .len(),
+        6
+    );
+}
+
+#[test]
+fn empty_choreography_graph_exports_as_empty_scope() {
+    use processcraft_core::bpmn_collaboration::ChoreographyGraph;
+    let source = br#"<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" id="defs" targetNamespace="urn:empty"><choreography id="choreo"/></definitions>"#;
+    let mut parsed = prepare_import(source, "empty graph").unwrap();
+    assert!(parsed.report.editable);
+    parsed.document.choreographies[0].graph = Some(ChoreographyGraph::default());
+    let output = export(&parsed);
+    let again = prepare_import(&output.bytes, "empty round trip").unwrap();
+    assert!(again.report.editable);
+    assert!(again.document.choreographies[0].activities.is_empty());
+    assert!(again.document.choreographies[0].sequence_flows.is_empty());
+}
+
+#[test]
+fn empty_sub_choreography_scope_round_trips() {
+    use processcraft_core::bpmn_collaboration::{
+        ChoreographyActivityDetails, ChoreographyFlowElement,
+    };
+    let source = std::str::from_utf8(include_bytes!(
+        "../../../tests/fixtures/bpmn/choreography-graph/nested.bpmn"
+    ))
+    .unwrap();
+    let from = source.find("      <startEvent id=\"subStart\"").unwrap();
+    let to = source.find("    </subChoreography>").unwrap();
+    let input = format!("{}{}", &source[..from], &source[to..]);
+    let parsed = prepare_import(input.as_bytes(), "empty sub choreography").unwrap();
+    assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+    let again = prepare_import(&export(&parsed).bytes, "empty sub round trip").unwrap();
+    let graph = again.document.choreographies[0].graph.as_ref().unwrap();
+    let ChoreographyFlowElement::Activity(sub) = &graph.flow_elements[1] else {
+        panic!("sub choreography expected")
+    };
+    assert!(
+        matches!(&sub.details, Some(ChoreographyActivityDetails::Sub { graph, artifacts }) if graph.flow_elements.is_empty() && artifacts.is_empty())
+    );
+}
+
+#[test]
+fn global_choreography_initiator_presence_round_trips() {
+    use processcraft_core::bpmn_collaboration::ChoreographyRootKind;
+    let source = std::str::from_utf8(include_bytes!(
+        "../../../tests/fixtures/bpmn/choreography-graph/nested.bpmn"
+    ))
+    .unwrap();
+    for present in [false, true] {
+        let input = if present {
+            source.to_owned()
+        } else {
+            source.replace(
+                "id=\"global\" initiatingParticipantRef=\"t:globalBuyer\"",
+                "id=\"global\"",
+            )
+        };
+        let parsed = prepare_import(input.as_bytes(), "global initiator").unwrap();
+        assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+        let again = prepare_import(&export(&parsed).bytes, "global round trip").unwrap();
+        assert!(
+            matches!(&again.document.choreographies[1].kind, Some(ChoreographyRootKind::Global { initiating_participant_ref }) if initiating_participant_ref.is_some() == present)
+        );
+    }
+}
+
+#[test]
+fn call_choreography_external_target_is_not_rebound() {
+    use processcraft_core::{
+        bpmn_activity::ModelReference,
+        bpmn_collaboration::{ChoreographyActivityDetails, ChoreographyFlowElement},
+    };
+    let source = std::str::from_utf8(include_bytes!(
+        "../../../tests/fixtures/bpmn/choreography-graph/nested.bpmn"
+    ))
+    .unwrap();
+    let from = source
+        .find("      <participantAssociation id=\"mapping\"")
+        .unwrap();
+    let to = source[from..].find("</participantAssociation>").unwrap()
+        + from
+        + "</participantAssociation>".len();
+    let input = format!("{}{}", &source[..from], &source[to..]).replace(
+        "calledChoreographyRef=\"t:global\"",
+        "calledChoreographyRef=\"ext:global\"",
+    );
+    let parsed = prepare_import(input.as_bytes(), "external called choreography").unwrap();
+    assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+    let again = prepare_import(&export(&parsed).bytes, "external call round trip").unwrap();
+    let graph = again.document.choreographies[0].graph.as_ref().unwrap();
+    let ChoreographyFlowElement::Activity(call) = &graph.flow_elements[2] else {
+        panic!("call expected")
+    };
+    assert!(
+        matches!(&call.details, Some(ChoreographyActivityDetails::Call { called_choreography_ref: Some(ModelReference::Qualified(q)), .. }) if q.namespace == "urn:external" && q.local.to_string() == "global")
+    );
+}
+
+#[test]
+fn choreography_boundary_event_io_round_trips_and_owner_order_is_stable() {
+    use processcraft_core::bpmn_activity::ModelReference;
+    use processcraft_core::bpmn_collaboration::ChoreographyFlowElement;
+    let source =
+        include_bytes!("../../../tests/fixtures/bpmn/choreography-graph/boundary-event-io.bpmn");
+    let mut parsed = prepare_import(source, "boundary event io").unwrap();
+    assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+    let graph = parsed.document.choreographies[0].graph.as_mut().unwrap();
+    assert_eq!(graph.data_associations.len(), 2);
+    let ChoreographyFlowElement::Event(event) = &graph.flow_elements[1] else {
+        panic!("boundary event expected")
+    };
+    assert!(matches!(
+        &event.details,
+        Some(processcraft_core::bpmn_model::NodeDetails::Event {
+            attached_to: Some(ModelReference::Local(_)),
+            ..
+        })
+    ));
+    graph.data_associations.reverse();
+    let again = prepare_import(&export(&parsed).bytes, "boundary event io round trip").unwrap();
+    assert!(again.report.editable, "{:?}", again.report.limitations);
+    assert_eq!(
+        again.document.choreographies[0]
+            .graph
+            .as_ref()
+            .unwrap()
+            .data_associations
+            .len(),
+        2
+    );
+}
+
+#[test]
+fn choreography_graph_node_native_fields_require_omission_acknowledgement() {
+    use processcraft_core::bpmn_collaboration::{
+        ChoreographyActivityDetails, ChoreographyFlowElement, CollaborationArtifact,
+    };
+    let source = include_bytes!("../../../tests/fixtures/bpmn/choreography-graph/nested.bpmn");
+    for annotation in [false, true] {
+        let mut parsed = prepare_import(source, "native fields").unwrap();
+        let graph = parsed.document.choreographies[0].graph.as_mut().unwrap();
+        if annotation {
+            let ChoreographyFlowElement::Activity(sub) = &mut graph.flow_elements[1] else {
+                panic!("sub expected")
+            };
+            let Some(ChoreographyActivityDetails::Sub { artifacts, .. }) = &mut sub.details else {
+                panic!("sub content expected")
+            };
+            let CollaborationArtifact::TextAnnotation(node) = &mut artifacts[0] else {
+                panic!("annotation expected")
+            };
+            node.contact = "analyst".into();
+        } else {
+            let ChoreographyFlowElement::Event(node) = &mut graph.flow_elements[0] else {
+                panic!("event expected")
+            };
+            node.owner = "analyst".into();
+        }
+        let mut project = ProjectData::new("p".into());
+        project.documents.push(Arc::new(parsed.document.clone()));
+        project.resources = parsed.resources.clone();
+        assert!(export_bpmn(&project, parsed.document.id, false).is_err());
+        assert!(export_bpmn(&project, parsed.document.id, true).is_ok());
+    }
+}
+
+#[test]
+fn choreography_boundary_external_attachment_keeps_namespace() {
+    use processcraft_core::{
+        bpmn_activity::ModelReference, bpmn_collaboration::ChoreographyFlowElement,
+        bpmn_model::NodeDetails,
+    };
+    let source = std::str::from_utf8(include_bytes!(
+        "../../../tests/fixtures/bpmn/choreography-graph/boundary-event-io.bpmn"
+    ))
+    .unwrap();
+    let source = source
+        .replace(
+            "xmlns:t=\"urn:boundary-graph\"",
+            "xmlns:t=\"urn:boundary-graph\" xmlns:ext=\"urn:external\"",
+        )
+        .replacen("attachedToRef=\"t:sub\"", "attachedToRef=\"ext:sub\"", 1);
+    let parsed = prepare_import(source.as_bytes(), "external attachment").unwrap();
+    assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+    let again = prepare_import(&export(&parsed).bytes, "external attachment round trip").unwrap();
+    let graph = again.document.choreographies[0].graph.as_ref().unwrap();
+    let ChoreographyFlowElement::Event(event) = &graph.flow_elements[1] else {
+        panic!("boundary expected")
+    };
+    assert!(
+        matches!(&event.details, Some(NodeDetails::Event { attached_to: Some(ModelReference::Qualified(q)), .. }) if q.namespace == "urn:external" && q.local.to_string() == "sub")
+    );
+}
+
+#[test]
+fn di_extension_wrapper_whitespace_is_preserved_and_significant() {
+    use processcraft_core::bpmn_xml::XmlNode;
+    let source = include_str!("../../../tests/fixtures/bpmn20-schema/di-choreography-bands.bpmn");
+    let parsed = prepare_import(source.as_bytes(), "DI extension whitespace").unwrap();
+    assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+    for diagram in &parsed.document.diagrams {
+        let content = diagram
+            .plane_metadata
+            .as_ref()
+            .unwrap()
+            .extension
+            .as_ref()
+            .unwrap();
+        assert!(matches!(&content.nodes[0], XmlNode::Text { text } if text == "\n        "));
+        assert!(matches!(&content.nodes[2], XmlNode::Text { text } if text == "\n      "));
+    }
+    let output = export(&parsed);
+    let again = prepare_import(&output.bytes, "DI extension round trip").unwrap();
+    for (before, after) in parsed
+        .document
+        .diagrams
+        .iter()
+        .zip(&again.document.diagrams)
+    {
+        assert_eq!(
+            before.plane_metadata.as_ref().unwrap().extension,
+            after.plane_metadata.as_ref().unwrap().extension
+        );
+    }
+    let changed = source.replacen(
+        "<di:extension>\n        <bpmn:documentation>",
+        "<di:extension>\n         <bpmn:documentation>",
+        1,
+    );
+    let changed = prepare_import(changed.as_bytes(), "changed whitespace").unwrap();
+    assert_ne!(
+        parsed.document.diagrams[0]
+            .plane_metadata
+            .as_ref()
+            .unwrap()
+            .extension,
+        changed.document.diagrams[0]
+            .plane_metadata
+            .as_ref()
+            .unwrap()
+            .extension
+    );
+}
+
+#[test]
+fn sub_choreography_plane_round_trips_and_excludes_sibling_scope() {
+    use processcraft_io::native::{load_bytes, write_bytes};
+    let source = include_str!("../../../tests/fixtures/bpmn/choreography-graph/subplane.bpmn");
+    let parsed = prepare_import(source.as_bytes(), "subplane").unwrap();
+    assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+    let mut project = ProjectData::new("subplane".into());
+    project.documents.push(Arc::new(parsed.document.clone()));
+    project.resources = parsed.resources.clone();
+    let loaded = load_bytes(&write_bytes(&project).unwrap()).unwrap().project;
+    assert_eq!(
+        project.content_identity().unwrap(),
+        loaded.content_identity().unwrap()
+    );
+    let output = export_bpmn(&loaded, parsed.document.id, false).unwrap();
+    let again = prepare_import(&output.bytes, "subplane round trip").unwrap();
+    assert!(again.report.editable, "{:?}", again.report.limitations);
+    assert_eq!(again.document.diagrams[0].shapes.len(), 6);
+    assert_eq!(again.document.diagrams[0].edges.len(), 2);
+    let invalid = source.replace("bpmnElement=\"t:innerStart\"", "bpmnElement=\"t:sibling\"");
+    let preserved = prepare_import(invalid.as_bytes(), "sibling outside subplane").unwrap();
+    assert!(!preserved.report.editable);
+    assert_eq!(export(&preserved).bytes, invalid.as_bytes());
+    let invalid_band = source.replacen(
+        "choreographyActivityShape=\"t:innerShape\"",
+        "choreographyActivityShape=\"t:startShape\"",
+        1,
+    );
+    let preserved_band =
+        prepare_import(invalid_band.as_bytes(), "band outside activity owner").unwrap();
+    assert!(!preserved_band.report.editable);
+    assert_eq!(export(&preserved_band).bytes, invalid_band.as_bytes());
+}
+
+#[test]
+fn sub_choreography_plane_admits_only_referenced_message_flows() {
+    let source = include_str!("../../../tests/fixtures/bpmn/choreography-graph/subplane.bpmn")
+        .replace("<participant id=\"buyer\"/><participant id=\"seller\"/>", "<participant id=\"buyer\"/><participant id=\"seller\"/><messageFlow id=\"message\" sourceRef=\"t:buyer\" targetRef=\"t:seller\"/>")
+        .replace("<startEvent id=\"innerStart\"/>", "<choreographyTask id=\"task\" initiatingParticipantRef=\"t:buyer\"><participantRef>t:buyer</participantRef><participantRef>t:seller</participantRef><messageFlowRef>t:message</messageFlowRef></choreographyTask><startEvent id=\"innerStart\"/>")
+        .replace("</bpmndi:BPMNPlane>", "<bpmndi:BPMNEdge id=\"messageEdge\" bpmnElement=\"t:message\"><di:waypoint x=\"120\" y=\"20\"/><di:waypoint x=\"400\" y=\"20\"/></bpmndi:BPMNEdge></bpmndi:BPMNPlane>");
+    let parsed = prepare_import(source.as_bytes(), "subplane message flow").unwrap();
+    assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+    let again = prepare_import(&export(&parsed).bytes, "subplane message flow round trip").unwrap();
+    assert!(again.report.editable, "{:?}", again.report.limitations);
+    let invalid = source.replace(
+        "<messageFlowRef>t:message</messageFlowRef>",
+        "<messageFlowRef xmlns:ext=\"urn:external\">ext:message</messageFlowRef>",
+    );
+    let parsed = prepare_import(invalid.as_bytes(), "unreferenced local message flow").unwrap();
+    assert!(!parsed.report.editable);
+    assert_eq!(export(&parsed).bytes, invalid.as_bytes());
+}

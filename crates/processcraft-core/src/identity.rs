@@ -255,9 +255,13 @@ impl ProjectData {
         for resource in &mut current_metadata.resources {
             resource.bytes = Default::default();
         }
-        let mut checkpoint_bytes = serde_json::to_vec(&current_metadata)
-            .map_err(|e| e.to_string())?
-            .len();
+        // Apply serde_json's reader recursion budget to the combined document,
+        // rather than separately bounding graph and mixed-XML depths. Native
+        // archives deserialize the same document nesting through serde_json.
+        let current_json = serde_json::to_vec(&current_metadata).map_err(|e| e.to_string())?;
+        serde_json::from_slice::<serde_json::Value>(&current_json)
+            .map_err(|e| format!("project JSON is not readable: {e}"))?;
+        let mut checkpoint_bytes = current_json.len();
         checkpoint_bytes = checkpoint_bytes
             .checked_add(1024 + self.checkpoints.len() * 512)
             .ok_or("checkpoint size overflow")?;
@@ -287,12 +291,11 @@ impl ProjectData {
                 }
                 resource.bytes = Default::default();
             }
+            let checkpoint_json = serde_json::to_vec(&metadata).map_err(|e| e.to_string())?;
+            serde_json::from_slice::<serde_json::Value>(&checkpoint_json)
+                .map_err(|e| format!("checkpoint JSON is not readable: {e}"))?;
             checkpoint_bytes = checkpoint_bytes
-                .checked_add(
-                    serde_json::to_vec(&metadata)
-                        .map_err(|e| e.to_string())?
-                        .len(),
-                )
+                .checked_add(checkpoint_json.len())
                 .ok_or("checkpoint size overflow")?;
         }
         if checkpoint_bytes > 256 * 1024 * 1024 {
@@ -973,6 +976,85 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             }
         }
     }
+    // Event-owned properties, ports, sets, and data states in choreography
+    // graphs participate in the same global identity and QName checks as process events.
+    for scope in crate::queries::choreography_scopes(d) {
+        if scope.root.graph.is_none() {
+            continue;
+        }
+        for node in scope.events {
+            if let Some(crate::bpmn_model::NodeDetails::Event { properties, io, .. }) =
+                &node.details
+            {
+                if properties.len() > 256 {
+                    return fail("Event property limit exceeded");
+                }
+                for property in properties {
+                    if let Some(id) = &property.id {
+                        add(&mut ids, id)?;
+                    }
+                    if let Some(name) = &property.name {
+                        definitions_text(name)?;
+                    }
+                    if let Some(metadata) = &property.item_aware {
+                        item_metadata.push((metadata, None));
+                    }
+                }
+                if let Some(io) = io {
+                    use crate::bpmn_model::EventIo;
+                    let (ports, set) = match io {
+                        EventIo::Catch {
+                            outputs,
+                            output_set,
+                        } => (outputs, output_set),
+                        EventIo::Throw { inputs, input_set } => (inputs, input_set),
+                    };
+                    if ports.len() > 256 {
+                        return fail("Event port limit exceeded");
+                    }
+                    for port in ports {
+                        if let Some(id) = &port.id {
+                            add(&mut ids, id)?;
+                        }
+                        if let Some(name) = &port.name {
+                            definitions_text(name)?;
+                        }
+                        if let Some(metadata) = &port.item_aware {
+                            item_metadata
+                                .push((metadata, Some(port.is_collection.unwrap_or(false))));
+                        }
+                    }
+                    if let Some(set) = set {
+                        if let Some(id) = &set.id {
+                            add(&mut ids, id)?;
+                        }
+                        if let Some(name) = &set.name {
+                            definitions_text(name)?;
+                        }
+                        let mut seen = HashSet::new();
+                        for reference in &set.data_refs {
+                            if !seen.insert(reference)
+                                || !ports
+                                    .iter()
+                                    .any(|port| port.id.as_ref().is_some_and(|id| id == reference))
+                            {
+                                return fail("Invalid event set port reference");
+                            }
+                        }
+                        if set
+                            .optional_refs
+                            .iter()
+                            .chain(&set.while_executing_refs)
+                            .any(|r| !set.data_refs.contains(r))
+                            || !set.counterpart_refs.is_empty()
+                        {
+                            return fail("Invalid event set metadata");
+                        }
+                    }
+                }
+            }
+        }
+    }
     for (metadata, collection) in item_metadata {
         if let Some(state) = &metadata.data_state {
             if let Some(id) = &state.id {
@@ -1006,6 +1088,16 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                 .iter()
                 .filter_map(|association| association.transformation.as_ref())
         })
+        .chain(
+            crate::queries::choreography_scopes(d)
+                .into_iter()
+                .flat_map(|scope| {
+                    scope
+                        .data_associations
+                        .into_iter()
+                        .filter_map(|association| association.transformation.as_ref())
+                }),
+        )
         .collect();
     let formal_expressions = crate::activity_read::activity_read(d).formal_expressions;
     for expression in d.expressions() {
@@ -1847,10 +1939,11 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                     let Some(target) = attached else {
                         return fail("boundary event requires attachment");
                     };
-                    if !p
-                        .nodes
-                        .iter()
-                        .any(|other| &other.id == target && other.kind.is_activity())
+                    if !target.is_external(local_namespace)
+                        && !p.nodes.iter().any(|other| {
+                            target.matches_identity(&other.id, local_namespace)
+                                && other.kind.is_activity()
+                        })
                     {
                         return fail("invalid boundary attachment");
                     }
@@ -2004,10 +2097,13 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                                 NodeKind::BoundaryEvent => {
                                     cancel != Some(false)
                                         && attached.is_some_and(|target| {
-                                            p.nodes.iter().any(|other| {
-                                                &other.id == target
-                                                    && other.kind == NodeKind::Transaction
-                                            })
+                                            target.is_external(local_namespace)
+                                                || p.nodes.iter().any(|other| {
+                                                    target.matches_identity(
+                                                        &other.id,
+                                                        local_namespace,
+                                                    ) && other.kind == NodeKind::Transaction
+                                                })
                                         })
                                 }
                                 NodeKind::EndEvent => crate::queries::find_node(d, &p.id)
@@ -2100,6 +2196,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             }
         }
     }
+    let target_namespace = d.definitions.as_ref().map(|v| v.target_namespace.as_str());
     for choreography in &d.choreographies {
         add(&mut ids, &choreography.id)?;
         if let Some(name) = &choreography.name {
@@ -2188,6 +2285,11 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                 return fail("invalid choreography message flow");
             }
         }
+        if choreography.graph.is_some()
+            && (!choreography.activities.is_empty() || !choreography.sequence_flows.is_empty())
+        {
+            return fail("mixed choreography graph representations");
+        }
         for activity in &choreography.activities {
             if activity
                 .flow_metadata
@@ -2205,21 +2307,30 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             let mut unique = HashSet::new();
             for participant in &activity.participant_refs {
                 if !unique.insert(participant)
-                    || !choreography
-                        .participants
-                        .iter()
-                        .any(|p| &p.id == participant)
+                    || (!participant.is_external(target_namespace)
+                        && !choreography
+                            .participants
+                            .iter()
+                            .any(|p| participant.matches_identity(&p.id, target_namespace)))
                 {
                     return fail("invalid choreography participant");
                 }
             }
-            if !unique.contains(&activity.initiating_participant) {
+            if activity
+                .initiating_participant
+                .as_ref()
+                .is_some_and(|r| !unique.contains(r) && !r.is_external(target_namespace))
+            {
                 return fail("invalid initiating participant");
             }
             let mut messages = HashSet::new();
             for flow in &activity.message_flow_refs {
                 if !messages.insert(flow)
-                    || !choreography.message_flows.iter().any(|f| &f.id == flow)
+                    || (!flow.is_external(target_namespace)
+                        && !choreography
+                            .message_flows
+                            .iter()
+                            .any(|f| flow.matches_identity(&f.id, target_namespace)))
                 {
                     return fail("invalid choreography message reference");
                 }
@@ -2252,6 +2363,255 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                     .is_some_and(|id| !choreography.activities.iter().any(|a| &a.id == id))
             {
                 return fail("invalid choreography sequence flow");
+            }
+        }
+    }
+    // Graph membership and identity are scoped; never resolve an endpoint by local name alone.
+    for root in &d.choreographies {
+        use crate::bpmn_collaboration::{
+            ChoreographyActivityDetails, ChoreographyFlowElement, CollaborationArtifact,
+        };
+        let Some(graph) = &root.graph else { continue };
+        let mut pending = vec![(graph, root.id.selector(), 0usize)];
+        while let Some((graph, owner, depth)) = pending.pop() {
+            if depth > 32 {
+                return fail("choreography depth limit exceeded");
+            }
+            count = count
+                .saturating_add(graph.flow_elements.len())
+                .saturating_add(graph.data_associations.len());
+            if count > 10_000 {
+                return fail("choreography element limit exceeded");
+            }
+            let nodes: HashSet<_> = graph
+                .flow_elements
+                .iter()
+                .filter_map(|v| match v {
+                    ChoreographyFlowElement::Activity(a) => Some(a.id.selector()),
+                    ChoreographyFlowElement::Event(n) | ChoreographyFlowElement::Gateway(n) => {
+                        Some(n.id.selector())
+                    }
+                    ChoreographyFlowElement::SequenceFlow(_) => None,
+                })
+                .collect();
+            for association in &graph.data_associations {
+                use crate::bpmn_data::DataAssociationKind;
+                if let Some(id) = &association.id {
+                    add(&mut ids, id)?;
+                }
+                if association.assignments.len() > 256 {
+                    return fail("Data assignment limit exceeded");
+                }
+                for assignment in &association.assignments {
+                    if let Some(id) = &assignment.id {
+                        add(&mut ids, id)?;
+                    }
+                }
+                let Some(event) = graph.flow_elements.iter().find_map(|item| match item {
+                    ChoreographyFlowElement::Event(node) if node.id == association.owner => {
+                        Some(node)
+                    }
+                    _ => None,
+                }) else {
+                    return fail("invalid choreography data association owner");
+                };
+                let Some(crate::bpmn_model::NodeDetails::Event {
+                    io: Some(io),
+                    properties,
+                    ..
+                }) = &event.details
+                else {
+                    return fail("data association requires compatible owner ports");
+                };
+                use crate::bpmn_model::EventIo;
+                let (inputs, outputs): (
+                    &[crate::bpmn_data::DataPort],
+                    &[crate::bpmn_data::DataPort],
+                ) = match io {
+                    EventIo::Catch { outputs, .. } => (&[], outputs),
+                    EventIo::Throw { inputs, .. } => (inputs, &[]),
+                };
+                let local = |id: &crate::ids::ElementSelector| {
+                    properties
+                        .iter()
+                        .any(|p| p.id.as_ref().is_some_and(|identity| identity == id))
+                        || d.data_stores
+                            .iter()
+                            .any(|store| store.id.as_ref().is_some_and(|identity| identity == id))
+                };
+                let mut unique = HashSet::new();
+                if association.sources.iter().any(|id| !unique.insert(id)) {
+                    return fail("invalid data association sources");
+                }
+                let valid = match association.kind {
+                    DataAssociationKind::Input => {
+                        inputs.iter().any(|p| {
+                            p.id.as_ref()
+                                .is_some_and(|identity| identity == &association.target)
+                        }) && association.sources.iter().all(local)
+                    }
+                    DataAssociationKind::Output => {
+                        local(&association.target)
+                            && association.sources.iter().all(|id| {
+                                outputs
+                                    .iter()
+                                    .any(|p| p.id.as_ref().is_some_and(|identity| identity == id))
+                            })
+                    }
+                };
+                if !valid {
+                    return fail("invalid data association ports");
+                }
+            }
+            for element in &graph.flow_elements {
+                match element {
+                    ChoreographyFlowElement::Activity(a) => {
+                        add(&mut ids, &a.id)?;
+                        shape_ids.insert(a.id.selector());
+                        element_scope.insert(a.id.selector(), owner.clone());
+                        if let Some(name) = &a.name {
+                            short(name)?;
+                        }
+                        if a.details.is_some() && !a.message_flow_refs.is_empty() {
+                            return fail(
+                                "non-task choreography activity has task message references",
+                            );
+                        }
+                        if let Some(ChoreographyActivityDetails::Sub { graph, artifacts }) =
+                            &a.details
+                        {
+                            count = count.saturating_add(artifacts.len());
+                            if count > 10_000 {
+                                return fail("choreography element limit exceeded");
+                            }
+                            for artifact in artifacts {
+                                match artifact {
+                                    CollaborationArtifact::Group(g) => {
+                                        add(&mut ids, &g.id)?;
+                                        shape_ids.insert(g.id.selector());
+                                        element_scope.insert(g.id.selector(), a.id.selector());
+                                    }
+                                    CollaborationArtifact::TextAnnotation(n) => {
+                                        add(&mut ids, &n.id)?;
+                                        shape_ids.insert(n.id.selector());
+                                        element_scope.insert(n.id.selector(), a.id.selector());
+                                    }
+                                    CollaborationArtifact::Association(f) => {
+                                        add(&mut ids, &f.id)?;
+                                        flow_ids.insert(f.id.selector());
+                                        element_scope.insert(f.id.selector(), a.id.selector());
+                                    }
+                                }
+                            }
+                            pending.push((graph, a.id.selector(), depth + 1));
+                        }
+                    }
+                    ChoreographyFlowElement::Event(n) | ChoreographyFlowElement::Gateway(n) => {
+                        let event = matches!(
+                            n.kind,
+                            NodeKind::StartEvent
+                                | NodeKind::EndEvent
+                                | NodeKind::IntermediateCatchEvent
+                                | NodeKind::IntermediateThrowEvent
+                                | NodeKind::BoundaryEvent
+                        );
+                        let gateway = matches!(
+                            n.kind,
+                            NodeKind::ExclusiveGateway
+                                | NodeKind::InclusiveGateway
+                                | NodeKind::ParallelGateway
+                                | NodeKind::ComplexGateway
+                                | NodeKind::EventBasedGateway
+                        );
+                        if (matches!(element, ChoreographyFlowElement::Event(_)) && !event)
+                            || (matches!(element, ChoreographyFlowElement::Gateway(_)) && !gateway)
+                        {
+                            return fail("invalid choreography flow node kind");
+                        }
+                        if event {
+                            use crate::bpmn_model::NodeDetails;
+                            let attachment = match &n.details {
+                                Some(NodeDetails::BoundaryEvent { attached_to, .. }) => {
+                                    Some(attached_to)
+                                }
+                                Some(NodeDetails::Event { attached_to, .. }) => {
+                                    attached_to.as_ref()
+                                }
+                                None => None,
+                                _ => return fail("invalid choreography event details"),
+                            };
+                            if n.kind == NodeKind::BoundaryEvent {
+                                if attachment.is_some_and(|attachment| !attachment.is_external(local_namespace) && !graph.flow_elements.iter().any(|element| matches!(element, ChoreographyFlowElement::Activity(activity) if attachment.matches_identity(&activity.id, local_namespace)))) {
+                                    return fail("invalid choreography boundary attachment");
+                                }
+                            } else if attachment.is_some() {
+                                return fail("attachment only allowed on boundary events");
+                            }
+                        } else if !matches!(
+                            n.details,
+                            None | Some(crate::bpmn_model::NodeDetails::Gateway { .. })
+                        ) {
+                            return fail("invalid choreography gateway details");
+                        }
+                        add(&mut ids, &n.id)?;
+                        if let Some(crate::bpmn_model::NodeDetails::Event {
+                            io: Some(io), ..
+                        }) = &n.details
+                        {
+                            let catch = matches!(
+                                n.kind,
+                                NodeKind::StartEvent
+                                    | NodeKind::IntermediateCatchEvent
+                                    | NodeKind::BoundaryEvent
+                            );
+                            if !matches!(
+                                (catch, io),
+                                (true, crate::bpmn_model::EventIo::Catch { .. })
+                                    | (false, crate::bpmn_model::EventIo::Throw { .. })
+                            ) {
+                                return fail("Event I/O direction does not match event kind");
+                            }
+                        }
+                        if let Some(crate::bpmn_model::NodeDetails::Event { definitions, .. }) =
+                            &n.details
+                        {
+                            if definitions.len() > 256 {
+                                return fail("Event definition limit exceeded");
+                            }
+                            for definition in definitions {
+                                validate_event_payload(d, definition, local_namespace)?;
+                                if let Some(id) = definition.id() {
+                                    add(&mut ids, id)?;
+                                }
+                            }
+                        }
+                        shape_ids.insert(n.id.selector());
+                        element_scope.insert(n.id.selector(), owner.clone());
+                    }
+                    ChoreographyFlowElement::SequenceFlow(f) => {
+                        add(&mut ids, &f.id)?;
+                        flow_ids.insert(f.id.selector());
+                        element_scope.insert(f.id.selector(), owner.clone());
+                        if f.kind != FlowKind::Sequence
+                            || matches!(
+                                f.source,
+                                Some(crate::bpmn_activity::ModelReference::Qualified(_))
+                            )
+                            || matches!(
+                                f.target,
+                                Some(crate::bpmn_activity::ModelReference::Qualified(_))
+                            )
+                            || endpoint(&f.source)
+                                .as_ref()
+                                .is_some_and(|id| !nodes.contains(id))
+                            || endpoint(&f.target)
+                                .as_ref()
+                                .is_some_and(|id| !nodes.contains(id))
+                        {
+                            return fail("invalid choreography sequence flow");
+                        }
+                    }
+                }
             }
         }
     }
@@ -2611,15 +2971,32 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             }
             Ok(())
         };
+        let choreography_scopes = crate::queries::choreography_scopes(d);
         if !scopes.iter().any(|p| p.id == diagram.plane)
-            && !d.choreographies.iter().any(|c| c.id == diagram.plane)
+            && !choreography_scopes
+                .iter()
+                .any(|scope| scope.owner == diagram.plane)
             && !d.collaborations().any(|c| c.id == diagram.plane)
         {
             return fail("invalid diagram plane");
         }
         let mut contained = HashSet::new();
-        if let Some(choreography) = d.choreographies.iter().find(|c| c.id == diagram.plane) {
-            contained.insert(choreography.id.selector());
+        if choreography_scopes
+            .iter()
+            .any(|scope| scope.owner == diagram.plane)
+        {
+            contained.insert(diagram.plane.clone());
+            // Scopes are ordered parent-before-child. Only the selected scope and
+            // descendants belong to this plane, never siblings or ancestors.
+            for scope in &choreography_scopes {
+                if scope
+                    .parent
+                    .as_ref()
+                    .is_some_and(|parent| contained.contains(parent))
+                {
+                    contained.insert(scope.owner.clone());
+                }
+            }
         }
         if let Some(start) = scopes.iter().find(|p| p.id == diagram.plane) {
             let mut pending = vec![start];
@@ -2638,6 +3015,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
         }
         for s in &diagram.shapes {
             di_metadata(&s.di_metadata)?;
+            let mut scoped_participant_band = false;
             if let Some(reference) = &s.choreography_activity_shape {
                 let owner = match reference {
                     crate::model::DiReference::Local(selector) => {
@@ -2656,17 +3034,26 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                     }
                 };
                 let external = matches!(reference, crate::model::DiReference::Qualified(qname) if !local(qname));
-                if !external
-                    && !owner.is_some_and(|shape| {
-                        d.choreographies.iter().any(|c| {
-                            c.activities
-                                .iter()
-                                .any(|activity| activity.id == shape.element)
-                        })
-                    })
-                {
+                if let Some(shape) = owner {
+                    scoped_participant_band = choreography_scopes.iter().any(|scope| {
+                        contained.contains(&scope.owner)
+                            && scope.activities.iter().any(|activity| {
+                                activity.id == shape.element
+                                    && scope.root.participants.iter().any(|participant| {
+                                        participant.id == s.element
+                                            && activity.participant_refs.iter().any(|reference| {
+                                                reference.matches_identity(
+                                                    &participant.id,
+                                                    local_namespace,
+                                                )
+                                            })
+                                    })
+                            })
+                    });
+                }
+                if !external && !scoped_participant_band {
                     return fail(
-                        "Participant band must reference a choreography activity shape in its diagram",
+                        "Participant band must reference a participant of a choreography activity shape in its diagram",
                     );
                 }
             }
@@ -2676,6 +3063,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                 .iter()
                 .any(|store| store.id.as_ref().is_some_and(|id| id == &s.element));
             if !global_store
+                && !scoped_participant_band
                 && !contained.is_empty()
                 && !element_scope
                     .get(&s.element)
@@ -2709,7 +3097,19 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             {
                 return fail("Edge endpoint references a representation outside its diagram");
             }
-            if !contained.is_empty()
+            let scoped_message_flow = choreography_scopes.iter().any(|scope| {
+                contained.contains(&scope.owner)
+                    && scope.root.message_flows.iter().any(|flow| {
+                        flow.id == e.element
+                            && scope.activities.iter().any(|activity| {
+                                activity.message_flow_refs.iter().any(|reference| {
+                                    reference.matches_identity(&flow.id, local_namespace)
+                                })
+                            })
+                    })
+            });
+            if !scoped_message_flow
+                && !contained.is_empty()
                 && !element_scope
                     .get(&e.element)
                     .is_some_and(|scope| contained.contains(scope))

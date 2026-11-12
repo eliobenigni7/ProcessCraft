@@ -1293,6 +1293,7 @@ fn participant_band_owner_resolves_to_same_diagram_activity_shape() {
     use processcraft_core::model::{
         Bounds, DiReference, Diagram, Participant, ParticipantBandKind, Shape,
     };
+    let local = |name: &str| processcraft_core::bpmn_model::EventReference::Local(id(name));
     let shape = |name: &str, element: &str| Shape {
         di_metadata: None,
         is_message_visible: None,
@@ -1324,6 +1325,8 @@ fn participant_band_owner_resolves_to_same_diagram_activity_shape() {
     };
     let mut doc = BpmnDocument::new("d".into(), id("defs"));
     doc.choreographies.push(Choreography {
+        kind: None,
+        graph: None,
         extras: None,
         conversation_nodes: vec![],
         conversation_links: vec![],
@@ -1334,13 +1337,15 @@ fn participant_band_owner_resolves_to_same_diagram_activity_shape() {
         participants: vec![participant("p1"), participant("p2")],
         message_flows: vec![],
         activities: vec![ChoreographyActivity {
+            loop_type: None,
+            details: None,
             flow_metadata: None,
             correlation_keys: vec![],
             base: None,
             id: id("task"),
             name: None,
-            participant_refs: vec![id("p1"), id("p2")],
-            initiating_participant: id("p1"),
+            participant_refs: vec![local("p1"), local("p2")],
+            initiating_participant: Some(local("p1")),
             message_flow_refs: vec![],
         }],
         sequence_flows: vec![],
@@ -1401,7 +1406,7 @@ fn participant_band_owner_resolves_to_same_diagram_activity_shape() {
         documentation: String::new().into(),
         condition: None,
     });
-    doc.choreographies[0].activities[0].message_flow_refs = vec![id("request")];
+    doc.choreographies[0].activities[0].message_flow_refs = vec![local("request")];
     let has_warning = |doc: &BpmnDocument, code: &str| {
         let mut project = ProjectData::new("p".into());
         project.documents.push(Arc::new(doc.clone()));
@@ -1413,7 +1418,7 @@ fn participant_band_owner_resolves_to_same_diagram_activity_shape() {
     assert!(has_warning(&doc, "participantBandMessageMissing"));
     doc.choreographies[0].activities[0]
         .message_flow_refs
-        .push(id("unresolved"));
+        .push(local("unresolved"));
     assert!(!has_warning(&doc, "participantBandMessageMissing"));
     doc.choreographies[0].activities[0].message_flow_refs.pop();
     doc.choreographies[0].message_flows[0].source = Some(
@@ -1690,10 +1695,266 @@ fn participant_band_owner_resolves_to_same_diagram_activity_shape() {
             ..Default::default()
         });
     assert!(has_warning(&doc, "globalConversationChoreographyRef"));
-    doc.choreographies[0].activities[0].participant_refs = vec![id("p2")];
+    doc.choreographies[0].activities[0].participant_refs =
+        vec![processcraft_core::bpmn_model::EventReference::Local(id(
+            "p2",
+        ))];
     assert!(
         processcraft_core::validation::activity_family_reference_issues(&doc)
             .iter()
             .any(|issue| issue.field == "di.choreographyActivityShape")
     );
+}
+
+#[test]
+fn choreography_graph_reports_bounded_semantics_without_matching_external_names() {
+    use processcraft_core::bpmn_activity::ModelReference;
+    use processcraft_core::bpmn_collaboration::{
+        Choreography, ChoreographyActivity, ChoreographyFlowElement, ChoreographyGraph,
+        ChoreographyRootKind,
+    };
+    use processcraft_core::bpmn_model::QNameRef;
+    let local = |name: &str| ModelReference::Local(id(name));
+    let participant = |name: &str| Participant {
+        interface_refs: vec![],
+        endpoint_refs: vec![],
+        multiplicity: None,
+        base: None,
+        id: id(name),
+        name: None,
+        process: None,
+    };
+    let activity = ChoreographyActivity {
+        loop_type: None,
+        details: None,
+        flow_metadata: None,
+        correlation_keys: vec![],
+        base: None,
+        id: id("task"),
+        name: None,
+        participant_refs: vec![local("p1"), local("p2"), local("p3")],
+        initiating_participant: Some(local("p1")),
+        message_flow_refs: vec![ModelReference::Qualified(QNameRef {
+            namespace: "urn:external".into(),
+            local: id("same"),
+        })],
+    };
+    let mut doc = BpmnDocument::new("d".into(), id("defs"));
+    doc.choreographies.push(Choreography {
+        kind: Some(ChoreographyRootKind::Global {
+            initiating_participant_ref: None,
+        }),
+        graph: Some(ChoreographyGraph {
+            data_associations: vec![],
+            flow_elements: vec![ChoreographyFlowElement::Activity(Box::new(activity))],
+        }),
+        extras: None,
+        conversation_nodes: vec![],
+        conversation_links: vec![],
+        correlation_keys: vec![],
+        base: None,
+        id: id("choreo"),
+        name: None,
+        participants: vec![participant("p1"), participant("p2"), participant("p3")],
+        message_flows: vec![],
+        activities: vec![],
+        sequence_flows: vec![],
+    });
+    let codes = |doc: &BpmnDocument| {
+        let mut project = ProjectData::new("p".into());
+        project.documents.push(Arc::new(doc.clone()));
+        project
+            .diagnostics()
+            .into_iter()
+            .map(|d| d.code)
+            .collect::<Vec<_>>()
+    };
+    let found = codes(&doc);
+    assert!(found.contains(&"globalChoreographyFlowElements"));
+    assert!(found.contains(&"choreographyTaskParticipantCount"));
+    assert!(!found.contains(&"choreographyMessageFlowMissing"));
+    assert!(!found.contains(&"choreographyTaskMessageFlowSchemaCardinality"));
+    assert!(processcraft_core::validation::choreography_reference_issues(&doc).is_empty());
+    let ChoreographyFlowElement::Activity(a) =
+        &mut doc.choreographies[0].graph.as_mut().unwrap().flow_elements[0]
+    else {
+        unreachable!()
+    };
+    a.message_flow_refs.push(local("missing"));
+    let issues = processcraft_core::validation::choreography_reference_issues(&doc);
+    assert!(
+        issues
+            .iter()
+            .any(|i| i.field == "choreography.messageFlowRef" && i.target == local("missing"))
+    );
+    let ChoreographyFlowElement::Activity(a) =
+        &mut doc.choreographies[0].graph.as_mut().unwrap().flow_elements[0]
+    else {
+        unreachable!()
+    };
+    a.message_flow_refs.pop();
+    doc.choreographies[0].kind = None;
+    let ChoreographyFlowElement::Activity(a) =
+        &mut doc.choreographies[0].graph.as_mut().unwrap().flow_elements[0]
+    else {
+        unreachable!()
+    };
+    a.participant_refs.pop();
+    a.message_flow_refs.clear();
+    let found = codes(&doc);
+    assert!(!found.contains(&"globalChoreographyFlowElements"));
+    assert!(!found.contains(&"choreographyTaskParticipantCount"));
+    assert!(found.contains(&"choreographyTaskMessageFlowSchemaCardinality"));
+    use processcraft_core::bpmn_model::{EventDefinition, NodeDetails};
+    let mut event = node("event", NodeKind::StartEvent, "start");
+    event.details = Some(NodeDetails::Event {
+        definitions: vec![EventDefinition::Message {
+            id: None,
+            base: None,
+            message_ref: Some(local("missing_message")),
+            operation_ref: None,
+        }],
+        attached_to: None,
+        cancel_activity: None,
+        definition_refs: vec![local("missing_definition")],
+        parallel_multiple: None,
+        is_interrupting: None,
+        properties: vec![],
+        io: None,
+    });
+    doc.choreographies[0]
+        .graph
+        .as_mut()
+        .unwrap()
+        .flow_elements
+        .push(ChoreographyFlowElement::Event(Box::new(event)));
+    let issues = processcraft_core::validation::activity_family_reference_issues(&doc);
+    assert!(
+        issues
+            .iter()
+            .any(|i| i.field == "event.messageRef" && i.target == local("missing_message"))
+    );
+    assert!(
+        issues
+            .iter()
+            .any(|i| i.field == "event.eventDefinitionRef"
+                && i.target == local("missing_definition"))
+    );
+    assert!(codes(&doc).contains(&"choreographyEventDefinitionWrongContext"));
+    doc.data_stores
+        .push(processcraft_core::bpmn_data::DataStore {
+            base: None,
+            id: Some(id("store")),
+            name: None,
+            capacity: None,
+            is_unlimited: None,
+            item_aware: None,
+        });
+    doc.choreographies[0]
+        .graph
+        .as_mut()
+        .unwrap()
+        .data_associations
+        .push(processcraft_core::bpmn_data::DataAssociation {
+            base: None,
+            id: Some(id("data_assoc")),
+            owner: id("event"),
+            kind: processcraft_core::bpmn_data::DataAssociationKind::Output,
+            sources: vec![],
+            target: id("store"),
+            transformation: None,
+            assignments: vec![],
+        });
+    assert!(codes(&doc).contains(&"choreographyDataRepositoryUse"));
+    doc.choreographies[0]
+        .graph
+        .as_mut()
+        .unwrap()
+        .data_associations
+        .clear();
+    assert!(!codes(&doc).contains(&"choreographyDataRepositoryUse"));
+    let ChoreographyFlowElement::Activity(template) =
+        &doc.choreographies[0].graph.as_ref().unwrap().flow_elements[0]
+    else {
+        unreachable!()
+    };
+    let mut sub = (**template).clone();
+    sub.id = id("sub");
+    sub.details = Some(
+        processcraft_core::bpmn_collaboration::ChoreographyActivityDetails::Sub {
+            graph: Box::new(ChoreographyGraph {
+                data_associations: vec![],
+                flow_elements: vec![],
+            }),
+            artifacts: vec![
+                processcraft_core::bpmn_collaboration::CollaborationArtifact::Group(
+                    processcraft_core::bpmn_model::Group {
+                        base: None,
+                        id: id("group"),
+                        category_value_ref: Some(local("missing_category")),
+                    },
+                ),
+            ],
+        },
+    );
+    doc.choreographies[0]
+        .graph
+        .as_mut()
+        .unwrap()
+        .flow_elements
+        .push(ChoreographyFlowElement::Activity(Box::new(sub)));
+    assert!(
+        processcraft_core::validation::choreography_reference_issues(&doc)
+            .iter()
+            .any(
+                |i| i.owner == id::<processcraft_core::ids::ElementSelector>("group")
+                    && i.field == "group.categoryValueRef"
+                    && i.target == local("missing_category")
+            )
+    );
+    let ChoreographyFlowElement::Activity(template) =
+        &doc.choreographies[0].graph.as_ref().unwrap().flow_elements[0]
+    else {
+        unreachable!()
+    };
+    let mut before = (**template).clone();
+    before.id = id("before");
+    before.participant_refs = vec![local("p1"), local("p2")];
+    let mut target = (**template).clone();
+    target.id = id("after");
+    target.participant_refs = vec![local("p2"), local("p3")];
+    target.initiating_participant = Some(local("p3"));
+    let gateway = node("gateway", NodeKind::ExclusiveGateway, "decision");
+    let flow = |name: &str, source: &str, target: &str| Flow {
+        message_ref: None,
+        flow_metadata: None,
+        association_direction: None,
+        id: id(name),
+        kind: FlowKind::Sequence,
+        source: Some(local(source)),
+        target: Some(local(target)),
+        name: None,
+        documentation: String::new().into(),
+        base_extras: None,
+        condition: None,
+    };
+    doc.choreographies[0].graph = Some(ChoreographyGraph {
+        data_associations: vec![],
+        flow_elements: vec![
+            ChoreographyFlowElement::Activity(Box::new(before)),
+            ChoreographyFlowElement::Gateway(Box::new(gateway)),
+            ChoreographyFlowElement::Activity(Box::new(target)),
+            ChoreographyFlowElement::SequenceFlow(Box::new(flow("f1", "before", "gateway"))),
+            ChoreographyFlowElement::SequenceFlow(Box::new(flow("f2", "gateway", "after"))),
+        ],
+    });
+    assert!(codes(&doc).contains(&"choreographyInitiatorNotPreviouslyInvolved"));
+    let ChoreographyFlowElement::SequenceFlow(edge) =
+        &mut doc.choreographies[0].graph.as_mut().unwrap().flow_elements[3]
+    else {
+        unreachable!()
+    };
+    edge.source = Some(local("missing"));
+    assert!(!codes(&doc).contains(&"choreographyInitiatorNotPreviouslyInvolved"));
+    assert!(codes(&doc).contains(&"choreographyInitiatorSequenceUnqualified"));
 }

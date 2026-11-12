@@ -801,3 +801,434 @@ fn layout_keeps_explicit_label_without_inventing_bounds() {
         .unwrap();
     assert!(label.bounds.is_none());
 }
+
+#[test]
+fn choreography_layout_moves_real_band_with_its_owner_and_rejects_stale_geometry() {
+    use processcraft_core::bpmn_activity::ModelReference;
+    use processcraft_core::bpmn_collaboration::{Choreography, ChoreographyActivity};
+    use processcraft_core::model::{DiReference, Participant, ParticipantBandKind};
+    let mut doc = fixture();
+    doc.processes.clear();
+    doc.diagrams[0].plane = id("choreo");
+    doc.diagrams[0].shapes.truncate(1);
+    let mut band = doc.diagrams[0].shapes[0].clone();
+    band.id = id("band");
+    band.element = id("participant");
+    band.participant_band_kind = Some(ParticipantBandKind::TopInitiating);
+    band.choreography_activity_shape = Some(DiReference::Local(id("shape_a")));
+    band.bounds.height = 15.0;
+    doc.diagrams[0].shapes.push(band);
+    doc.choreographies.push(Choreography {
+        kind: None,
+        graph: None,
+        extras: None,
+        conversation_nodes: vec![],
+        conversation_links: vec![],
+        correlation_keys: vec![],
+        base: None,
+        id: id("choreo"),
+        name: None,
+        participants: vec![Participant {
+            interface_refs: vec![],
+            endpoint_refs: vec![],
+            multiplicity: None,
+            base: None,
+            id: id("participant"),
+            name: None,
+            process: None,
+        }],
+        message_flows: vec![],
+        activities: vec![ChoreographyActivity {
+            loop_type: None,
+            details: None,
+            flow_metadata: None,
+            correlation_keys: vec![],
+            base: None,
+            id: id("a"),
+            name: None,
+            participant_refs: vec![ModelReference::Local(id("participant"))],
+            initiating_participant: Some(ModelReference::Local(id("participant"))),
+            message_flow_refs: vec![],
+        }],
+        sequence_flows: vec![],
+    });
+    let proposal = layout(&doc);
+    validate_proposal(&doc, &proposal).unwrap();
+    let find = |shapes: &[processcraft_core::layout::ShapeGeometry], name: &str| {
+        shapes
+            .iter()
+            .find(|s| s.id == id::<ElementSelector>(name))
+            .unwrap()
+            .bounds
+            .clone()
+    };
+    let owner = find(&proposal.proposed.shapes, "shape_a");
+    let band = find(&proposal.proposed.shapes, "band");
+    assert_eq!((owner.x, owner.y), (band.x, band.y));
+    doc.diagrams[0].shapes[0].bounds.x += 1.0;
+    assert_eq!(
+        validate_proposal(&doc, &proposal).unwrap_err().code,
+        "stale"
+    );
+}
+
+#[test]
+fn expanded_choreography_scope_layout_targets_one_representation() {
+    use processcraft_core::bpmn_activity::ModelReference;
+    use processcraft_core::bpmn_collaboration::{
+        Choreography, ChoreographyActivity, ChoreographyActivityDetails, ChoreographyFlowElement,
+        ChoreographyGraph,
+    };
+    use processcraft_core::layout::propose_choreography_scope_layout;
+    let mut doc = fixture();
+    doc.processes.clear();
+    doc.diagrams[0].plane = id("choreo");
+    let mut scope_a = doc.diagrams[0].shapes[0].clone();
+    scope_a.id = id("scope_a");
+    scope_a.element = id("sub");
+    scope_a.is_expanded = Some(true);
+    scope_a.bounds = Bounds {
+        x: 0.0,
+        y: 0.0,
+        width: 600.0,
+        height: 400.0,
+    };
+    let mut scope_b = scope_a.clone();
+    scope_b.id = id("scope_b");
+    scope_b.bounds.x = 1000.0;
+    let mut child_a = doc.diagrams[0].shapes[0].clone();
+    child_a.id = id("child_a");
+    child_a.bounds.x = 10.0;
+    child_a.bounds.y = 10.0;
+    child_a.bounds.width = 300.0;
+    child_a.bounds.height = 200.0;
+    child_a.is_expanded = Some(true);
+    let mut grand_a = doc.diagrams[0].shapes[0].clone();
+    grand_a.id = id("grand_a");
+    grand_a.element = id("grand");
+    grand_a.bounds.x = 30.0;
+    grand_a.bounds.y = 40.0;
+    let mut grand_b = grand_a.clone();
+    grand_b.id = id("grand_b");
+    grand_b.bounds.x = 1030.0;
+    let mut grand2_a = grand_a.clone();
+    grand2_a.id = id("grand2_a");
+    grand2_a.element = id("grand2");
+    grand2_a.bounds.x = 180.0;
+    let mut grand2_b = grand2_a.clone();
+    grand2_b.id = id("grand2_b");
+    grand2_b.bounds.x = 1180.0;
+    let mut child_b = child_a.clone();
+    child_b.id = id("child_b");
+    child_b.bounds.x = 1010.0;
+    let mut band_a = child_a.clone();
+    band_a.id = id("band_a");
+    band_a.element = id("p");
+    band_a.bounds.height = 15.0;
+    band_a.participant_band_kind =
+        Some(processcraft_core::model::ParticipantBandKind::TopInitiating);
+    band_a.choreography_activity_shape =
+        Some(processcraft_core::model::DiReference::Local(id("child_a")));
+    let mut band_b = band_a.clone();
+    band_b.id = id("band_b");
+    band_b.bounds.x = 1010.0;
+    band_b.choreography_activity_shape =
+        Some(processcraft_core::model::DiReference::Local(id("child_b")));
+    doc.diagrams[0].shapes = vec![
+        scope_a, scope_b, child_a, child_b, band_a, band_b, grand_a, grand_b, grand2_a, grand2_b,
+    ];
+    let edge = |name: &str, source: &str, target: &str, offset: f64| Edge {
+        di_metadata: None,
+        message_visible_kind: None,
+        id: id(name),
+        element: id("inner_flow"),
+        source_element: Some(id(source)),
+        target_element: Some(id(target)),
+        waypoints: vec![
+            Point {
+                x: 130.0 + offset,
+                y: 70.0,
+            },
+            Point {
+                x: 180.0 + offset,
+                y: 70.0,
+            },
+        ],
+        label: Some(processcraft_core::model::Label {
+            di_metadata: None,
+            id: None,
+            bounds: Some(Bounds {
+                x: 140.0 + offset,
+                y: 55.0,
+                width: 30.0,
+                height: 10.0,
+            }),
+            style: None,
+            style_ref: None,
+        }),
+        label_visibility: None,
+        style: None,
+    };
+    doc.diagrams[0].edges = vec![
+        edge("edge_a", "grand_a", "grand2_a", 0.0),
+        edge("edge_b", "grand_b", "grand2_b", 1000.0),
+    ];
+    let activity = |name: &str| ChoreographyActivity {
+        loop_type: None,
+        details: None,
+        flow_metadata: None,
+        correlation_keys: vec![],
+        base: None,
+        id: id(name),
+        name: None,
+        participant_refs: vec![
+            ModelReference::Local(id("p")),
+            ModelReference::Local(id("q")),
+        ],
+        initiating_participant: Some(ModelReference::Local(id("p"))),
+        message_flow_refs: vec![],
+    };
+    let mut nested = activity("a");
+    nested.details = Some(ChoreographyActivityDetails::Sub {
+        graph: Box::new(ChoreographyGraph {
+            data_associations: vec![],
+            flow_elements: vec![
+                ChoreographyFlowElement::Activity(Box::new(activity("grand"))),
+                ChoreographyFlowElement::Activity(Box::new(activity("grand2"))),
+                ChoreographyFlowElement::SequenceFlow(Box::new(Flow {
+                    message_ref: None,
+                    flow_metadata: None,
+                    association_direction: None,
+                    id: id("inner_flow"),
+                    kind: FlowKind::Sequence,
+                    source: Some(ModelReference::Local(id("grand"))),
+                    target: Some(ModelReference::Local(id("grand2"))),
+                    name: None,
+                    documentation: String::new().into(),
+                    base_extras: None,
+                    condition: None,
+                })),
+            ],
+        }),
+        artifacts: vec![],
+    });
+    let mut sub = activity("sub");
+    sub.details = Some(ChoreographyActivityDetails::Sub {
+        graph: Box::new(ChoreographyGraph {
+            data_associations: vec![],
+            flow_elements: vec![ChoreographyFlowElement::Activity(Box::new(nested))],
+        }),
+        artifacts: vec![],
+    });
+    doc.choreographies.push(Choreography {
+        kind: None,
+        graph: Some(ChoreographyGraph {
+            data_associations: vec![],
+            flow_elements: vec![ChoreographyFlowElement::Activity(Box::new(sub))],
+        }),
+        extras: None,
+        conversation_nodes: vec![],
+        conversation_links: vec![],
+        correlation_keys: vec![],
+        base: None,
+        id: id("choreo"),
+        name: None,
+        participants: ["p", "q"]
+            .iter()
+            .map(|name| processcraft_core::model::Participant {
+                interface_refs: vec![],
+                endpoint_refs: vec![],
+                multiplicity: None,
+                base: None,
+                id: id(name),
+                name: None,
+                process: None,
+            })
+            .collect(),
+        message_flows: vec![],
+        activities: vec![],
+        sequence_flows: vec![],
+    });
+    let proposal = propose_choreography_scope_layout(
+        &doc,
+        &id("diagram"),
+        &id("scope_a"),
+        "session",
+        1,
+        &AtomicBool::new(false),
+    )
+    .unwrap();
+    validate_proposal(&doc, &proposal).unwrap();
+    let bounds = |name: &str| {
+        proposal
+            .proposed
+            .shapes
+            .iter()
+            .find(|s| s.id == id::<ElementSelector>(name))
+            .unwrap()
+            .bounds
+            .clone()
+    };
+    assert_ne!(bounds("child_a").x, 10.0);
+    assert_eq!(bounds("child_a").x, bounds("band_a").x);
+    assert_eq!(bounds("child_b").x, 1010.0);
+    assert_eq!(bounds("band_b").x, 1010.0);
+    assert_eq!(bounds("grand_a").x - 30.0, bounds("child_a").x - 10.0);
+    assert_eq!(bounds("grand_b").x, 1030.0);
+    let inner_a = proposal
+        .proposed
+        .edges
+        .iter()
+        .find(|e| e.id == id::<ElementSelector>("edge_a"))
+        .unwrap();
+    let inner_b = proposal
+        .proposed
+        .edges
+        .iter()
+        .find(|e| e.id == id::<ElementSelector>("edge_b"))
+        .unwrap();
+    assert_eq!(inner_a.waypoints[0].x - 130.0, bounds("child_a").x - 10.0);
+    assert_eq!(
+        inner_a.label_bounds.as_ref().unwrap().x - 140.0,
+        bounds("child_a").x - 10.0
+    );
+    assert_eq!(inner_b.waypoints[0].x, 1130.0);
+    assert_eq!(inner_b.label_bounds.as_ref().unwrap().x, 1140.0);
+    let mut single_view = doc.clone();
+    single_view.diagrams[0].shapes.retain(|s| {
+        !["scope_b", "child_b", "band_b", "grand_b", "grand2_b"]
+            .iter()
+            .any(|name| s.id == id::<ElementSelector>(name))
+    });
+    single_view.diagrams[0]
+        .edges
+        .retain(|e| e.id != id::<ElementSelector>("edge_b"));
+    let root_proposal = propose_layout(
+        &single_view,
+        &id("diagram"),
+        "root",
+        1,
+        &AtomicBool::new(false),
+    )
+    .unwrap();
+    validate_proposal(&single_view, &root_proposal).unwrap();
+    let root_shape = |name: &str| {
+        root_proposal
+            .proposed
+            .shapes
+            .iter()
+            .find(|s| s.id == id::<ElementSelector>(name))
+            .unwrap()
+            .bounds
+            .clone()
+    };
+    assert_eq!(root_shape("grand_a").x - 30.0, root_shape("scope_a").x);
+    let root_edge = root_proposal
+        .proposed
+        .edges
+        .iter()
+        .find(|e| e.id == id::<ElementSelector>("edge_a"))
+        .unwrap();
+    assert_eq!(root_edge.waypoints[0].x - 130.0, root_shape("scope_a").x);
+    let mut changed = doc.clone();
+    changed.diagrams[0].shapes[2].bounds.x += 1.0;
+    assert_eq!(
+        validate_proposal(&changed, &proposal).unwrap_err().code,
+        "stale"
+    );
+    use processcraft_core::commands::{Envelope, Mutation, Request, Session};
+    use processcraft_core::model::ProjectData;
+    use std::sync::Arc;
+    let mut project = ProjectData::new("project".into());
+    project.documents.push(Arc::new(doc));
+    let mut session = Session::new(project).unwrap();
+    let before = serde_json::to_vec(&session.snapshot().project).unwrap();
+    let proposal = propose_choreography_scope_layout(
+        &session.snapshot().project.documents[0],
+        &id("diagram"),
+        &id("scope_a"),
+        &session.id(),
+        session.snapshot().generation,
+        &AtomicBool::new(false),
+    )
+    .unwrap();
+    let apply = |session: &mut Session, request| {
+        session
+            .apply(
+                Envelope {
+                    request_id: uuid::Uuid::new_v4().to_string(),
+                    session_id: session.id(),
+                    expected_generation: None,
+                },
+                request,
+            )
+            .unwrap();
+    };
+    apply(
+        &mut session,
+        Request::Batch {
+            mutations: vec![Mutation::ApplyLayout { proposal }],
+        },
+    );
+    let after = session.snapshot().content_id;
+    apply(&mut session, Request::Undo);
+    assert_eq!(
+        serde_json::to_vec(&session.snapshot().project).unwrap(),
+        before
+    );
+    apply(&mut session, Request::Redo);
+    assert_eq!(session.snapshot().content_id, after);
+}
+
+#[test]
+fn choreography_layout_routes_intermediate_events_and_gateway_kinds() {
+    use processcraft_core::bpmn_collaboration::{
+        Choreography, ChoreographyFlowElement, ChoreographyGraph,
+    };
+    let mut doc = fixture();
+    let nodes = std::mem::take(&mut doc.processes[0].nodes);
+    doc.processes.clear();
+    doc.diagrams[0].plane = id("choreo");
+    let mut kinds = [
+        NodeKind::IntermediateCatchEvent,
+        NodeKind::IntermediateThrowEvent,
+        NodeKind::InclusiveGateway,
+        NodeKind::EventBasedGateway,
+    ]
+    .into_iter();
+    let elements = nodes
+        .into_iter()
+        .map(|mut n| {
+            n.kind = kinds.next().unwrap();
+            if matches!(
+                n.kind,
+                NodeKind::IntermediateCatchEvent | NodeKind::IntermediateThrowEvent
+            ) {
+                ChoreographyFlowElement::Event(Box::new(n))
+            } else {
+                ChoreographyFlowElement::Gateway(Box::new(n))
+            }
+        })
+        .collect();
+    doc.choreographies.push(Choreography {
+        kind: None,
+        graph: Some(ChoreographyGraph {
+            data_associations: vec![],
+            flow_elements: elements,
+        }),
+        extras: None,
+        conversation_nodes: vec![],
+        conversation_links: vec![],
+        correlation_keys: vec![],
+        base: None,
+        id: id("choreo"),
+        name: None,
+        participants: vec![],
+        message_flows: vec![],
+        activities: vec![],
+        sequence_flows: vec![],
+    });
+    let proposal = layout(&doc);
+    validate_proposal(&doc, &proposal).unwrap();
+    assert_eq!(proposal.proposed.shapes.len(), 4);
+}

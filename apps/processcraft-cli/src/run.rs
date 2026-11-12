@@ -323,8 +323,15 @@ pub fn execute(command: Command) -> Result<(), Error> {
             input,
             document_id,
             diagram_id,
+            choreography_scope_shape,
             out,
-        } => layout_preview_file(&input, &document_id, &diagram_id, &out),
+        } => layout_preview_file(
+            &input,
+            &document_id,
+            &diagram_id,
+            choreography_scope_shape.as_deref(),
+            &out,
+        ),
         Command::LayoutApply {
             input,
             proposal,
@@ -627,6 +634,7 @@ fn layout_preview_file(
     input: &Path,
     document_id: &str,
     diagram_id: &str,
+    choreography_scope_shape: Option<&str>,
     out: &Path,
 ) -> Result<(), Error> {
     if out.exists() {
@@ -646,13 +654,24 @@ fn layout_preview_file(
         .iter()
         .find(|d| d.id == id)
         .ok_or_else(|| error(3, "document not found"))?;
-    let proposal = processcraft_core::layout::propose_layout(
-        doc,
-        &diagram,
-        &session.id(),
-        snapshot.generation,
-        &std::sync::atomic::AtomicBool::new(false),
-    )
+    let cancel = std::sync::atomic::AtomicBool::new(false);
+    let proposal = match choreography_scope_shape {
+        Some(shape) => processcraft_core::layout::propose_choreography_scope_layout(
+            doc,
+            &diagram,
+            &shape.parse().map_err(|e| error(2, e))?,
+            &session.id(),
+            snapshot.generation,
+            &cancel,
+        ),
+        None => processcraft_core::layout::propose_layout(
+            doc,
+            &diagram,
+            &session.id(),
+            snapshot.generation,
+            &cancel,
+        ),
+    }
     .map_err(|e| error(3, e))?;
     let bytes = serde_json::to_vec(&FileLayoutProposal {
         base_content_id: snapshot.content_id,

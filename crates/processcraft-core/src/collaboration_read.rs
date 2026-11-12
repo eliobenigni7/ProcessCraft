@@ -482,6 +482,42 @@ pub(crate) fn collaboration_qnames(document: &BpmnDocument) -> Vec<&crate::bpmn_
         }
         extras(&mut out, &c.extras)
     }
+    for scope in crate::queries::choreography_scopes(document) {
+        if let Some(ChoreographyRootKind::Global {
+            initiating_participant_ref,
+        }) = &scope.root.kind
+        {
+            optional(&mut out, initiating_participant_ref);
+        }
+        for a in scope.activities {
+            for r in a.participant_refs.iter().chain(&a.message_flow_refs) {
+                one(&mut out, r);
+            }
+            optional(&mut out, &a.initiating_participant);
+            if let Some(ChoreographyActivityDetails::Call {
+                called_choreography_ref,
+                participant_associations,
+            }) = &a.details
+            {
+                optional(&mut out, called_choreography_ref);
+                for a in participant_associations {
+                    pair(&mut out, &a.inner, &a.outer);
+                }
+            }
+        }
+        for f in scope.flows {
+            flow(&mut out, f);
+        }
+        if scope.parent.is_some() {
+            for artifact in scope.artifacts {
+                match artifact {
+                    CollaborationArtifact::Association(f) => flow(&mut out, f),
+                    CollaborationArtifact::Group(g) => optional(&mut out, &g.category_value_ref),
+                    CollaborationArtifact::TextAnnotation(_) => {}
+                }
+            }
+        }
+    }
     for scope in crate::queries::scopes(document) {
         for group in scope.groups {
             optional(&mut out, &group.category_value_ref);

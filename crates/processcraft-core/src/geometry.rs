@@ -305,6 +305,140 @@ pub fn repair_endpoints(
         warning,
     })
 }
+// Route between authored interior points while treating both endpoint owners as
+// obstacles. A short outward stub fixes the port direction before routing.
+fn repair_owned_endpoints(
+    points: &[Point],
+    start: Point,
+    end: Point,
+    source: &Bounds,
+    target: &Bounds,
+    obstacles: &[Bounds],
+) -> Result<Vec<Point>, &'static str> {
+    fn stub(
+        anchor: &Point,
+        neighbor: &Point,
+        bounds: &Bounds,
+    ) -> Result<(Point, Point), &'static str> {
+        let scale = [
+            anchor.x.abs(),
+            anchor.y.abs(),
+            bounds.x.abs(),
+            bounds.y.abs(),
+            bounds.width,
+            bounds.height,
+        ]
+        .into_iter()
+        .fold(1.0_f64, f64::max);
+        let tolerance = 1e-9 + scale * f64::EPSILON * 16.0;
+        let near = |a: f64, b: f64| (a - b).abs() <= tolerance;
+        let within = |v: f64, lo: f64, hi: f64| v >= lo - tolerance && v <= hi + tolerance;
+        let mut sides = Vec::new();
+        if near(anchor.x, bounds.x) && within(anchor.y, bounds.y, bounds.y + bounds.height) {
+            sides.push((-1.0, 0.0));
+        }
+        if near(anchor.x, bounds.x + bounds.width)
+            && within(anchor.y, bounds.y, bounds.y + bounds.height)
+        {
+            sides.push((1.0, 0.0));
+        }
+        if near(anchor.y, bounds.y) && within(anchor.x, bounds.x, bounds.x + bounds.width) {
+            sides.push((0.0, -1.0));
+        }
+        if near(anchor.y, bounds.y + bounds.height)
+            && within(anchor.x, bounds.x, bounds.x + bounds.width)
+        {
+            sides.push((0.0, 1.0));
+        }
+        let direction = if sides.len() == 1 {
+            sides[0]
+        } else {
+            let candidates: Vec<_> = sides
+                .into_iter()
+                .filter(|(dx, dy)| {
+                    (*dx != 0.0
+                        && near(neighbor.y, anchor.y)
+                        && (neighbor.x - anchor.x) * dx > tolerance)
+                        || (*dy != 0.0
+                            && near(neighbor.x, anchor.x)
+                            && (neighbor.y - anchor.y) * dy > tolerance)
+                })
+                .collect();
+            if candidates.len() != 1 {
+                return Err("ambiguous endpoint exit direction");
+            }
+            candidates[0]
+        };
+        let snapped = match direction {
+            (-1.0, 0.0) => p(bounds.x, anchor.y.clamp(bounds.y, bounds.y + bounds.height)),
+            (1.0, 0.0) => p(
+                bounds.x + bounds.width,
+                anchor.y.clamp(bounds.y, bounds.y + bounds.height),
+            ),
+            (0.0, -1.0) => p(anchor.x.clamp(bounds.x, bounds.x + bounds.width), bounds.y),
+            _ => p(
+                anchor.x.clamp(bounds.x, bounds.x + bounds.width),
+                bounds.y + bounds.height,
+            ),
+        };
+        let point = p(snapped.x + direction.0 * 8.0, snapped.y + direction.1 * 8.0);
+        if !valid_point(&point) {
+            return Err("endpoint exit exceeds coordinate limit");
+        }
+        Ok((snapped, point))
+    }
+    let (start, first_stub) = stub(
+        &start,
+        &p(
+            points[1].x + start.x - points[0].x,
+            points[1].y + start.y - points[0].y,
+        ),
+        source,
+    )?;
+    let last_index = points.len() - 1;
+    let (end, last_stub) = stub(
+        &end,
+        &p(
+            points[last_index - 1].x + end.x - points[last_index].x,
+            points[last_index - 1].y + end.y - points[last_index].y,
+        ),
+        target,
+    )?;
+    let mut blocked_owners = obstacles.to_vec();
+    blocked_owners.push(source.clone());
+    blocked_owners.push(target.clone());
+    let mut anchors = vec![first_stub];
+    anchors.extend_from_slice(&points[1..last_index]);
+    anchors.push(last_stub.clone());
+    let mut result = vec![start];
+    for pair in anchors.windows(2) {
+        if result.last() != Some(&pair[0]) {
+            result.push(pair[0].clone());
+        }
+        let segment = route(pair[0].clone(), pair[1].clone(), &blocked_owners, 0.0, 2048)?
+            .waypoints
+            .ok_or("cannot safely repair endpoint route")?;
+        result.extend(segment.into_iter().skip(1));
+    }
+    result.push(end);
+    // A stub collinear with the adjacent routed segment need not add a DI bend.
+    if result.len() >= 3 {
+        let n = result.len();
+        let (a, b, c) = (&result[n - 3], &result[n - 2], &result[n - 1]);
+        if b == &last_stub
+            && !points[1..last_index].contains(b)
+            && ((a.x == b.x && b.x == c.x && (b.y - a.y) * (c.y - b.y) >= 0.0)
+                || (a.y == b.y && b.y == c.y && (b.x - a.x) * (c.x - b.x) >= 0.0))
+            && clear(&[a.clone(), c.clone()], &blocked_owners)
+        {
+            result.remove(n - 2);
+        }
+    }
+    if !clear(&result, &blocked_owners) {
+        return Err("cannot safely repair endpoint route");
+    }
+    Ok(result)
+}
 /// One batch represents one drag gesture and therefore one undo step.
 pub fn move_multiple(
     document_id: DocumentId,
@@ -532,6 +666,202 @@ pub fn prepare_move(
             }
         }
     }
+    // Choreography DI has no parent pointer. Establish ownership from the
+    // selected representation and unique containment at each graph scope.
+    let graph_scopes = crate::queries::choreography_scopes(document);
+    let mut ignored_graph_edges = std::collections::BTreeSet::new();
+    let mut selected_graph_edges = std::collections::BTreeSet::new();
+    let contains = |outer: &Bounds, inner: &Bounds| {
+        outer.x <= inner.x
+            && outer.y <= inner.y
+            && outer.x + outer.width >= inner.x + inner.width
+            && outer.y + outer.height >= inner.y + inner.height
+    };
+    let intersects = |a: &Bounds, b: &Bounds| {
+        a.x <= b.x + b.width
+            && a.x + a.width >= b.x
+            && a.y <= b.y + b.height
+            && a.y + a.height >= b.y
+    };
+    for requested_parent in &requested {
+        let parent_shape = diagram
+            .shapes
+            .iter()
+            .find(|s| s.id == requested_parent.shape_id)
+            .ok_or("shape not found")?;
+        if !graph_scopes
+            .iter()
+            .any(|scope| scope.owner == parent_shape.element && scope.parent.is_some())
+        {
+            continue;
+        }
+        let dx = requested_parent.bounds.x - parent_shape.bounds.x;
+        let dy = requested_parent.bounds.y - parent_shape.bounds.y;
+        if dx == 0.0 && dy == 0.0 {
+            continue;
+        }
+        if requested_parent.bounds.width != parent_shape.bounds.width
+            || requested_parent.bounds.height != parent_shape.bounds.height
+        {
+            return Err("cannot resize and move a choreography subtree together");
+        }
+        let mut pending = vec![(parent_shape, 1usize)];
+        while let Some((owner, depth)) = pending.pop() {
+            if depth > 32 {
+                return Err("nested choreography exceeds depth limit");
+            }
+            let Some(scope) = graph_scopes
+                .iter()
+                .find(|scope| scope.owner == owner.element && scope.parent.is_some())
+            else {
+                continue;
+            };
+            let ids: std::collections::BTreeSet<_> = scope
+                .activities
+                .iter()
+                .map(|a| a.id.selector())
+                .chain(
+                    scope
+                        .events
+                        .iter()
+                        .chain(&scope.gateways)
+                        .map(|n| n.id.selector()),
+                )
+                .chain(scope.artifacts.iter().filter_map(|a| match a {
+                    crate::bpmn_collaboration::CollaborationArtifact::Group(v) => {
+                        Some(v.id.selector())
+                    }
+                    crate::bpmn_collaboration::CollaborationArtifact::TextAnnotation(v) => {
+                        Some(v.id.selector())
+                    }
+                    _ => None,
+                }))
+                .collect();
+            let owner_candidates: Vec<_> = diagram
+                .shapes
+                .iter()
+                .filter(|s| s.element == owner.element)
+                .collect();
+            for id in ids {
+                let mut selected_count = 0;
+                for child in diagram
+                    .shapes
+                    .iter()
+                    .filter(|s| s.element == id && s.participant_band_kind.is_none())
+                {
+                    if !intersects(&owner.bounds, &child.bounds) {
+                        if owner_candidates
+                            .iter()
+                            .filter(|candidate| contains(&candidate.bounds, &child.bounds))
+                            .count()
+                            != 1
+                        {
+                            return Err("ambiguous choreography descendant representation");
+                        }
+                        continue;
+                    }
+                    if !contains(&owner.bounds, &child.bounds)
+                        || owner_candidates
+                            .iter()
+                            .filter(|candidate| contains(&candidate.bounds, &child.bounds))
+                            .count()
+                            != 1
+                    {
+                        return Err("ambiguous choreography descendant representation");
+                    }
+                    selected_count += 1;
+                    if selected_count > 1 {
+                        return Err("ambiguous choreography descendant representation");
+                    }
+                    let mut translated = child.bounds.clone();
+                    translated.x += dx;
+                    translated.y += dy;
+                    if let Some(existing) = bounds.iter().find(|b| b.shape_id == child.id) {
+                        if existing.bounds != translated {
+                            return Err("conflicting parent and child moves");
+                        }
+                    } else {
+                        bounds.push(ShapeBounds {
+                            diagram_id: diagram_id.clone(),
+                            shape_id: child.id.selector(),
+                            bounds: translated,
+                        });
+                    }
+                    nested_translated.insert(child.element.clone());
+                    if graph_scopes
+                        .iter()
+                        .any(|s| s.owner == child.element && s.parent.is_some())
+                    {
+                        pending.push((child, depth + 1));
+                    }
+                }
+            }
+            let edge_ids: std::collections::BTreeSet<_> = scope
+                .flows
+                .iter()
+                .map(|f| f.id.selector())
+                .chain(
+                    scope
+                        .data_associations
+                        .iter()
+                        .filter_map(|a| a.id.as_ref().map(|id| id.selector())),
+                )
+                .chain(scope.artifacts.iter().filter_map(|a| match a {
+                    crate::bpmn_collaboration::CollaborationArtifact::Association(f) => {
+                        Some(f.id.selector())
+                    }
+                    _ => None,
+                }))
+                .collect();
+            for edge in diagram
+                .edges
+                .iter()
+                .filter(|e| edge_ids.contains(&e.element))
+            {
+                let Some(first) = edge.waypoints.first() else {
+                    return Err("choreography edge has insufficient geometry");
+                };
+                let (mut x, mut y, mut right, mut bottom) = (first.x, first.y, first.x, first.y);
+                for p in &edge.waypoints {
+                    x = x.min(p.x);
+                    y = y.min(p.y);
+                    right = right.max(p.x);
+                    bottom = bottom.max(p.y);
+                }
+                let extent = Bounds {
+                    x,
+                    y,
+                    width: right - x,
+                    height: bottom - y,
+                };
+                if !intersects(&owner.bounds, &extent) {
+                    if owner_candidates
+                        .iter()
+                        .filter(|candidate| contains(&candidate.bounds, &extent))
+                        .count()
+                        != 1
+                    {
+                        return Err("ambiguous choreography edge representation");
+                    }
+                    ignored_graph_edges.insert(edge.id.selector());
+                    continue;
+                }
+                if !contains(&owner.bounds, &extent)
+                    || owner_candidates
+                        .iter()
+                        .filter(|candidate| contains(&candidate.bounds, &extent))
+                        .count()
+                        != 1
+                {
+                    return Err("ambiguous choreography edge representation");
+                }
+                selected_graph_edges.insert(edge.id.selector());
+            }
+        }
+    }
+    for id in &selected_graph_edges {
+        ignored_graph_edges.remove(id);
+    }
     // Bands belong to a particular activity representation, not to every
     // representation of the same semantic activity.
     let owners = bounds.clone();
@@ -620,6 +950,7 @@ pub fn prepare_move(
                 _ => None,
             })
     };
+    let choreography_scopes = crate::queries::choreography_scopes(document);
     let artifact_flows: Vec<_> = document
         .collaboration
         .iter()
@@ -632,6 +963,12 @@ pub fn prepare_move(
                 .filter_map(|c| c.extras.as_ref()),
         )
         .flat_map(|extras| extras.artifacts.iter())
+        .chain(
+            choreography_scopes
+                .iter()
+                .filter(|scope| scope.parent.is_some())
+                .flat_map(|scope| scope.artifacts.iter().copied()),
+        )
         .filter_map(|artifact| match artifact {
             crate::bpmn_collaboration::CollaborationArtifact::Association(flow) => {
                 Some(flow.as_ref())
@@ -654,7 +991,7 @@ pub fn prepare_move(
             document
                 .choreographies
                 .iter()
-                .flat_map(|c| c.sequence_flows.iter().chain(c.message_flows.iter())),
+                .flat_map(|c| c.message_flows.iter()),
         )
         .chain(artifact_flows.iter().copied())
         .filter_map(|flow| {
@@ -665,6 +1002,28 @@ pub fn prepare_move(
             ))
         })
         .collect();
+    for scope in &choreography_scopes {
+        let members: std::collections::BTreeSet<_> = scope
+            .activities
+            .iter()
+            .map(|a| a.id.selector())
+            .chain(
+                scope
+                    .events
+                    .iter()
+                    .chain(&scope.gateways)
+                    .map(|n| n.id.selector()),
+            )
+            .collect();
+        for flow in &scope.flows {
+            if let (Some(source), Some(target)) = (resolve(&flow.source), resolve(&flow.target))
+                && members.contains(&source)
+                && members.contains(&target)
+            {
+                connections.push((flow.id.selector(), source, target));
+            }
+        }
+    }
     for scope in &scopes {
         for association in scope.data_associations {
             let Some(association_id) = association.id.as_ref() else {
@@ -797,7 +1156,12 @@ pub fn prepare_move(
             document
                 .choreographies
                 .iter()
-                .flat_map(|c| c.sequence_flows.iter().chain(c.message_flows.iter())),
+                .flat_map(|c| c.message_flows.iter()),
+        )
+        .chain(
+            choreography_scopes
+                .iter()
+                .flat_map(|scope| scope.flows.iter().copied()),
         )
         .chain(artifact_flows.iter().copied())
         .map(|flow| {
@@ -843,6 +1207,9 @@ pub fn prepare_move(
     // retained unchanged, while affected cycles are refused atomically.
     let mut affected = std::collections::BTreeSet::new();
     for edge in &diagram.edges {
+        if ignored_graph_edges.contains(&edge.id.selector()) {
+            continue;
+        }
         let Some((_, source, target)) = connections.iter().find(|(id, _, _)| *id == edge.element)
         else {
             // Preserve unrelated incomplete/external edges. Explicitly attached
@@ -864,7 +1231,8 @@ pub fn prepare_move(
                             .any(|(_, id, dx, dy)| *id == semantic && (*dx != 0.0 || *dy != 0.0))
                     })
             };
-            if known_endpoint_moved
+            if selected_graph_edges.contains(&edge.id.selector())
+                || known_endpoint_moved
                 || [edge.source_element.as_ref(), edge.target_element.as_ref()]
                     .into_iter()
                     .flatten()
@@ -888,6 +1256,37 @@ pub fn prepare_move(
                         }
                 })
             };
+        if selected_graph_edges.contains(&edge.id.selector()) {
+            let endpoint_owned = |semantic: &ElementSelector,
+                                  representation: Option<&ElementSelector>,
+                                  point: Option<&Point>| {
+                let Some(point) = point else {
+                    return false;
+                };
+                let candidates: Vec<_> = diagram
+                    .shapes
+                    .iter()
+                    .filter(|shape| {
+                        &shape.element == semantic
+                            && moved.iter().any(|(id, _, dx, dy)| {
+                                *id == &shape.id.selector() && (*dx != 0.0 || *dy != 0.0)
+                            })
+                            && representation.is_none_or(|id| &shape.id == id)
+                            && (representation.is_some()
+                                || (point.x >= shape.bounds.x
+                                    && point.x <= shape.bounds.x + shape.bounds.width
+                                    && point.y >= shape.bounds.y
+                                    && point.y <= shape.bounds.y + shape.bounds.height))
+                    })
+                    .collect();
+                candidates.len() == 1
+            };
+            if !endpoint_owned(source, edge.source_element.as_ref(), edge.waypoints.first())
+                || !endpoint_owned(target, edge.target_element.as_ref(), edge.waypoints.last())
+            {
+                return Err("cannot prove choreography edge endpoint ownership");
+            }
+        }
         if moved_endpoint(source, edge.source_element.as_ref())
             || moved_endpoint(target, edge.target_element.as_ref())
         {
@@ -1119,6 +1518,48 @@ pub fn prepare_move(
                     .map_or_else(|| s.bounds.clone(), |b| b.bounds.clone())
             })
             .collect();
+        if crate::queries::find_flow(document, &edge.element)
+            .is_some_and(|flow| flow.kind == crate::model::FlowKind::Sequence)
+        {
+            let owner = |semantic: &ElementSelector,
+                         representation: Option<&ElementSelector>|
+             -> Result<Bounds, &'static str> {
+                let candidates: Vec<_> = diagram
+                    .shapes
+                    .iter()
+                    .filter(|shape| {
+                        &shape.element == semantic
+                            && representation.is_none_or(|id| &shape.id == id)
+                    })
+                    .collect();
+                if candidates.len() != 1 {
+                    return Err("ambiguous endpoint shape representation");
+                }
+                let shape = candidates[0];
+                let proposed = bounds
+                    .iter()
+                    .find(|b| b.shape_id == shape.id)
+                    .map_or(&shape.bounds, |b| &b.bounds);
+                if proposed.width != shape.bounds.width || proposed.height != shape.bounds.height {
+                    return Err("cannot safely repair resized endpoint");
+                }
+                Ok(proposed.clone())
+            };
+            let source_bounds = owner(source, edge.source_element.as_ref())?;
+            let target_bounds = owner(target, edge.target_element.as_ref())?;
+            let start_point = start.unwrap_or_else(|| edge.waypoints[0].clone());
+            let end_point = end.unwrap_or_else(|| edge.waypoints[edge.waypoints.len() - 1].clone());
+            let repaired = repair_owned_endpoints(
+                &edge.waypoints,
+                start_point,
+                end_point,
+                &source_bounds,
+                &target_bounds,
+                &obstacles,
+            )?;
+            routes.push((diagram_id.clone(), edge.id.selector(), repaired));
+            continue;
+        }
         let repaired = repair_endpoints(&edge.waypoints, start, end, &obstacles)?;
         if let Some(warning) = repaired.warning {
             warnings.push(format!("edge {}: {}", edge.id, warning));
