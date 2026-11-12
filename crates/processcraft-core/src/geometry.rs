@@ -152,45 +152,90 @@ fn compact(path: Vec<Point>) -> Vec<Point> {
     }
     out
 }
+/// Side of a shape.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Side {
+    Top,
+    Right,
+    Bottom,
+    Left,
+}
+/// Preferred Manhattan layout of a new connection (bpmn-js `BpmnLayouter` behavior).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RouteLayout {
+    /// Facing sides along the dominant axis.
+    Auto,
+    /// Sequence flow: h:h.
+    Sequence,
+    /// Out of a gateway: v:h when the target is diagonal.
+    FromGateway,
+    /// Into a gateway: h:v when the source is diagonal.
+    IntoGateway,
+    /// Message flow: straight when the shapes overlap horizontally, else v:v.
+    Message,
+    /// Out of a boundary event: leave from the side it is attached to.
+    FromBoundary(Side),
+}
 /// Route for a new connection between two shapes, shared by every entry point.
-/// Leaves and enters on the sides that face each other with one orthogonal elbow; when that
-/// elbow crosses another shape it tries the bounded [`route`] search, and otherwise keeps the
-/// elbow (a visible route the user can reroute). Bounds containing either endpoint's centre
-/// (pools, lanes, expanded subprocesses) and the endpoints themselves are not obstacles.
+/// Equivalent to [`layout_route`] with [`RouteLayout::Auto`].
 pub fn connection_route(a: &Bounds, b: &Bounds, shapes: &[Bounds]) -> Vec<Point> {
+    layout_route(a, b, shapes, RouteLayout::Auto)
+}
+/// Route from `a` to `b`: shapes apart only horizontally get h:h, only vertically v:v, and
+/// diagonal ones the preferred `layout`. When the preferred route crosses another shape it tries
+/// the bounded [`route`] search, and otherwise keeps it (a visible route the user can reroute).
+/// Bounds containing either endpoint's centre (pools, lanes, expanded subprocesses) and the
+/// endpoints themselves are not obstacles.
+pub fn layout_route(a: &Bounds, b: &Bounds, shapes: &[Bounds], layout: RouteLayout) -> Vec<Point> {
+    const APART: f64 = 20.0;
     let (ax, ay) = (a.x + a.width / 2.0, a.y + a.height / 2.0);
     let (bx, by) = (b.x + b.width / 2.0, b.y + b.height / 2.0);
-    let horizontal = (bx - ax).abs() >= (by - ay).abs();
-    let (start, end) = if horizontal {
-        let forward = bx >= ax;
-        (
-            p(if forward { a.x + a.width } else { a.x }, ay),
-            p(if forward { b.x } else { b.x + b.width }, by),
-        )
-    } else {
-        let down = by >= ay;
-        (
-            p(ax, if down { a.y + a.height } else { a.y }),
-            p(bx, if down { b.y } else { b.y + b.height }),
-        )
+    let horizontal_apart = b.x >= a.x + a.width + APART || b.x + b.width <= a.x - APART;
+    let below = b.y >= a.y + a.height + APART;
+    let vertical_apart = below || b.y + b.height <= a.y - APART;
+    let (forward, down) = (bx >= ax, by >= ay);
+    let h_start = p(if forward { a.x + a.width } else { a.x }, ay);
+    let h_end = p(if forward { b.x } else { b.x + b.width }, by);
+    let v_start = p(ax, if down { a.y + a.height } else { a.y });
+    let v_end = p(bx, if down { b.y } else { b.y + b.height });
+    let hh = || {
+        let mid = (h_start.x + h_end.x) / 2.0;
+        compact(vec![h_start.clone(), p(mid, ay), p(mid, by), h_end.clone()])
     };
-    let elbow = if horizontal {
-        let mid = (start.x + end.x) / 2.0;
-        compact(vec![
-            start.clone(),
-            p(mid, start.y),
-            p(mid, end.y),
-            end.clone(),
-        ])
-    } else {
-        let mid = (start.y + end.y) / 2.0;
-        compact(vec![
-            start.clone(),
-            p(start.x, mid),
-            p(end.x, mid),
-            end.clone(),
-        ])
+    let vv = || {
+        let mid = (v_start.y + v_end.y) / 2.0;
+        compact(vec![v_start.clone(), p(ax, mid), p(bx, mid), v_end.clone()])
     };
+    let vh = || compact(vec![v_start.clone(), p(ax, by), h_end.clone()]);
+    let hv = || compact(vec![h_start.clone(), p(bx, ay), v_end.clone()]);
+    let (overlap_from, overlap_to) = (a.x.max(b.x), (a.x + a.width).min(b.x + b.width));
+    let elbow =
+        match layout {
+            RouteLayout::Message if vertical_apart && overlap_from <= overlap_to => {
+                let x = (overlap_from + overlap_to) / 2.0;
+                vec![p(x, v_start.y), p(x, v_end.y)]
+            }
+            // Leave a top/bottom boundary event vertically when the target lies beyond that side.
+            RouteLayout::FromBoundary(Side::Bottom) if below => {
+                if horizontal_apart {
+                    vh()
+                } else {
+                    vv()
+                }
+            }
+            RouteLayout::FromBoundary(Side::Top) if vertical_apart && !below => {
+                if horizontal_apart { vh() } else { vv() }
+            }
+            _ if horizontal_apart && !vertical_apart => hh(),
+            _ if vertical_apart && !horizontal_apart => vv(),
+            RouteLayout::Sequence | RouteLayout::FromBoundary(_) if horizontal_apart => hh(),
+            RouteLayout::FromGateway if horizontal_apart => vh(),
+            RouteLayout::IntoGateway if horizontal_apart => hv(),
+            RouteLayout::Message if horizontal_apart => vv(),
+            _ if (bx - ax).abs() >= (by - ay).abs() => hh(),
+            _ => vv(),
+        };
+    let (start, end) = (elbow[0].clone(), elbow[elbow.len() - 1].clone());
     let contains = |r: &Bounds, x: f64, y: f64| {
         x >= r.x && x <= r.x + r.width && y >= r.y && y <= r.y + r.height
     };

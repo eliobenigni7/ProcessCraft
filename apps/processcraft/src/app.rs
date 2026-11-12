@@ -264,7 +264,6 @@ pub struct ProcessCraft {
     event_catalog_draft: Option<event::EventCatalogDraft>,
     identity_page: usize,
     association_direction: Option<processcraft_core::bpmn_model::AssociationDirection>,
-    connection_kind: FlowKind,
     owner: String,
     contact: String,
     is_flow: bool,
@@ -410,7 +409,6 @@ impl Default for ProcessCraft {
             event_catalog_draft: None,
             identity_page: 0,
             association_direction: None,
-            connection_kind: FlowKind::Sequence,
             owner: String::new(),
             contact: String::new(),
             is_flow: false,
@@ -1580,6 +1578,7 @@ impl ProcessCraft {
         }
     }
     fn add(&mut self, kind: NodeKind) {
+        use processcraft_core::modeling;
         let snap = self.ctl.session.snapshot();
         let Some(d) = snap.project.documents.get(self.doc) else {
             return;
@@ -1594,245 +1593,119 @@ impl ProcessCraft {
         ) else {
             return;
         };
+        let selected = self.selected.as_ref().and_then(|id| {
+            let node = p.nodes.iter().find(|n| &n.id == id)?;
+            let shape = diagram.shapes.iter().find(|s| &s.element == id)?;
+            Some((node, shape))
+        });
+        // bpmn.io-style append: a flow node added while one flow node is selected follows it.
+        if let Some((source, _)) = selected
+            && self.multi.len() == 1
+            && processcraft_core::rules::is_flow_node(kind)
+            && !matches!(kind, NodeKind::StartEvent | NodeKind::BoundaryEvent)
+            && processcraft_core::rules::sequence_source_refusal(source).is_none()
+        {
+            self.append(source.id.selector(), kind);
+            return;
+        }
+        let host = selected.filter(|(node, _)| node.kind.is_activity());
+        if kind == NodeKind::BoundaryEvent && host.is_none() {
+            self.ctl.error =
+                "Select an activity first, then add a boundary event to attach it.".into();
+            return;
+        }
+        let (width, height) = modeling::default_size(kind);
+        let bounds = if let Some((_, activity)) = host.filter(|_| kind == NodeKind::BoundaryEvent) {
+            modeling::boundary_bounds(&activity.bounds)
+        } else if let Some(parent) = diagram
+            .shapes
+            .iter()
+            .find(|s| &s.element == p.id && s.is_expanded == Some(true))
+        {
+            Bounds {
+                x: parent.bounds.x + 40.0 + (p.nodes.len() % 2) as f64 * 140.0,
+                y: parent.bounds.y + 55.0 + (p.nodes.len() / 2) as f64 * 90.0,
+                width,
+                height,
+            }
+        } else {
+            canvas::vacant_bounds(&diagram.shapes, self.viewport_center(), width, height)
+        };
         let eid: processcraft_core::ids::ElementIdentity = if self.create_anonymous {
             processcraft_core::ids::ElementIdentity::anonymous()
         } else {
             controller::id("Node").into()
         };
-        let event = matches!(
+        let node = modeling::new_node(
             kind,
-            NodeKind::StartEvent
-                | NodeKind::EndEvent
-                | NodeKind::IntermediateCatchEvent
-                | NodeKind::IntermediateThrowEvent
-                | NodeKind::BoundaryEvent
+            eid.clone(),
+            (kind != NodeKind::TextAnnotation).then(|| node_kind_label(kind).into()),
+            host.map(|(activity, _)| activity.id.selector()),
         );
-        let gateway = matches!(
-            kind,
-            NodeKind::ExclusiveGateway
-                | NodeKind::ParallelGateway
-                | NodeKind::InclusiveGateway
-                | NodeKind::ComplexGateway
-                | NodeKind::EventBasedGateway
-        );
-        let subprocess = matches!(
-            kind,
-            NodeKind::SubProcess | NodeKind::AdHocSubProcess | NodeKind::Transaction
-        );
-        let (width, height) = if event {
-            (40.0, 40.0)
-        } else if gateway {
-            (50.0, 50.0)
-        } else if subprocess {
-            (360.0, 240.0)
-        } else {
-            (100.0, 70.0)
-        };
-        let label = node_kind_label(kind);
-        let details = if kind == NodeKind::TextAnnotation {
-            Some(processcraft_core::bpmn_model::NodeDetails::TextAnnotation {
-                text_format: None,
-                text: Some(String::new().into()),
-            })
-        } else if subprocess {
-            Some(processcraft_core::bpmn_model::NodeDetails::SubProcess {
-                content: Box::new(FlowContainer::default()),
-            })
-        } else if matches!(
-            kind,
-            NodeKind::IntermediateCatchEvent | NodeKind::BoundaryEvent
-        ) {
-            Some(processcraft_core::bpmn_model::NodeDetails::Event {
-                definition_refs: Vec::new(),
-                parallel_multiple: None,
-                is_interrupting: None,
-                properties: Vec::new(),
-                io: None,
-                definitions: vec![processcraft_core::bpmn_model::EventDefinition::Timer {
-                    base: None,
-                    id: None,
-                    kind: Some(processcraft_core::bpmn_model::TimerKind::Duration),
-                    expression: Some("PT1M".into()),
-                }],
-                attached_to: if kind == NodeKind::BoundaryEvent {
-                    self.selected
-                        .clone()
-                        .map(processcraft_core::bpmn_activity::ModelReference::Local)
-                } else {
-                    None
-                },
-                cancel_activity: (kind == NodeKind::BoundaryEvent).then_some(true),
-            })
-        } else {
-            None
-        };
-        let selected_shape = self.selected.as_ref().and_then(|id| {
-            let node = p.nodes.iter().find(|n| &n.id == id)?;
-            let shape = diagram.shapes.iter().find(|s| &s.element == id)?;
-            Some((node.kind, shape))
-        });
-        if kind == NodeKind::BoundaryEvent
-            && !selected_shape.is_some_and(|(selected, _)| selected.is_activity())
-        {
-            self.ctl.error =
-                "Select an activity first, then add a boundary event to attach it.".into();
-            return;
-        }
-        // bpmn.io-style append: a flow node added while one flow node is selected follows it.
-        let flow_target = !matches!(
-            kind,
-            NodeKind::StartEvent
-                | NodeKind::BoundaryEvent
-                | NodeKind::TextAnnotation
-                | NodeKind::DataObjectReference
-                | NodeKind::DataStoreReference
-        );
-        let append = selected_shape.filter(|(source, _)| {
-            flow_target
-                && self.multi.len() == 1
-                && !matches!(
-                    source,
-                    NodeKind::EndEvent
-                        | NodeKind::TextAnnotation
-                        | NodeKind::DataObjectReference
-                        | NodeKind::DataStoreReference
-                )
-        });
-        let parent = diagram
-            .shapes
-            .iter()
-            .find(|s| &s.element == p.id && s.is_expanded == Some(true));
-        let (x, y) = if kind == NodeKind::BoundaryEvent
-            && let Some((_, activity)) = selected_shape
-        {
-            let a = &activity.bounds;
-            (
-                a.x + a.width * 0.75 - width / 2.0,
-                a.y + a.height - height / 2.0,
-            )
-        } else if let Some((_, source)) = append {
-            let s = &source.bounds;
-            let center = (s.x + s.width + 80.0 + width / 2.0, s.y + s.height / 2.0);
-            let b = canvas::vacant_bounds(&diagram.shapes, center, width, height);
-            (b.x, b.y)
-        } else if let Some(parent) = parent {
-            (
-                parent.bounds.x + 40.0 + (p.nodes.len() % 2) as f64 * 140.0,
-                parent.bounds.y + 55.0 + (p.nodes.len() / 2) as f64 * 90.0,
-            )
-        } else {
-            let b = canvas::vacant_bounds(&diagram.shapes, self.viewport_center(), width, height);
-            (b.x, b.y)
-        };
-        let shape = Shape {
-            di_metadata: None,
-            is_message_visible: None,
-            participant_band_kind: None,
-            choreography_activity_shape: None,
-            label_visibility: Some(DiLabelVisibility::Explicit),
-            is_horizontal: None,
-            is_marker_visible: None,
-            is_expanded: subprocess.then_some(true),
-            id: controller::id("Shape").into(),
-            element: eid.selector(),
-            bounds: Bounds {
-                x,
-                y,
-                width,
-                height,
+        if self.ctl.mutate(vec![
+            Mutation::CreateElement {
+                document_id: d.id,
+                process_id: p.id.selector(),
+                element: node,
             },
-            label: if event || gateway {
-                Some(Label {
-                    di_metadata: None,
-                    id: None,
-                    style_ref: None,
-                    bounds: Some(Bounds {
-                        x: x + (width - 140.0) / 2.0,
-                        y: y + height + 4.0,
-                        width: 140.0,
-                        height: 30.0,
-                    }),
-                    style: None,
-                })
-            } else {
-                Some(Label::default())
+            Mutation::CreateShape {
+                document_id: d.id,
+                diagram_id: diagram.id.selector(),
+                shape: modeling::new_shape(
+                    kind,
+                    controller::id("Shape").into(),
+                    eid.selector(),
+                    bounds,
+                ),
             },
-            style: None,
-        };
-        let append_flow = append.map(|(_, source)| {
-            let flow = controller::id("Flow");
-            [
-                Mutation::CreateFlow {
-                    document_id: d.id,
-                    process_id: Some(p.id.selector()),
-                    flow: Flow {
-                        message_ref: None,
-                        flow_metadata: None,
-                        base_extras: None,
-                        association_direction: None,
-                        id: flow.clone().into(),
-                        kind: FlowKind::Sequence,
-                        source: Some(processcraft_core::bpmn_activity::ModelReference::Local(
-                            source.element.clone(),
-                        )),
-                        target: Some(processcraft_core::bpmn_activity::ModelReference::Local(
-                            eid.selector(),
-                        )),
-                        name: Some(String::new()),
-                        documentation: String::new().into(),
-                        condition: None,
-                    },
-                },
-                Mutation::CreateEdge {
-                    document_id: d.id,
-                    diagram_id: diagram.id.selector(),
-                    edge: Edge {
-                        di_metadata: None,
-                        message_visible_kind: None,
-                        label_visibility: Some(DiLabelVisibility::Explicit),
-                        source_element: None,
-                        target_element: None,
-                        id: controller::id("Edge").into(),
-                        element: flow.into(),
-                        waypoints: connection_route(&source.bounds, &shape.bounds, diagram),
-                        label: Some(Label::default()),
-                        style: None,
-                    },
-                },
-            ]
-        });
-        if self.ctl.mutate(
-            [
-                Mutation::CreateElement {
-                    document_id: d.id,
-                    process_id: p.id.selector(),
-                    element: Node {
-                        flow_metadata: None,
-                        base_extras: None,
-                        item_aware: None,
-                        activity: None,
-                        io_specification: None,
-                        loop_characteristics: None,
-                        details,
-                        id: eid.clone(),
-                        name: (kind != NodeKind::TextAnnotation).then(|| label.into()),
-                        documentation: String::new().into(),
-                        kind,
-                        owner: String::new(),
-                        contact: String::new(),
-                    },
-                },
-                Mutation::CreateShape {
-                    document_id: d.id,
-                    diagram_id: diagram.id.selector(),
-                    shape,
-                },
-            ]
-            .into_iter()
-            .chain(append_flow.into_iter().flatten())
-            .collect(),
-        ) {
+        ]) {
             self.select(Some(eid.selector()));
+        }
+    }
+    /// Append `kind` after `source` through the core append builder and select it.
+    fn append(&mut self, source: ElementSelector, kind: NodeKind) -> bool {
+        let snap = self.ctl.session.snapshot();
+        let Some(d) = snap.project.documents.get(self.doc) else {
+            return false;
+        };
+        let Some(diagram) = d
+            .diagrams
+            .iter()
+            .find(|d| self.diagram_id.as_ref().is_none_or(|id| &d.id == id))
+        else {
+            return false;
+        };
+        let node: processcraft_core::ids::ElementIdentity = if self.create_anonymous {
+            processcraft_core::ids::ElementIdentity::anonymous()
+        } else {
+            controller::id("Node").into()
+        };
+        let ids = processcraft_core::modeling::AppendIds {
+            node: node.clone(),
+            shape: controller::id("Shape").into(),
+            flow: controller::id("Flow").into(),
+            edge: controller::id("Edge").into(),
+        };
+        let name = (kind != NodeKind::TextAnnotation).then(|| node_kind_label(kind).into());
+        match processcraft_core::modeling::append(
+            d,
+            &diagram.id.selector(),
+            &source,
+            kind,
+            name,
+            ids,
+        ) {
+            Ok(batch) => {
+                let done = self.ctl.mutate(batch);
+                if done {
+                    self.select(Some(node.selector()));
+                }
+                done
+            }
+            Err(reason) => {
+                self.ctl.error = reason;
+                false
+            }
         }
     }
     fn add_pool(&mut self) {
@@ -2158,23 +2031,15 @@ impl ProcessCraft {
             self.ctl.error = "Choose a source and a target.".into();
             return;
         };
-        self.connect_elements(a, b, Some(self.connection_kind));
+        self.connect_elements(a, b);
     }
-    /// Connect two nodes of one process scope; `kind: None` picks association for annotations.
-    fn connect_elements(
-        &mut self,
-        a: ElementSelector,
-        b: ElementSelector,
-        kind: Option<FlowKind>,
-    ) -> bool {
+    /// Connect two shown elements; the core rules pick sequence, message, data association,
+    /// or association, and a refusal reports its reason.
+    fn connect_elements(&mut self, a: ElementSelector, b: ElementSelector) -> bool {
         let snap = self.ctl.session.snapshot();
         let Some(d) = snap.project.documents.get(self.doc) else {
             return false;
         };
-        if a == b {
-            self.ctl.error = "Choose two different nodes.".into();
-            return false;
-        }
         let Some(diagram) = d
             .diagrams
             .iter()
@@ -2182,66 +2047,20 @@ impl ProcessCraft {
         else {
             return false;
         };
-        let Some(p) = processcraft_core::queries::scopes(d)
-            .into_iter()
-            .find(|p| p.nodes.iter().any(|n| n.id == a) && p.nodes.iter().any(|n| n.id == b))
-        else {
-            self.ctl.error = "Both elements must be in the same process to connect them; use Collaboration for message flows.".into();
-            return false;
-        };
-        let (Some(sa), Some(sb)) = (
-            diagram.shapes.iter().find(|s| s.element == a),
-            diagram.shapes.iter().find(|s| s.element == b),
-        ) else {
-            return false;
-        };
-        let kind = kind.unwrap_or_else(|| {
-            if p.nodes
-                .iter()
-                .any(|n| (n.id == a || n.id == b) && n.kind == NodeKind::TextAnnotation)
-            {
-                FlowKind::Association
-            } else {
-                FlowKind::Sequence
+        match processcraft_core::modeling::connect(
+            d,
+            &diagram.id.selector(),
+            &a,
+            &b,
+            controller::id("Flow").into(),
+            controller::id("Edge").into(),
+        ) {
+            Ok(batch) => self.ctl.mutate(batch),
+            Err(reason) => {
+                self.ctl.error = reason;
+                false
             }
-        });
-        let eid = controller::id("Flow");
-        let points = connection_route(&sa.bounds, &sb.bounds, diagram);
-        self.ctl.mutate(vec![
-            Mutation::CreateFlow {
-                document_id: d.id,
-                process_id: Some(p.id.selector()),
-                flow: Flow {
-                    message_ref: None,
-                    flow_metadata: None,
-                    base_extras: None,
-                    association_direction: None,
-                    id: eid.clone().into(),
-                    kind,
-                    source: Some(processcraft_core::bpmn_activity::ModelReference::Local(a)),
-                    target: Some(processcraft_core::bpmn_activity::ModelReference::Local(b)),
-                    name: (kind != FlowKind::Association).then(String::new),
-                    documentation: String::new().into(),
-                    condition: None,
-                },
-            },
-            Mutation::CreateEdge {
-                document_id: d.id,
-                diagram_id: diagram.id.selector(),
-                edge: Edge {
-                    di_metadata: None,
-                    message_visible_kind: None,
-                    label_visibility: Some(DiLabelVisibility::Explicit),
-                    source_element: None,
-                    target_element: None,
-                    id: controller::id("Edge").into(),
-                    element: eid.into(),
-                    waypoints: points,
-                    label: Some(Label::default()),
-                    style: None,
-                },
-            },
-        ])
+        }
     }
     fn delete(&mut self) {
         if !self.commit_draft() {

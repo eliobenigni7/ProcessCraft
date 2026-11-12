@@ -157,6 +157,128 @@ fn resize_bounds(b: &Bounds, corner: usize, dx: f64, dy: f64) -> Bounds {
     }
 }
 
+/// Connect-gesture target colors: allowed and refused.
+const CONNECT_OK: Color32 = Color32::from_rgb(34, 139, 74);
+const CONNECT_REFUSED: Color32 = Color32::from_rgb(200, 50, 50);
+const PAD_ENTRY: f32 = 22.0;
+
+/// Context pad entries next to a single selected shape (bpmn-js style).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PadAction {
+    Append(NodeKind),
+    Connect,
+    Delete,
+}
+impl PadAction {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Append(NodeKind::Task) => "Append task",
+            Self::Append(NodeKind::ExclusiveGateway) => "Append exclusive gateway",
+            Self::Append(NodeKind::IntermediateThrowEvent) => "Append intermediate event",
+            Self::Append(NodeKind::EndEvent) => "Append end event",
+            Self::Append(_) => "Append text annotation",
+            Self::Connect => "Connect (drag to the target)",
+            Self::Delete => "Delete",
+        }
+    }
+}
+
+/// Pad entries in a three-column grid right of the shape's top edge: appends only from
+/// process nodes that may start the connection, connect for anything the rules can connect.
+fn context_pad(
+    document: &processcraft_core::model::BpmnDocument,
+    element: &ElementSelector,
+    screen: Rect,
+) -> Vec<(PadAction, Rect)> {
+    use processcraft_core::{ids::ElementIdentity, modeling, rules};
+    let located = rules::locate(document, element);
+    let mut actions = Vec::new();
+    if let Some(node) = located.as_ref().and_then(|l| l.node) {
+        for kind in [
+            NodeKind::Task,
+            NodeKind::ExclusiveGateway,
+            NodeKind::IntermediateThrowEvent,
+            NodeKind::EndEvent,
+        ] {
+            let probe = modeling::new_node(kind, ElementIdentity::anonymous(), None, None);
+            if rules::sequence_refusal(node, &probe).is_none() {
+                actions.push(PadAction::Append(kind));
+            }
+        }
+        if node.kind != NodeKind::TextAnnotation {
+            actions.push(PadAction::Append(NodeKind::TextAnnotation));
+        }
+    }
+    if located.is_some() {
+        actions.push(PadAction::Connect);
+    }
+    actions.push(PadAction::Delete);
+    actions
+        .into_iter()
+        .enumerate()
+        .map(|(i, action)| {
+            let min = Pos2::new(
+                screen.right() + 6.0 + (i % 3) as f32 * PAD_ENTRY,
+                screen.top() + (i / 3) as f32 * PAD_ENTRY,
+            );
+            (
+                action,
+                Rect::from_min_size(min, Vec2::splat(PAD_ENTRY - 2.0)),
+            )
+        })
+        .collect()
+}
+
+fn paint_pad_icon(painter: &egui::Painter, action: PadAction, r: Rect, color: Color32) {
+    let stroke = egui::Stroke::new(1.5, color);
+    let c = r.center();
+    let at = |x: f32, y: f32| c + Vec2::new(x, y);
+    match action {
+        PadAction::Append(NodeKind::Task) => {
+            painter.rect_stroke(
+                Rect::from_center_size(c, Vec2::new(14.0, 10.0)),
+                2.0,
+                stroke,
+                egui::StrokeKind::Middle,
+            );
+        }
+        PadAction::Append(NodeKind::ExclusiveGateway) => {
+            painter.add(egui::Shape::closed_line(
+                vec![at(0.0, -7.0), at(7.0, 0.0), at(0.0, 7.0), at(-7.0, 0.0)],
+                stroke,
+            ));
+            painter.line_segment([at(-2.5, -2.5), at(2.5, 2.5)], stroke);
+            painter.line_segment([at(-2.5, 2.5), at(2.5, -2.5)], stroke);
+        }
+        PadAction::Append(NodeKind::IntermediateThrowEvent) => {
+            painter.circle_stroke(c, 6.5, stroke);
+            painter.circle_stroke(c, 4.5, stroke);
+        }
+        PadAction::Append(NodeKind::EndEvent) => {
+            painter.circle_stroke(c, 6.0, egui::Stroke::new(2.5, color));
+        }
+        PadAction::Append(_) => {
+            painter.add(egui::Shape::line(
+                vec![at(-2.0, -7.0), at(-6.0, -7.0), at(-6.0, 7.0), at(-2.0, 7.0)],
+                stroke,
+            ));
+            painter.line_segment([at(-2.0, -2.0), at(6.0, -2.0)], stroke);
+            painter.line_segment([at(-2.0, 2.0), at(4.0, 2.0)], stroke);
+        }
+        PadAction::Connect => painter.arrow(at(-6.0, 6.0), Vec2::new(11.0, -11.0), stroke),
+        PadAction::Delete => {
+            painter.rect_stroke(
+                Rect::from_min_max(at(-5.0, -3.0), at(5.0, 7.0)),
+                1.0,
+                stroke,
+                egui::StrokeKind::Middle,
+            );
+            painter.line_segment([at(-7.0, -5.0), at(7.0, -5.0)], stroke);
+            painter.line_segment([at(-2.0, -7.0), at(2.0, -7.0)], stroke);
+        }
+    }
+}
+
 /// Nearest free spot around `center`; shapes that fully contain a candidate (pools, lanes,
 /// expanded subprocesses) are containers, not obstacles.
 pub(super) fn vacant_bounds(
@@ -489,6 +611,16 @@ impl ProcessCraft {
         }
         .cloned()
     }
+    /// Run a context pad entry for the selected `element`.
+    fn pad_action(&mut self, element: ElementSelector, action: PadAction) {
+        match action {
+            PadAction::Append(kind) => {
+                self.append(element, kind);
+            }
+            PadAction::Connect => {}
+            PadAction::Delete => self.delete(),
+        }
+    }
     /// Topmost shape (never a label region) under the pointer other than `exclude`.
     fn connect_target_at(
         &self,
@@ -693,7 +825,7 @@ impl ProcessCraft {
                         painter.text(
                             rect.center() + egui::vec2(0.0, 38.0),
                             egui::Align2::CENTER_CENTER,
-                            "Drag empty space to pan · Shift-drag to select · Ctrl+wheel to zoom · Double-click to rename · Drag the blue handle to connect",
+                            "Drag empty space to pan · Shift-drag to select · Ctrl+wheel to zoom · Double-click to rename · Select an element for its context pad",
                             egui::FontId::proportional(11.0),
                             palette.muted,
                         );
@@ -743,10 +875,12 @@ impl ProcessCraft {
                             .collect();
                         painter.add(egui::Shape::line(points, egui::Stroke::new(3.0, accent)));
                     }
-                    // Handles of a single selected shape: resize corners and a connect handle.
+                    // Handles of a single selected shape: resize corners and the context pad,
+                    // hidden while a gesture or label edit is running.
                     let single = (editable && selected_shapes.len() == 1 && self.drag.is_none())
                         .then(|| selected_shapes[0]);
-                    let mut connect_handle = None;
+                    let hover = response.hover_pos();
+                    let mut pad = Vec::new();
                     if let Some(shape) = single {
                         let screen = to_screen(rect, camera, zoom, &shape.bounds);
                         for corner in corners(screen) {
@@ -759,27 +893,45 @@ impl ProcessCraft {
                                 egui::StrokeKind::Inside,
                             );
                         }
-                        if processcraft_core::queries::find_node(d, &shape.element).is_some() {
-                            let center = Pos2::new(screen.right() + 16.0, screen.center().y);
-                            painter.circle_filled(center, 8.0, accent);
-                            painter.arrow(
-                                center - Vec2::new(4.0, 0.0),
-                                Vec2::new(8.0, 0.0),
-                                egui::Stroke::new(1.5, palette.base),
+                        if self.canvas.gesture.is_none() && self.canvas.label_edit.is_none() {
+                            pad = context_pad(d, &shape.element, screen);
+                        }
+                        for (action, r) in &pad {
+                            let hovered = hover.is_some_and(|pos| r.contains(pos));
+                            painter.rect_filled(
+                                *r,
+                                3.0,
+                                if hovered {
+                                    palette.accent_soft
+                                } else {
+                                    palette.base
+                                },
                             );
-                            connect_handle = Some(center);
+                            painter.rect_stroke(
+                                *r,
+                                3.0,
+                                egui::Stroke::new(1.0, palette.border_strong),
+                                egui::StrokeKind::Inside,
+                            );
+                            paint_pad_icon(
+                                &painter,
+                                *action,
+                                *r,
+                                if hovered { accent } else { palette.text },
+                            );
+                            if hovered {
+                                if *action == PadAction::Connect {
+                                    ctx.set_cursor_icon(egui::CursorIcon::Crosshair);
+                                }
+                                response.clone().on_hover_text_at_pointer(action.label());
+                            }
                         }
                     }
-                    let hover = response.hover_pos();
-                    if let (Some(center), Some(pos)) = (connect_handle, hover)
-                        && pos.distance(center) <= 10.0
-                        && self.canvas.gesture.is_none()
-                    {
-                        ctx.set_cursor_icon(egui::CursorIcon::Crosshair);
-                        response
-                            .clone()
-                            .on_hover_text_at_pointer("Drag to another element to connect");
-                    }
+                    let pad_at = |pos: Pos2| {
+                        pad.iter()
+                            .find(|(_, r)| r.contains(pos))
+                            .map(|(action, _)| *action)
+                    };
                     if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
                         self.canvas.gesture = None;
                     }
@@ -805,7 +957,7 @@ impl ProcessCraft {
                                     bounds: shape.bounds.clone(),
                                     corner,
                                 });
-                            } else if connect_handle.is_some_and(|c| c.distance(pos) <= 10.0) {
+                            } else if pad_at(pos) == Some(PadAction::Connect) {
                                 self.canvas.gesture = Some(Gesture::Connect {
                                     element: shape.element.clone(),
                                     bounds: shape.bounds.clone(),
@@ -813,8 +965,22 @@ impl ProcessCraft {
                             }
                         }
                     }
-                    if ((response.drag_started() && self.canvas.gesture.is_none())
-                        || response.clicked())
+                    let pad_pressed = if response.drag_started() {
+                        ctx.input(|i| i.pointer.press_origin())
+                    } else if response.clicked() {
+                        response.interact_pointer_pos()
+                    } else {
+                        None
+                    }
+                    .and_then(pad_at);
+                    if response.clicked()
+                        && let (Some(action), Some(shape)) = (pad_pressed, single)
+                    {
+                        self.pad_action(shape.element.clone(), action);
+                    }
+                    if pad_pressed.is_none()
+                        && ((response.drag_started() && self.canvas.gesture.is_none())
+                            || response.clicked())
                         && self.commit_draft()
                         && let Some(pos) = if response.drag_started() {
                             ctx.input(|i| i.pointer.press_origin())
@@ -1109,6 +1275,7 @@ impl ProcessCraft {
                                 if let Some(pos) = pointer {
                                     let from = to_screen(rect, camera, zoom, bounds).center();
                                     let (x, y) = to_model(rect, camera, zoom, pos);
+                                    let mut color = accent;
                                     if let Some(target) =
                                         self.connect_target_at(x, y, zoom, element).and_then(|h| {
                                             diagram
@@ -1117,17 +1284,32 @@ impl ProcessCraft {
                                                 .find(|s| s.id == h.diagram_element_id)
                                         })
                                     {
+                                        // Green when the rules allow the connection, red with the
+                                        // reason otherwise.
+                                        let verdict = processcraft_core::rules::can_connect(
+                                            d,
+                                            element,
+                                            &target.element,
+                                        );
+                                        color = if verdict.is_ok() {
+                                            CONNECT_OK
+                                        } else {
+                                            CONNECT_REFUSED
+                                        };
                                         painter.rect_stroke(
                                             to_screen(rect, camera, zoom, &target.bounds)
                                                 .expand(2.0),
                                             2.0,
-                                            egui::Stroke::new(2.0, accent),
+                                            egui::Stroke::new(2.0, color),
                                             egui::StrokeKind::Outside,
                                         );
+                                        if let Err(reason) = verdict {
+                                            response.clone().on_hover_text_at_pointer(reason);
+                                        }
                                     }
                                     painter.extend(egui::Shape::dashed_line(
                                         &[from, pos],
-                                        egui::Stroke::new(2.0, accent),
+                                        egui::Stroke::new(2.0, color),
                                         6.0,
                                         4.0,
                                     ));
@@ -1208,7 +1390,7 @@ impl ProcessCraft {
                                     if let Some(target) =
                                         self.connect_target_at(x, y, zoom, &element)
                                     {
-                                        self.connect_elements(element, target.key.xml_id, None);
+                                        self.connect_elements(element, target.key.xml_id);
                                     }
                                 }
                             }
@@ -1911,7 +2093,7 @@ mod tests {
                 .len(),
             1
         );
-        assert!(app.connect_elements(task, end, None));
+        assert!(app.connect_elements(task, end));
         let snap = app.ctl.session.snapshot();
         let edges = &snap.project.documents[0].diagrams[0].edges;
         assert_eq!(edges.len(), 2);
@@ -1972,17 +2154,12 @@ mod tests {
         assert_eq!(context.zoom_factor(), 1.0);
     }
 
-    #[test]
-    fn dragging_the_connect_handle_onto_a_task_creates_a_flow() {
-        let mut app = ProcessCraft::default();
-        app.add(NodeKind::StartEvent);
-        let start = app.selected.clone().unwrap();
-        app.select(None);
-        app.add(NodeKind::Task);
-        let task = app.selected.clone().unwrap();
-        app.select(Some(start.clone()));
+    /// Runs canvas frames on one egui context; waits for hit regions from the background render.
+    fn canvas_runner(
+        app: &mut ProcessCraft,
+    ) -> impl FnMut(&mut ProcessCraft, Vec<egui::Event>) + use<> {
         let context = egui::Context::default();
-        let run = |app: &mut ProcessCraft, events: Vec<egui::Event>| {
+        let run = move |app: &mut ProcessCraft, events: Vec<egui::Event>| {
             let mut output = context.run_ui(
                 egui::RawInput {
                     screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(900., 600.))),
@@ -1993,52 +2170,96 @@ mod tests {
             );
             output.textures_delta.clear();
         };
-        // Wait for the background render that supplies hit regions.
         for _ in 0..200 {
-            run(&mut app, vec![]);
+            run(app, vec![]);
             if !app.hits.is_empty() {
                 break;
             }
             std::thread::sleep(std::time::Duration::from_millis(20));
         }
         assert!(!app.hits.is_empty(), "render produced no hit regions");
-        let snap = app.ctl.session.snapshot();
-        let diagram = &snap.project.documents[0].diagrams[0];
-        let bounds = |id: &ElementSelector| {
-            diagram
-                .shapes
-                .iter()
-                .find(|s| &s.element == id)
-                .unwrap()
-                .bounds
-                .clone()
-        };
-        let edges_before = diagram.edges.len();
-        let (rect, camera, zoom) = (app.canvas.rect.unwrap(), app.camera, app.zoom);
-        let source = to_screen(rect, camera, zoom, &bounds(&start));
-        let handle = Pos2::new(source.right() + 16.0, source.center().y);
-        let target = to_screen(rect, camera, zoom, &bounds(&task)).center();
-        let button = |pos, pressed| egui::Event::PointerButton {
+        run
+    }
+    fn button(pos: Pos2, pressed: bool) -> egui::Event {
+        egui::Event::PointerButton {
             pos,
             button: egui::PointerButton::Primary,
             pressed,
             modifiers: egui::Modifiers::NONE,
-        };
-        run(&mut app, vec![egui::Event::PointerMoved(handle)]);
-        run(&mut app, vec![button(handle, true)]);
-        for step in 1..=5 {
-            let pos = handle + (target - handle) * (step as f32 / 5.0);
-            run(&mut app, vec![egui::Event::PointerMoved(pos)]);
         }
-        run(&mut app, vec![button(target, false)]);
-        run(&mut app, vec![]);
+    }
+    /// Screen rectangle of `id`'s shape and its context pad entry `action`.
+    fn on_screen(app: &ProcessCraft, id: &ElementSelector, action: PadAction) -> (Rect, Pos2) {
         let snap = app.ctl.session.snapshot();
         let document = &snap.project.documents[0];
-        assert_eq!(document.diagrams[0].edges.len(), edges_before + 1);
-        assert!(document.processes[0].flows.iter().any(|f| {
+        let shape = document.diagrams[0]
+            .shapes
+            .iter()
+            .find(|s| &s.element == id)
+            .unwrap();
+        let screen = to_screen(
+            app.canvas.rect.unwrap(),
+            app.camera,
+            app.zoom,
+            &shape.bounds,
+        );
+        let entry = context_pad(document, id, screen)
+            .into_iter()
+            .find(|(a, _)| *a == action)
+            .unwrap();
+        (screen, entry.1.center())
+    }
+
+    #[test]
+    fn dragging_the_connect_handle_onto_a_task_creates_a_flow() {
+        let mut app = ProcessCraft::default();
+        app.add(NodeKind::StartEvent);
+        let start = app.selected.clone().unwrap();
+        app.select(None);
+        app.add(NodeKind::Task);
+        let task = app.selected.clone().unwrap();
+        app.select(Some(start.clone()));
+        let mut run = canvas_runner(&mut app);
+        let drag = |app: &mut ProcessCraft,
+                    run: &mut dyn FnMut(&mut ProcessCraft, Vec<egui::Event>),
+                    from: Pos2,
+                    to: Pos2| {
+            run(app, vec![egui::Event::PointerMoved(from)]);
+            run(app, vec![button(from, true)]);
+            for step in 1..=5 {
+                run(
+                    app,
+                    vec![egui::Event::PointerMoved(
+                        from + (to - from) * (step as f32 / 5.0),
+                    )],
+                );
+            }
+            run(app, vec![button(to, false)]);
+            run(app, vec![]);
+        };
+        let edges = |app: &ProcessCraft| {
+            app.ctl.session.snapshot().project.documents[0].diagrams[0]
+                .edges
+                .len()
+        };
+        let edges_before = edges(&app);
+        let (_, handle) = on_screen(&app, &start, PadAction::Connect);
+        let (target, _) = on_screen(&app, &task, PadAction::Delete);
+        drag(&mut app, &mut run, handle, target.center());
+        let snap = app.ctl.session.snapshot();
+        assert_eq!(edges(&app), edges_before + 1);
+        assert!(snap.project.documents[0].processes[0].flows.iter().any(|f| {
             matches!(&f.source, Some(processcraft_core::bpmn_activity::ModelReference::Local(id)) if *id == start)
                 && matches!(&f.target, Some(processcraft_core::bpmn_activity::ModelReference::Local(id)) if *id == task)
         }));
+        // Back into the start event is refused with the rule's reason and changes nothing.
+        app.select(Some(task.clone()));
+        run(&mut app, vec![]);
+        let (_, handle) = on_screen(&app, &task, PadAction::Connect);
+        let (start_rect, _) = on_screen(&app, &start, PadAction::Delete);
+        drag(&mut app, &mut run, handle, start_rect.center());
+        assert_eq!(edges(&app), edges_before + 1);
+        assert!(app.ctl.error.contains("Start events"), "{}", app.ctl.error);
     }
 
     #[test]
@@ -2115,6 +2336,36 @@ mod tests {
         assert_eq!(auto_scroll_step(rect, Pos2::new(-5.0, 150.0)), Vec2::ZERO);
     }
 
+    #[test]
+    fn context_pad_append_creates_a_connected_task_and_selects_it() {
+        let mut app = ProcessCraft::default();
+        app.add(NodeKind::StartEvent);
+        let start = app.selected.clone().unwrap();
+        let mut run = canvas_runner(&mut app);
+        let (_, entry) = on_screen(&app, &start, PadAction::Append(NodeKind::Task));
+        run(&mut app, vec![egui::Event::PointerMoved(entry)]);
+        run(&mut app, vec![button(entry, true)]);
+        run(&mut app, vec![button(entry, false)]);
+        let task = app.selected.clone().unwrap();
+        assert_ne!(task, start);
+        let snap = app.ctl.session.snapshot();
+        let document = &snap.project.documents[0];
+        assert_eq!(
+            processcraft_core::queries::find_node(document, &task).map(|n| n.kind),
+            Some(NodeKind::Task)
+        );
+        assert_eq!(document.diagrams[0].edges.len(), 1);
+        // An end event offers no append entries.
+        let screen = Rect::from_min_size(Pos2::ZERO, Vec2::splat(36.0));
+        app.add(NodeKind::EndEvent);
+        let end = app.selected.clone().unwrap();
+        let snap = app.ctl.session.snapshot();
+        let pad = context_pad(&snap.project.documents[0], &end, screen);
+        assert!(
+            pad.iter()
+                .all(|(a, _)| !matches!(a, PadAction::Append(k) if *k != NodeKind::TextAnnotation))
+        );
+    }
     #[test]
     fn vacant_bounds_avoids_shapes_but_not_containers() {
         let shape = |bounds: Bounds| Shape {

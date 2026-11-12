@@ -728,6 +728,27 @@ pub enum Mutation {
         lane_id: Option<ElementSelector>,
         bounds: Vec<ShapeBounds>,
     },
+    /// Connect two shown elements with the flow kind the BPMN rules pick (see `modeling::connect`).
+    Connect {
+        document_id: DocumentId,
+        diagram_id: ElementSelector,
+        source_id: ElementSelector,
+        target_id: ElementSelector,
+        flow_id: crate::ids::ElementIdentity,
+        edge_id: crate::ids::ElementIdentity,
+    },
+    /// Append an auto-placed node connected from `source_id` (see `modeling::append`).
+    Append {
+        document_id: DocumentId,
+        diagram_id: ElementSelector,
+        source_id: ElementSelector,
+        kind: NodeKind,
+        name: Option<String>,
+        node_id: crate::ids::ElementIdentity,
+        shape_id: crate::ids::ElementIdentity,
+        flow_id: crate::ids::ElementIdentity,
+        edge_id: crate::ids::ElementIdentity,
+    },
 }
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(
@@ -5505,6 +5526,64 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                 move_shape(s, b.bounds);
             }
         }
+        Mutation::Connect {
+            document_id,
+            diagram_id,
+            source_id,
+            target_id,
+            flow_id,
+            edge_id,
+        } => {
+            doc(p, document_id, true)?;
+            let d = p
+                .documents
+                .iter()
+                .find(|d| d.id == document_id)
+                .cloned()
+                .ok_or_else(|| invalid("document not found"))?;
+            let batch =
+                crate::modeling::connect(&d, &diagram_id, &source_id, &target_id, flow_id, edge_id)
+                    .map_err(CommandError::InvalidParams)?;
+            for m in batch {
+                mutate(p, m)?;
+            }
+        }
+        Mutation::Append {
+            document_id,
+            diagram_id,
+            source_id,
+            kind,
+            name,
+            node_id,
+            shape_id,
+            flow_id,
+            edge_id,
+        } => {
+            doc(p, document_id, true)?;
+            let d = p
+                .documents
+                .iter()
+                .find(|d| d.id == document_id)
+                .cloned()
+                .ok_or_else(|| invalid("document not found"))?;
+            let batch = crate::modeling::append(
+                &d,
+                &diagram_id,
+                &source_id,
+                kind,
+                name,
+                crate::modeling::AppendIds {
+                    node: node_id,
+                    shape: shape_id,
+                    flow: flow_id,
+                    edge: edge_id,
+                },
+            )
+            .map_err(CommandError::InvalidParams)?;
+            for m in batch {
+                mutate(p, m)?;
+            }
+        }
         Mutation::Delete {
             document_id,
             element_id,
@@ -5798,6 +5877,8 @@ static COMMAND_DESCRIPTORS: &[CommandDescriptor] = &[
     descriptor!("assignLane","Assign lane","document_id":"DocumentId","process_id":"ElementSelector","element_id":"ElementSelector","lane_id":"ElementSelector|null","bounds":"ShapeBounds[]"),
     descriptor!("setFlowCondition","Set flow condition","document_id":"DocumentId","flow_id":"ElementSelector","condition":"string|null"),
     descriptor!("setNodeOwnerContact","Set node owner and contact","document_id":"DocumentId","element_id":"ElementSelector","owner":"string","contact":"string"),
+    descriptor!("connect","Connect elements (flow kind chosen by BPMN rules)","document_id":"DocumentId","diagram_id":"ElementSelector","source_id":"ElementSelector","target_id":"ElementSelector","flow_id":"ElementIdentity","edge_id":"ElementIdentity"),
+    descriptor!("append","Append an auto-placed connected element","document_id":"DocumentId","diagram_id":"ElementSelector","source_id":"ElementSelector","kind":"NodeKind","name":"string|null","node_id":"ElementIdentity","shape_id":"ElementIdentity","flow_id":"ElementIdentity","edge_id":"ElementIdentity"),
 ];
 pub fn command_descriptors() -> &'static [CommandDescriptor] {
     COMMAND_DESCRIPTORS

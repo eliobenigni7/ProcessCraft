@@ -1325,20 +1325,7 @@ impl ProcessCraft {
                             self.assign_lane();
                         }
                         side.strong("Connect nodes");
-                        egui::ComboBox::from_label("Connection type")
-                            .selected_text(super::shell::flow_kind_label(self.connection_kind))
-                            .show_ui(side, |ui| {
-                                ui.selectable_value(
-                                    &mut self.connection_kind,
-                                    processcraft_core::model::FlowKind::Sequence,
-                                    "Sequence flow",
-                                );
-                                ui.selectable_value(
-                                    &mut self.connection_kind,
-                                    processcraft_core::model::FlowKind::Association,
-                                    "Association",
-                                );
-                            });
+                        side.label("The connection type follows the BPMN rules for the two elements.");
                         let names: Vec<_> = p.nodes.iter().map(|n| (Some(n.id.selector()), n.name.as_deref().unwrap_or("Unnamed element"))).collect();
                         let chosen = |id: &Option<processcraft_core::ids::ElementSelector>| names.iter().find(|(n, _)| n == id).map_or("Choose", |(_, name)| *name);
                         egui::ComboBox::from_label("Source")
