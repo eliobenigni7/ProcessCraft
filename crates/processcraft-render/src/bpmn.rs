@@ -1125,7 +1125,7 @@ impl BpmnScene {
                     .or(store.map(|_| NodeKind::DataStoreReference));
                 let named = match (node, port, store) {
                     (Some(node), ..) => {
-                        !data_label(Some(node), node.name.as_deref().unwrap_or(""), &semantics)
+                        !data_label(Some(node), &node_display_name(node, document).0, &semantics)
                             .is_empty()
                     }
                     (_, Some(port), _) => port.name.as_deref().is_some_and(|n| !n.is_empty()),
@@ -2868,7 +2868,7 @@ fn message_name_label(
         None,
         None,
         fg,
-        false,
+        LabelAlign::TopLeft,
         diagnostics,
     )
 }
