@@ -1,6 +1,67 @@
 use super::{ProcessCraft, node_kind_label};
 use crate::widgets;
 
+fn is_group(
+    document: &processcraft_core::model::BpmnDocument,
+    id: &processcraft_core::ids::ElementSelector,
+) -> bool {
+    use processcraft_core::bpmn_collaboration::CollaborationArtifact;
+    processcraft_core::queries::scopes(document).iter().any(|scope| scope.groups.iter().any(|group| group.id == *id))
+        || document.collaborations().filter_map(|root| root.extras.as_ref()).chain(document.choreographies.iter().filter_map(|root| root.extras.as_ref())).flat_map(|extras| &extras.artifacts).any(|artifact| matches!(artifact, CollaborationArtifact::Group(group) if group.id == *id))
+}
+pub(super) fn selection_has_name(
+    document: &processcraft_core::model::BpmnDocument,
+    id: &processcraft_core::ids::ElementSelector,
+) -> bool {
+    !document
+        .endpoints
+        .iter()
+        .any(|endpoint| endpoint.id.as_ref().is_some_and(|identity| identity == id))
+        && !is_group(document, id)
+        && !processcraft_core::queries::find_flow(document, id)
+            .is_some_and(|flow| flow.kind == processcraft_core::model::FlowKind::Association)
+}
+pub(super) fn selection_kind(
+    document: &processcraft_core::model::BpmnDocument,
+    id: &processcraft_core::ids::ElementSelector,
+) -> Option<&'static str> {
+    if document
+        .partner_entities
+        .iter()
+        .any(|value| value.id.as_ref().is_some_and(|identity| identity == id))
+    {
+        Some("Partner entity")
+    } else if document
+        .partner_roles
+        .iter()
+        .any(|value| value.id.as_ref().is_some_and(|identity| identity == id))
+    {
+        Some("Partner role")
+    } else if document
+        .endpoints
+        .iter()
+        .any(|value| value.id.as_ref().is_some_and(|identity| identity == id))
+    {
+        Some("Endpoint")
+    } else if let Some(root) = document.collaborations().find(|root| root.id == *id) {
+        Some(if root.kind.is_some() {
+            "Global conversation"
+        } else {
+            "Collaboration"
+        })
+    } else if document.choreographies.iter().any(|root| root.id == *id) {
+        Some("Choreography")
+    } else if is_group(document, id) {
+        Some("Group")
+    } else if processcraft_core::queries::find_flow(document, id)
+        .is_some_and(|flow| flow.kind == processcraft_core::model::FlowKind::Association)
+    {
+        Some("Association")
+    } else {
+        None
+    }
+}
+
 fn flow_label(
     document: &processcraft_core::model::BpmnDocument,
     id: &processcraft_core::ids::ElementSelector,
@@ -722,7 +783,8 @@ impl ProcessCraft {
                         .and_then(|d| processcraft_core::queries::find_node(d, selected))
                         .map_or_else(
                             || {
-                                if snap.project.documents.get(self.doc).is_some_and(|document| document.choreographies.iter().any(|choreography| choreography.participants.iter().any(|participant|participant.id==*selected))) { "Participant" }
+                                if let Some(kind) = snap.project.documents.get(self.doc).and_then(|document| selection_kind(document, selected)) { kind }
+                                else if snap.project.documents.get(self.doc).is_some_and(|document| document.choreographies.iter().any(|choreography| choreography.participants.iter().any(|participant|participant.id==*selected))) { "Participant" }
                                 else if snap.project.documents.get(self.doc).is_some_and(|document| document.choreographies.iter().any(|choreography| choreography.activities.iter().any(|activity|activity.id==*selected))) { "Choreography activity" }
                                 else if self.is_flow { "Connection" } else { "Selection" }
                             },
@@ -764,7 +826,7 @@ impl ProcessCraft {
                             if side.add_enabled(ordinary_enabled, egui::TextEdit::multiline(&mut self.draft).desired_rows(4)).labelled_by(label.id).changed() { self.draft_dirty = true; }
                         } else { side.label("Structured annotation content"); }
                         self.mixed_body_ui(side, super::mixed_body::BodyOwner::Annotation(selected.clone()), body, editable);
-                    } else if !association {
+                    } else if !association && snap.project.documents.get(self.doc).is_some_and(|document| selection_has_name(document, selected)) {
                         let label = if data_object_reference { "Reference name" } else { "Name" };
                         let checkbox = side.add_enabled(ordinary_enabled, egui::Checkbox::new(&mut self.draft_name_present, label));
                         self.draft_dirty |= checkbox.changed();

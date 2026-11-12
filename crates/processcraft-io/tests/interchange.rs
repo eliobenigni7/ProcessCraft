@@ -3473,3 +3473,227 @@ fn choreography_inherited_collaboration_fields_roundtrip() {
         processcraft_io::interchange_compare::xml_model_value(&again.document).unwrap()
     );
 }
+
+#[test]
+fn collaboration_artifact_native_fields_require_acknowledgement() {
+    use processcraft_core::bpmn_collaboration::CollaborationArtifact;
+    for location in 0..3 {
+        let source = if location == 2 {
+            include_str!("../../../tests/fixtures/bpmn/choreography-inherited.bpmn").replace(
+                "<conversation id=\"Conversation\">",
+                "<textAnnotation id=\"NativeNote\"><text>Note</text></textAnnotation><conversation id=\"Conversation\">",
+            )
+        } else {
+            include_str!("../../../tests/fixtures/bpmn/collaboration-multiple.bpmn").to_owned()
+        };
+        let mut imported = prepare_import(source.as_bytes(), "artifact").unwrap();
+        assert!(imported.report.editable);
+        if location == 1 {
+            let mut node = imported
+                .document
+                .collaboration
+                .as_ref()
+                .unwrap()
+                .extras
+                .as_ref()
+                .unwrap()
+                .artifacts
+                .iter()
+                .find_map(|artifact| match artifact {
+                    CollaborationArtifact::TextAnnotation(node) => Some(node.clone()),
+                    _ => None,
+                })
+                .unwrap();
+            node.id = "AdditionalNote".parse().unwrap();
+            imported.document.additional_collaborations[0]
+                .extras
+                .get_or_insert_with(Default::default)
+                .artifacts
+                .push(CollaborationArtifact::TextAnnotation(node));
+        }
+        let extras = match location {
+            0 => imported
+                .document
+                .collaboration
+                .as_mut()
+                .unwrap()
+                .extras
+                .as_mut()
+                .unwrap(),
+            1 => imported.document.additional_collaborations[0]
+                .extras
+                .as_mut()
+                .unwrap(),
+            _ => imported.document.choreographies[0].extras.as_mut().unwrap(),
+        };
+        let node = extras
+            .artifacts
+            .iter_mut()
+            .find_map(|artifact| match artifact {
+                CollaborationArtifact::TextAnnotation(node) => Some(node),
+                _ => None,
+            })
+            .unwrap();
+        node.owner = "Artifact owner".into();
+        node.contact = "Artifact contact".into();
+        let mut project = ProjectData::new("artifact fields".into());
+        project.documents.push(Arc::new(imported.document.clone()));
+        project.resources = imported.resources;
+        let before = project.content_identity().unwrap();
+        let failure = export_bpmn(&project, imported.document.id, false).unwrap_err();
+        assert!(
+            failure
+                .report
+                .blocked
+                .iter()
+                .any(|v| v.contains("acknowledgement"))
+        );
+        assert!(
+            failure
+                .report
+                .omitted
+                .iter()
+                .any(|v| v.contains("owner and contact"))
+        );
+        let result = export_bpmn(&project, imported.document.id, true)
+            .unwrap_or_else(|error| panic!("location {location}: {error:?}"));
+        assert!(
+            result
+                .report
+                .omitted
+                .iter()
+                .any(|v| v.contains("owner and contact"))
+        );
+        assert!(
+            prepare_import(&result.bytes, "again")
+                .unwrap()
+                .report
+                .editable
+        );
+        assert_eq!(project.content_identity().unwrap(), before);
+        let actual = match location {
+            0 => project.documents[0]
+                .collaboration
+                .as_ref()
+                .unwrap()
+                .extras
+                .as_ref()
+                .unwrap(),
+            1 => project.documents[0].additional_collaborations[0]
+                .extras
+                .as_ref()
+                .unwrap(),
+            _ => project.documents[0].choreographies[0]
+                .extras
+                .as_ref()
+                .unwrap(),
+        }
+        .artifacts
+        .iter()
+        .find_map(|artifact| match artifact {
+            CollaborationArtifact::TextAnnotation(node) => Some(node),
+            _ => None,
+        })
+        .unwrap();
+        assert_eq!(actual.owner, "Artifact owner");
+        assert_eq!(actual.contact, "Artifact contact");
+    }
+}
+
+#[test]
+fn reordered_collaboration_and_anonymous_same_family_roots_roundtrip() {
+    let source = include_str!("../../../tests/fixtures/bpmn/collaboration-multiple.bpmn").replace(
+        "<collaboration id=\"Collab\"",
+        "<partnerEntity name=\"Second entity\"/><collaboration id=\"Collab\"",
+    );
+    let mut imported = prepare_import(source.as_bytes(), "reordered roots").unwrap();
+    assert!(imported.report.editable);
+    let first = imported
+        .document
+        .collaboration
+        .as_ref()
+        .unwrap()
+        .id
+        .selector();
+    let second = imported.document.additional_collaborations[0].id.selector();
+    let first_partner = imported.document.partner_entities[0]
+        .id
+        .as_ref()
+        .unwrap()
+        .selector();
+    let second_partner = imported.document.partner_entities[1]
+        .id
+        .as_ref()
+        .unwrap()
+        .selector();
+    assert!(
+        imported.document.partner_entities.iter().all(|p| p
+            .id
+            .as_ref()
+            .unwrap()
+            .xml_id()
+            .is_none())
+    );
+    let order = imported.document.root_order.as_mut().unwrap();
+    let swap_ids = |order: &mut Vec<_>, a, b| {
+        let i = order.iter().position(|s| *s == a).unwrap();
+        let j = order.iter().position(|s| *s == b).unwrap();
+        order.swap(i, j);
+    };
+    swap_ids(order, first, second);
+    swap_ids(order, first_partner, second_partner);
+    let mut project = ProjectData::new("reordered roots".into());
+    project.documents.push(Arc::new(imported.document.clone()));
+    project.resources = imported.resources.clone();
+    let before = project.content_identity().unwrap();
+    let output = export_bpmn(&project, imported.document.id, false).unwrap();
+    let xml = std::str::from_utf8(&output.bytes).unwrap();
+    assert!(xml.find("<globalConversation").unwrap() < xml.find("<collaboration").unwrap());
+    assert!(xml.find("name=\"Second entity\"").unwrap() < xml.find("name=\"Customers\"").unwrap());
+    let again = prepare_import(&output.bytes, "again").unwrap();
+    assert!(again.report.editable);
+    assert_eq!(
+        processcraft_io::interchange_compare::xml_model_value(&project.documents[0]).unwrap(),
+        processcraft_io::interchange_compare::xml_model_value(&again.document).unwrap()
+    );
+    assert_eq!(project.content_identity().unwrap(), before);
+}
+
+#[test]
+fn reordered_mixed_di_elements_preserve_anonymous_representations() {
+    let source = FLAT.replace("</bpmndi:BPMNPlane>", "<bpmndi:BPMNShape bpmnElement=\"tns:start\"><dc:Bounds x=\"110\" y=\"20\" width=\"40\" height=\"40\"/></bpmndi:BPMNShape><bpmndi:BPMNEdge bpmnElement=\"tns:f2\"><di:waypoint x=\"10\" y=\"20\"/><di:waypoint x=\"90\" y=\"20\"/></bpmndi:BPMNEdge></bpmndi:BPMNPlane>");
+    let mut imported = prepare_import(source.as_bytes(), "reordered diagram").unwrap();
+    assert!(imported.report.editable);
+    let diagram = &mut imported.document.diagrams[0];
+    assert!(diagram.shapes[1].id.xml_id().is_none());
+    assert!(diagram.edges[1].id.xml_id().is_none());
+    diagram.plane_order = Some(vec![
+        diagram.edges[1].id.selector(),
+        diagram.shapes[1].id.selector(),
+        diagram.edges[0].id.selector(),
+        diagram.shapes[0].id.selector(),
+    ]);
+    let mut project = ProjectData::new("reordered diagram".into());
+    project.documents.push(Arc::new(imported.document.clone()));
+    project.resources = imported.resources.clone();
+    let before = project.content_identity().unwrap();
+    let output = export_bpmn(&project, imported.document.id, false).unwrap();
+    let xml = std::str::from_utf8(&output.bytes).unwrap();
+    let ordered: Vec<_> = [
+        "bpmnElement=\"f2\"",
+        "bpmnElement=\"start\"",
+        "bpmnElement=\"f1\"",
+        "bpmnElement=\"task\"",
+    ]
+    .iter()
+    .map(|v| xml.find(v).unwrap())
+    .collect();
+    assert!(ordered.windows(2).all(|pair| pair[0] < pair[1]));
+    let again = prepare_import(&output.bytes, "again").unwrap();
+    assert!(again.report.editable);
+    assert_eq!(
+        processcraft_io::interchange_compare::xml_model_value(&project.documents[0]).unwrap(),
+        processcraft_io::interchange_compare::xml_model_value(&again.document).unwrap()
+    );
+    assert_eq!(project.content_identity().unwrap(), before);
+}

@@ -374,41 +374,26 @@ fn normalize(value: &mut Value, targets: &HashMap<NativeElementId, Target>) -> R
     }
     Ok(())
 }
+// Canonicalize storage slots by the authored XML order before assigning
+// comparison-only owner paths. The singleton collaboration slot and family Vec
+// indices are native storage choices; root order itself remains authoritative.
 fn normalize_legacy_root_order(value: &mut Value) -> Result<(), String> {
-    if value
-        .get("root_order")
-        .is_some_and(|order| !order.is_null())
-    {
-        return Ok(());
-    }
-    let mut order = Vec::new();
-    let mut append = |root: &Value, path: String| -> Result<(), String> {
-        let identity = root.get("id").filter(|id| !id.is_null());
-        order.push(match identity {
-            Some(identity) => {
-                let identity: ElementIdentity = serde_json::from_value(identity.clone())
-                    .map_err(|error| format!("Invalid typed root identity: {error}"))?;
-                json!(identity.selector())
-            }
-            // Reimport creates an anonymous native handle at this exact typed
-            // owner. This is a comparison key, never an identity in the model.
-            None => json!({"nativeTargetAt": format!("{path}/id")}),
-        });
-        Ok(())
-    };
-    // Match the legacy XML writer's default family order. Explicit root_order
-    // is authoritative and never reordered by this comparison-only bridge.
+    let mut entries: Vec<(&str, Value)> = Vec::new();
     for key in ["item_definitions", "interfaces", "resources"] {
         if let Some(roots) = value
             .get("catalog")
             .and_then(|catalog| catalog.get(key))
             .and_then(Value::as_array)
         {
-            for (index, root) in roots.iter().enumerate() {
-                append(root, format!("/catalog/{key}/{index}"))?;
-            }
+            let family = match key {
+                "item_definitions" => "catalog/item_definitions",
+                "interfaces" => "catalog/interfaces",
+                _ => "catalog/resources",
+            };
+            entries.extend(roots.iter().cloned().map(|root| (family, root)));
         }
     }
+    // Legacy writer default. No authored order is inferred from IDs or names.
     for key in [
         "global_tasks",
         "correlation_properties",
@@ -422,25 +407,135 @@ fn normalize_legacy_root_order(value: &mut Value) -> Result<(), String> {
         "choreographies",
     ] {
         if let Some(roots) = value.get(key).and_then(Value::as_array) {
-            for (index, root) in roots.iter().enumerate() {
-                append(root, format!("/{key}/{index}"))?;
-            }
+            entries.extend(roots.iter().cloned().map(|root| (key, root)));
         }
     }
     if let Some(root) = value.get("collaboration").filter(|root| !root.is_null()) {
-        append(root, "/collaboration".into())?;
+        entries.push(("collaborations", root.clone()));
     }
-    for key in ["additional_collaborations", "processes"] {
-        if let Some(roots) = value.get(key).and_then(Value::as_array) {
-            for (index, root) in roots.iter().enumerate() {
-                append(root, format!("/{key}/{index}"))?;
+    if let Some(roots) = value
+        .get("additional_collaborations")
+        .and_then(Value::as_array)
+    {
+        entries.extend(roots.iter().cloned().map(|root| ("collaborations", root)));
+    }
+    if let Some(roots) = value.get("processes").and_then(Value::as_array) {
+        entries.extend(roots.iter().cloned().map(|root| ("processes", root)));
+    }
+    let ordered = if let Some(order) = value.get("root_order").filter(|order| !order.is_null()) {
+        let order: Vec<ElementSelector> =
+            serde_json::from_value(order.clone()).map_err(|error| error.to_string())?;
+        if order.len() != entries.len() {
+            return Err("Root order must include every modeled root exactly once".into());
+        }
+        let mut by_identity = HashMap::new();
+        for (index, (_, root)) in entries.iter().enumerate() {
+            let identity: ElementIdentity = serde_json::from_value(
+                root.get("id")
+                    .ok_or("Ordered root lacks a native identity")?
+                    .clone(),
+            )
+            .map_err(|error| {
+                format!("Ordered root requires explicit native identity promotion: {error}")
+            })?;
+            if by_identity.insert(identity.selector(), index).is_some() {
+                return Err("Root identities are duplicated".into());
+            }
+        }
+        let mut ordered = Vec::with_capacity(order.len());
+        for selector in order {
+            let index = by_identity
+                .remove(&selector)
+                .ok_or("Root order repeats or references an unknown root")?;
+            ordered.push(entries[index].clone());
+        }
+        ordered
+    } else {
+        entries
+    };
+    let mut families: HashMap<&str, Vec<Value>> = HashMap::new();
+    let mut sequence = Vec::with_capacity(ordered.len());
+    for (family, root) in ordered {
+        let values = families.entry(family).or_default();
+        sequence.push(json!({"family": family, "ordinal": values.len()}));
+        values.push(root);
+    }
+    let object = value
+        .as_object_mut()
+        .ok_or("Document must serialize as an object")?;
+    object.remove("root_order");
+    object.insert("root_sequence".into(), Value::Array(sequence));
+    for (family, roots) in families {
+        if let Some(key) = family.strip_prefix("catalog/") {
+            object
+                .get_mut("catalog")
+                .and_then(Value::as_object_mut)
+                .ok_or("Root catalog is missing")?
+                .insert(key.into(), Value::Array(roots));
+        } else if family == "collaborations" {
+            let mut roots = roots.into_iter();
+            object.insert(
+                "collaboration".into(),
+                roots.next().ok_or("Collaboration roots are empty")?,
+            );
+            let additional: Vec<_> = roots.collect();
+            if additional.is_empty() {
+                object.remove("additional_collaborations");
+            } else {
+                object.insert("additional_collaborations".into(), Value::Array(additional));
+            }
+        } else {
+            object.insert(family.into(), Value::Array(roots));
+        }
+    }
+    Ok(())
+}
+fn normalize_di_storage(diagram: &mut Value) -> Result<(), String> {
+    let order: Vec<ElementSelector> = serde_json::from_value(
+        diagram
+            .get("plane_order")
+            .ok_or("Plane order missing")?
+            .clone(),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut entries = HashMap::new();
+    for key in ["shapes", "edges"] {
+        let values = diagram
+            .get(key)
+            .and_then(Value::as_array)
+            .ok_or("Diagram representations must be typed arrays")?;
+        for value in values {
+            let identity: ElementIdentity =
+                serde_json::from_value(value.get("id").ok_or("DI identity missing")?.clone())
+                    .map_err(|error| error.to_string())?;
+            if entries
+                .insert(identity.selector(), (key, value.clone()))
+                .is_some()
+            {
+                return Err("DI identities are duplicated".into());
             }
         }
     }
-    value
+    if entries.len() != order.len() {
+        return Err("Plane order must include every representation exactly once".into());
+    }
+    let mut shapes = Vec::new();
+    let mut edges = Vec::new();
+    for selector in order {
+        let (kind, value) = entries
+            .remove(&selector)
+            .ok_or("Plane order repeats or references an unknown representation")?;
+        if kind == "shapes" {
+            shapes.push(value)
+        } else {
+            edges.push(value)
+        }
+    }
+    let object = diagram
         .as_object_mut()
-        .ok_or("Document must serialize as an object")?
-        .insert("root_order".into(), Value::Array(order));
+        .ok_or("Diagram must be a typed object")?;
+    object.insert("shapes".into(), Value::Array(shapes));
+    object.insert("edges".into(), Value::Array(edges));
     Ok(())
 }
 fn normalize_legacy_di(value: &mut Value) -> Result<(), String> {
@@ -473,6 +568,7 @@ fn normalize_legacy_di(value: &mut Value) -> Result<(), String> {
                 .ok_or("Diagram must be a typed object")?
                 .insert("plane_order".into(), Value::Array(order));
         }
+        normalize_di_storage(diagram)?;
         for key in ["shapes", "edges"] {
             let Some(representations) = diagram.get_mut(key).and_then(Value::as_array_mut) else {
                 continue;

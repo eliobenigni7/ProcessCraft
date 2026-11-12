@@ -601,6 +601,10 @@ impl ProcessCraft {
                 .iter()
                 .chain(d.additional_collaborations.iter())
             {
+                if root.id == *selected {
+                    self.draft_name_present = root.name.is_some();
+                    self.draft = root.name.clone().unwrap_or_default();
+                }
                 if let Some(participant) = root.participants.iter().find(|v| v.id == *selected) {
                     self.draft_name_present = participant.name.is_some();
                     self.draft = participant.name.clone().unwrap_or_default();
@@ -629,6 +633,10 @@ impl ProcessCraft {
             && let Some(selected) = &id
         {
             for choreography in &document.choreographies {
+                if choreography.id == *selected {
+                    self.draft_name_present = choreography.name.is_some();
+                    self.draft = choreography.name.clone().unwrap_or_default();
+                }
                 if let Some(node) = choreography
                     .conversation_nodes
                     .iter()
@@ -678,6 +686,26 @@ impl ProcessCraft {
                     self.is_flow = true;
                     self.association_direction = flow.association_direction;
                 }
+            }
+        }
+        if let Some(document) = snap.project.documents.get(self.doc)
+            && let Some(selected) = &id
+        {
+            let name = document
+                .partner_entities
+                .iter()
+                .find(|value| value.id.as_ref().is_some_and(|id| id == selected))
+                .map(|value| &value.name)
+                .or_else(|| {
+                    document
+                        .partner_roles
+                        .iter()
+                        .find(|value| value.id.as_ref().is_some_and(|id| id == selected))
+                        .map(|value| &value.name)
+                });
+            if let Some(name) = name {
+                self.draft_name_present = name.is_some();
+                self.draft = name.clone().unwrap_or_default();
             }
         }
         self.ctl.session.set_selection(
@@ -810,9 +838,7 @@ impl ProcessCraft {
                             text: Some(self.draft.clone()),
                         });
                     }
-                } else if !processcraft_core::queries::find_flow(d, &id)
-                    .is_some_and(|flow| flow.kind == FlowKind::Association)
-                {
+                } else if inspector::selection_has_name(d, &id) {
                     mutations.push(Mutation::Rename {
                         document_id: d.id,
                         element_id: id.clone(),
@@ -2237,6 +2263,198 @@ impl eframe::App for ProcessCraft {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn collaboration_property_selection_preserves_optional_names_and_metadata() {
+        use processcraft_core::bpmn_collaboration::{
+            CollaborationArtifact, CollaborationExtras, EndPoint, PartnerEntity, PartnerRole,
+        };
+        use processcraft_core::bpmn_metadata::{BaseMetadata, Documentation};
+        let mut app = ProcessCraft::default();
+        let document_id = app.ctl.session.snapshot().project.documents[0].id;
+        let metadata = Some(BaseMetadata {
+            documentation: vec![Documentation {
+                id: None,
+                text_format: Some("text/plain".into()),
+                content: "Keep this".into(),
+            }],
+            ..Default::default()
+        });
+        let entity_id = processcraft_core::ids::ElementIdentity::anonymous();
+        let role_id = processcraft_core::ids::ElementIdentity::anonymous();
+        let endpoint_id = processcraft_core::ids::ElementIdentity::anonymous();
+        let group_id = processcraft_core::ids::ElementIdentity::anonymous();
+        let root = Collaboration {
+            id: "Root".parse().unwrap(),
+            name: Some("Collaboration name".into()),
+            kind: None,
+            extras: Some(CollaborationExtras {
+                artifacts: vec![CollaborationArtifact::Group(
+                    processcraft_core::bpmn_model::Group {
+                        id: group_id.clone(),
+                        base: None,
+                        category_value_ref: None,
+                    },
+                )],
+                ..Default::default()
+            }),
+            base: metadata.clone(),
+            correlation_keys: vec![],
+            participants: vec![],
+            flows: vec![],
+            conversation_nodes: vec![],
+            conversation_links: vec![],
+        };
+        let choreography = processcraft_core::bpmn_collaboration::Choreography {
+            id: "Choreography".parse().unwrap(),
+            name: Some(String::new()),
+            base: metadata.clone(),
+            extras: None,
+            correlation_keys: vec![],
+            participants: vec![],
+            message_flows: vec![],
+            activities: vec![],
+            sequence_flows: vec![],
+            conversation_nodes: vec![],
+            conversation_links: vec![],
+        };
+        assert!(app.ctl.mutate(vec![
+            Mutation::SetCollaborationRoot {
+                document_id,
+                collaboration: root
+            },
+            Mutation::CreateChoreography {
+                document_id,
+                choreography
+            },
+            Mutation::SetPartnerCatalog {
+                document_id,
+                partner_entities: vec![PartnerEntity {
+                    id: Some(entity_id.clone()),
+                    base: metadata.clone(),
+                    name: Some("Customers".into()),
+                    participant_refs: vec![]
+                }],
+                partner_roles: vec![PartnerRole {
+                    id: Some(role_id.clone()),
+                    base: metadata.clone(),
+                    name: None,
+                    participant_refs: vec![]
+                }],
+                endpoints: vec![EndPoint {
+                    id: Some(endpoint_id.clone()),
+                    base: metadata.clone()
+                }]
+            }
+        ]));
+        let context = egui::Context::default();
+        for (selector, expected, present) in [
+            (entity_id.selector(), "Customers", true),
+            (role_id.selector(), "", false),
+            ("Root".parse().unwrap(), "Collaboration name", true),
+            ("Choreography".parse().unwrap(), "", true),
+        ] {
+            app.select(Some(selector));
+            assert_eq!(app.draft, expected);
+            assert_eq!(app.draft_name_present, present);
+            let mut output =
+                context.run_ui(egui::RawInput::default(), |ui| app.inspector_ui(ui, true));
+            output.textures_delta.clear();
+            assert_eq!(app.draft, expected);
+            assert_eq!(app.draft_name_present, present);
+        }
+        app.select(Some(entity_id.selector()));
+        app.draft = "Clients".into();
+        app.draft_dirty = true;
+        assert!(app.commit_draft());
+        let snapshot = app.ctl.session.snapshot();
+        assert_eq!(
+            snapshot.project.documents[0].partner_entities[0]
+                .name
+                .as_deref(),
+            Some("Clients")
+        );
+        assert_eq!(
+            snapshot.project.documents[0].partner_entities[0].base,
+            metadata
+        );
+        app.history(Request::Undo);
+        assert_eq!(
+            app.ctl.session.snapshot().project.documents[0].partner_entities[0]
+                .name
+                .as_deref(),
+            Some("Customers")
+        );
+        let snapshot = app.ctl.session.snapshot();
+        let document = &snapshot.project.documents[0];
+        assert_eq!(
+            inspector::selection_kind(document, &entity_id.selector()),
+            Some("Partner entity")
+        );
+        assert_eq!(
+            inspector::selection_kind(document, &role_id.selector()),
+            Some("Partner role")
+        );
+        assert_eq!(
+            inspector::selection_kind(document, &endpoint_id.selector()),
+            Some("Endpoint")
+        );
+        assert_eq!(
+            inspector::selection_kind(document, &group_id.selector()),
+            Some("Group")
+        );
+        assert_eq!(
+            inspector::selection_kind(document, &"Root".parse().unwrap()),
+            Some("Collaboration")
+        );
+        assert_eq!(
+            inspector::selection_kind(document, &"Choreography".parse().unwrap()),
+            Some("Choreography")
+        );
+        assert!(!inspector::selection_has_name(
+            document,
+            &endpoint_id.selector()
+        ));
+        assert!(!inspector::selection_has_name(
+            document,
+            &group_id.selector()
+        ));
+        let mut with_association = document.as_ref().clone();
+        with_association
+            .collaboration
+            .as_mut()
+            .unwrap()
+            .extras
+            .as_mut()
+            .unwrap()
+            .artifacts
+            .push(CollaborationArtifact::Association(Box::new(Flow {
+                id: "Association".parse().unwrap(),
+                kind: FlowKind::Association,
+                source: None,
+                target: None,
+                name: None,
+                documentation: String::new().into(),
+                base_extras: None,
+                condition: None,
+                association_direction: None,
+                flow_metadata: None,
+                message_ref: None,
+            })));
+        let association: ElementSelector = "Association".parse().unwrap();
+        assert!(!inspector::selection_has_name(
+            &with_association,
+            &association
+        ));
+        assert_eq!(
+            inspector::selection_kind(&with_association, &association),
+            Some("Association")
+        );
+        app.select(Some(endpoint_id.selector()));
+        let mut output = context.run_ui(egui::RawInput::default(), |ui| app.inspector_ui(ui, true));
+        output.textures_delta.clear();
+        assert!(!app.draft_name_present);
+    }
 
     #[test]
     fn clicking_choreography_band_preserves_participant_name_through_di_history() {

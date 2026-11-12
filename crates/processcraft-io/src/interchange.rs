@@ -8723,6 +8723,16 @@ fn export_document(
     let native_nodes = all_scopes
         .iter()
         .flat_map(|p| p.nodes)
+        .chain(
+            document.collaboration.iter().chain(&document.additional_collaborations)
+                .filter_map(|c| c.extras.as_ref())
+                .chain(document.choreographies.iter().filter_map(|c| c.extras.as_ref()))
+                .flat_map(|extras| &extras.artifacts)
+                .filter_map(|artifact| match artifact {
+                    processcraft_core::bpmn_collaboration::CollaborationArtifact::TextAnnotation(node) => Some(node.as_ref()),
+                    _ => None,
+                }),
+        )
         .any(|n| !n.owner.is_empty() || !n.contact.is_empty());
     if native_nodes {
         report
