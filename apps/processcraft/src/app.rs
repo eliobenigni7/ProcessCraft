@@ -1779,6 +1779,9 @@ impl ProcessCraft {
                 lane: Lane {
                     base: None,
                     child_lane_set_base: None,
+                    child_lane_set_name: None,
+                    partition_element: None,
+                    partition_element_ref: None,
                     child_lane_set_id: None,
                     id: lane.clone().into(),
                     name: Some("Lane".into()),

@@ -91,6 +91,7 @@ fn fixture(docs: usize, nodes: usize, active: usize, resource: usize) -> Project
             io_specification: None,
             lane_set_id: None,
             lane_set_base: None,
+            lane_set_name: None,
             groups: vec![],
             data_objects: vec![],
             data_associations: vec![],

@@ -750,6 +750,7 @@ fn layout_file_preview_apply_and_stale_guard() {
         io_specification: None,
         lane_set_id: None,
         lane_set_base: None,
+        lane_set_name: None,
         groups: vec![],
         data_objects: vec![],
         data_associations: vec![],

@@ -100,6 +100,7 @@ fn fixture() -> ProjectData {
         activity_metadata: None,
         base_extras: None,
         lane_set_base: None,
+        lane_set_name: None,
         id: ident("process"),
         name: None,
         documentation: String::new().into(),
@@ -297,6 +298,7 @@ fn error_start_is_valid_only_in_event_subprocess_context() {
         details: Some(NodeDetails::SubProcess {
             content: Box::new(FlowContainer {
                 lane_set_base: None,
+                lane_set_name: None,
                 lane_set_id: None,
                 groups: vec![],
                 data_objects: vec![],
@@ -562,6 +564,7 @@ fn annotation_association_may_target_sequence_flow_and_its_di_edge() {
         activity_metadata: None,
         base_extras: None,
         lane_set_base: None,
+        lane_set_name: None,
         id: ident("other_process"),
         name: None,
         documentation: String::new().into(),

@@ -710,6 +710,7 @@ fn preserve_lane_wrapper_presence(value: &mut Value) -> Result<(), String> {
                 && let Some(Value::Array(lanes)) = object.get("lanes")
             {
                 let present = !lanes.is_empty()
+                    || object.get("lane_set_name").is_some_and(|n| !n.is_null())
                     || object.get("lane_set_id").is_some_and(|id| !id.is_null())
                     || object
                         .get("lane_set_base")
@@ -735,6 +736,9 @@ fn preserve_lane_wrapper_presence(value: &mut Value) -> Result<(), String> {
                     )
                     .map_err(|error| format!("Invalid lane identity: {error}"))?;
                     let present = parents.contains(&identity.selector())
+                        || object
+                            .get("child_lane_set_name")
+                            .is_some_and(|n| !n.is_null())
                         || object
                             .get("child_lane_set_id")
                             .is_some_and(|id| !id.is_null())

@@ -20218,7 +20218,7 @@
       "substitution_group": null,
       "coverage": {
         "model": "verified",
-        "edit": "unverified",
+        "edit": "verified",
         "render": "unverified",
         "import": "verified",
         "export": "verified",
@@ -20246,6 +20246,9 @@
         "model": [
           "crates/processcraft-core/tests/m2.rs:descriptive_commands_validate_references_and_undo_atomically",
           "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip"
+        ],
+        "edit": [
+          "crates/processcraft-core/tests/m3_artifacts.rs:category_name_and_value_edit_are_stored_and_undo_restores"
         ]
       }
     },
@@ -20365,7 +20368,7 @@
       "substitution_group": null,
       "coverage": {
         "model": "verified",
-        "edit": "unverified",
+        "edit": "verified",
         "render": "unverified",
         "import": "verified",
         "export": "verified",
@@ -20392,6 +20395,9 @@
         "model": [
           "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip",
           "crates/processcraft-render/tests/bpmn_scene.rs:group_category_label_uses_di_bounds_style_and_viewport_hit"
+        ],
+        "edit": [
+          "crates/processcraft-core/tests/m3_artifacts.rs:category_name_and_value_edit_are_stored_and_undo_restores"
         ]
       }
     },
@@ -21005,11 +21011,11 @@
       "abstract": null,
       "substitution_group": "rootElement",
       "coverage": {
-        "model": "partial",
-        "edit": "unverified",
+        "model": "verified",
+        "edit": "verified",
         "render": "unverified",
-        "import": "partial",
-        "export": "partial",
+        "import": "verified",
+        "export": "verified",
         "validate": "unverified"
       },
       "profile": "collaboration",
@@ -21027,7 +21033,23 @@
         "import",
         "export",
         "validate"
-      ]
+      ],
+      "verified_evidence": {
+        "edit": [
+          "crates/processcraft-core/tests/m3r2_edit-model-io.rs:element_level_collaboration_participant_message_and_message_flow_with_undo"
+        ],
+        "export": [
+          "crates/processcraft-io/tests/m3r2_edit-model-io.rs:export_writes_lane_set_names_and_partitions_and_reimports_equal",
+          "tests/fixtures/bpmn/m3-r2-edit-model-io/manifest.md"
+        ],
+        "import": [
+          "crates/processcraft-io/tests/m3r2_edit-model-io.rs:process_collaboration_message_and_flows_import_typed",
+          "tests/fixtures/bpmn/m3-r2-edit-model-io/manifest.md"
+        ],
+        "model": [
+          "crates/processcraft-core/tests/m3r2_edit-model-io.rs:element_level_collaboration_participant_message_and_message_flow_with_undo"
+        ]
+      }
     },
     {
       "schema": "Semantic.xsd",
@@ -28943,11 +28965,11 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "partial",
-        "edit": "unverified",
+        "model": "verified",
+        "edit": "verified",
         "render": "unverified",
-        "import": "partial",
-        "export": "partial",
+        "import": "verified",
+        "export": "verified",
         "validate": "unverified"
       },
       "profile": "descriptive artifacts",
@@ -28969,7 +28991,27 @@
         "export",
         "validate",
         "render"
-      ]
+      ],
+      "verified_evidence": {
+        "edit": [
+          "crates/processcraft-core/tests/m3r2_edit-model-io.rs:child_lane_set_name_and_lane_partition_edit_with_undo",
+          "crates/processcraft-core/tests/m3r2_edit-model-io.rs:element_level_process_lane_and_sequence_flow_create_delete_undo",
+          "crates/processcraft-core/tests/m3r2_edit-model-io.rs:lane_set_name_edits_with_undo_and_rejects_invalid_text"
+        ],
+        "export": [
+          "crates/processcraft-io/tests/m3r2_edit-model-io.rs:export_writes_lane_set_names_and_partitions_and_reimports_equal",
+          "tests/fixtures/bpmn/m3-r2-edit-model-io/manifest.md"
+        ],
+        "import": [
+          "crates/processcraft-io/tests/m3r2_edit-model-io.rs:lane_set_names_and_lane_partitions_import_typed",
+          "tests/fixtures/bpmn/m3-r2-edit-model-io/manifest.md"
+        ],
+        "model": [
+          "crates/processcraft-core/tests/m3r2_edit-model-io.rs:child_lane_set_name_and_lane_partition_edit_with_undo",
+          "crates/processcraft-core/tests/m3r2_edit-model-io.rs:element_level_process_lane_and_sequence_flow_create_delete_undo",
+          "crates/processcraft-core/tests/m3r2_edit-model-io.rs:lane_set_name_edits_with_undo_and_rejects_invalid_text"
+        ]
+      }
     },
     {
       "schema": "Semantic.xsd",
@@ -29030,11 +29072,11 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "verified",
+        "edit": "verified",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
+        "import": "verified",
+        "export": "verified",
         "validate": "unverified"
       },
       "required": [
@@ -29046,7 +29088,25 @@
         "import",
         "export",
         "validate"
-      ]
+      ],
+      "verified_evidence": {
+        "edit": [
+          "crates/processcraft-core/tests/m3r2_edit-model-io.rs:child_lane_set_name_and_lane_partition_edit_with_undo",
+          "crates/processcraft-core/tests/m3r2_edit-model-io.rs:lane_set_name_edits_with_undo_and_rejects_invalid_text"
+        ],
+        "export": [
+          "crates/processcraft-io/tests/m3r2_edit-model-io.rs:export_writes_lane_set_names_and_partitions_and_reimports_equal",
+          "tests/fixtures/bpmn/m3-r2-edit-model-io/manifest.md"
+        ],
+        "import": [
+          "crates/processcraft-io/tests/m3r2_edit-model-io.rs:lane_set_names_and_lane_partitions_import_typed",
+          "tests/fixtures/bpmn/m3-r2-edit-model-io/manifest.md"
+        ],
+        "model": [
+          "crates/processcraft-core/tests/m3r2_edit-model-io.rs:child_lane_set_name_and_lane_partition_edit_with_undo",
+          "crates/processcraft-core/tests/m3r2_edit-model-io.rs:lane_set_name_edits_with_undo_and_rejects_invalid_text"
+        ]
+      }
     },
     {
       "schema": "Semantic.xsd",
@@ -29209,11 +29269,11 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "verified",
+        "edit": "verified",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
+        "import": "verified",
+        "export": "verified",
         "validate": "unverified"
       },
       "required": [
@@ -29225,7 +29285,25 @@
         "import",
         "export",
         "validate"
-      ]
+      ],
+      "verified_evidence": {
+        "edit": [
+          "crates/processcraft-core/tests/m3r2_edit-model-io.rs:child_lane_set_name_and_lane_partition_edit_with_undo",
+          "crates/processcraft-core/tests/m3r2_edit-model-io.rs:lane_set_name_edits_with_undo_and_rejects_invalid_text"
+        ],
+        "export": [
+          "crates/processcraft-io/tests/m3r2_edit-model-io.rs:export_writes_lane_set_names_and_partitions_and_reimports_equal",
+          "tests/fixtures/bpmn/m3-r2-edit-model-io/manifest.md"
+        ],
+        "import": [
+          "crates/processcraft-io/tests/m3r2_edit-model-io.rs:lane_set_names_and_lane_partitions_import_typed",
+          "tests/fixtures/bpmn/m3-r2-edit-model-io/manifest.md"
+        ],
+        "model": [
+          "crates/processcraft-core/tests/m3r2_edit-model-io.rs:child_lane_set_name_and_lane_partition_edit_with_undo",
+          "crates/processcraft-core/tests/m3r2_edit-model-io.rs:lane_set_name_edits_with_undo_and_rejects_invalid_text"
+        ]
+      }
     },
     {
       "schema": "Semantic.xsd",
@@ -29241,11 +29319,11 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "partial",
-        "edit": "unverified",
+        "model": "verified",
+        "edit": "verified",
         "render": "unverified",
-        "import": "partial",
-        "export": "partial",
+        "import": "verified",
+        "export": "verified",
         "validate": "unverified"
       },
       "profile": "descriptive artifacts",
@@ -29267,7 +29345,25 @@
         "export",
         "validate",
         "render"
-      ]
+      ],
+      "verified_evidence": {
+        "edit": [
+          "crates/processcraft-core/tests/m3r2_edit-model-io.rs:child_lane_set_name_and_lane_partition_edit_with_undo",
+          "crates/processcraft-core/tests/m3r2_edit-model-io.rs:lane_set_name_edits_with_undo_and_rejects_invalid_text"
+        ],
+        "export": [
+          "crates/processcraft-io/tests/m3r2_edit-model-io.rs:export_writes_lane_set_names_and_partitions_and_reimports_equal",
+          "tests/fixtures/bpmn/m3-r2-edit-model-io/manifest.md"
+        ],
+        "import": [
+          "crates/processcraft-io/tests/m3r2_edit-model-io.rs:lane_set_names_and_lane_partitions_import_typed",
+          "tests/fixtures/bpmn/m3-r2-edit-model-io/manifest.md"
+        ],
+        "model": [
+          "crates/processcraft-core/tests/m3r2_edit-model-io.rs:child_lane_set_name_and_lane_partition_edit_with_undo",
+          "crates/processcraft-core/tests/m3r2_edit-model-io.rs:lane_set_name_edits_with_undo_and_rejects_invalid_text"
+        ]
+      }
     },
     {
       "schema": "Semantic.xsd",
@@ -29327,11 +29423,11 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "verified",
+        "edit": "verified",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
+        "import": "verified",
+        "export": "verified",
         "validate": "unverified"
       },
       "required": [
@@ -29344,7 +29440,25 @@
         "export",
         "validate",
         "render"
-      ]
+      ],
+      "verified_evidence": {
+        "edit": [
+          "crates/processcraft-core/tests/m3r2_edit-model-io.rs:child_lane_set_name_and_lane_partition_edit_with_undo",
+          "crates/processcraft-core/tests/m3r2_edit-model-io.rs:lane_set_name_edits_with_undo_and_rejects_invalid_text"
+        ],
+        "export": [
+          "crates/processcraft-io/tests/m3r2_edit-model-io.rs:export_writes_lane_set_names_and_partitions_and_reimports_equal",
+          "tests/fixtures/bpmn/m3-r2-edit-model-io/manifest.md"
+        ],
+        "import": [
+          "crates/processcraft-io/tests/m3r2_edit-model-io.rs:lane_set_names_and_lane_partitions_import_typed",
+          "tests/fixtures/bpmn/m3-r2-edit-model-io/manifest.md"
+        ],
+        "model": [
+          "crates/processcraft-core/tests/m3r2_edit-model-io.rs:child_lane_set_name_and_lane_partition_edit_with_undo",
+          "crates/processcraft-core/tests/m3r2_edit-model-io.rs:lane_set_name_edits_with_undo_and_rejects_invalid_text"
+        ]
+      }
     },
     {
       "schema": "Semantic.xsd",
@@ -29750,11 +29864,11 @@
       "abstract": null,
       "substitution_group": "rootElement",
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "verified",
+        "edit": "verified",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
+        "import": "verified",
+        "export": "verified",
         "validate": "unverified"
       },
       "required": [
@@ -29766,7 +29880,23 @@
         "import",
         "export",
         "validate"
-      ]
+      ],
+      "verified_evidence": {
+        "edit": [
+          "crates/processcraft-core/tests/m3r2_edit-model-io.rs:element_level_collaboration_participant_message_and_message_flow_with_undo"
+        ],
+        "export": [
+          "crates/processcraft-io/tests/m3r2_edit-model-io.rs:export_writes_lane_set_names_and_partitions_and_reimports_equal",
+          "tests/fixtures/bpmn/m3-r2-edit-model-io/manifest.md"
+        ],
+        "import": [
+          "crates/processcraft-io/tests/m3r2_edit-model-io.rs:process_collaboration_message_and_flows_import_typed",
+          "tests/fixtures/bpmn/m3-r2-edit-model-io/manifest.md"
+        ],
+        "model": [
+          "crates/processcraft-core/tests/m3r2_edit-model-io.rs:element_level_collaboration_participant_message_and_message_flow_with_undo"
+        ]
+      }
     },
     {
       "schema": "Semantic.xsd",
@@ -30139,11 +30269,11 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "partial",
-        "edit": "unverified",
+        "model": "verified",
+        "edit": "verified",
         "render": "unverified",
-        "import": "partial",
-        "export": "partial",
+        "import": "verified",
+        "export": "verified",
         "validate": "unverified"
       },
       "profile": "collaboration",
@@ -30162,7 +30292,23 @@
         "export",
         "validate",
         "render"
-      ]
+      ],
+      "verified_evidence": {
+        "edit": [
+          "crates/processcraft-core/tests/m3r2_edit-model-io.rs:element_level_collaboration_participant_message_and_message_flow_with_undo"
+        ],
+        "export": [
+          "crates/processcraft-io/tests/m3r2_edit-model-io.rs:export_writes_lane_set_names_and_partitions_and_reimports_equal",
+          "tests/fixtures/bpmn/m3-r2-edit-model-io/manifest.md"
+        ],
+        "import": [
+          "crates/processcraft-io/tests/m3r2_edit-model-io.rs:process_collaboration_message_and_flows_import_typed",
+          "tests/fixtures/bpmn/m3-r2-edit-model-io/manifest.md"
+        ],
+        "model": [
+          "crates/processcraft-core/tests/m3r2_edit-model-io.rs:element_level_collaboration_participant_message_and_message_flow_with_undo"
+        ]
+      }
     },
     {
       "schema": "Semantic.xsd",
@@ -31839,11 +31985,11 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "partial",
-        "edit": "unverified",
+        "model": "verified",
+        "edit": "verified",
         "render": "unverified",
-        "import": "partial",
-        "export": "partial",
+        "import": "verified",
+        "export": "verified",
         "validate": "unverified"
       },
       "profile": "collaboration",
@@ -31862,7 +32008,23 @@
         "export",
         "validate",
         "render"
-      ]
+      ],
+      "verified_evidence": {
+        "edit": [
+          "crates/processcraft-core/tests/m3r2_edit-model-io.rs:element_level_collaboration_participant_message_and_message_flow_with_undo"
+        ],
+        "export": [
+          "crates/processcraft-io/tests/m3r2_edit-model-io.rs:export_writes_lane_set_names_and_partitions_and_reimports_equal",
+          "tests/fixtures/bpmn/m3-r2-edit-model-io/manifest.md"
+        ],
+        "import": [
+          "crates/processcraft-io/tests/m3r2_edit-model-io.rs:process_collaboration_message_and_flows_import_typed",
+          "tests/fixtures/bpmn/m3-r2-edit-model-io/manifest.md"
+        ],
+        "model": [
+          "crates/processcraft-core/tests/m3r2_edit-model-io.rs:element_level_collaboration_participant_message_and_message_flow_with_undo"
+        ]
+      }
     },
     {
       "schema": "Semantic.xsd",
@@ -32688,11 +32850,11 @@
       "abstract": null,
       "substitution_group": "rootElement",
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "verified",
+        "edit": "verified",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
+        "import": "verified",
+        "export": "verified",
         "validate": "unverified"
       },
       "required": [
@@ -32704,7 +32866,23 @@
         "import",
         "export",
         "validate"
-      ]
+      ],
+      "verified_evidence": {
+        "edit": [
+          "crates/processcraft-core/tests/m3r2_edit-model-io.rs:element_level_process_lane_and_sequence_flow_create_delete_undo"
+        ],
+        "export": [
+          "crates/processcraft-io/tests/m3r2_edit-model-io.rs:export_writes_lane_set_names_and_partitions_and_reimports_equal",
+          "tests/fixtures/bpmn/m3-r2-edit-model-io/manifest.md"
+        ],
+        "import": [
+          "crates/processcraft-io/tests/m3r2_edit-model-io.rs:process_collaboration_message_and_flows_import_typed",
+          "tests/fixtures/bpmn/m3-r2-edit-model-io/manifest.md"
+        ],
+        "model": [
+          "crates/processcraft-core/tests/m3r2_edit-model-io.rs:element_level_process_lane_and_sequence_flow_create_delete_undo"
+        ]
+      }
     },
     {
       "schema": "Semantic.xsd",
@@ -34605,11 +34783,11 @@
       "abstract": null,
       "substitution_group": "flowElement",
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "verified",
+        "edit": "verified",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
+        "import": "verified",
+        "export": "verified",
         "validate": "unverified"
       },
       "required": [
@@ -34622,7 +34800,23 @@
         "export",
         "validate",
         "render"
-      ]
+      ],
+      "verified_evidence": {
+        "edit": [
+          "crates/processcraft-core/tests/m3r2_edit-model-io.rs:element_level_process_lane_and_sequence_flow_create_delete_undo"
+        ],
+        "export": [
+          "crates/processcraft-io/tests/m3r2_edit-model-io.rs:export_writes_lane_set_names_and_partitions_and_reimports_equal",
+          "tests/fixtures/bpmn/m3-r2-edit-model-io/manifest.md"
+        ],
+        "import": [
+          "crates/processcraft-io/tests/m3r2_edit-model-io.rs:process_collaboration_message_and_flows_import_typed",
+          "tests/fixtures/bpmn/m3-r2-edit-model-io/manifest.md"
+        ],
+        "model": [
+          "crates/processcraft-core/tests/m3r2_edit-model-io.rs:element_level_process_lane_and_sequence_flow_create_delete_undo"
+        ]
+      }
     },
     {
       "schema": "Semantic.xsd",
@@ -36416,7 +36610,7 @@
       "substitution_group": null,
       "coverage": {
         "model": "verified",
-        "edit": "unverified",
+        "edit": "verified",
         "render": "unverified",
         "import": "verified",
         "export": "verified",
@@ -36443,6 +36637,9 @@
         ],
         "model": [
           "crates/processcraft-core/tests/commands.rs:annotation_text_edit_migrates_legacy_body_and_undo_restores_it"
+        ],
+        "edit": [
+          "crates/processcraft-core/tests/m3r2_edit-model-io.rs:text_annotation_text_format_edits_with_undo"
         ]
       }
     },
@@ -37167,19 +37364,19 @@
     "total": {
       "declarations": 299,
       "cells": 1450,
-      "verified": 1256,
+      "verified": 1303,
       "not_applicable": 0,
-      "partial": 43,
-      "unverified": 151
+      "partial": 28,
+      "unverified": 119
     },
     "by_set": {
       "A": {
         "declarations": 89,
         "cells": 438,
-        "verified": 399,
+        "verified": 403,
         "not_applicable": 0,
         "partial": 0,
-        "unverified": 39
+        "unverified": 35
       },
       "C": {
         "declarations": 34,
@@ -37192,10 +37389,10 @@
       "D": {
         "declarations": 173,
         "cells": 861,
-        "verified": 715,
+        "verified": 758,
         "not_applicable": 0,
-        "partial": 40,
-        "unverified": 106
+        "partial": 25,
+        "unverified": 78
       },
       "I": {
         "declarations": 33,

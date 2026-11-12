@@ -16,6 +16,7 @@ fn fixture() -> BpmnDocument {
         io_specification: None,
         lane_set_id: None,
         lane_set_base: None,
+        lane_set_name: None,
         groups: vec![],
         data_objects: vec![],
         data_associations: vec![],
@@ -821,6 +822,7 @@ fn nested_diagram_shows_children_and_collapsed_parent_hides_them() {
         content: Box::new(FlowContainer {
             lane_set_id: None,
             lane_set_base: None,
+            lane_set_name: None,
             groups: vec![],
             data_objects: vec![],
             data_associations: vec![],
@@ -945,6 +947,7 @@ fn nested_flow_and_called_activity_use_semantic_ids() {
         content: Box::new(FlowContainer {
             lane_set_id: None,
             lane_set_base: None,
+            lane_set_name: None,
             groups: vec![],
             data_objects: vec![],
             data_associations: vec![],
@@ -2496,6 +2499,7 @@ fn cancel_boundary_and_end_use_hollow_and_filled_crosses() {
         content: Box::new(FlowContainer {
             lane_set_id: None,
             lane_set_base: None,
+            lane_set_name: None,
             groups: vec![],
             data_objects: vec![],
             data_associations: vec![],
@@ -2860,6 +2864,7 @@ fn nested_reference_resolves_ancestor_data_object_and_hides_when_collapsed() {
         content: Box::new(FlowContainer {
             lane_set_id: None,
             lane_set_base: None,
+            lane_set_name: None,
             groups: vec![],
             data_objects: vec![],
             data_associations: vec![],
@@ -3234,6 +3239,9 @@ fn lane_orientation_places_divider_on_corresponding_axis() {
         base: None,
         child_lane_set_id: None,
         child_lane_set_base: None,
+        child_lane_set_name: None,
+        partition_element: None,
+        partition_element_ref: None,
         id: id("lane"),
         name: Some("Pool".into()),
         parent: None,

@@ -20,6 +20,7 @@ pub fn blank_document() -> BpmnDocument {
     let process = Process {
         activity_metadata: None,
         lane_set_base: None,
+        lane_set_name: None,
         base_extras: None,
         is_executable: Some(false),
         io_specification: None,

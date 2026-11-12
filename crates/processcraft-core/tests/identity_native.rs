@@ -38,6 +38,7 @@ fn native_graph_identity_is_stable_and_duplicate_xml_ids_are_rejected() {
         activity_metadata: None,
         base_extras: None,
         lane_set_base: None,
+        lane_set_name: None,
         is_executable: Some(false),
         id: process_id.clone(),
         name: None,

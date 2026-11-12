@@ -80,6 +80,9 @@ fn anonymous_native_elements_remain_queryable_without_promoting_or_naming_them()
             members: vec![task_selector.clone()],
             child_lane_set_id: None,
             child_lane_set_base: None,
+            child_lane_set_name: None,
+            partition_element: None,
+            partition_element_ref: None,
         }],
         flows: vec![],
         groups: vec![],
@@ -88,6 +91,7 @@ fn anonymous_native_elements_remain_queryable_without_promoting_or_naming_them()
         io_specification: None,
         lane_set_id: None,
         lane_set_base: None,
+        lane_set_name: None,
     });
     let document_id = document.id;
     let mut project = ProjectData::new("Queries".into());

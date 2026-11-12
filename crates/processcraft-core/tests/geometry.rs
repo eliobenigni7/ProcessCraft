@@ -346,6 +346,7 @@ fn nested_session() -> processcraft_core::commands::Session {
         content: Box::new(FlowContainer {
             lane_set_id: None,
             lane_set_base: None,
+            lane_set_name: None,
             groups: vec![],
             nodes: std::mem::take(&mut process.nodes),
             lanes: std::mem::take(&mut process.lanes),
