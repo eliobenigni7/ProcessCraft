@@ -89,15 +89,28 @@ impl TextLayout {
                 .and_then(|path| path.transform(transform));
         }
     }
+    fn glyph_fits(glyph: &Glyph, width: f32, height: f32) -> bool {
+        glyph.outline.as_ref().is_none_or(|p| {
+            let b = p.bounds();
+            b.left() >= 0.0 && b.top() >= 0.0 && b.right() <= width && b.bottom() <= height
+        })
+    }
+    pub(crate) fn overflows(&self, width: f32, height: f32) -> bool {
+        self.height > height
+            || self
+                .glyphs
+                .iter()
+                .any(|glyph| !Self::glyph_fits(glyph, width, height))
+    }
     pub(crate) fn clip_to_bounds(&mut self, width: f32, height: f32) -> bool {
         let before = self.glyphs.len();
-        self.glyphs.retain(|glyph| {
-            glyph.outline.as_ref().is_none_or(|p| {
-                let b = p.bounds();
-                b.left() >= 0.0 && b.top() >= 0.0 && b.right() <= width && b.bottom() <= height
-            })
-        });
+        self.glyphs
+            .retain(|glyph| Self::glyph_fits(glyph, width, height));
         before != self.glyphs.len() || self.height > height
+    }
+    /// Keep the full source text (SVG description) for an ellipsized layout.
+    pub(crate) fn set_source_text(&mut self, text: &str) {
+        self.text = text.to_owned();
     }
     pub fn text(&self) -> &str {
         &self.text

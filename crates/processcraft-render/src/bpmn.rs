@@ -661,6 +661,188 @@ fn label_visible(
     label.is_some() || policy.is_none()
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum LabelAlign {
+    TopLeft,
+    TopCenter,
+    Center,
+}
+
+/// Events, gateways and data references carry their name below the shape.
+fn has_external_label(kind: Option<NodeKind>) -> bool {
+    matches!(
+        kind,
+        Some(
+            NodeKind::StartEvent
+                | NodeKind::EndEvent
+                | NodeKind::IntermediateCatchEvent
+                | NodeKind::IntermediateThrowEvent
+                | NodeKind::BoundaryEvent
+                | NodeKind::ExclusiveGateway
+                | NodeKind::ParallelGateway
+                | NodeKind::InclusiveGateway
+                | NodeKind::ComplexGateway
+                | NodeKind::EventBasedGateway
+                | NodeKind::DataObjectReference
+                | NodeKind::DataStoreReference
+        )
+    )
+}
+
+/// Default external label box: centered under the shape, room for three lines.
+fn external_label_bounds(b: &Bounds) -> Bounds {
+    let width = b.width.max(100.0);
+    Bounds {
+        x: b.x + (b.width - width) / 2.0,
+        y: b.y + b.height + 2.0,
+        width,
+        height: 64.0,
+    }
+}
+
+/// Authored DI label bounds, or the default placement for the shape kind.
+fn shape_label_layout(
+    shape: &processcraft_core::model::Shape,
+    kind: Option<NodeKind>,
+    marker_kind: Option<NodeKind>,
+    node: Option<&Node>,
+    choreography: bool,
+    is_lane_or_pool: bool,
+) -> (Bounds, LabelAlign) {
+    let b = &shape.bounds;
+    if let Some(bounds) = shape.label.as_ref().and_then(|l| l.bounds.as_ref()) {
+        let align = if has_external_label(kind) {
+            LabelAlign::TopCenter
+        } else {
+            LabelAlign::TopLeft
+        };
+        return (bounds.clone(), align);
+    }
+    if is_lane_or_pool {
+        return if shape.is_horizontal == Some(false) {
+            (
+                Bounds {
+                    height: b.height.min(24.0),
+                    ..b.clone()
+                },
+                LabelAlign::TopLeft,
+            )
+        } else {
+            (
+                Bounds {
+                    width: b.width.min(24.0),
+                    ..b.clone()
+                },
+                LabelAlign::Center,
+            )
+        };
+    }
+    if choreography {
+        return (
+            Bounds {
+                x: b.x,
+                y: b.y + b.height * 0.25,
+                width: b.width,
+                height: b.height * 0.5,
+            },
+            LabelAlign::Center,
+        );
+    }
+    let bottom_markers = node.is_some_and(|node| {
+        node.loop_characteristics.is_some()
+            || node
+                .activity
+                .as_ref()
+                .is_some_and(|activity| activity.is_for_compensation == Some(true))
+    });
+    if is_task_kind(marker_kind) {
+        let top = if matches!(marker_kind, Some(NodeKind::Task)) {
+            0.0
+        } else {
+            20.0
+        };
+        let bottom = if bottom_markers { 18.0 } else { 0.0 };
+        return (
+            Bounds {
+                x: b.x,
+                y: b.y + top,
+                width: b.width,
+                height: (b.height - top - bottom).max(0.0),
+            },
+            LabelAlign::Center,
+        );
+    }
+    if has_external_label(kind) {
+        return (external_label_bounds(b), LabelAlign::TopCenter);
+    }
+    if matches!(
+        kind,
+        Some(
+            NodeKind::SubProcess
+                | NodeKind::AdHocSubProcess
+                | NodeKind::Transaction
+                | NodeKind::CallActivity
+        )
+    ) && shape.is_expanded != Some(true)
+    {
+        // Collapsed: center like a task, above the collapse/loop marker row.
+        return (
+            Bounds {
+                height: (b.height - 18.0).max(0.0),
+                ..b.clone()
+            },
+            LabelAlign::Center,
+        );
+    }
+    (b.clone(), LabelAlign::TopLeft)
+}
+
+/// Default edge label: below a horizontal midpoint segment, beside a vertical one.
+fn edge_label_layout(edge: &processcraft_core::model::Edge) -> Option<(Bounds, LabelAlign)> {
+    if let Some(bounds) = edge.label.as_ref().and_then(|l| l.bounds.as_ref()) {
+        return Some((bounds.clone(), LabelAlign::TopCenter));
+    }
+    let first = edge.waypoints.first()?;
+    let points: Vec<_> = edge
+        .waypoints
+        .iter()
+        .map(|p| (p.x as f32, p.y as f32))
+        .collect();
+    let ((mx, my), (dx, dy)) = polyline_midpoint_segment(&points)
+        .unwrap_or(((first.x as f32, first.y as f32), (1.0, 0.0)));
+    let (mx, my) = (f64::from(mx), f64::from(my));
+    Some(if dx.abs() >= dy.abs() {
+        (
+            Bounds {
+                x: mx - 60.0,
+                y: my + 2.0,
+                width: 120.0,
+                height: 40.0,
+            },
+            LabelAlign::TopCenter,
+        )
+    } else {
+        (
+            Bounds {
+                x: mx + 4.0,
+                y: my - 20.0,
+                width: 120.0,
+                height: 40.0,
+            },
+            LabelAlign::TopLeft,
+        )
+    })
+}
+
+/// Last segment with non-zero length, so coincident end waypoints keep a defined angle.
+fn last_segment(points: &[(f32, f32)]) -> Option<((f32, f32), (f32, f32))> {
+    points
+        .windows(2)
+        .rev()
+        .find(|p| p[0] != p[1])
+        .map(|p| (p[0], p[1]))
+}
+
 fn label_font<'a>(
     document: &BpmnDocument,
     diagram: &'a processcraft_core::model::Diagram,
@@ -831,7 +1013,8 @@ fn data_label(
             data_object_ref: Some(id),
         }) => semantics
             .data_object(id)
-            .map(|object| object.name.as_deref().unwrap_or(""))
+            .and_then(|object| object.name.as_deref())
+            .filter(|object_name| !object_name.is_empty())
             .unwrap_or(name),
         _ => name,
     };
@@ -928,6 +1111,32 @@ impl BpmnScene {
             if let Some(b) = shape.label.as_ref().and_then(|label| label.bounds.as_ref()) {
                 include(b.x, b.y)?;
                 include(b.x + b.width, b.y + b.height)?;
+            } else if label_visible(shape.label.as_ref(), shape.label_visibility) {
+                // Default external labels sit outside the shape; keep export margins even.
+                let node = semantics.node(&shape.element).map(|(node, _)| node);
+                let port = semantics.port(&shape.element).map(|(port, _)| port);
+                let store = document
+                    .data_stores
+                    .iter()
+                    .find(|store| store.id.as_ref().is_some_and(|id| id == &shape.element));
+                let kind = node
+                    .map(|node| node.kind)
+                    .or(port.map(|_| NodeKind::DataObjectReference))
+                    .or(store.map(|_| NodeKind::DataStoreReference));
+                let named = match (node, port, store) {
+                    (Some(node), ..) => {
+                        !data_label(Some(node), node.name.as_deref().unwrap_or(""), &semantics)
+                            .is_empty()
+                    }
+                    (_, Some(port), _) => port.name.as_deref().is_some_and(|n| !n.is_empty()),
+                    (.., Some(store)) => store.name.as_deref().is_some_and(|n| !n.is_empty()),
+                    _ => false,
+                };
+                if named && has_external_label(kind) {
+                    let lb = external_label_bounds(b);
+                    include(lb.x, lb.y)?;
+                    include(lb.x + lb.width, lb.y + lb.height)?;
+                }
             }
         }
         for edge in &diagram.edges {
@@ -953,7 +1162,7 @@ impl BpmnScene {
                     .as_ref()
                     .and_then(|label| label.bounds.as_ref())
                     .is_none()
-                && let Some(p) = edge.waypoints.get(edge.waypoints.len() / 2)
+                && let Some((p, _)) = edge_label_layout(edge)
             {
                 let named = semantics
                     .flow(&edge.element)
@@ -966,8 +1175,8 @@ impl BpmnScene {
                 if named {
                     minx = minx.min(p.x);
                     miny = miny.min(p.y);
-                    maxx = maxx.max(p.x + 120.0);
-                    maxy = maxy.max(p.y + 40.0);
+                    maxx = maxx.max(p.x + p.width);
+                    maxy = maxy.max(p.y + p.height);
                 }
             }
         }
@@ -1161,7 +1370,7 @@ impl BpmnScene {
                         label_style,
                         label_font(document, diagram, shape.label.as_ref(), &mut diagnostics),
                         band_fg,
-                        true,
+                        LabelAlign::Center,
                         &mut diagnostics,
                     )?;
                 }
@@ -1322,7 +1531,7 @@ impl BpmnScene {
                             .or(shape.style.as_ref()),
                         label_font(document, diagram, shape.label.as_ref(), &mut diagnostics),
                         fg,
-                        false,
+                        LabelAlign::TopLeft,
                         &mut diagnostics,
                     )?;
                     if label_visible(shape.label.as_ref(), shape.label_visibility) {
@@ -2081,7 +2290,7 @@ impl BpmnScene {
                             shape.style.as_ref(),
                             None,
                             fg,
-                            false,
+                            LabelAlign::TopLeft,
                             &mut diagnostics,
                         )?;
                     }
@@ -2208,60 +2417,15 @@ impl BpmnScene {
                     )?;
                 }
             }
-            let fallback_label = if is_lane_or_pool {
-                if shape.is_horizontal == Some(false) {
-                    Bounds {
-                        x: b.x,
-                        y: b.y,
-                        width: b.width,
-                        height: b.height.min(24.0),
-                    }
-                } else {
-                    Bounds {
-                        x: b.x,
-                        y: b.y,
-                        width: b.width.min(24.0),
-                        height: b.height,
-                    }
-                }
-            } else if choreography.is_some() {
-                Bounds {
-                    x: b.x,
-                    y: b.y + b.height * 0.25,
-                    width: b.width,
-                    height: b.height * 0.5,
-                }
-            } else if is_task_kind(marker_kind) {
-                let top = if matches!(marker_kind, Some(NodeKind::Task)) {
-                    0.0
-                } else {
-                    20.0
-                };
-                let bottom = if node.is_some_and(|node| {
-                    node.loop_characteristics.is_some()
-                        || node
-                            .activity
-                            .as_ref()
-                            .is_some_and(|activity| activity.is_for_compensation == Some(true))
-                }) {
-                    18.0
-                } else {
-                    0.0
-                };
-                Bounds {
-                    x: b.x,
-                    y: b.y + top,
-                    width: b.width,
-                    height: (b.height - top - bottom).max(0.0),
-                }
-            } else {
-                b.clone()
-            };
-            let lb = shape
-                .label
-                .as_ref()
-                .and_then(|l| l.bounds.as_ref())
-                .unwrap_or(&fallback_label);
+            let (label_bounds, label_align) = shape_label_layout(
+                shape,
+                kind,
+                marker_kind,
+                node,
+                choreography.is_some(),
+                is_lane_or_pool,
+            );
+            let lb = &label_bounds;
             let style = shape
                 .label
                 .as_ref()
@@ -2299,13 +2463,7 @@ impl BpmnScene {
                     style,
                     label_font(document, diagram, shape.label.as_ref(), &mut diagnostics),
                     fg,
-                    rotate_pool_label
-                        || shape
-                            .label
-                            .as_ref()
-                            .and_then(|label| label.bounds.as_ref())
-                            .is_none()
-                            && (is_task_kind(marker_kind) || choreography.is_some()),
+                    label_align,
                     &mut diagnostics,
                 )?;
                 if rotate_pool_label && !name.is_empty() {
@@ -2407,20 +2565,9 @@ impl BpmnScene {
                 double_link(&mut scene, &points, stroke)?;
                 if label_visible(edge.label.as_ref(), edge.label_visibility)
                     && link.name.as_deref().is_some_and(|name| !name.is_empty())
-                    && !edge.waypoints.is_empty()
+                    && let Some((bounds, align)) = edge_label_layout(edge)
                 {
-                    let p = &edge.waypoints[edge.waypoints.len() / 2];
-                    let fallback = Bounds {
-                        x: p.x,
-                        y: p.y,
-                        width: 120.0,
-                        height: 40.0,
-                    };
-                    let bounds = edge
-                        .label
-                        .as_ref()
-                        .and_then(|label| label.bounds.as_ref())
-                        .unwrap_or(&fallback);
+                    let bounds = &bounds;
                     label(
                         &mut scene,
                         fonts,
@@ -2434,7 +2581,7 @@ impl BpmnScene {
                             .or(edge.style.as_ref()),
                         label_font(document, diagram, edge.label.as_ref(), &mut diagnostics),
                         fg,
-                        false,
+                        align,
                         &mut diagnostics,
                     )?;
                     if label_visible(edge.label.as_ref(), edge.label_visibility) {
@@ -2542,14 +2689,13 @@ impl BpmnScene {
                     matches!(flow.kind, FlowKind::Message),
                 )?;
             }
-            if pts.len() > 1
-                && (!matches!(flow.kind, FlowKind::Association)
-                    || matches!(
-                        flow.association_direction,
-                        Some(AssociationDirection::One | AssociationDirection::Both)
-                    ))
+            if (!matches!(flow.kind, FlowKind::Association)
+                || matches!(
+                    flow.association_direction,
+                    Some(AssociationDirection::One | AssociationDirection::Both)
+                ))
+                && let Some((a, b)) = last_segment(&pts)
             {
-                let (a, b) = (pts[pts.len() - 2], pts[pts.len() - 1]);
                 let angle = (b.1 - a.1).atan2(b.0 - a.0);
                 let wing = |v: f32| (b.0 - 9.0 * (angle + v).cos(), b.1 - 9.0 * (angle + v).sin());
                 if matches!(flow.kind, FlowKind::Sequence) {
@@ -2562,31 +2708,19 @@ impl BpmnScene {
                     lines(&mut scene, &[wing(0.5), b, wing(-0.5)], stroke, 1.5)?;
                 }
             }
-            if pts.len() > 1
-                && matches!(flow.kind, FlowKind::Association)
+            if matches!(flow.kind, FlowKind::Association)
                 && matches!(flow.association_direction, Some(AssociationDirection::Both))
+                && let Some((a, b)) = last_segment(&pts.iter().rev().copied().collect::<Vec<_>>())
             {
-                let (a, b) = (pts[1], pts[0]);
                 let angle = (b.1 - a.1).atan2(b.0 - a.0);
                 let wing = |v: f32| (b.0 - 9.0 * (angle + v).cos(), b.1 - 9.0 * (angle + v).sin());
                 lines(&mut scene, &[wing(0.5), b, wing(-0.5)], stroke, 1.5)?;
             }
             if label_visible(edge.label.as_ref(), edge.label_visibility)
                 && flow.name.as_deref().is_some_and(|name| !name.is_empty())
-                && !edge.waypoints.is_empty()
+                && let Some((bounds, align)) = edge_label_layout(edge)
             {
-                let p = &edge.waypoints[edge.waypoints.len() / 2];
-                let fallback = Bounds {
-                    x: p.x,
-                    y: p.y,
-                    width: 120.0,
-                    height: 40.0,
-                };
-                let bounds = edge
-                    .label
-                    .as_ref()
-                    .and_then(|l| l.bounds.as_ref())
-                    .unwrap_or(&fallback);
+                let bounds = &bounds;
                 label(
                     &mut scene,
                     fonts,
@@ -2600,7 +2734,7 @@ impl BpmnScene {
                         .or(edge.style.as_ref()),
                     label_font(document, diagram, edge.label.as_ref(), &mut diagnostics),
                     fg,
-                    false,
+                    align,
                     &mut diagnostics,
                 )?;
                 if label_visible(edge.label.as_ref(), edge.label_visibility) {
@@ -2750,12 +2884,13 @@ fn label(
     style: Option<&Style>,
     di_font: Option<&processcraft_core::model::DiFont>,
     fg: [u8; 3],
-    center: bool,
+    align: LabelAlign,
     diagnostics: &mut Vec<String>,
 ) -> Result<(), RenderError> {
     if text.is_empty() {
         return Ok(());
     }
+    let center = align == LabelAlign::Center;
     let size = match di_font.and_then(|font| font.size) {
         Some(size) if size.is_finite() && (4.0..=256.0).contains(&size) => size as f32,
         Some(_) => {
@@ -2771,7 +2906,7 @@ fn label(
         .unwrap_or(family);
     request.bold = di_font.is_some_and(|font| font.is_bold == Some(true));
     request.italic = di_font.is_some_and(|font| font.is_italic == Some(true));
-    request.center = center;
+    request.center = align != LabelAlign::TopLeft;
     let mut layout = fonts.layout(request)?;
     // Preserve glyph descenders when the text itself fits the label box.
     // Padding is discretionary and must not consume space needed by outlines.
@@ -2789,10 +2924,37 @@ fn label(
         0.0
     };
     diagnostics.extend(layout.diagnostics().iter().cloned());
-    if layout.clip_to_bounds(
+    let (fit_w, fit_h) = (
         ((b.width as f32) - 8.0).max(0.0),
         ((b.height as f32) - vertical_padding * 2.0 - vertical_offset).max(0.0),
-    ) {
+    );
+    let mut ellipsized = false;
+    if layout.overflows(fit_w, fit_h) {
+        // Replace the hidden tail with an ellipsis: the longest prefix that still fits
+        // wins (binary search, so at most ~log2(chars) extra layouts).
+        let ends: Vec<_> = text.char_indices().map(|(i, _)| i).skip(1).collect();
+        let (mut lo, mut hi, mut best) = (0, ends.len(), None);
+        while lo < hi {
+            let mid = (lo + hi) / 2;
+            let candidate = format!("{}\u{2026}", text[..ends[mid]].trim_end());
+            let attempt = fonts.layout(TextRequest {
+                text: &candidate,
+                ..request
+            })?;
+            if attempt.overflows(fit_w, fit_h) {
+                hi = mid;
+            } else {
+                best = Some(attempt);
+                lo = mid + 1;
+            }
+        }
+        if let Some(best) = best {
+            layout = best;
+            layout.set_source_text(text);
+            ellipsized = true;
+        }
+    }
+    if layout.clip_to_bounds(fit_w, fit_h) || ellipsized {
         diagnostics.push(format!(
             "Label clipped because it exceeds its bounds: {text}"
         ));
@@ -2949,8 +3111,7 @@ fn open_arrow(
     points: &[(f32, f32)],
     stroke: [u8; 3],
 ) -> Result<(), RenderError> {
-    if points.len() > 1 {
-        let (a, b) = (points[points.len() - 2], points[points.len() - 1]);
+    if let Some((a, b)) = last_segment(points) {
         let angle = (b.1 - a.1).atan2(b.0 - a.0);
         let wing = |v: f32| (b.0 - 9.0 * (angle + v).cos(), b.1 - 9.0 * (angle + v).sin());
         lines(scene, &[wing(0.5), b, wing(-0.5)], stroke, 1.5)?;
@@ -3471,6 +3632,10 @@ fn draw_new_markers(
     Ok(())
 }
 fn polyline_midpoint(points: &[(f32, f32)]) -> Option<(f32, f32)> {
+    polyline_midpoint_segment(points).map(|(point, _)| point)
+}
+/// Arc-length midpoint and the direction vector of the segment containing it.
+fn polyline_midpoint_segment(points: &[(f32, f32)]) -> Option<((f32, f32), (f32, f32))> {
     let total: f32 = points
         .windows(2)
         .map(|p| (p[1].0 - p[0].0).hypot(p[1].1 - p[0].1))
@@ -3483,10 +3648,8 @@ fn polyline_midpoint(points: &[(f32, f32)]) -> Option<(f32, f32)> {
         let length = (pair[1].0 - pair[0].0).hypot(pair[1].1 - pair[0].1);
         if length > 0.0 && remaining <= length {
             let t = remaining / length;
-            return Some((
-                pair[0].0 + (pair[1].0 - pair[0].0) * t,
-                pair[0].1 + (pair[1].1 - pair[0].1) * t,
-            ));
+            let (dx, dy) = (pair[1].0 - pair[0].0, pair[1].1 - pair[0].1);
+            return Some(((pair[0].0 + dx * t, pair[0].1 + dy * t), (dx, dy)));
         }
         remaining -= length;
     }
@@ -4057,69 +4220,36 @@ impl BpmnViewport {
                 continue;
             }
             let b = &shape.bounds;
-            let fallback = if semantics.groups.iter().any(|g| g.id == shape.element) {
-                Bounds {
-                    x: b.x + 8.0,
-                    y: b.y + 4.0,
-                    width: (b.width - 16.0).max(0.0),
-                    height: b.height.min(28.0),
-                }
-            } else if semantics.lane(&shape.element).is_some()
-                || semantics.participant(&shape.element).is_some()
-            {
-                if shape.is_horizontal == Some(false) {
-                    Bounds {
-                        x: b.x,
-                        y: b.y,
-                        width: b.width,
-                        height: b.height.min(24.0),
-                    }
+            let is_lane_or_pool = semantics.lane(&shape.element).is_some()
+                || semantics.participant(&shape.element).is_some();
+            let (label_bounds, label_align) =
+                if semantics.groups.iter().any(|g| g.id == shape.element)
+                    && shape
+                        .label
+                        .as_ref()
+                        .and_then(|l| l.bounds.as_ref())
+                        .is_none()
+                {
+                    (
+                        Bounds {
+                            x: b.x + 8.0,
+                            y: b.y + 4.0,
+                            width: (b.width - 16.0).max(0.0),
+                            height: b.height.min(28.0),
+                        },
+                        LabelAlign::TopLeft,
+                    )
                 } else {
-                    Bounds {
-                        x: b.x,
-                        y: b.y,
-                        width: b.width.min(24.0),
-                        height: b.height,
-                    }
-                }
-            } else if choreography.is_some() {
-                Bounds {
-                    x: b.x,
-                    y: b.y + b.height * 0.25,
-                    width: b.width,
-                    height: b.height * 0.5,
-                }
-            } else if is_task_kind(marker_kind) {
-                let top = if matches!(marker_kind, Some(NodeKind::Task)) {
-                    0.0
-                } else {
-                    20.0
+                    shape_label_layout(
+                        shape,
+                        kind,
+                        marker_kind,
+                        node,
+                        choreography.is_some(),
+                        is_lane_or_pool,
+                    )
                 };
-                let bottom = if node.is_some_and(|node| {
-                    node.loop_characteristics.is_some()
-                        || node
-                            .activity
-                            .as_ref()
-                            .is_some_and(|activity| activity.is_for_compensation == Some(true))
-                }) {
-                    18.0
-                } else {
-                    0.0
-                };
-                Bounds {
-                    x: b.x,
-                    y: b.y + top,
-                    width: b.width,
-                    height: (b.height - top - bottom).max(0.0),
-                }
-            } else {
-                b.clone()
-            };
-            let bounds = shape
-                .label
-                .as_ref()
-                .and_then(|l| l.bounds.as_ref())
-                .unwrap_or(&fallback);
+            let bounds = &label_bounds;
             if !label_visible(shape.label.as_ref(), shape.label_visibility)
                 || name.is_empty()
                 || !inside(bounds)
@@ -4134,8 +4264,6 @@ impl BpmnViewport {
                     shape.element
                 ));
             }
-            let is_lane_or_pool = semantics.lane(&shape.element).is_some()
-                || semantics.participant(&shape.element).is_some();
             let rotate_pool_label = is_lane_or_pool
                 && shape.is_horizontal != Some(false)
                 && shape
@@ -4195,14 +4323,11 @@ impl BpmnViewport {
                 } else {
                     fg
                 },
-                rotate_pool_label
-                    || shape.participant_band_kind.is_some()
-                    || shape
-                        .label
-                        .as_ref()
-                        .and_then(|label| label.bounds.as_ref())
-                        .is_none()
-                        && (is_task_kind(marker_kind) || choreography.is_some()),
+                if shape.participant_band_kind.is_some() {
+                    LabelAlign::Center
+                } else {
+                    label_align
+                },
                 &mut built.diagnostics,
             )?;
             if rotate_pool_label {
@@ -4265,7 +4390,8 @@ impl BpmnViewport {
                     && end.y <= view.y + view.height
                     && edge.waypoints.len() > 1
                 {
-                    let pts: Vec<_> = edge.waypoints[edge.waypoints.len() - 2..]
+                    let pts: Vec<_> = edge
+                        .waypoints
                         .iter()
                         .map(|p| {
                             (
@@ -4316,20 +4442,9 @@ impl BpmnViewport {
                 }
                 if label_visible(edge.label.as_ref(), edge.label_visibility)
                     && link.name.as_deref().is_some_and(|name| !name.is_empty())
-                    && !edge.waypoints.is_empty()
+                    && let Some((bounds, align)) = edge_label_layout(edge)
                 {
-                    let p = &edge.waypoints[edge.waypoints.len() / 2];
-                    let fallback = Bounds {
-                        x: p.x,
-                        y: p.y,
-                        width: 120.0,
-                        height: 40.0,
-                    };
-                    let bounds = edge
-                        .label
-                        .as_ref()
-                        .and_then(|l| l.bounds.as_ref())
-                        .unwrap_or(&fallback);
+                    let bounds = &bounds;
                     if inside(bounds) {
                         label(
                             &mut built.scene,
@@ -4349,7 +4464,7 @@ impl BpmnViewport {
                                 &mut built.diagnostics,
                             ),
                             fg,
-                            false,
+                            align,
                             &mut built.diagnostics,
                         )?;
                         if label_visible(edge.label.as_ref(), edge.label_visibility) {
@@ -4569,7 +4684,12 @@ impl BpmnViewport {
                     ))
             {
                 let b = &edge.waypoints[edge.waypoints.len() - 1];
-                let a = &edge.waypoints[edge.waypoints.len() - 2];
+                let a = edge
+                    .waypoints
+                    .iter()
+                    .rev()
+                    .find(|p| p.x != b.x || p.y != b.y)
+                    .unwrap_or(&edge.waypoints[edge.waypoints.len() - 2]);
                 if b.x >= view.x
                     && b.x <= view.x + view.width
                     && b.y >= view.y
@@ -4603,7 +4723,11 @@ impl BpmnViewport {
                 && matches!(flow.association_direction, Some(AssociationDirection::Both))
             {
                 let b = &edge.waypoints[0];
-                let a = &edge.waypoints[1];
+                let a = edge
+                    .waypoints
+                    .iter()
+                    .find(|p| p.x != b.x || p.y != b.y)
+                    .unwrap_or(&edge.waypoints[1]);
                 if b.x >= view.x
                     && b.x <= view.x + view.width
                     && b.y >= view.y
@@ -4625,20 +4749,9 @@ impl BpmnViewport {
             }
             if label_visible(edge.label.as_ref(), edge.label_visibility)
                 && flow.name.as_deref().is_some_and(|name| !name.is_empty())
-                && !edge.waypoints.is_empty()
+                && let Some((bounds, align)) = edge_label_layout(edge)
             {
-                let p = &edge.waypoints[edge.waypoints.len() / 2];
-                let fallback = Bounds {
-                    x: p.x,
-                    y: p.y,
-                    width: 120.0,
-                    height: 40.0,
-                };
-                let bounds = edge
-                    .label
-                    .as_ref()
-                    .and_then(|l| l.bounds.as_ref())
-                    .unwrap_or(&fallback);
+                let bounds = &bounds;
                 if inside(bounds) {
                     let mut local = bounds.clone();
                     rebase(&mut local);
@@ -4674,7 +4787,7 @@ impl BpmnViewport {
                             &mut built.diagnostics,
                         ),
                         fg,
-                        false,
+                        align,
                         &mut built.diagnostics,
                     )?;
                 }

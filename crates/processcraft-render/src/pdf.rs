@@ -8,11 +8,18 @@ pub(crate) const OUTLINE_NOTICE: &str = "PDF text is outlined using the bundled 
 pub(crate) fn export(scene: &DiagramScene, scale: f32) -> Result<(Vec<u8>, usize), RenderError> {
     let (width, height, margin) = (841.89_f32, 595.28_f32, 24.0_f32);
     // Scene units are CSS pixels; PDF page coordinates are points.
-    let scale = scale * 0.75;
+    let mut scale = scale * 0.75;
+    // Shrink onto one page instead of tiling when that keeps at least half the scale.
+    let fit =
+        ((width - 2.0 * margin) / scene.width()).min((height - 2.0 * margin) / scene.height());
+    if fit < scale && fit >= scale * 0.5 {
+        scale = fit;
+    }
     let tile_width = (width - 2.0 * margin) / scale;
     let tile_height = (height - 2.0 * margin) / scale;
-    let columns = (scene.width() / tile_width).ceil().max(1.0) as usize;
-    let rows = (scene.height() / tile_height).ceil().max(1.0) as usize;
+    // The epsilon keeps an exact fit from rounding up to an extra, empty tile.
+    let columns = (scene.width() / tile_width - 1e-3).ceil().max(1.0) as usize;
+    let rows = (scene.height() / tile_height - 1e-3).ceil().max(1.0) as usize;
     let pages_count = columns
         .checked_mul(rows)
         .ok_or(RenderError("PDF page count overflow"))?;
@@ -135,5 +142,12 @@ mod tests {
         assert!(!source.contains("/Subtype /Image"));
         assert!(!source.contains("/JavaScript"));
         assert!(export(&DiagramScene::new(16384.0, 16384.0).unwrap(), 8.0).is_err());
+    }
+
+    #[test]
+    fn moderately_large_diagram_fits_one_page() {
+        // 1332 x 632 needs two tiles at 1:1 but fits one page at ~0.79.
+        let scene = DiagramScene::new(1332.0, 632.0).unwrap();
+        assert_eq!(export(&scene, 1.0).unwrap().1, 1);
     }
 }

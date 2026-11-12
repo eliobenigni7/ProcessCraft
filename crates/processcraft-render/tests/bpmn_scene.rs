@@ -2674,7 +2674,7 @@ fn data_reference_state_and_collection_share_scene_and_viewport() {
             x: 0.0,
             y: 0.0,
             width: 120.0,
-            height: 100.0,
+            height: 160.0,
             zoom: 1.0,
         },
     )
@@ -2697,7 +2697,7 @@ fn data_reference_state_and_collection_share_scene_and_viewport() {
             x: 0.0,
             y: 0.0,
             width: 120.0,
-            height: 100.0,
+            height: 160.0,
             zoom: 1.0,
         },
     )
@@ -4098,4 +4098,165 @@ fn authored_plane_order_controls_overlapping_shapes_and_viewport_hits() {
     assert_eq!((pixel.red(), pixel.green(), pixel.blue()), (255, 0, 0));
     let svg = full.scene.to_svg();
     assert!(svg.find("#0000ff").unwrap() < svg.find("#ff0000").unwrap());
+}
+
+/// Horizontal ink center and top of a label, in document coordinates.
+fn label_ink(scene: &BpmnScene, text: &str) -> (f32, f32) {
+    let label = scene
+        .scene
+        .labels()
+        .iter()
+        .find(|label| label.layout.text() == text)
+        .unwrap();
+    let glyphs = label.layout.glyphs();
+    let left = glyphs.iter().map(|g| g.x).fold(f32::INFINITY, f32::min);
+    let right = glyphs
+        .iter()
+        .map(|g| g.x + g.advance)
+        .fold(f32::NEG_INFINITY, f32::max);
+    (
+        label.x + (left + right) / 2.0 + scene.origin.0 as f32,
+        label.y + scene.origin.1 as f32,
+    )
+}
+
+fn named_flow(d: &mut BpmnDocument, name: Option<&str>, points: &[(f64, f64)]) {
+    d.processes[0].flows.push(processcraft_core::model::Flow {
+        message_ref: None,
+        flow_metadata: None,
+        association_direction: None,
+        id: id("flow"),
+        kind: processcraft_core::model::FlowKind::Sequence,
+        source: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+            "task",
+        ))),
+        target: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+            "task",
+        ))),
+        name: name.map(Into::into),
+        documentation: String::new().into(),
+        base_extras: None,
+        condition: None,
+    });
+    d.diagrams[0].edges.push(processcraft_core::model::Edge {
+        di_metadata: None,
+        message_visible_kind: None,
+        id: id("edge"),
+        element: id("flow"),
+        source_element: None,
+        label_visibility: None,
+        target_element: None,
+        waypoints: points
+            .iter()
+            .map(|&(x, y)| processcraft_core::model::Point { x, y })
+            .collect(),
+        label: None,
+        style: None,
+    });
+}
+
+#[test]
+fn event_label_without_di_bounds_is_centered_below_the_shape() {
+    let mut d = fixture();
+    d.processes[0].nodes[0].kind = NodeKind::EndEvent;
+    d.processes[0].nodes[0].name = Some("Order".into());
+    d.diagrams[0].shapes[0].bounds = Bounds {
+        x: 0.0,
+        y: 0.0,
+        width: 36.0,
+        height: 36.0,
+    };
+    let scene = build(&d, Appearance::Light);
+    let (center, top) = label_ink(&scene, "Order");
+    assert!((center - 18.0).abs() < 1.0, "center {center}");
+    assert!(top >= 36.0, "top {top}");
+    assert!(!scene.diagnostics.iter().any(|d| d.contains("clipped")));
+    // Export extents include the default external label box.
+    assert!(f64::from(scene.scene.height()) + scene.origin.1 >= 36.0 + 64.0);
+}
+
+#[test]
+fn collapsed_subprocess_name_is_centered() {
+    let mut d = fixture();
+    d.processes[0].nodes[0].kind = NodeKind::SubProcess;
+    d.processes[0].nodes[0].name = Some("Sub".into());
+    let scene = build(&d, Appearance::Light);
+    let (center, top) = label_ink(&scene, "Sub");
+    // Shape spans x -25..95, y 10..90.
+    assert!((center - 35.0).abs() < 1.0, "center {center}");
+    assert!(top > 20.0, "top {top}");
+}
+
+#[test]
+fn unbounded_edge_label_sits_at_the_polyline_midpoint() {
+    let mut d = fixture();
+    named_flow(&mut d, Some("Yes"), &[(10.0, 100.0), (90.0, 100.0)]);
+    let scene = build(&d, Appearance::Light);
+    let (center, top) = label_ink(&scene, "Yes");
+    assert!((center - 50.0).abs() < 1.0, "center {center}");
+    assert!(top >= 100.0, "top {top}");
+}
+
+#[test]
+fn data_object_reference_falls_back_to_its_own_name() {
+    use processcraft_core::{bpmn_data::DataObject, bpmn_model::NodeDetails};
+    let mut d = fixture();
+    let node = &mut d.processes[0].nodes[0];
+    node.kind = NodeKind::DataObjectReference;
+    node.name = Some("Order data".into());
+    node.details = Some(NodeDetails::DataObjectReference {
+        data_object_ref: Some(id("data")),
+    });
+    d.processes[0].data_objects.push(DataObject {
+        flow_metadata: None,
+        base: None,
+        id: Some(id("data")),
+        name: None,
+        is_collection: None,
+        item_aware: None,
+    });
+    assert!(
+        build(&d, Appearance::Light)
+            .scene
+            .to_svg()
+            .contains("Order data")
+    );
+}
+
+#[test]
+fn overflowing_label_ends_with_an_ellipsis() {
+    use processcraft_render::TextRequest;
+    let mut d = fixture();
+    let text = "Review the incoming order and check the credit limit of this customer account carefully before approving";
+    d.processes[0].nodes[0].name = Some(text.into());
+    let scene = build(&d, Appearance::Light);
+    let label = scene
+        .scene
+        .labels()
+        .iter()
+        .find(|label| label.layout.text() == text)
+        .unwrap();
+    let ellipsis = TextEngine::new()
+        .layout(TextRequest::new("\u{2026}", 12.0, 100.0))
+        .unwrap()
+        .glyphs()[0]
+        .glyph_id;
+    assert_eq!(label.layout.glyphs().last().unwrap().glyph_id, ellipsis);
+    assert!(scene.diagnostics.iter().any(|d| d.contains("clipped")));
+}
+
+#[test]
+fn arrowhead_ignores_coincident_final_waypoints() {
+    let mut d = fixture();
+    named_flow(
+        &mut d,
+        None,
+        &[(150.0, 0.0), (150.0, 100.0), (150.0, 100.0)],
+    );
+    let scene = build(&d, Appearance::Light);
+    // A downward head is wider (2 * 9 * sin 0.5) than tall (9 * cos 0.5).
+    assert!(scene.scene.paths().any(|p| {
+        let b = p.path.bounds();
+        (b.width() - 8.63).abs() < 0.1 && (b.height() - 7.9).abs() < 0.1
+    }));
 }

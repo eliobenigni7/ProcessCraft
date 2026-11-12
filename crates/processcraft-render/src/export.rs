@@ -103,7 +103,11 @@ pub fn export_diagram(
         }
         ExportFormat::Pdf => {
             let (bytes, pages) = crate::pdf::export(&built.scene, options.scale)?;
-            built.diagnostics.push(format!("PDF uses {pages} A4 landscape page(s), tiled at the selected scale with 24-point margins. Page boundaries can split shapes and labels; reduce scale for fewer pages."));
+            built.diagnostics.push(if pages == 1 {
+                "PDF uses 1 A4 landscape page with 24-point margins; a diagram that fits at half the selected scale or more is shrunk onto that page.".into()
+            } else {
+                format!("PDF uses {pages} A4 landscape page(s), tiled at the selected scale with 24-point margins. Page boundaries can split shapes and labels; reduce scale for fewer pages.")
+            });
             bytes
         }
     };
