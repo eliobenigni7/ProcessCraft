@@ -528,6 +528,9 @@ pub(crate) fn semantic_ids(d: &BpmnDocument) -> HashSet<crate::ids::ElementSelec
 fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<usize, String> {
     short(&d.name)?;
     let mut metadata_error = Ok(());
+    for base in crate::activity_read::activity_read(d).bases {
+        crate::bpmn_metadata::validate_base(base)?;
+    }
     crate::metadata_read::visit_base_metadata(d, |_, value| {
         if let Some(value) = value {
             metadata_error = metadata_error
@@ -546,9 +549,17 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
         }
     });
     metadata_error?;
+    let identities = d.element_identities();
+    if identities
+        .len()
+        .saturating_add(crate::activity_read::activity_read(d).anonymous_owners)
+        > 10_000
+    {
+        return fail("document element limit exceeded");
+    }
     let mut native_ids = HashSet::new();
     let mut xml_ids = HashSet::new();
-    for identity in d.element_identities() {
+    for identity in identities {
         if let crate::ids::ElementIdentity::Native { native_id, .. } = identity
             && !native_ids.insert(native_id)
         {
@@ -607,6 +618,9 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
         }
         Ok(())
     };
+    for name in crate::activity_read::activity_read(d).qnames {
+        check_qname(name)?;
+    }
     let local =
         |name: &crate::bpmn_model::QNameRef| local_namespace == Some(name.namespace.as_str());
     if d.extensions.len() > 256 || d.relationships.len() > 256 {
@@ -730,8 +744,23 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             }
         }
     }
+    let has_flow_node_refs = |metadata: &Option<crate::bpmn_activity::FlowElementMetadata>| {
+        metadata
+            .as_ref()
+            .is_some_and(|value| !value.incoming.is_empty() || !value.outgoing.is_empty())
+    };
     for scope in crate::queries::scopes(d) {
         for object in scope.data_objects {
+            if has_flow_node_refs(&object.flow_metadata) {
+                return fail("incoming/outgoing references require a flow node");
+            }
+            if object
+                .flow_metadata
+                .as_ref()
+                .is_some_and(|m| m.is_immediate.is_some())
+            {
+                return fail("isImmediate requires a sequence flow");
+            }
             if let Some(meta) = &object.item_aware {
                 item_metadata.push((meta, Some(object.is_collection.unwrap_or(false))));
             }
@@ -747,6 +776,29 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             }
         }
         for node in scope.nodes {
+            if let Some(crate::bpmn_model::LoopCharacteristics::MultiInstance {
+                complex_behavior_definitions,
+                ..
+            }) = &node.loop_characteristics
+            {
+                for behavior in complex_behavior_definitions {
+                    if behavior
+                        .event
+                        .as_ref()
+                        .is_some_and(|event| has_flow_node_refs(&event.flow))
+                    {
+                        return fail("Implicit event flow references must use the event fields");
+                    }
+                    if behavior
+                        .event
+                        .as_ref()
+                        .and_then(|event| event.flow.as_ref())
+                        .is_some_and(|flow| flow.is_immediate.is_some())
+                    {
+                        return fail("isImmediate requires a sequence flow");
+                    }
+                }
+            }
             if let Some(crate::bpmn_model::NodeDetails::Event { properties, io, .. }) =
                 &node.details
             {
@@ -866,10 +918,12 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                 .filter_map(|association| association.transformation.as_ref())
         })
         .collect();
+    let formal_expressions = crate::activity_read::activity_read(d).formal_expressions;
     for expression in d.expressions() {
         use crate::bpmn_model::{Expression, ExpressionKind};
         let transformation = transformations
             .iter()
+            .chain(&formal_expressions)
             .any(|candidate| std::ptr::eq(*candidate, expression));
         if transformation
             && !matches!(
@@ -1156,7 +1210,10 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                     NodeKind::CallActivity,
                     Some(crate::bpmn_model::NodeDetails::CallActivity { called_element }),
                 ) => {
-                    if called_element.namespace.len() > 16_384 {
+                    if called_element
+                        .as_ref()
+                        .is_some_and(|value| value.namespace.len() > 16_384)
+                    {
                         return fail("invalid call namespace");
                     }
                 }
@@ -1359,6 +1416,22 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             }
         }
         for n in p.nodes {
+            if n.flow_metadata
+                .as_ref()
+                .is_some_and(|m| m.is_immediate.is_some())
+            {
+                return fail("isImmediate requires a sequence flow");
+            }
+            if matches!(
+                n.kind,
+                NodeKind::DataObjectReference | NodeKind::DataStoreReference
+            ) && has_flow_node_refs(&n.flow_metadata)
+            {
+                return fail("incoming/outgoing references require a flow node");
+            }
+            if n.flow_metadata.is_some() && matches!(n.kind, NodeKind::TextAnnotation) {
+                return fail("Flow-element metadata requires a flow element");
+            }
             add(&mut ids, &n.id)?;
             if let Some(io) = &n.io_specification {
                 if !n.kind.is_activity() {
@@ -1862,6 +1935,12 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             element_scope.insert(l.id.selector(), p.id.clone());
         }
         for f in p.flows {
+            if has_flow_node_refs(&f.flow_metadata) {
+                return fail("incoming/outgoing references require a flow node");
+            }
+            if f.flow_metadata.is_some() && f.kind != FlowKind::Sequence {
+                return fail("Flow-element metadata requires a sequence flow");
+            }
             if f.association_direction.is_some() && f.kind != FlowKind::Association {
                 return fail("association direction requires association");
             }
@@ -1894,6 +1973,9 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             }
         }
         for flow in &choreography.message_flows {
+            if flow.flow_metadata.is_some() {
+                return fail("Flow-element metadata requires a sequence flow");
+            }
             add(&mut ids, &flow.id)?;
             if let Some(name) = &flow.name {
                 short(name)?;
@@ -1916,6 +1998,13 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             }
         }
         for activity in &choreography.activities {
+            if activity
+                .flow_metadata
+                .as_ref()
+                .is_some_and(|m| m.is_immediate.is_some())
+            {
+                return fail("isImmediate requires a sequence flow");
+            }
             add(&mut ids, &activity.id)?;
             if let Some(name) = &activity.name {
                 short(name)?;
@@ -1946,6 +2035,9 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             }
         }
         for flow in &choreography.sequence_flows {
+            if has_flow_node_refs(&flow.flow_metadata) {
+                return fail("incoming/outgoing references require a flow node");
+            }
             add(&mut ids, &flow.id)?;
             if let Some(name) = &flow.name {
                 short(name)?;
@@ -1986,6 +2078,9 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             }
         }
         for f in &c.flows {
+            if f.flow_metadata.is_some() && f.kind != FlowKind::Sequence {
+                return fail("Flow-element metadata requires a sequence flow");
+            }
             add(&mut ids, &f.id)?;
             flow_ids.insert(f.id.selector());
             if let Some(name) = &f.name {
@@ -2223,6 +2318,9 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                 }
             };
         for f in &c.flows {
+            if f.flow_metadata.is_some() && f.kind != FlowKind::Sequence {
+                return fail("Flow-element metadata requires a sequence flow");
+            }
             if f.condition.is_some()
                 || f.kind != FlowKind::Message
                 || participant_for(&f.source).is_none()

@@ -5,16 +5,84 @@ use crate::{
     model::*,
 };
 
+fn activity_role_selectors(
+    roles: &mut [crate::bpmn_activity::ResourceRole],
+    visit: &mut impl FnMut(&mut ElementSelector),
+) {
+    use crate::bpmn_activity::ResourceRoleAssignment;
+    for role in roles {
+        if let ResourceRoleAssignment::Resource {
+            reference,
+            bindings,
+        } = &mut role.assignment
+        {
+            event_ref_selector(reference, visit);
+            for binding in bindings {
+                if let Some(reference) = &mut binding.parameter_ref {
+                    event_ref_selector(reference, visit);
+                }
+            }
+        }
+    }
+}
+fn callable_selectors(
+    callable: &mut crate::bpmn_activity::CallableMetadata,
+    visit: &mut impl FnMut(&mut ElementSelector),
+) {
+    for reference in &mut callable.supported_interface_refs {
+        event_ref_selector(reference, visit);
+    }
+    for binding in &mut callable.io_bindings {
+        if let Some(reference) = &mut binding.operation_ref {
+            event_ref_selector(reference, visit);
+        }
+        if let Some(reference) = &mut binding.input_data_ref {
+            visit(reference);
+        }
+        if let Some(reference) = &mut binding.output_data_ref {
+            visit(reference);
+        }
+    }
+}
+fn flow_metadata_selectors(
+    metadata: &mut Option<crate::bpmn_activity::FlowElementMetadata>,
+    visit: &mut impl FnMut(&mut ElementSelector),
+) {
+    if let Some(metadata) = metadata {
+        for reference in metadata.incoming.iter_mut().chain(&mut metadata.outgoing) {
+            event_ref_selector(reference, visit);
+        }
+        for reference in &mut metadata.category_value_refs {
+            event_ref_selector(reference, visit);
+        }
+    }
+}
+fn correlation_key_selectors(
+    keys: &mut [crate::bpmn_activity::CorrelationKey],
+    visit: &mut impl FnMut(&mut ElementSelector),
+) {
+    for key in keys {
+        for reference in &mut key.property_refs {
+            event_ref_selector(reference, visit);
+        }
+    }
+}
+
 /// Visit selectors held by process and subprocess flow containers.
 fn scope_selectors(
     nodes: &mut [Node],
     lanes: &mut [Lane],
     flows: &mut [Flow],
     groups: &mut [crate::bpmn_model::Group],
+    objects: &mut [crate::bpmn_data::DataObject],
     associations: &mut [crate::bpmn_data::DataAssociation],
     visit: &mut impl FnMut(&mut ElementSelector),
 ) {
+    for object in objects {
+        flow_metadata_selectors(&mut object.flow_metadata, visit);
+    }
     for flow in flows {
+        flow_metadata_selectors(&mut flow.flow_metadata, visit);
         visit(&mut flow.source);
         visit(&mut flow.target);
     }
@@ -39,6 +107,64 @@ fn scope_selectors(
         visit(&mut association.target);
     }
     for node in nodes {
+        flow_metadata_selectors(&mut node.flow_metadata, visit);
+        if let Some(activity) = &mut node.activity {
+            activity_role_selectors(&mut activity.resource_roles, visit);
+        }
+        if let Some(crate::bpmn_model::LoopCharacteristics::MultiInstance {
+            loop_data_input_ref,
+            loop_data_output_ref,
+            complex_behavior_definitions,
+            one_behavior_event_ref,
+            none_behavior_event_ref,
+            ..
+        }) = &mut node.loop_characteristics
+        {
+            for reference in [
+                loop_data_input_ref,
+                loop_data_output_ref,
+                one_behavior_event_ref,
+                none_behavior_event_ref,
+            ]
+            .into_iter()
+            .flatten()
+            {
+                event_ref_selector(reference, visit);
+            }
+            for behavior in complex_behavior_definitions {
+                if let Some(event) = &mut behavior.event {
+                    flow_metadata_selectors(&mut event.flow, visit);
+                    for reference in event.incoming.iter_mut().chain(&mut event.outgoing) {
+                        event_ref_selector(reference, visit);
+                    }
+                    for association in &mut event.input_associations {
+                        for source in &mut association.sources {
+                            visit(source);
+                        }
+                        if let Some(target) = &mut association.target {
+                            visit(target);
+                        }
+                    }
+                    if let Some(set) = &mut event.input_set {
+                        for reference in set
+                            .data_refs
+                            .iter_mut()
+                            .chain(&mut set.optional_refs)
+                            .chain(&mut set.while_executing_refs)
+                            .chain(&mut set.counterpart_refs)
+                        {
+                            visit(reference);
+                        }
+                    }
+                    for definition in &mut event.definitions {
+                        event_definition_selectors(definition, visit);
+                    }
+                    for reference in &mut event.definition_refs {
+                        event_ref_selector(reference, visit);
+                    }
+                }
+            }
+        }
         if let Some(activity) = &mut node.activity
             && let Some(flow) = &mut activity.default_flow
         {
@@ -88,6 +214,7 @@ fn scope_selectors(
                 &mut content.lanes,
                 &mut content.flows,
                 &mut content.groups,
+                &mut content.data_objects,
                 &mut content.data_associations,
                 visit,
             ),
@@ -197,10 +324,44 @@ fn io_selectors(
     }
 }
 fn document_selectors(d: &mut BpmnDocument, visit: &mut impl FnMut(&mut ElementSelector)) {
+    for property in &mut d.correlation_properties {
+        for retrieval in &mut property.retrieval_expressions {
+            if let Some(reference) = &mut retrieval.message_ref {
+                event_ref_selector(reference, visit);
+            }
+        }
+    }
+    for task in &mut d.global_tasks {
+        callable_selectors(&mut task.callable, visit);
+        activity_role_selectors(&mut task.resource_roles, visit);
+        if let Some(io) = &mut task.io_specification {
+            io_selectors(io, visit);
+        }
+    }
     for definition in &mut d.root_event_definitions {
         event_definition_selectors(definition, visit);
     }
     for process in &mut d.processes {
+        if let Some(metadata) = &mut process.activity_metadata {
+            callable_selectors(&mut metadata.callable, visit);
+            if let Some(reference) = &mut metadata.definitional_collaboration_ref {
+                event_ref_selector(reference, visit);
+            }
+            for reference in &mut metadata.supports {
+                event_ref_selector(reference, visit);
+            }
+            activity_role_selectors(&mut metadata.resource_roles, visit);
+            for subscription in &mut metadata.correlation_subscriptions {
+                if let Some(reference) = &mut subscription.key_ref {
+                    event_ref_selector(reference, visit);
+                }
+                for binding in &mut subscription.bindings {
+                    if let Some(reference) = &mut binding.property_ref {
+                        event_ref_selector(reference, visit);
+                    }
+                }
+            }
+        }
         if let Some(io) = &mut process.io_specification {
             io_selectors(io, visit);
         }
@@ -209,21 +370,25 @@ fn document_selectors(d: &mut BpmnDocument, visit: &mut impl FnMut(&mut ElementS
             &mut process.lanes,
             &mut process.flows,
             &mut process.groups,
+            &mut process.data_objects,
             &mut process.data_associations,
             visit,
         );
     }
     if let Some(collaboration) = &mut d.collaboration {
+        correlation_key_selectors(&mut collaboration.correlation_keys, visit);
         for participant in &mut collaboration.participants {
             if let Some(process) = &mut participant.process {
                 visit(process);
             }
         }
         for flow in &mut collaboration.flows {
+            flow_metadata_selectors(&mut flow.flow_metadata, visit);
             visit(&mut flow.source);
             visit(&mut flow.target);
         }
         for node in &mut collaboration.conversation_nodes {
+            correlation_key_selectors(&mut node.correlation_keys, visit);
             for reference in &mut node.participant_refs {
                 visit(reference);
             }
@@ -247,10 +412,13 @@ fn document_selectors(d: &mut BpmnDocument, visit: &mut impl FnMut(&mut ElementS
             .iter_mut()
             .chain(&mut choreography.message_flows)
         {
+            flow_metadata_selectors(&mut flow.flow_metadata, visit);
             visit(&mut flow.source);
             visit(&mut flow.target);
         }
         for activity in &mut choreography.activities {
+            flow_metadata_selectors(&mut activity.flow_metadata, visit);
+            correlation_key_selectors(&mut activity.correlation_keys, visit);
             for reference in &mut activity.participant_refs {
                 visit(reference);
             }
@@ -298,6 +466,74 @@ fn optional_identity(
         visit(value);
     }
 }
+fn base_owner_id(
+    owner: &mut Option<crate::bpmn_activity::BaseOwner>,
+    visit: &mut impl FnMut(&mut ElementIdentity),
+) {
+    if let Some(owner) = owner {
+        optional_identity(&mut owner.id, visit);
+    }
+}
+fn flow_metadata_ids(
+    metadata: &mut Option<crate::bpmn_activity::FlowElementMetadata>,
+    visit: &mut impl FnMut(&mut ElementIdentity),
+) {
+    if let Some(metadata) = metadata {
+        base_owner_id(&mut metadata.auditing, visit);
+        base_owner_id(&mut metadata.monitoring, visit);
+    }
+}
+fn role_ids(
+    roles: &mut [crate::bpmn_activity::ResourceRole],
+    visit: &mut impl FnMut(&mut ElementIdentity),
+) {
+    use crate::bpmn_activity::ResourceRoleAssignment;
+    for role in roles {
+        optional_identity(&mut role.id, visit);
+        match &mut role.assignment {
+            ResourceRoleAssignment::Resource { bindings, .. } => {
+                for binding in bindings {
+                    optional_identity(&mut binding.id, visit);
+                    if let Some(e) = &mut binding.expression {
+                        expression_id(e, visit);
+                    }
+                }
+            }
+            ResourceRoleAssignment::Expression { assignment } => {
+                optional_identity(&mut assignment.id, visit);
+                if let Some(e) = &mut assignment.expression {
+                    expression_id(e, visit);
+                }
+            }
+            ResourceRoleAssignment::None => {}
+        }
+    }
+}
+fn callable_ids(
+    callable: &mut crate::bpmn_activity::CallableMetadata,
+    visit: &mut impl FnMut(&mut ElementIdentity),
+) {
+    for binding in &mut callable.io_bindings {
+        optional_identity(&mut binding.id, visit);
+    }
+}
+fn property_ids(
+    properties: &mut [crate::bpmn_model::EventProperty],
+    visit: &mut impl FnMut(&mut ElementIdentity),
+) {
+    for property in properties {
+        optional_identity(&mut property.id, visit);
+        metadata_ids(&mut property.item_aware, visit);
+    }
+}
+fn key_ids(
+    keys: &mut [crate::bpmn_activity::CorrelationKey],
+    visit: &mut impl FnMut(&mut ElementIdentity),
+) {
+    for key in keys {
+        optional_identity(&mut key.id, visit);
+    }
+}
 fn expression_id(
     expression: &mut crate::bpmn_model::Expression,
     visit: &mut impl FnMut(&mut ElementIdentity),
@@ -335,6 +571,7 @@ fn io_ids(
     }
 }
 fn flow_id(flow: &mut Flow, visit: &mut impl FnMut(&mut ElementIdentity)) {
+    flow_metadata_ids(&mut flow.flow_metadata, visit);
     visit(&mut flow.id);
     if let Some(condition) = &mut flow.condition {
         expression_id(condition, visit);
@@ -363,6 +600,7 @@ fn scope_ids(
         visit(&mut group.id);
     }
     for object in objects {
+        flow_metadata_ids(&mut object.flow_metadata, visit);
         optional_identity(&mut object.id, visit);
         metadata_ids(&mut object.item_aware, visit);
     }
@@ -378,6 +616,14 @@ fn scope_ids(
         }
     }
     for node in nodes {
+        flow_metadata_ids(&mut node.flow_metadata, visit);
+        if let Some(activity) = &mut node.activity {
+            property_ids(&mut activity.properties, visit);
+            role_ids(&mut activity.resource_roles, visit);
+            for rendering in &mut activity.renderings {
+                optional_identity(&mut rendering.id, visit);
+            }
+        }
         visit(&mut node.id);
         metadata_ids(&mut node.item_aware, visit);
         if let Some(io) = &mut node.io_specification {
@@ -403,8 +649,47 @@ fn scope_ids(
                 LoopCharacteristics::MultiInstance {
                     cardinality,
                     completion_condition,
+                    input_data_item,
+                    output_data_item,
+                    complex_behavior_definitions,
                     ..
                 } => {
+                    for port in [input_data_item, output_data_item].into_iter().flatten() {
+                        optional_identity(&mut port.id, visit);
+                        metadata_ids(&mut port.item_aware, visit);
+                    }
+                    for behavior in complex_behavior_definitions {
+                        optional_identity(&mut behavior.id, visit);
+                        if let Some(expression) = &mut behavior.condition {
+                            expression_id(expression, visit);
+                        }
+                        if let Some(event) = &mut behavior.event {
+                            optional_identity(&mut event.id, visit);
+                            flow_metadata_ids(&mut event.flow, visit);
+                            property_ids(&mut event.properties, visit);
+                            for port in &mut event.inputs {
+                                optional_identity(&mut port.id, visit);
+                                metadata_ids(&mut port.item_aware, visit);
+                            }
+                            if let Some(set) = &mut event.input_set {
+                                optional_identity(&mut set.id, visit);
+                            }
+                            for association in &mut event.input_associations {
+                                optional_identity(&mut association.id, visit);
+                                if let Some(expression) = &mut association.transformation {
+                                    expression_id(expression, visit);
+                                }
+                                for assignment in &mut association.assignments {
+                                    optional_identity(&mut assignment.id, visit);
+                                    expression_id(&mut assignment.from, visit);
+                                    expression_id(&mut assignment.to, visit);
+                                }
+                            }
+                            for definition in &mut event.definitions {
+                                event_definition_ids(definition, visit);
+                            }
+                        }
+                    }
                     if let Some(value) = cardinality {
                         expression_id(value, visit);
                     }
@@ -494,6 +779,28 @@ fn event_io_ids(io: &mut crate::bpmn_model::EventIo, visit: &mut impl FnMut(&mut
     }
 }
 fn document_ids(d: &mut BpmnDocument, visit: &mut impl FnMut(&mut ElementIdentity)) {
+    for property in &mut d.correlation_properties {
+        optional_identity(&mut property.id, visit);
+        for retrieval in &mut property.retrieval_expressions {
+            optional_identity(&mut retrieval.id, visit);
+            if let Some(expression) = &mut retrieval.message_path {
+                expression_id(expression, visit);
+            }
+        }
+    }
+    for task in &mut d.global_tasks {
+        optional_identity(&mut task.id, visit);
+        callable_ids(&mut task.callable, visit);
+        role_ids(&mut task.resource_roles, visit);
+        if let Some(io) = &mut task.io_specification {
+            io_ids(io, visit);
+        }
+        if let crate::bpmn_activity::GlobalTaskKind::User { renderings, .. } = &mut task.kind {
+            for rendering in renderings {
+                optional_identity(&mut rendering.id, visit);
+            }
+        }
+    }
     for extension in &mut d.extensions {
         for documentation in &mut extension.documentation {
             optional_identity(&mut documentation.id, visit);
@@ -555,6 +862,22 @@ fn document_ids(d: &mut BpmnDocument, visit: &mut impl FnMut(&mut ElementIdentit
         }
     }
     for process in &mut d.processes {
+        if let Some(metadata) = &mut process.activity_metadata {
+            callable_ids(&mut metadata.callable, visit);
+            base_owner_id(&mut metadata.auditing, visit);
+            base_owner_id(&mut metadata.monitoring, visit);
+            property_ids(&mut metadata.properties, visit);
+            role_ids(&mut metadata.resource_roles, visit);
+            for subscription in &mut metadata.correlation_subscriptions {
+                optional_identity(&mut subscription.id, visit);
+                for binding in &mut subscription.bindings {
+                    optional_identity(&mut binding.id, visit);
+                    if let Some(e) = &mut binding.data_path {
+                        expression_id(e, visit);
+                    }
+                }
+            }
+        }
         visit(&mut process.id);
         if let Some(io) = &mut process.io_specification {
             io_ids(io, visit);
@@ -571,6 +894,7 @@ fn document_ids(d: &mut BpmnDocument, visit: &mut impl FnMut(&mut ElementIdentit
         );
     }
     if let Some(collaboration) = &mut d.collaboration {
+        key_ids(&mut collaboration.correlation_keys, visit);
         visit(&mut collaboration.id);
         for participant in &mut collaboration.participants {
             visit(&mut participant.id);
@@ -579,6 +903,7 @@ fn document_ids(d: &mut BpmnDocument, visit: &mut impl FnMut(&mut ElementIdentit
             flow_id(flow, visit);
         }
         for node in &mut collaboration.conversation_nodes {
+            key_ids(&mut node.correlation_keys, visit);
             visit(&mut node.id);
         }
         for link in &mut collaboration.conversation_links {
@@ -598,6 +923,8 @@ fn document_ids(d: &mut BpmnDocument, visit: &mut impl FnMut(&mut ElementIdentit
             flow_id(flow, visit);
         }
         for activity in &mut choreography.activities {
+            flow_metadata_ids(&mut activity.flow_metadata, visit);
+            key_ids(&mut activity.correlation_keys, visit);
             visit(&mut activity.id);
         }
     }
@@ -628,6 +955,7 @@ enum QNameKind {
     Operation,
     Error,
     Process,
+    Callable,
     DataStore,
     Signal,
     Escalation,
@@ -635,6 +963,81 @@ enum QNameKind {
     EventDefinition,
     DiLabelStyle,
     RelationshipElement,
+    Interface,
+    Resource,
+    ResourceParameter,
+    CorrelationProperty,
+    CorrelationKey,
+    CategoryValue,
+    Collaboration,
+    DataElement,
+    SequenceFlow,
+}
+fn role_qnames(
+    roles: &mut [crate::bpmn_activity::ResourceRole],
+    visit: &mut impl FnMut(&mut crate::bpmn_model::QNameRef, QNameKind),
+) {
+    use crate::bpmn_activity::ResourceRoleAssignment;
+    for role in roles {
+        match &mut role.assignment {
+            ResourceRoleAssignment::Resource {
+                reference,
+                bindings,
+            } => {
+                event_ref_qname(reference, QNameKind::Resource, visit);
+                for binding in bindings {
+                    if let Some(reference) = &mut binding.parameter_ref {
+                        event_ref_qname(reference, QNameKind::ResourceParameter, visit);
+                    }
+                    if let Some(expression) = &mut binding.expression {
+                        expression_qnames(expression, visit);
+                    }
+                }
+            }
+            ResourceRoleAssignment::Expression { assignment } => {
+                if let Some(expression) = &mut assignment.expression {
+                    expression_qnames(expression, visit);
+                }
+            }
+            ResourceRoleAssignment::None => {}
+        }
+    }
+}
+fn callable_qnames(
+    callable: &mut crate::bpmn_activity::CallableMetadata,
+    visit: &mut impl FnMut(&mut crate::bpmn_model::QNameRef, QNameKind),
+) {
+    for reference in &mut callable.supported_interface_refs {
+        event_ref_qname(reference, QNameKind::Interface, visit);
+    }
+    for binding in &mut callable.io_bindings {
+        if let Some(reference) = &mut binding.operation_ref {
+            event_ref_qname(reference, QNameKind::Operation, visit);
+        }
+    }
+}
+fn flow_metadata_qnames(
+    metadata: &mut Option<crate::bpmn_activity::FlowElementMetadata>,
+    visit: &mut impl FnMut(&mut crate::bpmn_model::QNameRef, QNameKind),
+) {
+    if let Some(metadata) = metadata {
+        for reference in metadata.incoming.iter_mut().chain(&mut metadata.outgoing) {
+            event_ref_qname(reference, QNameKind::SequenceFlow, visit);
+        }
+        for reference in &mut metadata.category_value_refs {
+            event_ref_qname(reference, QNameKind::CategoryValue, visit);
+        }
+    }
+}
+fn keys_qnames(
+    keys: &mut [crate::bpmn_activity::CorrelationKey],
+    visit: &mut impl FnMut(&mut crate::bpmn_model::QNameRef, QNameKind),
+) {
+    for key in keys {
+        for reference in &mut key.property_refs {
+            event_ref_qname(reference, QNameKind::CorrelationProperty, visit);
+        }
+    }
 }
 fn optional_qname(
     value: &mut Option<crate::bpmn_model::QNameRef>,
@@ -681,6 +1084,7 @@ fn flow_qnames(
     flow: &mut Flow,
     visit: &mut impl FnMut(&mut crate::bpmn_model::QNameRef, QNameKind),
 ) {
+    flow_metadata_qnames(&mut flow.flow_metadata, visit);
     if let Some(value) = &mut flow.condition {
         expression_qnames(value, visit);
     }
@@ -693,6 +1097,7 @@ fn scope_qnames(
     visit: &mut impl FnMut(&mut crate::bpmn_model::QNameRef, QNameKind),
 ) {
     for object in objects {
+        flow_metadata_qnames(&mut object.flow_metadata, visit);
         meta_qnames(&mut object.item_aware, visit);
     }
     for association in associations {
@@ -708,11 +1113,16 @@ fn scope_qnames(
         flow_qnames(flow, visit);
     }
     for node in nodes {
+        flow_metadata_qnames(&mut node.flow_metadata, visit);
         meta_qnames(&mut node.item_aware, visit);
         if let Some(io) = &mut node.io_specification {
             io_qnames(io, visit);
         }
         if let Some(activity) = &mut node.activity {
+            role_qnames(&mut activity.resource_roles, visit);
+            for property in &mut activity.properties {
+                meta_qnames(&mut property.item_aware, visit);
+            }
             optional_qname(&mut activity.message_ref, QNameKind::Message, visit);
             optional_qname(&mut activity.operation_ref, QNameKind::Operation, visit);
             if let Some(value) = &mut activity.completion_condition {
@@ -730,8 +1140,62 @@ fn scope_qnames(
                 LoopCharacteristics::MultiInstance {
                     cardinality,
                     completion_condition,
+                    loop_data_input_ref,
+                    loop_data_output_ref,
+                    one_behavior_event_ref,
+                    none_behavior_event_ref,
+                    input_data_item,
+                    output_data_item,
+                    complex_behavior_definitions,
                     ..
                 } => {
+                    for reference in [loop_data_input_ref, loop_data_output_ref]
+                        .into_iter()
+                        .flatten()
+                    {
+                        event_ref_qname(reference, QNameKind::DataElement, visit);
+                    }
+                    for reference in [one_behavior_event_ref, none_behavior_event_ref]
+                        .into_iter()
+                        .flatten()
+                    {
+                        event_ref_qname(reference, QNameKind::EventDefinition, visit);
+                    }
+                    for port in [input_data_item, output_data_item].into_iter().flatten() {
+                        meta_qnames(&mut port.item_aware, visit);
+                    }
+                    for behavior in complex_behavior_definitions {
+                        if let Some(condition) = &mut behavior.condition {
+                            expression_qnames(condition, visit);
+                        }
+                        if let Some(event) = &mut behavior.event {
+                            flow_metadata_qnames(&mut event.flow, visit);
+                            for reference in event.incoming.iter_mut().chain(&mut event.outgoing) {
+                                event_ref_qname(reference, QNameKind::SequenceFlow, visit);
+                            }
+                            for property in &mut event.properties {
+                                meta_qnames(&mut property.item_aware, visit);
+                            }
+                            for port in &mut event.inputs {
+                                meta_qnames(&mut port.item_aware, visit);
+                            }
+                            for association in &mut event.input_associations {
+                                if let Some(expression) = &mut association.transformation {
+                                    expression_qnames(expression, visit);
+                                }
+                                for assignment in &mut association.assignments {
+                                    expression_qnames(&mut assignment.from, visit);
+                                    expression_qnames(&mut assignment.to, visit);
+                                }
+                            }
+                            for definition in &mut event.definitions {
+                                event_definition_qnames(definition, visit);
+                            }
+                            for reference in &mut event.definition_refs {
+                                event_ref_qname(reference, QNameKind::EventDefinition, visit);
+                            }
+                        }
+                    }
                     if let Some(value) = cardinality {
                         expression_qnames(value, visit);
                     }
@@ -743,7 +1207,7 @@ fn scope_qnames(
         }
         match &mut node.details {
             Some(NodeDetails::CallActivity { called_element }) => {
-                visit(called_element, QNameKind::Process)
+                optional_qname(called_element, QNameKind::Callable, visit)
             }
             Some(NodeDetails::DataStoreReference {
                 data_store_ref: Some(crate::bpmn_data::DataStoreRef::Qualified(reference)),
@@ -866,6 +1330,24 @@ fn document_qnames(
     d: &mut BpmnDocument,
     visit: &mut impl FnMut(&mut crate::bpmn_model::QNameRef, QNameKind),
 ) {
+    for property in &mut d.correlation_properties {
+        optional_qname(&mut property.item_type, QNameKind::Item, visit);
+        for retrieval in &mut property.retrieval_expressions {
+            if let Some(reference) = &mut retrieval.message_ref {
+                event_ref_qname(reference, QNameKind::Message, visit);
+            }
+            if let Some(expression) = &mut retrieval.message_path {
+                expression_qnames(expression, visit);
+            }
+        }
+    }
+    for task in &mut d.global_tasks {
+        callable_qnames(&mut task.callable, visit);
+        role_qnames(&mut task.resource_roles, visit);
+        if let Some(io) = &mut task.io_specification {
+            io_qnames(io, visit);
+        }
+    }
     for relationship in &mut d.relationships {
         for reference in relationship
             .sources
@@ -921,6 +1403,32 @@ fn document_qnames(
         meta_qnames(&mut store.item_aware, visit);
     }
     for process in &mut d.processes {
+        if let Some(metadata) = &mut process.activity_metadata {
+            callable_qnames(&mut metadata.callable, visit);
+            if let Some(reference) = &mut metadata.definitional_collaboration_ref {
+                event_ref_qname(reference, QNameKind::Collaboration, visit);
+            }
+            for reference in &mut metadata.supports {
+                event_ref_qname(reference, QNameKind::Process, visit);
+            }
+            for property in &mut metadata.properties {
+                meta_qnames(&mut property.item_aware, visit);
+            }
+            role_qnames(&mut metadata.resource_roles, visit);
+            for subscription in &mut metadata.correlation_subscriptions {
+                if let Some(reference) = &mut subscription.key_ref {
+                    event_ref_qname(reference, QNameKind::CorrelationKey, visit);
+                }
+                for binding in &mut subscription.bindings {
+                    if let Some(reference) = &mut binding.property_ref {
+                        event_ref_qname(reference, QNameKind::CorrelationProperty, visit);
+                    }
+                    if let Some(expression) = &mut binding.data_path {
+                        expression_qnames(expression, visit);
+                    }
+                }
+            }
+        }
         if let Some(io) = &mut process.io_specification {
             io_qnames(io, visit);
         }
@@ -933,11 +1441,19 @@ fn document_qnames(
         );
     }
     if let Some(collaboration) = &mut d.collaboration {
+        keys_qnames(&mut collaboration.correlation_keys, visit);
+        for node in &mut collaboration.conversation_nodes {
+            keys_qnames(&mut node.correlation_keys, visit);
+        }
         for flow in &mut collaboration.flows {
             flow_qnames(flow, visit);
         }
     }
     for choreography in &mut d.choreographies {
+        for activity in &mut choreography.activities {
+            flow_metadata_qnames(&mut activity.flow_metadata, visit);
+            keys_qnames(&mut activity.correlation_keys, visit);
+        }
         for flow in choreography
             .sequence_flows
             .iter_mut()
@@ -1007,7 +1523,90 @@ pub(crate) fn set_xml_id(
         return Ok(None);
     }
     use crate::bpmn_model::EventResource;
-    let target_kind = if doc
+    let selected_id =
+        |id: &Option<ElementIdentity>| id.as_ref().is_some_and(|id| id.selector() == *selected);
+    let target_kind = if crate::queries::scopes(doc)
+        .iter()
+        .flat_map(|scope| scope.flows)
+        .any(|flow| flow.kind == FlowKind::Sequence && flow.id.selector() == *selected)
+        || doc
+            .choreographies
+            .iter()
+            .flat_map(|c| &c.sequence_flows)
+            .any(|flow| flow.id.selector() == *selected)
+    {
+        Some(QNameKind::SequenceFlow)
+    } else if doc.catalog.interfaces.iter().any(|v| selected_id(&v.id)) {
+        Some(QNameKind::Interface)
+    } else if doc.catalog.resources.iter().any(|v| selected_id(&v.id)) {
+        Some(QNameKind::Resource)
+    } else if doc
+        .catalog
+        .resources
+        .iter()
+        .flat_map(|v| &v.parameters)
+        .any(|v| selected_id(&v.id))
+    {
+        Some(QNameKind::ResourceParameter)
+    } else if doc
+        .correlation_properties
+        .iter()
+        .any(|v| selected_id(&v.id))
+    {
+        Some(QNameKind::CorrelationProperty)
+    } else if doc.collaboration.as_ref().is_some_and(|v| {
+        v.correlation_keys
+            .iter()
+            .chain(
+                v.conversation_nodes
+                    .iter()
+                    .flat_map(|n| &n.correlation_keys),
+            )
+            .any(|k| selected_id(&k.id))
+    }) || doc
+        .choreographies
+        .iter()
+        .flat_map(|c| &c.activities)
+        .flat_map(|a| &a.correlation_keys)
+        .any(|k| selected_id(&k.id))
+    {
+        Some(QNameKind::CorrelationKey)
+    } else if doc
+        .categories
+        .iter()
+        .flat_map(|c| &c.values)
+        .any(|v| v.id.selector() == *selected)
+    {
+        Some(QNameKind::CategoryValue)
+    } else if doc
+        .collaboration
+        .as_ref()
+        .is_some_and(|v| v.id.selector() == *selected)
+    {
+        Some(QNameKind::Collaboration)
+    } else if crate::queries::scopes(doc).iter().any(|scope| {
+        scope
+            .data_objects
+            .iter()
+            .any(|object| selected_id(&object.id))
+            || scope.nodes.iter().any(|node| {
+                node.io_specification.as_ref().is_some_and(|io| {
+                    io.inputs
+                        .iter()
+                        .chain(&io.outputs)
+                        .any(|port| selected_id(&port.id))
+                })
+            })
+    }) || doc.processes.iter().any(|process| {
+        process.io_specification.as_ref().is_some_and(|io| {
+            io.inputs
+                .iter()
+                .chain(&io.outputs)
+                .any(|port| selected_id(&port.id))
+        })
+    }) {
+        Some(QNameKind::DataElement)
+    } else if doc
         .catalog
         .item_definitions
         .iter()
@@ -1077,6 +1676,8 @@ pub(crate) fn set_xml_id(
         })
     {
         Some(QNameKind::DiLabelStyle)
+    } else if doc.global_tasks.iter().any(|task| selected_id(&task.id)) {
+        Some(QNameKind::Callable)
     } else if doc.processes.iter().any(|v| v.id.selector() == *selected) {
         Some(QNameKind::Process)
     } else if doc
@@ -1097,11 +1698,26 @@ pub(crate) fn set_xml_id(
                 .is_none()
                 .then(|| GENERATED_TARGET_NAMESPACE.to_string())
         });
+    if crate::validation::activity_family_reference_issues(doc)
+        .iter()
+        .any(|issue| match &issue.target {
+            crate::bpmn_model::EventReference::Local(target) => target == selected,
+            crate::bpmn_model::EventReference::Qualified(target) => {
+                namespace.as_deref() == Some(target.namespace.as_str())
+                    && old_xml_id.as_ref() == Some(&target.local)
+            }
+        })
+    {
+        return Err("unresolved activity reference prevents safe identity rewriting".into());
+    }
     let mut qname_referenced = false;
     let mut has_qnames = false;
     document_qnames(doc, &mut |reference, kind| {
-        has_qnames |= Some(kind) == target_kind || kind == QNameKind::RelationshipElement;
-        if (Some(kind) == target_kind || kind == QNameKind::RelationshipElement)
+        let matches = Some(kind) == target_kind
+            || kind == QNameKind::RelationshipElement
+            || (kind == QNameKind::Callable && target_kind == Some(QNameKind::Process));
+        has_qnames |= matches;
+        if matches
             && old_xml_id.as_ref() == Some(&reference.local)
             && namespace.as_deref() == Some(reference.namespace.as_str())
         {
@@ -1142,7 +1758,9 @@ pub(crate) fn set_xml_id(
         namespace.as_deref(),
     ) {
         document_qnames(doc, &mut |reference, kind| {
-            if (Some(kind) == target_kind || kind == QNameKind::RelationshipElement)
+            if (Some(kind) == target_kind
+                || kind == QNameKind::RelationshipElement
+                || (kind == QNameKind::Callable && target_kind == Some(QNameKind::Process)))
                 && &reference.local == old
                 && reference.namespace == namespace
             {

@@ -11,6 +11,8 @@ pub enum ConversationKind {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ConversationNode {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub correlation_keys: Vec<crate::bpmn_activity::CorrelationKey>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub base: Option<crate::bpmn_metadata::BaseMetadata>,
 
@@ -52,6 +54,10 @@ pub struct Choreography {
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ChoreographyActivity {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub flow_metadata: Option<crate::bpmn_activity::FlowElementMetadata>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub correlation_keys: Vec<crate::bpmn_activity::CorrelationKey>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub base: Option<crate::bpmn_metadata::BaseMetadata>,
 

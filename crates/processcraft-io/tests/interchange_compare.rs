@@ -469,3 +469,115 @@ fn legacy_di_visible_labels_never_compare_equal_to_imported_explicit_absence() {
     );
     assert_eq!(serde_json::to_value(&legacy).unwrap(), before);
 }
+
+#[test]
+fn empty_flow_bookkeeping_does_not_hide_explicit_references_or_false() {
+    use processcraft_core::{
+        bpmn_activity::{FlowElementMetadata, ModelReference},
+        bpmn_model::QNameRef,
+    };
+    let legacy = document(true);
+    let mut explicit = legacy.clone();
+    explicit.processes[0].nodes[0].flow_metadata = Some(FlowElementMetadata::default());
+    let before = serde_json::to_value(&explicit).unwrap();
+    assert_eq!(
+        xml_model_value(&legacy).unwrap(),
+        xml_model_value(&explicit).unwrap()
+    );
+    assert_eq!(serde_json::to_value(&explicit).unwrap(), before);
+    explicit.processes[0].nodes[0]
+        .flow_metadata
+        .as_mut()
+        .unwrap()
+        .outgoing
+        .push(ModelReference::Qualified(QNameRef {
+            namespace: "urn:external".into(),
+            local: "Flow".parse().unwrap(),
+        }));
+    assert_ne!(
+        xml_model_value(&legacy).unwrap(),
+        xml_model_value(&explicit).unwrap()
+    );
+    explicit.processes[0].flows[0].flow_metadata = Some(FlowElementMetadata {
+        is_immediate: Some(false),
+        ..Default::default()
+    });
+    let expected = xml_model_value(&explicit).unwrap();
+    explicit.processes[0].flows[0]
+        .flow_metadata
+        .as_mut()
+        .unwrap()
+        .is_immediate = None;
+    assert_ne!(expected, xml_model_value(&explicit).unwrap());
+}
+
+#[test]
+fn native_implicit_formal_path_preserves_omitted_type_and_language() {
+    use processcraft_core::{
+        bpmn_activity::{CorrelationProperty, CorrelationRetrieval, ModelReference},
+        bpmn_model::{Expression, ExpressionData, ExpressionKind, QNameRef},
+    };
+    use processcraft_io::interchange::{export_bpmn, prepare_import};
+    let mut doc = BpmnDocument::new("Model".into(), "Definitions".parse().unwrap());
+    doc.correlation_properties.push(CorrelationProperty {
+        id: Some("Property".parse().unwrap()),
+        base: None,
+        name: None,
+        item_type: None,
+        retrieval_expressions: vec![CorrelationRetrieval {
+            id: None,
+            base: None,
+            message_ref: Some(ModelReference::Qualified(QNameRef {
+                namespace: "urn:external".into(),
+                local: "Message".parse().unwrap(),
+            })),
+            message_path: Some(Expression::Structured(ExpressionData {
+                id: None,
+                kind: ExpressionKind::Formal {
+                    explicit_type: false,
+                    language: None,
+                    evaluates_to_type_ref: None,
+                },
+                text: "order & result".into(),
+                foreign_attributes: vec![],
+                namespaces: vec![(
+                    String::new(),
+                    "http://www.omg.org/spec/BPMN/20100524/MODEL".into(),
+                )],
+            })),
+        }],
+    });
+    let id = doc.id;
+    let mut project = ProjectData::new("Authored formal context".into());
+    project.documents.push(Arc::new(doc));
+    project.validate().unwrap();
+    let before = project.content_identity().unwrap();
+    let refusal = export_bpmn(&project, id, false).unwrap_err();
+    assert!(
+        refusal
+            .report
+            .blocked
+            .iter()
+            .any(|reason| reason.contains("captured expression context"))
+    );
+    assert_eq!(project.content_identity().unwrap(), before);
+    let processcraft_core::bpmn_model::Expression::Structured(path) =
+        Arc::make_mut(&mut project.documents[0]).correlation_properties[0].retrieval_expressions[0]
+            .message_path
+            .as_mut()
+            .unwrap()
+    else {
+        panic!("formal path")
+    };
+    path.namespaces
+        .push(("external".into(), "urn:external".into()));
+    let before = project.content_identity().unwrap();
+    let exported = export_bpmn(&project, id, false).unwrap();
+    let again = prepare_import(&exported.bytes, "Again").unwrap();
+    assert!(again.report.editable);
+    assert_eq!(
+        xml_model_value(&project.documents[0]).unwrap(),
+        xml_model_value(&again.document).unwrap()
+    );
+    assert_eq!(project.content_identity().unwrap(), before);
+}

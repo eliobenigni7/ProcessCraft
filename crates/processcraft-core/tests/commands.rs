@@ -29,6 +29,460 @@ fn batch(m: Vec<Mutation>) -> Request {
 fn project() -> Session {
     Session::new(ProjectData::new("Project".into())).unwrap()
 }
+#[test]
+fn activity_metadata_rejects_new_dangling_reference_and_undoes() {
+    use processcraft_core::bpmn_activity::{ModelReference, ProcessActivityMetadata};
+    let mut s = project();
+    fixture(&mut s);
+    let before = s.snapshot().content_id;
+    let mut metadata = ProcessActivityMetadata {
+        is_closed: Some(false),
+        ..Default::default()
+    };
+    apply(
+        &mut s,
+        batch(vec![Mutation::SetProcessActivityMetadata {
+            document_id: docid(),
+            process_id: id("procurement"),
+            metadata: Some(metadata.clone()),
+        }]),
+    )
+    .unwrap();
+    let after = s.snapshot().content_id;
+    assert_ne!(before, after);
+    metadata
+        .supports
+        .push(ModelReference::Local(id("missing_process")));
+    assert!(
+        apply(
+            &mut s,
+            batch(vec![Mutation::SetProcessActivityMetadata {
+                document_id: docid(),
+                process_id: id("procurement"),
+                metadata: Some(metadata),
+            }])
+        )
+        .is_err()
+    );
+    assert_eq!(s.snapshot().content_id, after);
+    apply(&mut s, Request::Undo).unwrap();
+    assert_eq!(s.snapshot().content_id, before);
+    apply(&mut s, Request::Redo).unwrap();
+    assert_eq!(s.snapshot().content_id, after);
+}
+
+#[test]
+fn existing_unresolved_activity_reference_survives_unrelated_edit() {
+    use processcraft_core::bpmn_activity::{ModelReference, ProcessActivityMetadata};
+    let mut initial = project();
+    fixture(&mut initial);
+    let mut data = (*initial.snapshot().project).clone();
+    Arc::make_mut(&mut data.documents[0]).processes[0].activity_metadata =
+        Some(ProcessActivityMetadata {
+            supports: vec![ModelReference::Local(id("missing_process"))],
+            ..Default::default()
+        });
+    let mut session = Session::new(data).unwrap();
+    apply(&mut session, batch(vec![rename("Changed")])).unwrap();
+    let before = session.snapshot().content_id;
+    let mut metadata = session.snapshot().project.documents[0].processes[0]
+        .activity_metadata
+        .clone()
+        .unwrap();
+    metadata
+        .supports
+        .push(ModelReference::Local(id("another_missing")));
+    assert!(
+        apply(
+            &mut session,
+            batch(vec![Mutation::SetProcessActivityMetadata {
+                document_id: docid(),
+                process_id: id("procurement"),
+                metadata: Some(metadata),
+            }])
+        )
+        .is_err()
+    );
+    assert_eq!(session.snapshot().content_id, before);
+}
+
+#[test]
+fn deleting_activity_cleans_navigation_from_nested_resource_role() {
+    use processcraft_core::bpmn_activity::{
+        ActivityProperties, ResourceRole, ResourceRoleAssignment, ResourceRoleKind,
+    };
+    let mut original = project();
+    fixture(&mut original);
+    let mut data = (*original.snapshot().project).clone();
+    let doc = Arc::make_mut(&mut data.documents[0]);
+    let node = doc.processes[0]
+        .nodes
+        .iter_mut()
+        .find(|n| n.id == id::<processcraft_core::ids::ElementIdentity>("review"))
+        .unwrap();
+    node.activity = Some(ActivityProperties {
+        resource_roles: vec![ResourceRole {
+            id: Some(id("role")),
+            base: None,
+            name: None,
+            kind: ResourceRoleKind::ResourceRole,
+            assignment: ResourceRoleAssignment::None,
+        }],
+        ..Default::default()
+    });
+    doc.processes[0].flows.retain(|f| {
+        f.source != id::<processcraft_core::ids::ElementSelector>("review")
+            && f.target != id::<processcraft_core::ids::ElementSelector>("review")
+    });
+    for diagram in &mut doc.diagrams {
+        diagram
+            .shapes
+            .retain(|s| s.element != id::<processcraft_core::ids::ElementSelector>("review"));
+        diagram.edges.clear();
+    }
+    data.links.push(NavigationLink {
+        source: ElementKey {
+            document_id: docid(),
+            xml_id: id("role"),
+        },
+        target: docid(),
+        label: "role".into(),
+    });
+    let mut session = Session::new(data).unwrap();
+    let before = session.snapshot().content_id;
+    apply(
+        &mut session,
+        batch(vec![Mutation::Delete {
+            document_id: docid(),
+            element_id: id("review"),
+        }]),
+    )
+    .unwrap();
+    assert!(session.snapshot().project.links.is_empty());
+    apply(&mut session, Request::Undo).unwrap();
+    assert_eq!(session.snapshot().content_id, before);
+}
+
+#[test]
+fn removing_global_task_cleans_navigation_and_undo_restores_it() {
+    use processcraft_core::bpmn_activity::{CallableMetadata, GlobalTask, GlobalTaskKind};
+    let mut initial = project();
+    fixture(&mut initial);
+    let mut data = (*initial.snapshot().project).clone();
+    Arc::make_mut(&mut data.documents[0])
+        .global_tasks
+        .push(GlobalTask {
+            id: Some(id("global")),
+            base: None,
+            name: Some("Global".into()),
+            callable: CallableMetadata::default(),
+            io_specification: None,
+            resource_roles: vec![],
+            kind: GlobalTaskKind::Manual,
+        });
+    data.links.push(NavigationLink {
+        source: ElementKey {
+            document_id: docid(),
+            xml_id: id("global"),
+        },
+        target: docid(),
+        label: "global".into(),
+    });
+    let mut session = Session::new(data).unwrap();
+    let before = session.snapshot().content_id;
+    apply(
+        &mut session,
+        batch(vec![Mutation::SetGlobalTasks {
+            document_id: docid(),
+            global_tasks: vec![],
+        }]),
+    )
+    .unwrap();
+    assert!(session.snapshot().project.links.is_empty());
+    apply(&mut session, Request::Undo).unwrap();
+    assert_eq!(session.snapshot().content_id, before);
+}
+
+#[test]
+fn global_task_replacement_cannot_retarget_local_call_by_reusing_xml_id() {
+    use processcraft_core::{
+        bpmn_activity::{CallableMetadata, GlobalTask, GlobalTaskKind},
+        bpmn_model::{NodeDetails, QNameRef},
+        ids::{ElementIdentity, NativeElementId},
+    };
+    let mut original = project();
+    fixture(&mut original);
+    let mut data = (*original.snapshot().project).clone();
+    let doc = Arc::make_mut(&mut data.documents[0]);
+    let node = doc.processes[0]
+        .nodes
+        .iter_mut()
+        .find(|n| n.id == id::<ElementIdentity>("review"))
+        .unwrap();
+    node.kind = NodeKind::CallActivity;
+    node.details = Some(NodeDetails::CallActivity {
+        called_element: Some(QNameRef {
+            namespace: GENERATED_TARGET_NAMESPACE.into(),
+            local: id("global"),
+        }),
+    });
+    let task = GlobalTask {
+        id: Some(id("global")),
+        base: None,
+        name: Some("Global".into()),
+        callable: CallableMetadata::default(),
+        io_specification: None,
+        resource_roles: vec![],
+        kind: GlobalTaskKind::Manual,
+    };
+    doc.global_tasks.push(task.clone());
+    let mut session = Session::new(data).unwrap();
+    let before = session.snapshot().content_id;
+    let mut replacement = task;
+    replacement.id = Some(ElementIdentity::Native {
+        native_id: NativeElementId::new(),
+        xml_id: Some(id("global")),
+    });
+    assert!(
+        apply(
+            &mut session,
+            batch(vec![Mutation::SetGlobalTasks {
+                document_id: docid(),
+                global_tasks: vec![replacement]
+            }])
+        )
+        .is_err()
+    );
+    assert_eq!(session.snapshot().content_id, before);
+}
+#[test]
+fn activity_interface_references_follow_xml_id_edits() {
+    use processcraft_core::{
+        bpmn_activity::{ModelReference, ProcessActivityMetadata},
+        bpmn_catalog::{Interface, Operation, SupportingCatalog},
+        bpmn_model::{EventResource, QNameRef},
+    };
+    let mut s = project();
+    fixture(&mut s);
+    let metadata = ProcessActivityMetadata {
+        callable: processcraft_core::bpmn_activity::CallableMetadata {
+            supported_interface_refs: vec![
+                ModelReference::Qualified(QNameRef {
+                    namespace: GENERATED_TARGET_NAMESPACE.into(),
+                    local: id("api"),
+                }),
+                ModelReference::Qualified(QNameRef {
+                    namespace: "urn:external".into(),
+                    local: id("api"),
+                }),
+            ],
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    apply(
+        &mut s,
+        batch(vec![
+            Mutation::SetEventResources {
+                document_id: docid(),
+                resources: vec![EventResource::Message {
+                    id: id("message"),
+                    base: None,
+                    name: Some("Message".into()),
+                    item_ref: None,
+                }],
+            },
+            Mutation::SetSupportingCatalog {
+                document_id: docid(),
+                catalog: SupportingCatalog {
+                    interfaces: vec![Interface {
+                        id: Some(id("api")),
+                        base: None,
+                        name: "API".into(),
+                        implementation_ref: None,
+                        operations: vec![Operation {
+                            id: Some(id("operation")),
+                            base: None,
+                            name: "Operation".into(),
+                            implementation_ref: None,
+                            in_message_ref: QNameRef {
+                                namespace: GENERATED_TARGET_NAMESPACE.into(),
+                                local: id("message"),
+                            },
+                            out_message_ref: None,
+                            error_refs: vec![],
+                        }],
+                    }],
+                    ..Default::default()
+                },
+            },
+            Mutation::SetProcessActivityMetadata {
+                document_id: docid(),
+                process_id: id("procurement"),
+                metadata: Some(metadata),
+            },
+        ]),
+    )
+    .unwrap();
+    let before = s.snapshot().content_id;
+    apply(
+        &mut s,
+        batch(vec![Mutation::SetElementXmlId {
+            document_id: docid(),
+            element_id: id("api"),
+            xml_id: Some(id("api2")),
+        }]),
+    )
+    .unwrap();
+    let snap = s.snapshot();
+    let refs = &snap.project.documents[0].processes[0]
+        .activity_metadata
+        .as_ref()
+        .unwrap()
+        .callable
+        .supported_interface_refs;
+    assert!(
+        matches!(&refs[0], ModelReference::Qualified(q) if q.local == id::<processcraft_core::ids::XmlId>("api2"))
+    );
+    assert!(
+        matches!(&refs[1], ModelReference::Qualified(q) if q.local == id::<processcraft_core::ids::XmlId>("api"))
+    );
+    apply(&mut s, Request::Undo).unwrap();
+    assert_eq!(s.snapshot().content_id, before);
+}
+
+#[test]
+fn flow_node_incoming_reference_follows_sequence_flow_rename() {
+    use processcraft_core::{
+        bpmn_activity::{FlowElementMetadata, ModelReference},
+        bpmn_model::QNameRef,
+    };
+    let mut session = project();
+    fixture(&mut session);
+    apply(
+        &mut session,
+        batch(vec![Mutation::SetNodeFlowMetadata {
+            document_id: docid(),
+            element_id: id("review"),
+            metadata: Some(FlowElementMetadata {
+                incoming: vec![ModelReference::Qualified(QNameRef {
+                    namespace: GENERATED_TARGET_NAMESPACE.into(),
+                    local: id("flow_start_review"),
+                })],
+                ..Default::default()
+            }),
+        }]),
+    )
+    .unwrap();
+    let before = session.snapshot().content_id;
+    apply(
+        &mut session,
+        batch(vec![Mutation::SetElementXmlId {
+            document_id: docid(),
+            element_id: id("flow_start_review"),
+            xml_id: Some(id("renamed_flow")),
+        }]),
+    )
+    .unwrap();
+    let snapshot = session.snapshot();
+    let node = processcraft_core::queries::find_node(&snapshot.project.documents[0], &id("review"))
+        .unwrap();
+    assert!(
+        matches!(&node.flow_metadata.as_ref().unwrap().incoming[0], ModelReference::Qualified(q) if q.local == id::<processcraft_core::ids::XmlId>("renamed_flow"))
+    );
+    apply(&mut session, Request::Undo).unwrap();
+    assert_eq!(session.snapshot().content_id, before);
+}
+
+#[test]
+fn choreography_sequence_flow_metadata_is_undoable_and_message_flow_rejected() {
+    use processcraft_core::{
+        bpmn_activity::FlowElementMetadata,
+        bpmn_collaboration::{Choreography, ChoreographyActivity},
+    };
+    let mut initial = project();
+    fixture(&mut initial);
+    let mut data = (*initial.snapshot().project).clone();
+    let participants = ["buyer", "seller"]
+        .into_iter()
+        .map(|name| Participant {
+            id: id(name),
+            base: None,
+            name: Some(name.into()),
+            process: None,
+        })
+        .collect();
+    let activity = |name| ChoreographyActivity {
+        id: id(name),
+        base: None,
+        name: Some(name.into()),
+        flow_metadata: None,
+        correlation_keys: vec![],
+        participant_refs: vec![id("buyer"), id("seller")],
+        initiating_participant: id("buyer"),
+        message_flow_refs: vec![],
+    };
+    let flow = |name, kind, source, target| Flow {
+        id: id(name),
+        kind,
+        source: id(source),
+        target: id(target),
+        name: Some(name.into()),
+        documentation: String::new().into(),
+        base_extras: None,
+        association_direction: None,
+        flow_metadata: None,
+        condition: None,
+    };
+    Arc::make_mut(&mut data.documents[0])
+        .choreographies
+        .push(Choreography {
+            id: id("choreo"),
+            base: None,
+            name: None,
+            participants,
+            activities: vec![activity("first"), activity("second")],
+            sequence_flows: vec![flow("sequence", FlowKind::Sequence, "first", "second")],
+            message_flows: vec![flow("message", FlowKind::Message, "buyer", "seller")],
+        });
+    let mut session = Session::new(data).unwrap();
+    let before = session.snapshot().content_id;
+    let metadata = Some(FlowElementMetadata {
+        is_immediate: Some(false),
+        ..Default::default()
+    });
+    apply(
+        &mut session,
+        batch(vec![Mutation::SetFlowMetadata {
+            document_id: docid(),
+            element_id: id("sequence"),
+            metadata: metadata.clone(),
+        }]),
+    )
+    .unwrap();
+    let after = session.snapshot().content_id;
+    assert_ne!(before, after);
+    assert_eq!(
+        session.snapshot().project.documents[0].choreographies[0].sequence_flows[0].flow_metadata,
+        metadata
+    );
+    assert!(
+        apply(
+            &mut session,
+            batch(vec![Mutation::SetFlowMetadata {
+                document_id: docid(),
+                element_id: id("message"),
+                metadata
+            }])
+        )
+        .is_err()
+    );
+    assert_eq!(session.snapshot().content_id, after);
+    apply(&mut session, Request::Undo).unwrap();
+    assert_eq!(session.snapshot().content_id, before);
+    apply(&mut session, Request::Redo).unwrap();
+    assert_eq!(session.snapshot().content_id, after);
+}
 fn fixture(s: &mut Session) {
     let r: Request = serde_json::from_str(include_str!(
         "../../../tests/fixtures/commands/procurement.json"
@@ -351,6 +805,7 @@ fn expanded_data_preserves_omissions_and_validates_transformation() {
     let mut s = project();
     fixture(&mut s);
     let object = DataObject {
+        flow_metadata: None,
         base: None,
         id: None,
         name: None,
@@ -494,6 +949,7 @@ fn activity_bindings_validate_new_local_refs_and_preserve_legacy() {
         }],
     });
     let node = Node {
+        flow_metadata: None,
         base_extras: None,
         item_aware: None,
         id: id("send"),
@@ -792,6 +1248,7 @@ fn link_and_compensation_events_validate_atomically() {
     let mut s = project();
     fixture(&mut s);
     let node = |name: &str, kind, definition| Node {
+        flow_metadata: None,
         base_extras: None,
         item_aware: None,
         id: id(name),
@@ -895,6 +1352,7 @@ fn definitions_namespace_change_rejects_existing_qualified_references() {
         imports: vec![],
     };
     let node = Node {
+        flow_metadata: None,
         base_extras: None,
         item_aware: None,
         id: id("call"),
@@ -902,10 +1360,10 @@ fn definitions_namespace_change_rejects_existing_qualified_references() {
         documentation: String::new().into(),
         kind: NodeKind::CallActivity,
         details: Some(NodeDetails::CallActivity {
-            called_element: QNameRef {
+            called_element: Some(QNameRef {
                 namespace: GENERATED_TARGET_NAMESPACE.into(),
                 local: id("procurement"),
-            },
+            }),
         }),
         loop_characteristics: None,
         io_specification: None,
@@ -1026,6 +1484,7 @@ fn failed_batch_preserves_state_and_history() {
         document_id: docid(),
         process_id: Some(id("procurement")),
         flow: Flow {
+            flow_metadata: None,
             base_extras: None,
             association_direction: None,
             id: id("bad"),
@@ -1182,6 +1641,7 @@ fn retained_extensions_allow_labels_but_reject_structural_changes() {
         extensions: vec![],
     };
     d.processes.push(Process {
+        activity_metadata: None,
         base_extras: None,
         is_executable: Some(false),
         io_specification: None,
@@ -1389,6 +1849,8 @@ fn flow_condition_changes_identity_and_protected_document_rejects_it() {
 fn descriptors_match_protocol_tags() {
     let descriptors = processcraft_core::commands::command_descriptors();
     let expected = [
+        "setGlobalTasks",
+        "setCorrelationProperties",
         "setExpression",
         "setDefinitionsExtensions",
         "setDefinitionsRelationships",
@@ -1410,6 +1872,10 @@ fn descriptors_match_protocol_tags() {
         "setCollaborationName",
         "setDiagramName",
         "setProcessExecutable",
+        "setCollaborationCorrelationKeys",
+        "setProcessActivityMetadata",
+        "setNodeFlowMetadata",
+        "setFlowMetadata",
         "setElementXmlId",
         "promoteElementIdentity",
         "setTextAnnotation",
@@ -1716,6 +2182,7 @@ fn annotation_text_edit_migrates_legacy_body_and_undo_restores_it() {
     Arc::make_mut(&mut p.documents[0]).processes[0]
         .nodes
         .push(Node {
+            flow_metadata: None,
             base_extras: None,
             id: id("annotation"),
             name: Some("old body".into()),
@@ -2155,6 +2622,7 @@ fn deleting_event_cascades_its_data_association_and_undo_restores_it() {
         }),
     });
     process.data_objects.push(DataObject {
+        flow_metadata: None,
         base: None,
         id: Some(id("object")),
         name: Some("object".into()),
@@ -3195,7 +3663,7 @@ fn loop_identity_rename_preserves_checkpoint_and_undo_redo() {
     let loop_value = LoopCharacteristics::Standard {
         id: Some(id("loop_id")),
         base: None,
-        test_before: false,
+        test_before: Some(false),
         condition: None,
         maximum: None,
     };

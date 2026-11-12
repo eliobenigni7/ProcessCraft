@@ -13,7 +13,13 @@ use processcraft_core::{
     },
 };
 use serde_json::{Value, json};
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::LazyLock,
+};
+
+static EMPTY_FLOW_METADATA: LazyLock<Value> =
+    LazyLock::new(|| json!(processcraft_core::bpmn_activity::FlowElementMetadata::default()));
 
 struct Target {
     identity_path: String,
@@ -283,6 +289,16 @@ fn normalize(value: &mut Value, targets: &HashMap<NativeElementId, Target>) -> R
             normalize_namespaces(object)?;
             for value in object.values_mut() {
                 normalize(value, targets)?;
+            }
+            // This aggregate has no XML wrapper. Empty inherited metadata emits
+            // no XML, regardless of the native legacy/explicit bookkeeping mode.
+            // Nonempty incoming/outgoing lists, wrappers and explicit false are
+            // retained; native persistence compares the original values exactly.
+            if object.get("flow_metadata") == Some(&*EMPTY_FLOW_METADATA) {
+                object.remove("flow_metadata");
+            }
+            if object.get("flow") == Some(&*EMPTY_FLOW_METADATA) {
+                object.insert("flow".into(), Value::Null);
             }
             // A missing XML ID is omitted in XML whether the native optional slot
             // was null, skipped, or held an anonymous stable native identity.

@@ -13,6 +13,7 @@ fn sample() -> ProjectData {
     let mut p = ProjectData::new("Project".into());
     let mut d = BpmnDocument::new("Document".into(), id("defs"));
     d.processes.push(Process {
+        activity_metadata: None,
         base_extras: None,
         is_executable: Some(false),
         io_specification: None,
@@ -25,6 +26,7 @@ fn sample() -> ProjectData {
         name: Some(String::new()),
         documentation: String::new().into(),
         nodes: vec![Node {
+            flow_metadata: None,
             base_extras: None,
             item_aware: None,
             activity: None,
@@ -208,6 +210,7 @@ fn incomplete_process_and_cycles_in_sequence_are_valid() {
     std::sync::Arc::make_mut(&mut p.documents[0]).processes[0]
         .flows
         .push(Flow {
+            flow_metadata: None,
             base_extras: None,
             association_direction: None,
             id: id("loop"),
@@ -247,6 +250,7 @@ fn endpoint_plane_and_resource_boundaries() {
     std::sync::Arc::make_mut(&mut p.documents[0]).processes[0]
         .flows
         .push(Flow {
+            flow_metadata: None,
             base_extras: None,
             association_direction: None,
             id: id("flow"),
@@ -481,6 +485,7 @@ fn collaboration_and_diagram_names_preserve_omission_and_empty_values() {
     let mut project = sample();
     let doc = std::sync::Arc::make_mut(&mut project.documents[0]);
     doc.collaboration = Some(Collaboration {
+        correlation_keys: vec![],
         base: None,
         name: None,
         id: id("collaboration"),

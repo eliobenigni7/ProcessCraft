@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+ xmlns:b="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:tns="urn:activity-callable-roles"
+ xmlns:ext="urn:inert-example" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+ id="Definitions" targetNamespace="urn:activity-callable-roles">
+ <itemDefinition id="Item" structureRef="ext:Record"/>
+ <message id="Message" itemRef="tns:Item"/>
+ <signal id="Signal" structureRef="tns:Item"/>
+ <signalEventDefinition id="LoopSignal" signalRef="tns:Signal"/>
+ <interface id="Interface" name="Ordering"><operation id="Operation" name="Accept"><inMessageRef>tns:Message</inMessageRef></operation></interface>
+ <resource id="Resource" name="Reviewer"><resourceParameter id="Parameter" name="Team" type="ext:Team" isRequired="false"/></resource>
+ <rootElement xsi:type="b:tCallableElement" id="Callable" name="Generic callable"><supportedInterfaceRef>tns:Interface</supportedInterfaceRef></rootElement>
+ <globalTask id="Global" name="Reusable task">
+  <supportedInterfaceRef>tns:Interface</supportedInterfaceRef>
+  <ioSpecification><dataInput id="GlobalIn" itemSubjectRef="tns:Item"/><dataOutput id="GlobalOut" itemSubjectRef="tns:Item"/><inputSet><dataInputRefs>GlobalIn</dataInputRefs></inputSet><outputSet><dataOutputRefs>GlobalOut</dataOutputRefs></outputSet></ioSpecification>
+  <ioBinding operationRef="tns:Operation" inputDataRef="GlobalIn" outputDataRef="GlobalOut"><documentation>Anonymous callable binding</documentation></ioBinding>
+  <resourceRole name="Reviewer"><resourceRef>tns:Resource</resourceRef><resourceParameterBinding parameterRef="tns:Parameter"><expression>team</expression></resourceParameterBinding></resourceRole>
+ </globalTask>
+ <globalManualTask id="Manual" name="Manual"/>
+ <globalBusinessRuleTask id="Rule" implementation="##unspecified"/>
+ <globalScriptTask id="Script" scriptLanguage="urn:inert-script"><script>never execute &amp; preserve<!--inert--><?inspect sample?></script></globalScriptTask>
+ <globalUserTask id="User" name="" implementation="##unspecified"><potentialOwner name="Candidate"><resourceAssignmentExpression><expression>reviewers</expression></resourceAssignmentExpression></potentialOwner><rendering><documentation>Rendering metadata only</documentation></rendering></globalUserTask>
+ <process id="Process" name="Activity metadata" processType="Private" isClosed="false" isExecutable="false">
+  <supportedInterfaceRef>tns:Interface</supportedInterfaceRef>
+  <ioSpecification><dataInput id="ProcessIn"/><dataOutput id="ProcessOut"/><inputSet/><outputSet/></ioSpecification>
+  <ioBinding operationRef="tns:Operation" inputDataRef="ProcessIn" outputDataRef="ProcessOut"/>
+  <property id="ProcessProperty" name="" itemSubjectRef="tns:Item"><dataState name="Ready"/></property>
+  <callActivity id="UnassignedCall"/>
+  <callActivity id="LocalCall" calledElement="tns:User"/>
+  <callActivity id="ExternalCall" calledElement="ext:User"/>
+  <task id="StandardOmitted"><standardLoopCharacteristics><loopCondition>repeat</loopCondition></standardLoopCharacteristics></task>
+  <task id="StandardExplicit"><standardLoopCharacteristics testBefore="true" loopMaximum="123456789012345678901234567890"><loopCondition>again</loopCondition></standardLoopCharacteristics></task>
+  <task id="MultiOmitted"><multiInstanceLoopCharacteristics/></task>
+  <task id="MultiComplex">
+   <ioSpecification><dataInput id="TaskIn" itemSubjectRef="tns:Item"/><dataOutput id="TaskOut" itemSubjectRef="tns:Item"/><inputSet/><outputSet/></ioSpecification>
+   <property name="Local property"/>
+   <humanPerformer><resourceRef>tns:Resource</resourceRef></humanPerformer>
+   <multiInstanceLoopCharacteristics id="Multi" isSequential="false" behavior="Complex">
+    <loopCardinality>3</loopCardinality><loopDataInputRef>tns:TaskIn</loopDataInputRef><loopDataOutputRef>tns:TaskOut</loopDataOutputRef>
+    <inputDataItem id="IterationIn" itemSubjectRef="tns:Item"/><outputDataItem id="IterationOut" itemSubjectRef="tns:Item"/>
+    <complexBehaviorDefinition><condition xmlns:path="urn:condition">path:accepted</condition><event id="Implicit" name="Notify"><property id="ImplicitProperty"/><dataInput id="ImplicitIn"/><dataInputAssociation><sourceRef>IterationIn</sourceRef><targetRef>ImplicitIn</targetRef></dataInputAssociation><inputSet><dataInputRefs>ImplicitIn</dataInputRefs></inputSet><signalEventDefinition signalRef="tns:Signal"/></event></complexBehaviorDefinition>
+    <completionCondition>complete</completionCondition>
+   </multiInstanceLoopCharacteristics>
+  </task>
+  <task id="MultiSequential"><multiInstanceLoopCharacteristics isSequential="true" behavior="One" oneBehaviorEventRef="tns:LoopSignal"/></task>
+  <task id="MultiNone"><multiInstanceLoopCharacteristics behavior="None" noneBehaviorEventRef="tns:LoopSignal"/></task>
+  <userTask id="UserTask"><performer><resourceAssignmentExpression><expression>assigned</expression></resourceAssignmentExpression></performer><rendering/></userTask>
+  <task id="FlowSource"><outgoing>Immediate</outgoing></task><task id="FlowTarget"><incoming>Immediate</incoming></task>
+  <sequenceFlow id="Immediate" sourceRef="FlowSource" targetRef="FlowTarget" isImmediate="false"/>
+  <resourceRole><documentation>Anonymous process role</documentation></resourceRole>
+  <supports>tns:Process</supports>
+ </process>
+</definitions>

@@ -255,7 +255,16 @@ impl BpmnDocument {
         use crate::bpmn_metadata::DocumentationSet;
         use crate::bpmn_model::{Expression, ExpressionBody, NodeDetails};
         use crate::bpmn_xml::MixedXml;
-        let mut found = false;
+        let mut found = !crate::activity_read::activity_read(self).bases.is_empty();
+        found |= self.global_tasks.iter().any(|task| {
+            matches!(
+                &task.kind,
+                crate::bpmn_activity::GlobalTaskKind::Script {
+                    script: Some(MixedXml::Structured(_)),
+                    ..
+                }
+            )
+        });
         visit_base_metadata(self, |_, value| found |= value.is_some());
         visit_legacy_metadata(self, |_, docs, extras| {
             found |= matches!(docs, DocumentationSet::Structured(_)) || extras.is_some()
@@ -326,6 +335,15 @@ impl BpmnDocument {
             matches!(body, MixedXml::Structured(content) if opaque_content(content))
         }
         let mut found = false;
+        for base in crate::activity_read::activity_read(self).bases {
+            found |= !base.foreign_attributes.is_empty()
+                || base
+                    .extension_elements
+                    .as_ref()
+                    .is_some_and(|e| opaque_content(&e.content))
+                || base.documentation.iter().any(|d| opaque_body(&d.content));
+        }
+        found |= self.global_tasks.iter().any(|task| matches!(&task.kind, crate::bpmn_activity::GlobalTaskKind::Script { script: Some(body), .. } if opaque_body(body)));
         visit_base_metadata(self, |_, base| {
             if let Some(base) = base {
                 found |= !base.foreign_attributes.is_empty()
@@ -491,5 +509,53 @@ mod tests {
             },
         });
         assert!(doc.has_opaque_xml());
+    }
+    #[test]
+    fn activity_metadata_clear_matches_immutable_scan() {
+        use crate::bpmn_activity::*;
+        let mut doc = BpmnDocument::new("model".into(), "definitions".parse().unwrap());
+        let base = || Some(BaseMetadata::default());
+        doc.global_tasks.push(GlobalTask {
+            id: Some("global".parse().unwrap()),
+            base: base(),
+            name: None,
+            callable: CallableMetadata::default(),
+            io_specification: None,
+            resource_roles: vec![ResourceRole {
+                id: None,
+                base: base(),
+                name: None,
+                kind: ResourceRoleKind::ResourceRole,
+                assignment: ResourceRoleAssignment::Expression {
+                    assignment: ResourceAssignmentExpression {
+                        id: None,
+                        base: base(),
+                        expression: None,
+                    },
+                },
+            }],
+            kind: GlobalTaskKind::Task,
+        });
+        doc.correlation_properties.push(CorrelationProperty {
+            id: None,
+            base: base(),
+            name: None,
+            item_type: None,
+            retrieval_expressions: vec![CorrelationRetrieval {
+                id: None,
+                base: base(),
+                message_ref: None,
+                message_path: None,
+            }],
+        });
+        assert!(doc.has_semantic_common_metadata_features());
+        let mut removed = 0;
+        crate::metadata_visit::visit_base_metadata_mut(&mut doc, |_, base| {
+            if base.take().is_some() {
+                removed += 1;
+            }
+        });
+        assert_eq!(removed, 5);
+        assert!(!doc.has_semantic_common_metadata_features());
     }
 }

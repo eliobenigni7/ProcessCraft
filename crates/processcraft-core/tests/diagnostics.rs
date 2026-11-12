@@ -8,6 +8,7 @@ where
 }
 fn node(name: &str, kind: NodeKind, label: &str) -> Node {
     Node {
+        flow_metadata: None,
         base_extras: None,
         item_aware: None,
         activity: None,
@@ -27,6 +28,7 @@ fn incomplete_process_is_valid_but_diagnostics_are_anchored() {
     let mut p = ProjectData::new("p".into());
     let mut d = BpmnDocument::new("d".into(), id("defs"));
     d.processes.push(Process {
+        activity_metadata: None,
         base_extras: None,
         is_executable: Some(false),
         io_specification: None,
@@ -64,6 +66,7 @@ fn complete_connected_process_has_no_incomplete_warnings() {
     let mut p = ProjectData::new("p".into());
     let mut d = BpmnDocument::new("d".into(), id("defs"));
     let f = |name: &str, source: &str, target: &str| Flow {
+        flow_metadata: None,
         base_extras: None,
         association_direction: None,
         id: id(name),
@@ -75,6 +78,7 @@ fn complete_connected_process_has_no_incomplete_warnings() {
         condition: None,
     };
     d.processes.push(Process {
+        activity_metadata: None,
         base_extras: None,
         is_executable: Some(false),
         io_specification: None,
@@ -121,6 +125,7 @@ fn nested_gateway_diagnostics_are_advisory_and_anchored() {
             nodes: vec![gateway, node("nested_task", NodeKind::Task, "Task")],
             lanes: vec![],
             flows: vec![Flow {
+                flow_metadata: None,
                 base_extras: None,
                 association_direction: None,
                 id: id("default_flow"),
@@ -135,6 +140,7 @@ fn nested_gateway_diagnostics_are_advisory_and_anchored() {
     });
     let mut doc = BpmnDocument::new("d".into(), id("defs"));
     doc.processes.push(Process {
+        activity_metadata: None,
         base_extras: None,
         is_executable: Some(false),
         io_specification: None,
@@ -169,6 +175,7 @@ fn activity_conditions_are_allowed_but_event_gateway_conditions_are_diagnosed() 
     // BPMN 2.0.2 §8.4.13 permits conditions on Activity flows (with another
     // outgoing flow); §10.6.6 prohibits them on Event-Based Gateway flows.
     let flow = |name: &str, source: &str, target: &str, condition: Option<&str>| Flow {
+        flow_metadata: None,
         base_extras: None,
         association_direction: None,
         id: id(name),
@@ -181,6 +188,7 @@ fn activity_conditions_are_allowed_but_event_gateway_conditions_are_diagnosed() 
     };
     let mut doc = BpmnDocument::new("d".into(), id("defs"));
     doc.processes.push(Process {
+        activity_metadata: None,
         base_extras: None,
         is_executable: Some(false),
         io_specification: None,
@@ -235,6 +243,7 @@ fn diagnostics_anchor_anonymous_native_elements_without_xml_fallback() {
     };
     let selector = anonymous.id.selector();
     doc.processes.push(Process {
+        activity_metadata: None,
         base_extras: None,
         is_executable: Some(false),
         io_specification: None,
@@ -306,6 +315,7 @@ fn incomplete_event_metadata_is_advisory_and_anchored() {
     });
     let mut doc = BpmnDocument::new("d".into(), id("defs"));
     doc.processes.push(Process {
+        activity_metadata: None,
         base_extras: None,
         is_executable: Some(false),
         io_specification: None,
@@ -369,6 +379,7 @@ fn referenced_event_subprocess_error_interrupting_advisory_uses_root_definition(
         error_ref: None,
     });
     doc.processes.push(Process {
+        activity_metadata: None,
         base_extras: None,
         is_executable: Some(false),
         io_specification: None,
@@ -437,6 +448,7 @@ fn mixed_expression_is_not_misclassified_as_empty_plain_text() {
         io: None,
     });
     doc.processes.push(Process {
+        activity_metadata: None,
         is_executable: Some(false),
         io_specification: None,
         lane_set_base: None,
@@ -489,4 +501,683 @@ fn required_extensions_and_incomplete_relationships_are_advisory() {
         assert_eq!(d.element_id, Some(id(anchor)));
         assert_eq!(d.severity, DiagnosticSeverity::Warning);
     }
+}
+
+#[test]
+fn incomplete_activity_and_correlation_metadata_remain_advisory() {
+    use processcraft_core::bpmn_activity::{
+        CallableMetadata, CorrelationProperty, CorrelationPropertyBinding, CorrelationRetrieval,
+        CorrelationSubscription, IoBinding, ProcessActivityMetadata,
+    };
+    let mut doc = BpmnDocument::new("d".into(), id("defs"));
+    doc.correlation_properties.push(CorrelationProperty {
+        id: Some(id("property")),
+        base: None,
+        name: None,
+        item_type: None,
+        retrieval_expressions: vec![CorrelationRetrieval {
+            id: None,
+            base: None,
+            message_ref: None,
+            message_path: None,
+        }],
+    });
+    doc.processes.push(Process {
+        activity_metadata: Some(ProcessActivityMetadata {
+            callable: CallableMetadata {
+                supported_interface_refs: vec![],
+                io_bindings: vec![IoBinding {
+                    id: None,
+                    base: None,
+                    operation_ref: None,
+                    input_data_ref: None,
+                    output_data_ref: None,
+                }],
+            },
+            correlation_subscriptions: vec![CorrelationSubscription {
+                id: None,
+                base: None,
+                key_ref: None,
+                bindings: vec![CorrelationPropertyBinding {
+                    id: None,
+                    base: None,
+                    property_ref: None,
+                    data_path: None,
+                }],
+            }],
+            ..Default::default()
+        }),
+        is_executable: Some(false),
+        io_specification: None,
+        lane_set_base: None,
+        lane_set_id: None,
+        groups: vec![],
+        data_objects: vec![],
+        data_associations: vec![],
+        id: id("process"),
+        name: None,
+        documentation: String::new().into(),
+        base_extras: None,
+        nodes: vec![],
+        lanes: vec![],
+        flows: vec![],
+    });
+    let mut project = ProjectData::new("p".into());
+    project.documents.push(Arc::new(doc));
+    let diagnostics = project.diagnostics();
+    for code in [
+        "incompleteCorrelationRetrieval",
+        "incompleteIoBinding",
+        "incompleteCorrelationSubscription",
+        "incompleteCorrelationBinding",
+    ] {
+        assert!(
+            diagnostics
+                .iter()
+                .any(|d| d.code == code && d.severity == DiagnosticSeverity::Warning),
+            "{code}"
+        );
+    }
+}
+
+#[test]
+fn activity_reference_issue_keys_keep_owner_field_and_target_without_resolving_external() {
+    use processcraft_core::bpmn_activity::{
+        CallableMetadata, IoBinding, ModelReference, ProcessActivityMetadata,
+    };
+    use processcraft_core::bpmn_model::QNameRef;
+    let mut doc = BpmnDocument::new("d".into(), id("defs"));
+    doc.processes.push(Process {
+        activity_metadata: Some(ProcessActivityMetadata {
+            callable: CallableMetadata {
+                supported_interface_refs: vec![
+                    ModelReference::Local(id("missing_interface")),
+                    ModelReference::Qualified(QNameRef {
+                        namespace: "urn:external".into(),
+                        local: id("remote"),
+                    }),
+                ],
+                io_bindings: vec![IoBinding {
+                    id: Some(id("binding")),
+                    base: None,
+                    operation_ref: Some(ModelReference::Local(id("missing_operation"))),
+                    input_data_ref: None,
+                    output_data_ref: None,
+                }],
+            },
+            ..Default::default()
+        }),
+        is_executable: Some(false),
+        io_specification: None,
+        lane_set_base: None,
+        lane_set_id: None,
+        groups: vec![],
+        data_objects: vec![],
+        data_associations: vec![],
+        id: id("process"),
+        name: None,
+        documentation: String::new().into(),
+        base_extras: None,
+        nodes: vec![],
+        lanes: vec![],
+        flows: vec![],
+    });
+    let issues = processcraft_core::validation::activity_family_reference_issues(&doc);
+    assert_eq!(issues.len(), 2);
+    assert!(issues.iter().any(|issue| issue.owner
+        == id::<processcraft_core::ids::ElementSelector>("process")
+        && issue.field == "callable.supportedInterfaceRef"
+        && issue.target == ModelReference::Local(id("missing_interface"))));
+    assert!(issues.iter().any(|issue| issue.owner
+        == id::<processcraft_core::ids::ElementSelector>("binding")
+        && issue.field == "ioBinding.operationRef"
+        && issue.target == ModelReference::Local(id("missing_operation"))));
+}
+
+#[test]
+fn activity_reference_resolution_detects_reused_xml_id_with_new_identity() {
+    use processcraft_core::bpmn_activity::{
+        CallableMetadata, ModelReference, ProcessActivityMetadata,
+    };
+    use processcraft_core::bpmn_catalog::{Interface, Operation};
+    use processcraft_core::bpmn_model::QNameRef;
+    use processcraft_core::ids::{ElementIdentity, NativeElementId};
+    let mut doc = BpmnDocument::new("d".into(), id("defs"));
+    let target = |native_id| ElementIdentity::Native {
+        native_id,
+        xml_id: Some(id("interface")),
+    };
+    let first_id = NativeElementId::new();
+    doc.catalog.interfaces.push(Interface {
+        id: Some(target(first_id)),
+        base: None,
+        name: "Service".into(),
+        implementation_ref: None,
+        operations: vec![Operation {
+            id: None,
+            base: None,
+            name: "Run".into(),
+            implementation_ref: None,
+            in_message_ref: QNameRef {
+                namespace: "urn:external".into(),
+                local: id("Message"),
+            },
+            out_message_ref: None,
+            error_refs: vec![],
+        }],
+    });
+    doc.processes.push(Process {
+        activity_metadata: Some(ProcessActivityMetadata {
+            callable: CallableMetadata {
+                supported_interface_refs: vec![ModelReference::Qualified(QNameRef {
+                    namespace: processcraft_core::model::GENERATED_TARGET_NAMESPACE.into(),
+                    local: id("interface"),
+                })],
+                io_bindings: vec![],
+            },
+            ..Default::default()
+        }),
+        is_executable: Some(false),
+        io_specification: None,
+        lane_set_base: None,
+        lane_set_id: None,
+        groups: vec![],
+        data_objects: vec![],
+        data_associations: vec![],
+        id: id("process"),
+        name: None,
+        documentation: String::new().into(),
+        base_extras: None,
+        nodes: vec![],
+        lanes: vec![],
+        flows: vec![],
+    });
+    let before = processcraft_core::validation::activity_family_reference_resolutions(&doc);
+    doc.catalog.interfaces[0].id = Some(target(NativeElementId::new()));
+    let after = processcraft_core::validation::activity_family_reference_resolutions(&doc);
+    assert_eq!(before[0].reference, after[0].reference);
+    assert_ne!(before[0].resolved_target, after[0].resolved_target);
+}
+
+#[test]
+fn subprocess_loop_data_references_respect_ancestor_and_sibling_scope() {
+    use processcraft_core::bpmn_activity::ModelReference;
+    use processcraft_core::bpmn_data::DataObject;
+    use processcraft_core::bpmn_model::{LoopCharacteristics, NodeDetails};
+    let object = |name: &str| DataObject {
+        id: Some(id(name)),
+        name: None,
+        base: None,
+        flow_metadata: None,
+        is_collection: Some(true),
+        item_aware: None,
+    };
+    let mut left = node("left", NodeKind::SubProcess, "Left");
+    left.details = Some(NodeDetails::SubProcess {
+        content: Box::new(FlowContainer {
+            data_objects: vec![object("left_object")],
+            ..Default::default()
+        }),
+    });
+    let mut right = node("right", NodeKind::SubProcess, "Right");
+    right.details = Some(NodeDetails::SubProcess {
+        content: Box::new(FlowContainer::default()),
+    });
+    right.loop_characteristics = Some(LoopCharacteristics::MultiInstance {
+        id: None,
+        base: None,
+        is_sequential: None,
+        behavior: None,
+        loop_data_input_ref: Some(ModelReference::Local(id("left_object"))),
+        loop_data_output_ref: None,
+        input_data_item: None,
+        output_data_item: None,
+        complex_behavior_definitions: vec![],
+        one_behavior_event_ref: None,
+        none_behavior_event_ref: None,
+        cardinality: None,
+        completion_condition: None,
+    });
+    let mut doc = BpmnDocument::new("d".into(), id("defs"));
+    doc.processes.push(Process {
+        activity_metadata: None,
+        is_executable: Some(false),
+        io_specification: None,
+        lane_set_base: None,
+        lane_set_id: None,
+        groups: vec![],
+        data_objects: vec![object("root_object")],
+        data_associations: vec![],
+        id: id("process"),
+        name: None,
+        documentation: String::new().into(),
+        base_extras: None,
+        nodes: vec![left, right],
+        lanes: vec![],
+        flows: vec![],
+    });
+    let issues = processcraft_core::validation::activity_family_reference_issues(&doc);
+    assert!(
+        issues
+            .iter()
+            .any(|issue| issue.field == "loop.loopDataInputRef"
+                && issue.target == ModelReference::Local(id("left_object")))
+    );
+    if let Some(LoopCharacteristics::MultiInstance {
+        loop_data_input_ref,
+        ..
+    }) = &mut doc.processes[0].nodes[1].loop_characteristics
+    {
+        *loop_data_input_ref = Some(ModelReference::Local(id("root_object")));
+    }
+    assert!(
+        !processcraft_core::validation::activity_family_reference_issues(&doc)
+            .iter()
+            .any(|issue| issue.field == "loop.loopDataInputRef")
+    );
+}
+
+#[test]
+fn implicit_event_data_sources_respect_nested_scope() {
+    use processcraft_core::bpmn_activity::{
+        ComplexBehaviorDefinition, ImplicitInputAssociation, ImplicitThrowEvent, ModelReference,
+    };
+    use processcraft_core::bpmn_data::{DataObject, DataPort};
+    use processcraft_core::bpmn_model::{LoopCharacteristics, NodeDetails};
+    let object = |name: &str| DataObject {
+        id: Some(id(name)),
+        name: None,
+        base: None,
+        flow_metadata: None,
+        is_collection: None,
+        item_aware: None,
+    };
+    let mut left = node("left", NodeKind::SubProcess, "Left");
+    left.details = Some(NodeDetails::SubProcess {
+        content: Box::new(FlowContainer {
+            data_objects: vec![object("left_object")],
+            ..Default::default()
+        }),
+    });
+    let mut task = node("task", NodeKind::Task, "Task");
+    task.loop_characteristics = Some(LoopCharacteristics::MultiInstance {
+        id: None,
+        base: None,
+        is_sequential: None,
+        behavior: None,
+        loop_data_input_ref: None,
+        loop_data_output_ref: None,
+        input_data_item: None,
+        output_data_item: None,
+        complex_behavior_definitions: vec![ComplexBehaviorDefinition {
+            id: None,
+            base: None,
+            condition: None,
+            event: Some(ImplicitThrowEvent {
+                id: None,
+                name: None,
+                base: None,
+                flow: None,
+                properties: vec![],
+                incoming: vec![],
+                outgoing: vec![],
+                inputs: vec![DataPort {
+                    id: Some(id("event_input")),
+                    base: None,
+                    name: None,
+                    item_aware: None,
+                    is_collection: None,
+                }],
+                input_associations: vec![ImplicitInputAssociation {
+                    id: None,
+                    base: None,
+                    sources: vec![id("left_object")],
+                    target: Some(id("event_input")),
+                    transformation: None,
+                    assignments: vec![],
+                }],
+                input_set: None,
+                definitions: vec![],
+                definition_refs: vec![],
+            }),
+        }],
+        one_behavior_event_ref: None,
+        none_behavior_event_ref: None,
+        cardinality: None,
+        completion_condition: None,
+    });
+    let mut right = node("right", NodeKind::SubProcess, "Right");
+    right.details = Some(NodeDetails::SubProcess {
+        content: Box::new(FlowContainer {
+            nodes: vec![task],
+            ..Default::default()
+        }),
+    });
+    let mut doc = BpmnDocument::new("d".into(), id("defs"));
+    doc.processes.push(Process {
+        activity_metadata: None,
+        is_executable: Some(false),
+        io_specification: None,
+        lane_set_base: None,
+        lane_set_id: None,
+        groups: vec![],
+        data_objects: vec![object("root_object")],
+        data_associations: vec![],
+        id: id("process"),
+        name: None,
+        documentation: String::new().into(),
+        base_extras: None,
+        nodes: vec![left, right],
+        lanes: vec![],
+        flows: vec![],
+    });
+    assert!(
+        processcraft_core::validation::activity_family_reference_issues(&doc)
+            .iter()
+            .any(|issue| issue.field == "implicitEvent.associationSource"
+                && issue.target == ModelReference::Local(id("left_object")))
+    );
+    if let Some(NodeDetails::SubProcess { content }) = &mut doc.processes[0].nodes[1].details
+        && let Some(LoopCharacteristics::MultiInstance {
+            complex_behavior_definitions,
+            ..
+        }) = &mut content.nodes[0].loop_characteristics
+    {
+        complex_behavior_definitions[0]
+            .event
+            .as_mut()
+            .unwrap()
+            .input_associations[0]
+            .sources = vec![id("root_object")];
+    }
+    assert!(
+        !processcraft_core::validation::activity_family_reference_issues(&doc)
+            .iter()
+            .any(|issue| issue.field == "implicitEvent.associationSource")
+    );
+    if let Some(NodeDetails::SubProcess { content }) = &mut doc.processes[0].nodes[1].details
+        && let Some(LoopCharacteristics::MultiInstance {
+            complex_behavior_definitions,
+            ..
+        }) = &mut content.nodes[0].loop_characteristics
+    {
+        complex_behavior_definitions[0]
+            .event
+            .as_mut()
+            .unwrap()
+            .definitions = vec![processcraft_core::bpmn_model::EventDefinition::Timer {
+            id: None,
+            base: None,
+            kind: None,
+            expression: None,
+        }];
+    }
+    if let Some(NodeDetails::SubProcess { content }) = &mut doc.processes[0].nodes[1].details
+        && let Some(LoopCharacteristics::MultiInstance {
+            input_data_item,
+            complex_behavior_definitions,
+            ..
+        }) = &mut content.nodes[0].loop_characteristics
+    {
+        *input_data_item = Some(DataPort {
+            id: Some(id("loop_item")),
+            base: None,
+            name: None,
+            item_aware: None,
+            is_collection: None,
+        });
+        complex_behavior_definitions[0]
+            .event
+            .as_mut()
+            .unwrap()
+            .input_associations[0]
+            .sources = vec![id("loop_item")];
+    }
+    assert!(
+        !processcraft_core::validation::activity_family_reference_issues(&doc)
+            .iter()
+            .any(|issue| issue.field == "implicitEvent.associationSource")
+    );
+    if let Some(NodeDetails::SubProcess { content }) = &mut doc.processes[0].nodes[1].details
+        && let Some(LoopCharacteristics::MultiInstance {
+            complex_behavior_definitions,
+            ..
+        }) = &mut content.nodes[0].loop_characteristics
+    {
+        complex_behavior_definitions[0]
+            .event
+            .as_mut()
+            .unwrap()
+            .input_set = Some(processcraft_core::bpmn_data::IoSet {
+            id: Some(id("input_set")),
+            counterpart_refs: vec![id("output_set")],
+            ..Default::default()
+        });
+    }
+    doc.global_tasks
+        .push(processcraft_core::bpmn_activity::GlobalTask {
+            id: Some(id("global")),
+            base: None,
+            name: None,
+            callable: Default::default(),
+            resource_roles: vec![],
+            io_specification: Some(processcraft_core::bpmn_data::IoSpecification {
+                base: None,
+                id: None,
+                inputs: vec![],
+                outputs: vec![],
+                input_sets: vec![],
+                output_sets: vec![processcraft_core::bpmn_data::IoSet {
+                    id: Some(id("output_set")),
+                    ..Default::default()
+                }],
+            }),
+            kind: processcraft_core::bpmn_activity::GlobalTaskKind::Task,
+        });
+    assert!(
+        !processcraft_core::validation::activity_family_reference_issues(&doc)
+            .iter()
+            .any(|issue| issue.field == "implicitEvent.inputSetCounterpart")
+    );
+    let mut project = ProjectData::new("p".into());
+    project.documents.push(Arc::new(doc));
+    assert!(
+        project
+            .diagnostics()
+            .iter()
+            .any(|diagnostic| diagnostic.code == "implicitIoSetPairIncomplete")
+    );
+    assert!(
+        project
+            .diagnostics()
+            .iter()
+            .any(|diagnostic| diagnostic.code == "implicitEventTriggerContextUnverified")
+    );
+}
+
+#[test]
+fn call_activity_local_target_is_checked_without_resolving_external() {
+    use processcraft_core::bpmn_model::{NodeDetails, QNameRef};
+    let mut call = node("call", NodeKind::CallActivity, "Call");
+    call.details = Some(NodeDetails::CallActivity {
+        called_element: Some(QNameRef {
+            namespace: processcraft_core::model::GENERATED_TARGET_NAMESPACE.into(),
+            local: id("missing"),
+        }),
+    });
+    let mut doc = BpmnDocument::new("d".into(), id("defs"));
+    doc.processes.push(Process {
+        activity_metadata: None,
+        is_executable: Some(false),
+        io_specification: None,
+        lane_set_base: None,
+        lane_set_id: None,
+        groups: vec![],
+        data_objects: vec![],
+        data_associations: vec![],
+        id: id("process"),
+        name: None,
+        documentation: String::new().into(),
+        base_extras: None,
+        nodes: vec![call],
+        lanes: vec![],
+        flows: vec![],
+    });
+    assert!(
+        processcraft_core::validation::activity_family_reference_issues(&doc)
+            .iter()
+            .any(|issue| issue.field == "callActivity.calledElement")
+    );
+    if let Some(NodeDetails::CallActivity {
+        called_element: Some(reference),
+    }) = &mut doc.processes[0].nodes[0].details
+    {
+        reference.namespace = "urn:external".into();
+    }
+    assert!(
+        !processcraft_core::validation::activity_family_reference_issues(&doc)
+            .iter()
+            .any(|issue| issue.field == "callActivity.calledElement")
+    );
+}
+
+#[test]
+fn explicit_flow_node_refs_check_kind_scope_and_direction() {
+    use processcraft_core::bpmn_activity::{FlowElementMetadata, ModelReference};
+    use processcraft_core::bpmn_model::QNameRef;
+    let mut source = node("source", NodeKind::Task, "Source");
+    source.flow_metadata = Some(FlowElementMetadata {
+        incoming: vec![ModelReference::Local(id("sequence"))],
+        outgoing: vec![
+            ModelReference::Local(id("sequence")),
+            ModelReference::Qualified(QNameRef {
+                namespace: "urn:external".into(),
+                local: id("remote"),
+            }),
+        ],
+        ..Default::default()
+    });
+    let flow = Flow {
+        flow_metadata: None,
+        association_direction: None,
+        id: id("sequence"),
+        kind: FlowKind::Sequence,
+        source: id("source"),
+        target: id("target"),
+        name: None,
+        documentation: String::new().into(),
+        base_extras: None,
+        condition: None,
+    };
+    let mut doc = BpmnDocument::new("d".into(), id("defs"));
+    doc.processes.push(Process {
+        activity_metadata: None,
+        is_executable: Some(false),
+        io_specification: None,
+        lane_set_base: None,
+        lane_set_id: None,
+        groups: vec![],
+        data_objects: vec![],
+        data_associations: vec![],
+        id: id("process"),
+        name: None,
+        documentation: String::new().into(),
+        base_extras: None,
+        nodes: vec![source, node("target", NodeKind::Task, "Target")],
+        lanes: vec![],
+        flows: vec![flow],
+    });
+    let issues = processcraft_core::validation::activity_family_reference_issues(&doc);
+    assert_eq!(
+        issues
+            .iter()
+            .filter(|issue| issue.field == "flow.incoming")
+            .count(),
+        1
+    );
+    assert!(!issues.iter().any(|issue| issue.field == "flow.outgoing"));
+}
+
+#[test]
+fn message_task_cardinality_is_conditional_and_receive_instantiate_checks_incoming() {
+    use processcraft_core::bpmn_activity::ActivityProperties;
+    use processcraft_core::bpmn_data::{DataPort, IoSet, IoSpecification};
+    use processcraft_core::bpmn_model::QNameRef;
+    let port = |name: &str| DataPort {
+        id: Some(id(name)),
+        base: None,
+        name: None,
+        item_aware: None,
+        is_collection: None,
+    };
+    let mut send = node("send", NodeKind::SendTask, "Send");
+    send.io_specification = Some(IoSpecification {
+        id: None,
+        base: None,
+        inputs: vec![port("a"), port("b")],
+        outputs: vec![],
+        input_sets: vec![IoSet::default(), IoSet::default()],
+        output_sets: vec![IoSet::default()],
+    });
+    let mut receive = node("receive", NodeKind::ReceiveTask, "Receive");
+    receive.activity = Some(ActivityProperties {
+        instantiate: Some(true),
+        ..Default::default()
+    });
+    let flow = Flow {
+        flow_metadata: None,
+        association_direction: None,
+        id: id("sequence"),
+        kind: FlowKind::Sequence,
+        source: id("send"),
+        target: id("receive"),
+        name: None,
+        documentation: String::new().into(),
+        base_extras: None,
+        condition: None,
+    };
+    let mut doc = BpmnDocument::new("d".into(), id("defs"));
+    doc.processes.push(Process {
+        activity_metadata: None,
+        is_executable: Some(false),
+        io_specification: None,
+        lane_set_base: None,
+        lane_set_id: None,
+        groups: vec![],
+        data_objects: vec![],
+        data_associations: vec![],
+        id: id("process"),
+        name: None,
+        documentation: String::new().into(),
+        base_extras: None,
+        nodes: vec![send, receive],
+        lanes: vec![],
+        flows: vec![flow],
+    });
+    let diagnostics = |document: BpmnDocument| {
+        let mut project = ProjectData::new("p".into());
+        project.documents.push(Arc::new(document));
+        project.diagnostics()
+    };
+    let before = diagnostics(doc.clone());
+    assert!(!before.iter().any(|d| d.code == "messageTaskIoCardinality"));
+    assert!(
+        before
+            .iter()
+            .any(|d| d.code == "instantiatingReceiveIncoming")
+    );
+    doc.processes[0].nodes[0].activity = Some(ActivityProperties {
+        message_ref: Some(QNameRef {
+            namespace: "urn:external".into(),
+            local: id("message"),
+        }),
+        ..Default::default()
+    });
+    let after = diagnostics(doc);
+    assert!(after.iter().any(|d| d.code == "messageTaskIoCardinality"));
+    assert!(
+        !after
+            .iter()
+            .any(|d| d.code == "messageTaskItemEquivalenceUnverified")
+    );
 }

@@ -21,6 +21,7 @@ fn sample(tiled: bool) -> BpmnDocument {
     for (i, name) in labels.iter().enumerate() {
         let node: processcraft_core::ids::ElementIdentity = id(&format!("node{i}"));
         nodes.push(Node {
+            flow_metadata: None,
             base_extras: None,
             item_aware: None,
             activity: None,
@@ -56,6 +57,7 @@ fn sample(tiled: bool) -> BpmnDocument {
         });
     }
     d.processes.push(Process {
+        activity_metadata: None,
         base_extras: None,
         is_executable: Some(false),
         io_specification: None,

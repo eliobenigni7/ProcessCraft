@@ -15,12 +15,14 @@ fn anonymous_native_elements_remain_queryable_without_promoting_or_naming_them()
     let process_selector = process.selector();
     let lane_selector = lane.selector();
     document.processes.push(Process {
+        activity_metadata: None,
         base_extras: None,
         is_executable: Some(false),
         id: process,
         name: None,
         documentation: String::new().into(),
         nodes: vec![Node {
+            flow_metadata: None,
             base_extras: None,
             id: task,
             name: None,

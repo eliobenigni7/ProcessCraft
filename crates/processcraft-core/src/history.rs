@@ -363,6 +363,21 @@ fn document(d: &BpmnDocument) -> usize {
 mod tests {
     use super::*;
     #[test]
+    fn activity_payload_is_charged_to_history_budget() {
+        use crate::bpmn_activity::{CallableMetadata, GlobalTask, GlobalTaskKind};
+        let mut document = BpmnDocument::new("Model".into(), "Definitions".parse().unwrap());
+        document.global_tasks.push(GlobalTask {
+            id: None,
+            base: None,
+            name: Some("x".repeat(100_000)),
+            callable: CallableMetadata::default(),
+            io_specification: None,
+            resource_roles: vec![],
+            kind: GlobalTaskKind::Manual,
+        });
+        assert!(super::document(&document) >= 400_000);
+    }
+    #[test]
     fn complete_typed_metadata_is_charged_without_copying_the_document() {
         let mut document = BpmnDocument::new("Model".into(), "Definitions".parse().unwrap());
         document
@@ -384,6 +399,7 @@ mod tests {
         };
         let mut document = BpmnDocument::new("Model".into(), "Definitions".parse().unwrap());
         document.processes.push(Process {
+            activity_metadata: None,
             id: "process".parse().unwrap(),
             name: Some("Process".into()),
             documentation: DocumentationSet::Structured(vec![Documentation {

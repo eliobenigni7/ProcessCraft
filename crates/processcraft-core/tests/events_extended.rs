@@ -16,6 +16,7 @@ fn selector(s: &str) -> ElementSelector {
 }
 fn event(id: &str, kind: NodeKind, details: NodeDetails) -> Node {
     Node {
+        flow_metadata: None,
         base_extras: None,
         id: ident(id),
         name: None,
@@ -96,6 +97,7 @@ fn fixture() -> ProjectData {
         },
     );
     d.processes.push(Process {
+        activity_metadata: None,
         base_extras: None,
         lane_set_base: None,
         id: ident("process"),
@@ -286,6 +288,7 @@ fn error_start_is_valid_only_in_event_subprocess_context() {
         },
     );
     doc.processes[0].nodes.push(Node {
+        flow_metadata: None,
         base_extras: None,
         id: ident("event_sub"),
         name: None,
@@ -344,6 +347,7 @@ fn di_endpoints_resolve_representation_ids_within_the_same_diagram() {
     let mut p = fixture();
     let d = Arc::make_mut(&mut p.documents[0]);
     d.processes[0].flows.push(Flow {
+        flow_metadata: None,
         base_extras: None,
         id: ident("flow"),
         kind: FlowKind::Sequence,
@@ -416,6 +420,7 @@ fn annotation_association_may_target_sequence_flow_and_its_di_edge() {
     let mut p = fixture();
     let d = Arc::make_mut(&mut p.documents[0]);
     d.processes[0].nodes.push(Node {
+        flow_metadata: None,
         base_extras: None,
         id: ident("note"),
         name: None,
@@ -433,6 +438,7 @@ fn annotation_association_may_target_sequence_flow_and_its_di_edge() {
         contact: String::new(),
     });
     d.processes[0].flows.push(Flow {
+        flow_metadata: None,
         base_extras: None,
         id: ident("sequence"),
         kind: FlowKind::Sequence,
@@ -444,6 +450,7 @@ fn annotation_association_may_target_sequence_flow_and_its_di_edge() {
         association_direction: None,
     });
     d.processes[0].flows.push(Flow {
+        flow_metadata: None,
         base_extras: None,
         id: ident("association"),
         kind: FlowKind::Association,
@@ -516,6 +523,7 @@ fn annotation_association_may_target_sequence_flow_and_its_di_edge() {
     let mut cross_scope = p;
     let d = Arc::make_mut(&mut cross_scope.documents[0]);
     let task = |name: &str| Node {
+        flow_metadata: None,
         base_extras: None,
         id: ident(name),
         name: None,
@@ -530,6 +538,7 @@ fn annotation_association_may_target_sequence_flow_and_its_di_edge() {
         contact: String::new(),
     };
     d.processes.push(Process {
+        activity_metadata: None,
         base_extras: None,
         lane_set_base: None,
         id: ident("other_process"),
@@ -544,6 +553,7 @@ fn annotation_association_may_target_sequence_flow_and_its_di_edge() {
         nodes: vec![task("other_a"), task("other_b")],
         lanes: vec![],
         flows: vec![Flow {
+            flow_metadata: None,
             base_extras: None,
             id: ident("other_sequence"),
             kind: FlowKind::Sequence,
@@ -562,4 +572,94 @@ fn annotation_association_may_target_sequence_flow_and_its_di_edge() {
         .unwrap()
         .target = selector("other_sequence");
     assert!(cross_scope.validate().is_err());
+}
+
+#[test]
+fn implicit_event_cannot_carry_sequence_flow_is_immediate() {
+    use processcraft_core::bpmn_activity::{
+        ComplexBehaviorDefinition, FlowElementMetadata, ImplicitThrowEvent,
+    };
+    let mut project = fixture();
+    let doc = Arc::make_mut(&mut project.documents[0]);
+    let mut task = event(
+        "task",
+        NodeKind::Task,
+        NodeDetails::CallActivity {
+            called_element: None,
+        },
+    );
+    task.details = None;
+    task.loop_characteristics = Some(LoopCharacteristics::MultiInstance {
+        id: None,
+        base: None,
+        is_sequential: None,
+        behavior: None,
+        loop_data_input_ref: None,
+        loop_data_output_ref: None,
+        input_data_item: None,
+        output_data_item: None,
+        complex_behavior_definitions: vec![ComplexBehaviorDefinition {
+            id: None,
+            base: None,
+            condition: None,
+            event: Some(ImplicitThrowEvent {
+                id: None,
+                name: None,
+                base: None,
+                flow: Some(FlowElementMetadata {
+                    is_immediate: Some(false),
+                    ..Default::default()
+                }),
+                properties: vec![],
+                incoming: vec![],
+                outgoing: vec![],
+                inputs: vec![],
+                input_associations: vec![],
+                input_set: None,
+                definitions: vec![],
+                definition_refs: vec![],
+            }),
+        }],
+        one_behavior_event_ref: None,
+        none_behavior_event_ref: None,
+        cardinality: None,
+        completion_condition: None,
+    });
+    doc.processes[0].nodes.push(task);
+    assert!(
+        project
+            .validate()
+            .unwrap_err()
+            .contains("isImmediate requires a sequence flow")
+    );
+    let doc = Arc::make_mut(&mut project.documents[0]);
+    let Some(LoopCharacteristics::MultiInstance {
+        complex_behavior_definitions,
+        ..
+    }) = &mut doc.processes[0]
+        .nodes
+        .last_mut()
+        .unwrap()
+        .loop_characteristics
+    else {
+        unreachable!()
+    };
+    let flow = complex_behavior_definitions[0]
+        .event
+        .as_mut()
+        .unwrap()
+        .flow
+        .as_mut()
+        .unwrap();
+    flow.is_immediate = None;
+    flow.incoming.push(EventReference::Qualified(QNameRef {
+        namespace: "urn:external".into(),
+        local: xml("f"),
+    }));
+    assert!(
+        project
+            .validate()
+            .unwrap_err()
+            .contains("Implicit event flow references must use the event fields")
+    );
 }

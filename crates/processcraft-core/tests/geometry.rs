@@ -570,6 +570,7 @@ fn data_geometry_session() -> processcraft_core::commands::Session {
     let doc = std::sync::Arc::make_mut(&mut project.documents[0]);
     let process = &mut doc.processes[0];
     process.data_objects.push(DataObject {
+        flow_metadata: None,
         base: None,
         id: Some("data_object".parse().unwrap()),
         name: Some("Order".into()),
@@ -577,6 +578,7 @@ fn data_geometry_session() -> processcraft_core::commands::Session {
         item_aware: None,
     });
     process.nodes.push(Node {
+        flow_metadata: None,
         item_aware: None,
         id: "data_ref".parse().unwrap(),
         name: Some("Order".into()),
@@ -738,6 +740,7 @@ fn conversation_geometry_session() -> processcraft_core::commands::Session {
     let mut project = (*source.snapshot().project).clone();
     let doc = std::sync::Arc::make_mut(&mut project.documents[0]);
     doc.collaboration = Some(Collaboration {
+        correlation_keys: vec![],
         base: None,
         name: None,
         id: "collaboration".parse().unwrap(),
@@ -749,6 +752,7 @@ fn conversation_geometry_session() -> processcraft_core::commands::Session {
         }],
         flows: vec![],
         conversation_nodes: vec![ConversationNode {
+            correlation_keys: vec![],
             base: None,
             id: "conversation".parse().unwrap(),
             name: Some("Order".into()),
@@ -1265,6 +1269,7 @@ fn association_edge_attachment_follows_rerouted_sequence_with_undo() {
     annotation.details = None;
     process.nodes.push(annotation);
     process.flows.push(Flow {
+        flow_metadata: None,
         id: "association".parse().unwrap(),
         kind: FlowKind::Association,
         source: "note".parse().unwrap(),
@@ -1406,6 +1411,7 @@ fn nested_move_translates_edge_attachment_and_label_as_one_gesture() {
     note.details = None;
     content.nodes.push(note);
     content.flows.push(Flow {
+        flow_metadata: None,
         id: "association".parse().unwrap(),
         kind: FlowKind::Association,
         source: "note".parse().unwrap(),

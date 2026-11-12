@@ -172,6 +172,10 @@ pub struct BpmnDocument {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub definitions: Option<DefinitionsMetadata>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub global_tasks: Vec<crate::bpmn_activity::GlobalTask>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub correlation_properties: Vec<crate::bpmn_activity::CorrelationProperty>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub extensions: Vec<DefinitionsExtension>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub relationships: Vec<DefinitionsRelationship>,
@@ -216,6 +220,13 @@ impl BpmnDocument {
             }
         }
         let mut out = vec![&self.definitions_id];
+        let activity = crate::activity_read::activity_read(self);
+        out.extend(activity.ids);
+        for base in activity.bases {
+            for documentation in &base.documentation {
+                out.extend(documentation.id.iter());
+            }
+        }
         for extension in &self.extensions {
             for documentation in &extension.documentation {
                 out.extend(documentation.id.iter());
@@ -477,6 +488,9 @@ impl BpmnDocument {
     }
     pub fn has_native_identity_features(&self) -> bool {
         use crate::ids::ElementIdentity;
+        if crate::activity_read::activity_read(self).native_references {
+            return true;
+        }
         if self
             .element_identities()
             .iter()
@@ -744,6 +758,8 @@ impl BpmnDocument {
             folder: None,
             definitions_id,
             definitions: None,
+            global_tasks: vec![],
+            correlation_properties: vec![],
             extensions: vec![],
             relationships: vec![],
             catalog: crate::bpmn_catalog::SupportingCatalog::default(),
@@ -840,6 +856,7 @@ impl BpmnDocument {
                     .filter_map(|f| f.condition.as_ref()),
             );
         }
+        result.extend(crate::activity_read::activity_read(self).expressions);
         result
     }
     pub fn has_structured_expressions(&self) -> bool {
@@ -1126,6 +1143,8 @@ impl Capability {
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Process {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub activity_metadata: Option<crate::bpmn_activity::ProcessActivityMetadata>,
     #[serde(
         default = "legacy_is_executable",
         skip_serializing_if = "is_legacy_executable"
@@ -1173,6 +1192,8 @@ pub struct FlowContainer {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Node {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub flow_metadata: Option<crate::bpmn_activity::FlowElementMetadata>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub item_aware: Option<crate::bpmn_data::ItemAwareMetadata>,
     pub id: crate::ids::ElementIdentity,
@@ -1258,6 +1279,8 @@ pub struct Lane {
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Collaboration {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub correlation_keys: Vec<crate::bpmn_activity::CorrelationKey>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub base: Option<crate::bpmn_metadata::BaseMetadata>,
 
@@ -1284,6 +1307,8 @@ pub struct Participant {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Flow {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub flow_metadata: Option<crate::bpmn_activity::FlowElementMetadata>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub association_direction: Option<crate::bpmn_model::AssociationDirection>,
     pub id: crate::ids::ElementIdentity,

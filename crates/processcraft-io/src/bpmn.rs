@@ -111,6 +111,7 @@ fn xml(e: impl fmt::Display) -> ImportError {
 
 #[derive(Default)]
 struct Frame {
+    semantic_name: Option<String>,
     /// Descendants are XML payload, not declarations in the BPMN model.
     opaque_children: bool,
     documentation: bool,
@@ -213,6 +214,14 @@ pub fn import_bpmn(bytes: &[u8]) -> Result<PreservedBpmn, ImportError> {
                 let standard = matches!(ns, Some(BPMN | BPMNDI | DC | DI));
                 let opaque = stack.last().is_some_and(|parent| parent.opaque_children);
                 let modeled = !opaque;
+                let activity_qname_text = modeled
+                    && ns == Some(BPMN)
+                    && activity_qname_text_reference(
+                        stack
+                            .last()
+                            .and_then(|parent| parent.semantic_name.as_deref()),
+                        local,
+                    );
 
                 if !standard && report.foreign_element_names.insert(name.clone()) {
                     account(&mut metadata_bytes, &name)?;
@@ -221,6 +230,7 @@ pub fn import_bpmn(bytes: &[u8]) -> Result<PreservedBpmn, ImportError> {
                     report.diagram_count += 1;
                 }
                 let mut frame = Frame {
+                    semantic_name: (modeled && ns == Some(BPMN)).then(|| local.to_owned()),
                     opaque_children: opaque
                         || !standard
                         || (ns == Some(BPMN)
@@ -229,18 +239,19 @@ pub fn import_bpmn(bytes: &[u8]) -> Result<PreservedBpmn, ImportError> {
                                 "documentation" | "script" | "text" | "extensionElements"
                             )),
                     idref_text: modeled && ns == Some(BPMN) && idref_text_reference(local),
-                    external_reference_allowed: matches!(
-                        local,
-                        "incoming"
-                            | "outgoing"
-                            | "source"
-                            | "target"
-                            | "inMessageRef"
-                            | "outMessageRef"
-                            | "errorRef"
-                            | "eventDefinitionRef"
-                            | "operationRef"
-                    ),
+                    external_reference_allowed: activity_qname_text
+                        || matches!(
+                            local,
+                            "incoming"
+                                | "outgoing"
+                                | "source"
+                                | "target"
+                                | "inMessageRef"
+                                | "outMessageRef"
+                                | "errorRef"
+                                | "eventDefinitionRef"
+                                | "operationRef"
+                        ),
                     link_definition: modeled && ns == Some(BPMN) && local == "linkEventDefinition",
                     operation: modeled && ns == Some(BPMN) && local == "operation",
                     message_definition: modeled
@@ -256,6 +267,7 @@ pub fn import_bpmn(bytes: &[u8]) -> Result<PreservedBpmn, ImportError> {
                                 && stack.last().is_some_and(|parent| parent.link_definition))
                             || (matches!(local, "inMessageRef" | "outMessageRef" | "errorRef")
                                 && stack.last().is_some_and(|parent| parent.operation))
+                            || activity_qname_text
                             || (local == "operationRef"
                                 && stack.last().is_some_and(|parent| parent.message_definition))))
                     .then(String::new),
@@ -352,6 +364,18 @@ pub fn import_bpmn(bytes: &[u8]) -> Result<PreservedBpmn, ImportError> {
                             && metadata_qname(ns, local, &attr_name.local_name))
                     {
                         let resolved = resolve_value(&reader, &value)?;
+                        // callableElement is not a rootElement substitution in
+                        // the pinned XSD. Its concrete root form uses xsi:type.
+                        if modeled
+                            && ns == Some(BPMN)
+                            && local == "rootElement"
+                            && attr_name.namespace_uri.as_deref() == Some(XSI)
+                            && attr_name.local_name == "type"
+                            && resolved.namespace_uri.as_deref() == Some(BPMN)
+                            && resolved.local_name == "tCallableElement"
+                        {
+                            frame.semantic_name = Some("callableElement".into());
+                        }
                         if report.qname_values.insert(resolved.clone()) {
                             account(&mut metadata_bytes, &resolved)?;
                         }
@@ -615,7 +639,75 @@ fn metadata_qname(ns: Option<&str>, element: &str, attr: &str) -> bool {
             ("itemDefinition", "structureRef")
                 | ("interface" | "operation", "implementationRef")
                 | ("resourceParameter", "type")
+                | ("correlationProperty", "type")
         )
+}
+
+// QName text is classified by its owning declaration, rather than just its
+// local name. Port/set references above remain IDREF-valued.
+fn activity_qname_text_reference(parent: Option<&str>, element: &str) -> bool {
+    match (parent, element) {
+        (
+            Some(
+                "callableElement"
+                | "process"
+                | "globalTask"
+                | "globalManualTask"
+                | "globalBusinessRuleTask"
+                | "globalScriptTask"
+                | "globalUserTask",
+            ),
+            "supportedInterfaceRef",
+        )
+        | (Some("process"), "supports")
+        | (
+            Some("resourceRole" | "performer" | "humanPerformer" | "potentialOwner"),
+            "resourceRef",
+        )
+        | (Some("correlationKey"), "correlationPropertyRef")
+        | (Some("multiInstanceLoopCharacteristics"), "loopDataInputRef" | "loopDataOutputRef") => {
+            true
+        }
+        (Some(parent), "categoryValueRef") => flow_element_name(parent),
+        _ => false,
+    }
+}
+
+fn flow_element_name(name: &str) -> bool {
+    matches!(
+        name,
+        "task"
+            | "userTask"
+            | "manualTask"
+            | "serviceTask"
+            | "scriptTask"
+            | "sendTask"
+            | "receiveTask"
+            | "businessRuleTask"
+            | "callActivity"
+            | "subProcess"
+            | "adHocSubProcess"
+            | "transaction"
+            | "startEvent"
+            | "endEvent"
+            | "intermediateCatchEvent"
+            | "intermediateThrowEvent"
+            | "boundaryEvent"
+            | "implicitThrowEvent"
+            | "event"
+            | "exclusiveGateway"
+            | "inclusiveGateway"
+            | "complexGateway"
+            | "parallelGateway"
+            | "eventBasedGateway"
+            | "sequenceFlow"
+            | "dataObject"
+            | "dataObjectReference"
+            | "dataStoreReference"
+            | "choreographyTask"
+            | "callChoreography"
+            | "subChoreography"
+    )
 }
 fn account(budget: &mut usize, value: &ExpandedName) -> Result<(), ImportError> {
     *budget += value.local_name.len() + value.namespace_uri.as_ref().map_or(0, String::len);
@@ -643,6 +735,17 @@ fn known_reference(ns: Option<&str>, element: &str, attr: &str) -> bool {
                 "sequenceFlow" | "messageFlow" | "association",
                 "sourceRef" | "targetRef"
             ) | ("participant", "processRef")
+                | ("callActivity", "calledElement")
+                | ("process", "definitionalCollaborationRef")
+                | ("correlationSubscription", "correlationKeyRef")
+                | ("correlationPropertyBinding", "correlationPropertyRef")
+                | ("correlationPropertyRetrievalExpression", "messageRef")
+                | ("resourceParameterBinding", "parameterRef")
+                | (
+                    "multiInstanceLoopCharacteristics",
+                    "oneBehaviorEventRef" | "noneBehaviorEventRef"
+                )
+                | ("messageFlow", "messageRef")
                 | ("lane", "partitionElementRef")
                 | ("boundaryEvent", "attachedToRef")
                 | ("dataObjectReference", "dataObjectRef")
@@ -663,7 +766,10 @@ fn known_reference(ns: Option<&str>, element: &str, attr: &str) -> bool {
                         | "sendTask"
                         | "receiveTask"
                         | "businessRuleTask"
-                        | "subProcess",
+                        | "subProcess"
+                        | "callActivity"
+                        | "transaction"
+                        | "adHocSubProcess",
                     "default"
                 )
                 | (
@@ -684,6 +790,8 @@ fn known_reference(ns: Option<&str>, element: &str, attr: &str) -> bool {
                         | "dataStoreReference"
                         | "dataInput"
                         | "dataOutput"
+                        | "inputDataItem"
+                        | "outputDataItem"
                         | "property",
                     "itemSubjectRef"
                 )

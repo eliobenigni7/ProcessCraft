@@ -279,6 +279,21 @@ pub fn find_flow<'a>(document: &'a BpmnDocument, id: &ElementSelector) -> Option
         })
 }
 pub fn element_name<'a>(document: &'a BpmnDocument, id: &ElementSelector) -> Option<&'a str> {
+    if let Some(task) = document.global_tasks.iter().find(|task| {
+        task.id
+            .as_ref()
+            .is_some_and(|identity| &identity.selector() == id)
+    }) {
+        return Some(task.name.as_deref().unwrap_or(""));
+    }
+    if let Some(property) = document.correlation_properties.iter().find(|property| {
+        property
+            .id
+            .as_ref()
+            .is_some_and(|identity| &identity.selector() == id)
+    }) {
+        return Some(property.name.as_deref().unwrap_or(""));
+    }
     for scope in scopes(document) {
         if &scope.id.selector() == id {
             return Some(scope.name);

@@ -20,6 +20,145 @@ fn project() -> ProjectData {
 }
 
 #[test]
+fn expanded_activity_capability_covers_live_and_frozen_documents() {
+    use processcraft_core::{
+        bpmn_activity::{CallableMetadata, GlobalTask, GlobalTaskKind},
+        ids::CheckpointId,
+        model::{BpmnDocument, Checkpoint, FrozenProject},
+    };
+    let mut project = project();
+    let mut doc = BpmnDocument::new("document".into(), "defs".parse().unwrap());
+    doc.global_tasks.push(GlobalTask {
+        id: Some("globalTask".parse().unwrap()),
+        base: None,
+        name: Some("Callable".into()),
+        callable: CallableMetadata::default(),
+        io_specification: None,
+        resource_roles: vec![],
+        kind: GlobalTaskKind::Manual,
+    });
+    project.documents.push(Arc::new(doc));
+    let frozen = FrozenProject::capture(&project);
+    for frozen_only in [false, true] {
+        if frozen_only {
+            Arc::make_mut(&mut project.documents[0])
+                .global_tasks
+                .clear();
+            project.checkpoints.push(Checkpoint {
+                id: CheckpointId::new(),
+                name: "snapshot".into(),
+                created_unix_ms: 0,
+                content: frozen.clone(),
+            });
+        }
+        let bytes = write_bytes(&project).unwrap();
+        let mut archived = entries(&bytes);
+        let manifest: serde_json::Value = serde_json::from_slice(
+            &archived
+                .iter()
+                .find(|(name, _)| name == "manifest.json")
+                .unwrap()
+                .1,
+        )
+        .unwrap();
+        assert!(
+            manifest["required_capabilities"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|value| value == "bpmn-expanded-activities-v1")
+        );
+        assert_eq!(
+            load_bytes(&bytes)
+                .unwrap()
+                .project
+                .content_identity()
+                .unwrap(),
+            project.content_identity().unwrap()
+        );
+        edit_json(&mut archived, "manifest.json", |value| {
+            value["required_capabilities"] = serde_json::json!(["comments", "checkpoints"])
+        });
+        assert!(
+            load_bytes(&archive(&archived))
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("expanded activities require capability")
+        );
+    }
+}
+
+#[test]
+fn expanded_activity_capability_covers_omitted_legacy_attributes_and_flow_metadata() {
+    use processcraft_core::{
+        bpmn_activity::FlowElementMetadata,
+        bpmn_model::{LoopCharacteristics, NodeDetails},
+        model::NodeKind,
+    };
+    let baseline =
+        include_bytes!("../../../tests/fixtures/native/identity-baseline-2f0f770.processcraft");
+    for case in 0..3 {
+        let mut project = load_bytes(baseline).unwrap().project;
+        let document = Arc::make_mut(&mut project.documents[0]);
+        match case {
+            0 => {
+                let node = &mut document.processes[0].nodes[0];
+                node.kind = NodeKind::CallActivity;
+                node.details = Some(NodeDetails::CallActivity {
+                    called_element: None,
+                });
+            }
+            1 => {
+                document.processes[0].nodes[0].loop_characteristics =
+                    Some(LoopCharacteristics::Standard {
+                        id: None,
+                        base: None,
+                        test_before: None,
+                        condition: None,
+                        maximum: None,
+                    })
+            }
+            _ => {
+                document.processes[0].nodes[0].flow_metadata = Some(FlowElementMetadata::default())
+            }
+        }
+        let bytes = write_bytes(&project).unwrap();
+        let mut archived = entries(&bytes);
+        let manifest: serde_json::Value = serde_json::from_slice(
+            &archived
+                .iter()
+                .find(|(name, _)| name == "manifest.json")
+                .unwrap()
+                .1,
+        )
+        .unwrap();
+        assert!(
+            manifest["required_capabilities"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|value| value == "bpmn-expanded-activities-v1"),
+            "case {case}"
+        );
+        edit_json(&mut archived, "manifest.json", |value| {
+            value["required_capabilities"]
+                .as_array_mut()
+                .unwrap()
+                .retain(|capability| capability != "bpmn-expanded-activities-v1")
+        });
+        assert!(
+            load_bytes(&archive(&archived))
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("expanded activities require capability"),
+            "case {case}"
+        );
+    }
+}
+
+#[test]
 fn immutable_pre_identity_migration_archive_preserves_identity() {
     use sha2::{Digest, Sha256};
     let bytes =
@@ -261,6 +400,7 @@ fn historical_unresolved_activity_bindings_round_trip_without_new_capabilities()
         })
     };
     doc.processes.push(Process {
+        activity_metadata: None,
         base_extras: None,
         is_executable: Some(false),
         io_specification: None,
@@ -273,6 +413,7 @@ fn historical_unresolved_activity_bindings_round_trip_without_new_capabilities()
         data_objects: vec![],
         data_associations: vec![],
         nodes: vec![Node {
+            flow_metadata: None,
             base_extras: None,
             item_aware: None,
             id: "task".parse().unwrap(),
@@ -608,6 +749,7 @@ fn structured_expression_capability_covers_live_and_checkpoint_documents() {
     };
     let mut p = project();
     let node = |id: &str| Node {
+        flow_metadata: None,
         base_extras: None,
         item_aware: None,
         id: id.parse().unwrap(),
@@ -623,6 +765,7 @@ fn structured_expression_capability_covers_live_and_checkpoint_documents() {
     };
     let mut doc = BpmnDocument::new("document".into(), "defs".parse().unwrap());
     doc.processes.push(Process {
+        activity_metadata: None,
         base_extras: None,
         is_executable: Some(false),
         io_specification: None,
@@ -637,6 +780,7 @@ fn structured_expression_capability_covers_live_and_checkpoint_documents() {
         nodes: vec![node("a"), node("b")],
         lanes: vec![],
         flows: vec![Flow {
+            flow_metadata: None,
             base_extras: None,
             id: "flow".parse().unwrap(),
             kind: FlowKind::Sequence,
@@ -785,6 +929,7 @@ fn compensation_event_capability_covers_live_and_checkpoint_documents() {
         io: None,
     };
     doc.processes.push(Process {
+        activity_metadata: None,
         base_extras: None,
         is_executable: Some(false),
         io_specification: None,
@@ -797,6 +942,7 @@ fn compensation_event_capability_covers_live_and_checkpoint_documents() {
         data_objects: vec![],
         data_associations: vec![],
         nodes: vec![Node {
+            flow_metadata: None,
             base_extras: None,
             item_aware: None,
             id: "event".parse().unwrap(),
@@ -1062,6 +1208,7 @@ fn schema_two_round_trips_dictionary_entries() {
     });
     let mut doc = BpmnDocument::new("document".into(), "defs".parse().unwrap());
     doc.processes.push(Process {
+        activity_metadata: None,
         base_extras: None,
         is_executable: Some(false),
         io_specification: None,
@@ -1360,6 +1507,7 @@ fn identity_capability_covers_independent_new_fields() {
         item_ref: None,
     });
     doc.processes.push(Process {
+        activity_metadata: None,
         base_extras: None,
         id: "process".parse().unwrap(),
         name: Some("Process".into()),
@@ -1395,6 +1543,7 @@ fn identity_capability_covers_independent_new_fields() {
             2 => Arc::make_mut(&mut p.documents[0]).processes[0]
                 .nodes
                 .push(Node {
+                    flow_metadata: None,
                     base_extras: None,
                     id: "annotation".parse().unwrap(),
                     name: Some(String::new()),
@@ -1424,6 +1573,7 @@ fn identity_capability_covers_independent_new_fields() {
             }),
             4 => {
                 Arc::make_mut(&mut p.documents[0]).collaboration = Some(Collaboration {
+                    correlation_keys: vec![],
                     base: None,
                     id: "collaboration".parse().unwrap(),
                     name: Some(String::new()),
@@ -1518,6 +1668,7 @@ fn expanded_events_and_di_capability_round_trips_live_and_checkpoint() {
         expression: None,
     });
     doc.processes.push(Process {
+        activity_metadata: None,
         base_extras: None,
         id: "process".parse().unwrap(),
         name: Some("Process".into()),
@@ -1530,6 +1681,7 @@ fn expanded_events_and_di_capability_round_trips_live_and_checkpoint() {
         data_objects: vec![],
         data_associations: vec![],
         nodes: vec![Node {
+            flow_metadata: None,
             base_extras: None,
             id: "event".parse().unwrap(),
             name: Some("Start".into()),
@@ -1727,6 +1879,7 @@ fn expanded_events_and_di_capability_detects_independent_features() {
             }
         }
         doc.processes.push(Process {
+            activity_metadata: None,
             base_extras: None,
             id: "process".parse().unwrap(),
             name: Some("Process".into()),
@@ -1739,6 +1892,7 @@ fn expanded_events_and_di_capability_detects_independent_features() {
             data_objects: vec![],
             data_associations: vec![],
             nodes: vec![Node {
+                flow_metadata: None,
                 base_extras: None,
                 id: "start".parse().unwrap(),
                 name: Some("Start".into()),
@@ -1805,6 +1959,7 @@ fn legacy_timer_choice_and_local_reference_keep_old_json_shape() {
     let mut p = ProjectData::new("legacy timer".into());
     let mut doc = BpmnDocument::new("doc".into(), "defs".parse().unwrap());
     doc.processes.push(Process {
+        activity_metadata: None,
         base_extras: None,
         id: "process".parse().unwrap(),
         name: Some("process".into()),
@@ -1817,6 +1972,7 @@ fn legacy_timer_choice_and_local_reference_keep_old_json_shape() {
         data_objects: vec![],
         data_associations: vec![],
         nodes: vec![Node {
+            flow_metadata: None,
             base_extras: None,
             id: "start".parse().unwrap(),
             name: Some("start".into()),

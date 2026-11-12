@@ -40,6 +40,64 @@ fn definition(
     let id = value.id().cloned();
     metadata(id.as_ref(), value.base_mut(), visit);
 }
+fn flow_metadata(
+    value: &mut Option<crate::bpmn_activity::FlowElementMetadata>,
+    visit: &mut impl FnMut(Option<&ElementIdentity>, &mut Option<BaseMetadata>),
+) {
+    if let Some(value) = value {
+        for owner in [&mut value.auditing, &mut value.monitoring]
+            .into_iter()
+            .flatten()
+        {
+            metadata(owner.id.as_ref(), &mut owner.base, visit);
+        }
+    }
+}
+fn keys(
+    values: &mut [crate::bpmn_activity::CorrelationKey],
+    visit: &mut impl FnMut(Option<&ElementIdentity>, &mut Option<BaseMetadata>),
+) {
+    for value in values {
+        metadata(value.id.as_ref(), &mut value.base, visit);
+    }
+}
+fn roles(
+    values: &mut [crate::bpmn_activity::ResourceRole],
+    visit: &mut impl FnMut(Option<&ElementIdentity>, &mut Option<BaseMetadata>),
+) {
+    use crate::bpmn_activity::ResourceRoleAssignment;
+    for value in values {
+        metadata(value.id.as_ref(), &mut value.base, visit);
+        match &mut value.assignment {
+            ResourceRoleAssignment::Resource { bindings, .. } => {
+                for binding in bindings {
+                    metadata(binding.id.as_ref(), &mut binding.base, visit);
+                }
+            }
+            ResourceRoleAssignment::Expression { assignment } => {
+                metadata(assignment.id.as_ref(), &mut assignment.base, visit)
+            }
+            ResourceRoleAssignment::None => {}
+        }
+    }
+}
+fn callable(
+    value: &mut crate::bpmn_activity::CallableMetadata,
+    visit: &mut impl FnMut(Option<&ElementIdentity>, &mut Option<BaseMetadata>),
+) {
+    for binding in &mut value.io_bindings {
+        metadata(binding.id.as_ref(), &mut binding.base, visit);
+    }
+}
+fn properties(
+    values: &mut [crate::bpmn_model::EventProperty],
+    visit: &mut impl FnMut(Option<&ElementIdentity>, &mut Option<BaseMetadata>),
+) {
+    for value in values {
+        metadata(value.id.as_ref(), &mut value.base, visit);
+        state(&mut value.item_aware, visit);
+    }
+}
 fn scope(
     nodes: &mut [Node],
     lanes: &mut [Lane],
@@ -61,6 +119,7 @@ fn scope(
         metadata(Some(&group.id), &mut group.base, visit);
     }
     for object in objects {
+        flow_metadata(&mut object.flow_metadata, visit);
         metadata(object.id.as_ref(), &mut object.base, visit);
         state(&mut object.item_aware, visit);
     }
@@ -71,6 +130,14 @@ fn scope(
         }
     }
     for node in nodes {
+        flow_metadata(&mut node.flow_metadata, visit);
+        if let Some(activity) = &mut node.activity {
+            properties(&mut activity.properties, visit);
+            roles(&mut activity.resource_roles, visit);
+            for value in &mut activity.renderings {
+                metadata(value.id.as_ref(), &mut value.base, visit);
+            }
+        }
         state(&mut node.item_aware, visit);
         if let Some(spec) = &mut node.io_specification {
             io(spec, visit);
@@ -78,6 +145,42 @@ fn scope(
         if let Some(characteristics) = &mut node.loop_characteristics {
             let id = characteristics.id().cloned();
             metadata(id.as_ref(), characteristics.base_mut(), visit);
+            if let crate::bpmn_model::LoopCharacteristics::MultiInstance {
+                input_data_item,
+                output_data_item,
+                complex_behavior_definitions,
+                ..
+            } = characteristics
+            {
+                for port in [input_data_item, output_data_item].into_iter().flatten() {
+                    metadata(port.id.as_ref(), &mut port.base, visit);
+                    state(&mut port.item_aware, visit);
+                }
+                for behavior in complex_behavior_definitions {
+                    metadata(behavior.id.as_ref(), &mut behavior.base, visit);
+                    if let Some(event) = &mut behavior.event {
+                        metadata(event.id.as_ref(), &mut event.base, visit);
+                        flow_metadata(&mut event.flow, visit);
+                        properties(&mut event.properties, visit);
+                        for port in &mut event.inputs {
+                            metadata(port.id.as_ref(), &mut port.base, visit);
+                            state(&mut port.item_aware, visit);
+                        }
+                        if let Some(set) = &mut event.input_set {
+                            metadata(set.id.as_ref(), &mut set.base, visit);
+                        }
+                        for association in &mut event.input_associations {
+                            metadata(association.id.as_ref(), &mut association.base, visit);
+                            for assignment in &mut association.assignments {
+                                metadata(assignment.id.as_ref(), &mut assignment.base, visit);
+                            }
+                        }
+                        for value in &mut event.definitions {
+                            definition(value, visit);
+                        }
+                    }
+                }
+            }
         }
         use crate::bpmn_model::{EventIo, NodeDetails};
         match &mut node.details {
@@ -130,13 +233,34 @@ fn scope(
             _ => {}
         }
     }
-    let _ = flows;
+    for flow in flows {
+        flow_metadata(&mut flow.flow_metadata, visit);
+    }
 }
 pub fn visit_base_metadata_mut(
     d: &mut BpmnDocument,
     mut visit: impl FnMut(Option<&ElementIdentity>, &mut Option<BaseMetadata>),
 ) {
     use crate::bpmn_model::EventResource;
+    for property in &mut d.correlation_properties {
+        metadata(property.id.as_ref(), &mut property.base, &mut visit);
+        for retrieval in &mut property.retrieval_expressions {
+            metadata(retrieval.id.as_ref(), &mut retrieval.base, &mut visit);
+        }
+    }
+    for task in &mut d.global_tasks {
+        metadata(task.id.as_ref(), &mut task.base, &mut visit);
+        callable(&mut task.callable, &mut visit);
+        roles(&mut task.resource_roles, &mut visit);
+        if let Some(spec) = &mut task.io_specification {
+            io(spec, &mut visit);
+        }
+        if let crate::bpmn_activity::GlobalTaskKind::User { renderings, .. } = &mut task.kind {
+            for value in renderings {
+                metadata(value.id.as_ref(), &mut value.base, &mut visit);
+            }
+        }
+    }
     for relationship in &mut d.relationships {
         metadata(relationship.id.as_ref(), &mut relationship.base, &mut visit);
     }
@@ -178,6 +302,23 @@ pub fn visit_base_metadata_mut(
         }
     }
     for process in &mut d.processes {
+        if let Some(value) = &mut process.activity_metadata {
+            callable(&mut value.callable, &mut visit);
+            for owner in [&mut value.auditing, &mut value.monitoring]
+                .into_iter()
+                .flatten()
+            {
+                metadata(owner.id.as_ref(), &mut owner.base, &mut visit);
+            }
+            properties(&mut value.properties, &mut visit);
+            roles(&mut value.resource_roles, &mut visit);
+            for subscription in &mut value.correlation_subscriptions {
+                metadata(subscription.id.as_ref(), &mut subscription.base, &mut visit);
+                for binding in &mut subscription.bindings {
+                    metadata(binding.id.as_ref(), &mut binding.base, &mut visit);
+                }
+            }
+        }
         metadata(
             process.lane_set_id.as_ref(),
             &mut process.lane_set_base,
@@ -197,11 +338,16 @@ pub fn visit_base_metadata_mut(
         );
     }
     if let Some(c) = &mut d.collaboration {
+        keys(&mut c.correlation_keys, &mut visit);
+        for flow in &mut c.flows {
+            flow_metadata(&mut flow.flow_metadata, &mut visit);
+        }
         metadata(Some(&c.id), &mut c.base, &mut visit);
         for p in &mut c.participants {
             metadata(Some(&p.id), &mut p.base, &mut visit);
         }
         for n in &mut c.conversation_nodes {
+            keys(&mut n.correlation_keys, &mut visit);
             metadata(Some(&n.id), &mut n.base, &mut visit);
         }
         for l in &mut c.conversation_links {
@@ -214,7 +360,12 @@ pub fn visit_base_metadata_mut(
             metadata(Some(&p.id), &mut p.base, &mut visit);
         }
         for a in &mut c.activities {
+            flow_metadata(&mut a.flow_metadata, &mut visit);
+            keys(&mut a.correlation_keys, &mut visit);
             metadata(Some(&a.id), &mut a.base, &mut visit);
+        }
+        for flow in c.sequence_flows.iter_mut().chain(&mut c.message_flows) {
+            flow_metadata(&mut flow.flow_metadata, &mut visit);
         }
     }
 }
@@ -270,6 +421,29 @@ fn expression_definition(
         _ => {}
     }
 }
+fn role_expressions(
+    roles: &mut [crate::bpmn_activity::ResourceRole],
+    visit: &mut impl FnMut(&mut crate::bpmn_model::Expression),
+) {
+    use crate::bpmn_activity::ResourceRoleAssignment;
+    for role in roles {
+        match &mut role.assignment {
+            ResourceRoleAssignment::Resource { bindings, .. } => {
+                for binding in bindings {
+                    if let Some(expression) = &mut binding.expression {
+                        visit(expression);
+                    }
+                }
+            }
+            ResourceRoleAssignment::Expression { assignment } => {
+                if let Some(expression) = &mut assignment.expression {
+                    visit(expression);
+                }
+            }
+            ResourceRoleAssignment::None => {}
+        }
+    }
+}
 fn expression_scope(
     nodes: &mut [Node],
     flows: &mut [Flow],
@@ -291,6 +465,9 @@ fn expression_scope(
         }
     }
     for node in nodes {
+        if let Some(activity) = &mut node.activity {
+            role_expressions(&mut activity.resource_roles, visit);
+        }
         if let Some(activity) = &mut node.activity
             && let Some(expression) = &mut activity.completion_condition
         {
@@ -307,8 +484,28 @@ fn expression_scope(
                 LoopCharacteristics::MultiInstance {
                     cardinality,
                     completion_condition,
+                    complex_behavior_definitions,
                     ..
                 } => {
+                    for behavior in complex_behavior_definitions {
+                        if let Some(expression) = &mut behavior.condition {
+                            visit(expression);
+                        }
+                        if let Some(event) = &mut behavior.event {
+                            for definition in &mut event.definitions {
+                                expression_definition(definition, visit);
+                            }
+                            for association in &mut event.input_associations {
+                                if let Some(expression) = &mut association.transformation {
+                                    visit(expression);
+                                }
+                                for assignment in &mut association.assignments {
+                                    visit(&mut assignment.from);
+                                    visit(&mut assignment.to);
+                                }
+                            }
+                        }
+                    }
                     if let Some(expression) = cardinality {
                         visit(expression);
                     }
@@ -342,10 +539,30 @@ pub fn visit_expressions_mut(
     d: &mut BpmnDocument,
     mut visit: impl FnMut(&mut crate::bpmn_model::Expression),
 ) {
+    for property in &mut d.correlation_properties {
+        for retrieval in &mut property.retrieval_expressions {
+            if let Some(expression) = &mut retrieval.message_path {
+                visit(expression);
+            }
+        }
+    }
+    for task in &mut d.global_tasks {
+        role_expressions(&mut task.resource_roles, &mut visit);
+    }
     for definition in &mut d.root_event_definitions {
         expression_definition(definition, &mut visit);
     }
     for process in &mut d.processes {
+        if let Some(metadata) = &mut process.activity_metadata {
+            role_expressions(&mut metadata.resource_roles, &mut visit);
+            for subscription in &mut metadata.correlation_subscriptions {
+                for binding in &mut subscription.bindings {
+                    if let Some(expression) = &mut binding.data_path {
+                        visit(expression);
+                    }
+                }
+            }
+        }
         expression_scope(
             &mut process.nodes,
             &mut process.flows,

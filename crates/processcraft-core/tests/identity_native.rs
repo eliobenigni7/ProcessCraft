@@ -19,6 +19,7 @@ fn native_graph_identity_is_stable_and_duplicate_xml_ids_are_rejected() {
     let b = native();
     let flow_id = native();
     let node = |id| Node {
+        flow_metadata: None,
         base_extras: None,
         id,
         name: None,
@@ -34,6 +35,7 @@ fn native_graph_identity_is_stable_and_duplicate_xml_ids_are_rejected() {
     };
     let mut document = BpmnDocument::new("doc".into(), native());
     document.processes.push(Process {
+        activity_metadata: None,
         base_extras: None,
         lane_set_base: None,
         is_executable: Some(false),
@@ -48,6 +50,7 @@ fn native_graph_identity_is_stable_and_duplicate_xml_ids_are_rejected() {
         nodes: vec![node(a.clone()), node(b.clone())],
         lanes: vec![],
         flows: vec![Flow {
+            flow_metadata: None,
             base_extras: None,
             id: flow_id,
             source: a.selector(),
@@ -137,6 +140,7 @@ fn empty_definitions_namespace_is_valid_model_data() {
 fn new_diagram_and_collaboration_names_require_native_capability() {
     let mut doc = BpmnDocument::new("doc".into(), xid("defs").into());
     doc.collaboration = Some(Collaboration {
+        correlation_keys: vec![],
         base: None,
         id: xid("collab").into(),
         name: None,

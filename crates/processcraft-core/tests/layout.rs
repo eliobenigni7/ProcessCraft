@@ -15,6 +15,7 @@ where
 fn fixture() -> BpmnDocument {
     let mut d = BpmnDocument::new("Example".into(), id("defs"));
     d.processes.push(Process {
+        activity_metadata: None,
         base_extras: None,
         is_executable: Some(false),
         io_specification: None,
@@ -29,6 +30,7 @@ fn fixture() -> BpmnDocument {
         nodes: ["a", "b", "c", "d"]
             .iter()
             .map(|s| Node {
+                flow_metadata: None,
                 base_extras: None,
                 item_aware: None,
                 activity: None,
@@ -80,6 +82,7 @@ fn fixture() -> BpmnDocument {
 }
 fn flow(d: &mut BpmnDocument, name: &str, a: &str, b: &str) {
     d.processes[0].flows.push(Flow {
+        flow_metadata: None,
         base_extras: None,
         association_direction: None,
         id: id(name),
@@ -388,6 +391,7 @@ fn maximum_shape_count_is_bounded_and_above_limits_refused() {
     for i in 4..400 {
         let node_id: ElementIdentity = id(&format!("node_{i}"));
         d.processes[0].nodes.push(Node {
+            flow_metadata: None,
             base_extras: None,
             item_aware: None,
             activity: None,
@@ -463,6 +467,7 @@ fn one_pool_contains_lanes_and_unlaned_band() {
         members: vec![id("a")],
     });
     d.collaboration = Some(Collaboration {
+        correlation_keys: vec![],
         base: None,
         name: None,
         id: id("collab"),

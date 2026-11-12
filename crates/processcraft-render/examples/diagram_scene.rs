@@ -76,6 +76,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     .enumerate()
     {
         nodes.push(Node {
+            flow_metadata: None,
             item_aware: None,
             activity: None,
             io_specification: None,
@@ -154,6 +155,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut edges = Vec::new();
     for (i, (key, source, target, kind, pts)) in specs.into_iter().enumerate() {
         flows.push(Flow {
+            flow_metadata: None,
             association_direction: None,
             id: id(key),
             kind,
@@ -176,6 +178,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         });
     }
     d.processes.push(Process {
+        activity_metadata: None,
         is_executable: Some(false),
         io_specification: None,
         lane_set_id: None,

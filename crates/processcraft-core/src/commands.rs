@@ -21,6 +21,14 @@ pub struct Envelope {
 #[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
 #[allow(clippy::large_enum_variant)]
 pub enum Mutation {
+    SetGlobalTasks {
+        document_id: DocumentId,
+        global_tasks: Vec<crate::bpmn_activity::GlobalTask>,
+    },
+    SetCorrelationProperties {
+        document_id: DocumentId,
+        correlation_properties: Vec<crate::bpmn_activity::CorrelationProperty>,
+    },
     SetExpression {
         document_id: DocumentId,
         expression_id: ElementSelector,
@@ -136,9 +144,28 @@ pub enum Mutation {
         process_id: ElementSelector,
         is_executable: Option<bool>,
     },
+    SetProcessActivityMetadata {
+        document_id: DocumentId,
+        process_id: ElementSelector,
+        metadata: Option<crate::bpmn_activity::ProcessActivityMetadata>,
+    },
+    SetNodeFlowMetadata {
+        document_id: DocumentId,
+        element_id: ElementSelector,
+        metadata: Option<crate::bpmn_activity::FlowElementMetadata>,
+    },
+    SetFlowMetadata {
+        document_id: DocumentId,
+        element_id: ElementSelector,
+        metadata: Option<crate::bpmn_activity::FlowElementMetadata>,
+    },
     SetCollaborationName {
         document_id: DocumentId,
         name: Option<String>,
+    },
+    SetCollaborationCorrelationKeys {
+        document_id: DocumentId,
+        correlation_keys: Vec<crate::bpmn_activity::CorrelationKey>,
     },
     SetDiagramName {
         document_id: DocumentId,
@@ -663,6 +690,23 @@ impl Session {
         let mut promoted_identities = Vec::new();
         match request {
             Request::Batch { mutations } => {
+                let cleanup_activity_navigation = mutations.iter().any(|mutation| {
+                    matches!(
+                        mutation,
+                        Mutation::SetGlobalTasks { .. }
+                            | Mutation::SetCorrelationProperties { .. }
+                            | Mutation::SetProcessActivityMetadata { .. }
+                            | Mutation::SetNodeFlowMetadata { .. }
+                            | Mutation::SetFlowMetadata { .. }
+                            | Mutation::SetCollaborationCorrelationKeys { .. }
+                            | Mutation::SetActivityProperties { .. }
+                            | Mutation::SetNodeLoop { .. }
+                            | Mutation::SetNodeDetails { .. }
+                            | Mutation::UpdateDataObject { .. }
+                            | Mutation::UpdateConversationNode { .. }
+                            | Mutation::UpdateChoreographyActivity { .. }
+                    )
+                });
                 if envelope.expected_generation.is_none()
                     && mutations
                         .iter()
@@ -740,6 +784,18 @@ impl Session {
                     }
                 }
                 reject_newly_dangling_relationships(&self.project, &candidate)?;
+                reject_new_activity_reference_issues(
+                    &self.project,
+                    &candidate,
+                    &selector_mappings,
+                )?;
+                if cleanup_activity_navigation {
+                    prune_removed_activity_navigation(
+                        &self.project,
+                        &mut candidate,
+                        &selector_mappings,
+                    );
+                }
                 let id = candidate
                     .content_identity()
                     .map_err(CommandError::InvalidParams)?;
@@ -870,6 +926,137 @@ fn reject_implicit_native_xml_id_changes(
         }
     }
     Ok(())
+}
+fn reject_new_activity_reference_issues(
+    old: &ProjectData,
+    candidate: &ProjectData,
+    mappings: &[SelectorMapping],
+) -> Result<(), CommandError> {
+    for after in &candidate.documents {
+        let Some(before) = old.documents.iter().find(|doc| doc.id == after.id) else {
+            continue;
+        };
+        let mut previous = crate::validation::activity_family_reference_issues(before);
+        for issue in &mut previous {
+            for mapping in mappings
+                .iter()
+                .filter(|mapping| mapping.document_id == after.id)
+            {
+                if issue.owner == mapping.from {
+                    issue.owner = mapping.to.clone();
+                }
+                if let crate::bpmn_model::EventReference::Local(target) = &mut issue.target
+                    && *target == mapping.from
+                {
+                    *target = mapping.to.clone();
+                }
+            }
+        }
+        let next = crate::validation::activity_family_reference_issues(after);
+        if next.iter().any(|issue| {
+            next.iter().filter(|other| *other == issue).count()
+                > previous.iter().filter(|other| *other == issue).count()
+        }) {
+            return Err(invalid(
+                "change introduces an unresolved local activity reference",
+            ));
+        }
+        let mut old_resolutions = crate::validation::activity_family_reference_resolutions(before);
+        let new_resolutions = crate::validation::activity_family_reference_resolutions(after);
+        for resolution in &mut old_resolutions {
+            for mapping in mappings
+                .iter()
+                .filter(|mapping| mapping.document_id == after.id)
+            {
+                if resolution.reference.owner == mapping.from {
+                    resolution.reference.owner = mapping.to.clone();
+                }
+                if let crate::bpmn_model::EventReference::Local(target) =
+                    &mut resolution.reference.target
+                    && *target == mapping.from
+                {
+                    *target = mapping.to.clone();
+                }
+                if resolution.resolved_target == mapping.from {
+                    resolution.resolved_target = mapping.to.clone();
+                }
+            }
+        }
+        for old_resolution in &old_resolutions {
+            let old_count = old_resolutions
+                .iter()
+                .filter(|r| r.reference == old_resolution.reference)
+                .count();
+            let new_count = new_resolutions
+                .iter()
+                .filter(|r| r.reference == old_resolution.reference)
+                .count();
+            if new_count >= old_count && new_count > 0 {
+                let old_target_count = old_resolutions
+                    .iter()
+                    .filter(|r| {
+                        r.reference == old_resolution.reference
+                            && r.resolved_target == old_resolution.resolved_target
+                    })
+                    .count();
+                let new_target_count = new_resolutions
+                    .iter()
+                    .filter(|r| {
+                        r.reference == old_resolution.reference
+                            && r.resolved_target == old_resolution.resolved_target
+                    })
+                    .count();
+                if old_target_count > new_target_count {
+                    return Err(invalid("change would retarget a local activity reference"));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+fn prune_removed_activity_navigation(
+    old: &ProjectData,
+    candidate: &mut ProjectData,
+    mappings: &[SelectorMapping],
+) {
+    for before in &old.documents {
+        let Some(after) = candidate
+            .documents
+            .iter_mut()
+            .find(|doc| doc.id == before.id)
+        else {
+            continue;
+        };
+        let before_ids = crate::identity::semantic_ids(before);
+        let after_ids = crate::identity::semantic_ids(after);
+        let removed: std::collections::HashSet<_> = before_ids
+            .difference(&after_ids)
+            .filter(|id| {
+                !mappings
+                    .iter()
+                    .any(|mapping| mapping.document_id == before.id && &mapping.from == *id)
+            })
+            .cloned()
+            .collect();
+        if removed.is_empty() {
+            continue;
+        }
+        let document = Arc::make_mut(after);
+        for diagram in &mut document.diagrams {
+            diagram
+                .shapes
+                .retain(|shape| !removed.contains(&shape.element));
+            diagram
+                .edges
+                .retain(|edge| !removed.contains(&edge.element));
+        }
+        candidate.links.retain(|link| {
+            link.source.document_id != before.id || !removed.contains(&link.source.xml_id)
+        });
+        candidate.dictionary_links.retain(|link| {
+            link.source.document_id != before.id || !removed.contains(&link.source.xml_id)
+        });
+    }
 }
 fn reject_newly_dangling_relationships(
     old: &ProjectData,
@@ -1285,6 +1472,14 @@ fn collect_node_ids(
     depth: usize,
 ) {
     ids.insert(node.id.selector());
+    let activity = crate::activity_read::node_activity_read(node);
+    ids.extend(activity.ids.iter().map(|id| id.selector()));
+    for base in activity.bases {
+        collect_base_documentation_ids(Some(base), ids);
+    }
+    for expression in activity.expressions {
+        collect_expression_ids(expression, ids);
+    }
     if let crate::bpmn_metadata::DocumentationSet::Structured(items) = &node.documentation {
         for item in items {
             if let Some(id) = &item.id {
@@ -1636,6 +1831,11 @@ fn flow_mut<'a>(
             return Ok(flow);
         }
     }
+    for choreography in &mut d.choreographies {
+        if let Some(flow) = choreography.sequence_flows.iter_mut().find(|f| &f.id == id) {
+            return Ok(flow);
+        }
+    }
     d.collaboration
         .as_mut()
         .and_then(|c| c.flows.iter_mut().find(|f| &f.id == id))
@@ -1652,6 +1852,18 @@ fn diagram<'a>(
 }
 fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
     match m {
+        Mutation::SetGlobalTasks {
+            document_id,
+            global_tasks,
+        } => {
+            doc(p, document_id, true)?.global_tasks = global_tasks;
+        }
+        Mutation::SetCorrelationProperties {
+            document_id,
+            correlation_properties,
+        } => {
+            doc(p, document_id, true)?.correlation_properties = correlation_properties;
+        }
         Mutation::SetExpression {
             document_id,
             expression_id,
@@ -2096,8 +2308,40 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                 .ok_or_else(|| invalid("process not found"))?;
             process.is_executable = is_executable;
         }
+        Mutation::SetProcessActivityMetadata {
+            document_id,
+            process_id,
+            metadata,
+        } => {
+            let process = doc(p, document_id, true)?
+                .processes
+                .iter_mut()
+                .find(|process| process.id == process_id)
+                .ok_or_else(|| invalid("process not found"))?;
+            process.activity_metadata = metadata;
+        }
+        Mutation::SetNodeFlowMetadata {
+            document_id,
+            element_id,
+            metadata,
+        } => {
+            node_mut(doc(p, document_id, true)?, &element_id)?.flow_metadata = metadata;
+        }
+        Mutation::SetFlowMetadata {
+            document_id,
+            element_id,
+            metadata,
+        } => {
+            flow_mut(doc(p, document_id, true)?, &element_id)?.flow_metadata = metadata;
+        }
         Mutation::SetCollaborationName { document_id, name } => {
             collaboration_mut(doc(p, document_id, false)?)?.name = name;
+        }
+        Mutation::SetCollaborationCorrelationKeys {
+            document_id,
+            correlation_keys,
+        } => {
+            collaboration_mut(doc(p, document_id, true)?)?.correlation_keys = correlation_keys;
         }
         Mutation::SetDiagramName {
             document_id,
@@ -3051,6 +3295,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                 && (d.catalog.has_qname_refs()
                     || d.has_data_qname_refs()
                     || d.has_event_qname_refs()
+                    || d.has_activity_qname_refs()
                     || d.extensions.iter().any(|e| e.definition.is_some())
                     || d.relationships
                         .iter()
@@ -3324,6 +3569,8 @@ pub struct CommandParam {
 }
 macro_rules! descriptor { ($id:literal,$label:literal $(,$name:literal:$ty:literal)* $(,)?) => { CommandDescriptor { id: $id, serde_tag: $id, label: $label, params: &[$(CommandParam {name:$name,value_type:$ty,required:true}),*] } }; }
 static COMMAND_DESCRIPTORS: &[CommandDescriptor] = &[
+    descriptor!("setGlobalTasks", "Set global callable tasks", "document_id":"DocumentId", "global_tasks":"GlobalTask[]"),
+    descriptor!("setCorrelationProperties", "Set correlation properties", "document_id":"DocumentId", "correlation_properties":"CorrelationProperty[]"),
     descriptor!("setExpression", "Set structured expression", "document_id":"DocumentId", "expression_id":"ElementSelector", "expression":"Expression"),
     descriptor!("setDefinitionsExtensions", "Set definitions extensions", "document_id":"DocumentId", "extensions":"DefinitionsExtension[]"),
     descriptor!("setDefinitionsRelationships", "Set definitions relationships", "document_id":"DocumentId", "relationships":"DefinitionsRelationship[]"),
@@ -3345,6 +3592,10 @@ static COMMAND_DESCRIPTORS: &[CommandDescriptor] = &[
     descriptor!("setCollaborationName", "Set collaboration name", "document_id":"DocumentId", "name":"String|null"),
     descriptor!("setDiagramName", "Set diagram name", "document_id":"DocumentId", "diagram_id":"ElementSelector", "name":"String|null"),
     descriptor!("setProcessExecutable", "Set process executable attribute", "document_id":"DocumentId", "process_id":"ElementSelector", "is_executable":"bool|null"),
+    descriptor!("setCollaborationCorrelationKeys", "Set collaboration correlation keys", "document_id":"DocumentId", "correlation_keys":"CorrelationKey[]"),
+    descriptor!("setProcessActivityMetadata", "Set process activity metadata", "document_id":"DocumentId", "process_id":"ElementSelector", "metadata":"ProcessActivityMetadata|null"),
+    descriptor!("setNodeFlowMetadata", "Set node flow metadata", "document_id":"DocumentId", "element_id":"ElementSelector", "metadata":"FlowElementMetadata|null"),
+    descriptor!("setFlowMetadata", "Set flow metadata", "document_id":"DocumentId", "element_id":"ElementSelector", "metadata":"FlowElementMetadata|null"),
     descriptor!("setElementXmlId", "Set element XML ID", "document_id":"DocumentId", "element_id":"ElementSelector", "xml_id":"XmlId|null"),
     descriptor!("promoteElementIdentity", "Promote anonymous identity", "document_id":"DocumentId", "model_path":"String", "xml_id":"XmlId|null"),
     descriptor!("setTextAnnotation", "Set annotation text", "document_id":"DocumentId", "element_id":"ElementSelector", "text":"String|null"),

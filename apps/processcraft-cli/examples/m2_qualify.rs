@@ -50,6 +50,7 @@ fn fixture(docs: usize, nodes: usize, active: usize, resource: usize) -> Project
         for i in 0..count {
             let key = format!("node_{i}");
             ns.push(Node {
+                flow_metadata: None,
                 base_extras: None,
                 item_aware: None,
                 activity: None,
@@ -83,6 +84,7 @@ fn fixture(docs: usize, nodes: usize, active: usize, resource: usize) -> Project
             }
         }
         d.processes.push(Process {
+            activity_metadata: None,
             base_extras: None,
             is_executable: Some(false),
             io_specification: None,
@@ -171,6 +173,7 @@ fn fixture(docs: usize, nodes: usize, active: usize, resource: usize) -> Project
                 }
                 if i + 1 < process.nodes.len() {
                     process.flows.push(Flow {
+                        flow_metadata: None,
                         base_extras: None,
                         association_direction: None,
                         id: id(&format!("flow_{i}")),

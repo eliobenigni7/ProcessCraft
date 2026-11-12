@@ -363,7 +363,7 @@ pub enum NodeDetails {
         content: Box<crate::model::FlowContainer>,
     },
     CallActivity {
-        called_element: QNameRef,
+        called_element: Option<QNameRef>,
     },
     BoundaryEvent {
         attached_to: crate::ids::ElementSelector,
@@ -455,13 +455,14 @@ pub struct QNameRef {
 /// Qualified simple-text loop characteristics. Unsupported BPMN loop fields remain retained source.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
+#[allow(clippy::large_enum_variant)] // Retains the legacy unboxed field API and wire representation.
 pub enum LoopCharacteristics {
     Standard {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         id: Option<crate::ids::ElementIdentity>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         base: Option<crate::bpmn_metadata::BaseMetadata>,
-        test_before: bool,
+        test_before: Option<bool>,
         condition: Option<Expression>,
         maximum: Option<String>,
     },
@@ -470,7 +471,23 @@ pub enum LoopCharacteristics {
         id: Option<crate::ids::ElementIdentity>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         base: Option<crate::bpmn_metadata::BaseMetadata>,
-        is_sequential: bool,
+        is_sequential: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        behavior: Option<crate::bpmn_activity::MultiInstanceFlowCondition>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        loop_data_input_ref: Option<crate::bpmn_activity::ModelReference>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        loop_data_output_ref: Option<crate::bpmn_activity::ModelReference>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        input_data_item: Option<crate::bpmn_data::DataPort>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        output_data_item: Option<crate::bpmn_data::DataPort>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        complex_behavior_definitions: Vec<crate::bpmn_activity::ComplexBehaviorDefinition>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        one_behavior_event_ref: Option<crate::bpmn_activity::ModelReference>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        none_behavior_event_ref: Option<crate::bpmn_activity::ModelReference>,
         cardinality: Option<Expression>,
         completion_condition: Option<Expression>,
     },

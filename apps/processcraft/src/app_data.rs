@@ -81,6 +81,7 @@ struct ObjectDraft {
     value: DataObject,
     id: IdentityDraft,
     item: Option<ItemDraft>,
+    categories: Vec<super::event::ReferenceDraft>,
 }
 #[derive(Clone)]
 struct AssignmentDraft {
@@ -96,17 +97,17 @@ struct AssociationDraft {
     assignments: Vec<AssignmentDraft>,
 }
 #[derive(Clone)]
-struct PortDraft {
-    value: processcraft_core::bpmn_data::DataPort,
-    id: IdentityDraft,
-    item: Option<ItemDraft>,
+pub(super) struct PortDraft {
+    pub(super) value: processcraft_core::bpmn_data::DataPort,
+    pub(super) id: IdentityDraft,
+    pub(super) item: Option<ItemDraft>,
 }
 #[derive(Clone)]
-struct SetDraft {
-    value: processcraft_core::bpmn_data::IoSet,
-    id: IdentityDraft,
+pub(super) struct SetDraft {
+    pub(super) value: processcraft_core::bpmn_data::IoSet,
+    pub(super) id: IdentityDraft,
 }
-fn set_drafts(sets: &[processcraft_core::bpmn_data::IoSet]) -> Vec<SetDraft> {
+pub(super) fn set_drafts(sets: &[processcraft_core::bpmn_data::IoSet]) -> Vec<SetDraft> {
     sets.iter()
         .map(|value| SetDraft {
             value: value.clone(),
@@ -114,7 +115,9 @@ fn set_drafts(sets: &[processcraft_core::bpmn_data::IoSet]) -> Vec<SetDraft> {
         })
         .collect()
 }
-fn build_sets(sets: &[SetDraft]) -> Result<Vec<processcraft_core::bpmn_data::IoSet>, String> {
+pub(super) fn build_sets(
+    sets: &[SetDraft],
+) -> Result<Vec<processcraft_core::bpmn_data::IoSet>, String> {
     sets.iter()
         .map(|draft| {
             let mut value = draft.value.clone();
@@ -123,31 +126,51 @@ fn build_sets(sets: &[SetDraft]) -> Result<Vec<processcraft_core::bpmn_data::IoS
         })
         .collect()
 }
-fn reference_checkboxes(
+pub(super) fn reference_checkboxes(
     ui: &mut egui::Ui,
     label: &str,
     values: &mut Vec<ElementSelector>,
     candidates: &[ElementSelector],
 ) {
     ui.label(label);
-    let mut all = candidates.to_vec();
-    for value in values.iter() {
-        if !all.contains(value) {
-            all.push(value.clone());
+    let mut all = values.clone();
+    for candidate in candidates {
+        if !all.contains(candidate) {
+            all.push(candidate.clone());
         }
     }
-    for id in all {
-        let mut selected = values.contains(&id);
-        if ui.checkbox(&mut selected, id.to_string()).changed() {
-            if selected {
-                values.push(id);
-            } else {
-                values.retain(|value| value != &id);
-            }
-        }
+    let mut move_up = None;
+    for (index, id) in all.into_iter().enumerate() {
+        ui.push_id(index, |ui| {
+            let mut selected = values.contains(&id);
+            let display = match &id {
+                ElementSelector::Xml(id) => id.to_string(),
+                ElementSelector::Native { .. } => format!("Item {}", index + 1),
+            };
+            ui.horizontal(|ui| {
+                if ui.checkbox(&mut selected, display).changed() {
+                    if selected {
+                        values.push(id.clone());
+                    } else {
+                        values.retain(|value| value != &id);
+                    }
+                }
+                if let Some(position) = values.iter().position(|value| value == &id)
+                    && ui
+                        .add_enabled(position > 0, egui::Button::new("Move up"))
+                        .clicked()
+                {
+                    move_up = Some(position);
+                }
+            });
+        });
+    }
+    if let Some(position) = move_up {
+        values.swap(position, position - 1);
     }
 }
-fn sets_ui(
+
+pub(super) fn sets_ui(
     ui: &mut egui::Ui,
     title: &str,
     sets: &mut Vec<SetDraft>,
@@ -157,6 +180,7 @@ fn sets_ui(
     ui.push_id(title, |ui| {
         ui.label(title);
         let mut remove = None;
+        let mut up = None;
         for (i, set) in sets.iter_mut().enumerate() {
             ui.push_id(i, |ui| {
                 ui.label(format!("Set {}", i + 1));
@@ -181,6 +205,12 @@ fn sets_ui(
                     &mut set.value.counterpart_refs,
                     counterparts,
                 );
+                if ui
+                    .add_enabled(i > 0, egui::Button::new("Move set up"))
+                    .clicked()
+                {
+                    up = Some(i);
+                }
                 if ui.button("Remove set").clicked() {
                     remove = Some(i);
                 }
@@ -188,6 +218,8 @@ fn sets_ui(
         }
         if let Some(i) = remove {
             sets.remove(i);
+        } else if let Some(i) = up {
+            sets.swap(i, i - 1);
         }
         if ui
             .add_enabled(sets.len() < 256, egui::Button::new("Add set"))
@@ -414,6 +446,13 @@ impl DataDraft {
                 .data_objects
                 .iter()
                 .map(|v| ObjectDraft {
+                    categories: v.flow_metadata.as_ref().map_or_else(Vec::new, |metadata| {
+                        metadata
+                            .category_value_refs
+                            .iter()
+                            .map(super::event::ReferenceDraft::new)
+                            .collect()
+                    }),
                     value: v.clone(),
                     id: id_string(&v.id),
                     item: v.item_aware.as_ref().map(ItemDraft::from_item),
@@ -575,6 +614,13 @@ impl DataDraft {
                 let mut v = d.value.clone();
                 v.id = id_build(&d.id)?;
                 v.item_aware = build_item(&d.item)?;
+                if let Some(metadata) = &mut v.flow_metadata {
+                    metadata.category_value_refs = d
+                        .categories
+                        .iter()
+                        .map(super::event::ReferenceDraft::build)
+                        .collect::<Result<_, _>>()?;
+                }
                 Ok(v)
             })
             .collect::<Result<_, String>>()?;
@@ -607,6 +653,7 @@ impl DataDraft {
         &mut self,
         ui: &mut egui::Ui,
         expression_draft: &mut Option<super::inspector::ExpressionDraft>,
+        document: &BpmnDocument,
     ) {
         ui.collapsing("Data stores", |ui| {
             let mut remove = None;
@@ -655,6 +702,53 @@ impl DataDraft {
                     optional_text(ui, "Name", &mut draft.value.name);
                     optional_bool(ui, "Collection", &mut draft.value.is_collection);
                     item_ui(ui, &mut draft.item);
+                    ui.collapsing("Flow details", |ui| {
+                        let mut present = draft.value.flow_metadata.is_some();
+                        ui.checkbox(&mut present, "Flow details present");
+                        if present {
+                            let metadata = draft
+                                .value
+                                .flow_metadata
+                                .get_or_insert_with(Default::default);
+                            for (label, value) in [
+                                ("Auditing", &mut metadata.auditing),
+                                ("Monitoring", &mut metadata.monitoring),
+                            ] {
+                                let mut present = value.is_some();
+                                ui.checkbox(&mut present, label);
+                                if present {
+                                    value.get_or_insert_with(Default::default);
+                                } else {
+                                    *value = None;
+                                }
+                            }
+                            let choices = document
+                                .categories
+                                .iter()
+                                .flat_map(|c| &c.values)
+                                .enumerate()
+                                .map(|(i, v)| {
+                                    (
+                                        v.id.selector(),
+                                        super::event::local_choice_label(
+                                            v.value.as_deref(),
+                                            "Category value",
+                                            &v.id,
+                                            i + 1,
+                                        ),
+                                    )
+                                })
+                                .collect::<Vec<_>>();
+                            super::callable::reference_list_ui(
+                                ui,
+                                "Category value",
+                                &mut draft.categories,
+                                &choices,
+                            );
+                        } else {
+                            draft.value.flow_metadata = None;
+                        }
+                    });
                     if ui.button("Remove object").clicked() {
                         remove = Some(i);
                     }
@@ -668,7 +762,9 @@ impl DataDraft {
                 .clicked()
             {
                 self.objects.push(ObjectDraft {
+                    categories: Vec::new(),
                     value: DataObject {
+                        flow_metadata: None,
                         base: None,
                         id: None,
                         name: None,
@@ -691,24 +787,37 @@ impl DataDraft {
             .filter_map(|object| id_selector(&object.id))
             .chain(self.ancestor_objects.iter().cloned())
             .collect();
+        let target_label = |id: &ElementSelector| -> String {
+            processcraft_core::queries::element_name(document, id)
+                .filter(|name| !name.is_empty())
+                .map(str::to_owned)
+                .or_else(|| {
+                    processcraft_core::queries::element_identity(document, id)
+                        .and_then(|identity| identity.xml_id())
+                        .map(ToString::to_string)
+                })
+                .unwrap_or_else(|| "Unnamed item".into())
+        };
         ui.collapsing("Data reference metadata", |ui| {
             for (i, reference) in self.references.iter_mut().enumerate() {
                 ui.push_id(("reference", i), |ui| {
-                    ui.label(format!("{} · {}", reference.name, reference.id));
+                    ui.label(if reference.name.is_empty() {
+                        format!("Reference {}", i + 1)
+                    } else {
+                        reference.name.clone()
+                    });
                     item_ui(ui, &mut reference.item);
                     match &mut reference.target {
                         ReferenceTargetDraft::Object(target) => {
                             egui::ComboBox::from_label("Object definition")
-                                .selected_text(
-                                    target.as_ref().map_or("None".into(), ToString::to_string),
-                                )
+                                .selected_text(target.as_ref().map_or("None".into(), &target_label))
                                 .show_ui(ui, |ui| {
                                     ui.selectable_value(target, None, "None");
                                     for id in &object_targets {
                                         ui.selectable_value(
                                             target,
                                             Some(id.clone()),
-                                            id.to_string(),
+                                            target_label(id),
                                         );
                                     }
                                 });
@@ -735,17 +844,16 @@ impl DataDraft {
                                     StoreReferenceDraft::Legacy(local) => {
                                         egui::ComboBox::from_label("Choose local store")
                                             .selected_text(
-                                                local.as_ref().map_or(
-                                                    "Select store".into(),
-                                                    ToString::to_string,
-                                                ),
+                                                local
+                                                    .as_ref()
+                                                    .map_or("Select store".into(), &target_label),
                                             )
                                             .show_ui(ui, |ui| {
                                                 for id in &store_targets {
                                                     ui.selectable_value(
                                                         local,
                                                         Some(id.clone()),
-                                                        id.to_string(),
+                                                        target_label(id),
                                                     );
                                                 }
                                             });
@@ -768,7 +876,11 @@ impl DataDraft {
             for (i, io) in self.ios.iter_mut().enumerate() {
                 ui.push_id(("io", i), |ui| {
                     ui.separator();
-                    ui.label(format!("{} · {}", io.name, io.owner));
+                    ui.label(if io.name.is_empty() {
+                        "I/O specification"
+                    } else {
+                        &io.name
+                    });
                     optional_text(ui, "I/O specification ID", &mut io.id.value);
                     for (title, ports) in [("Inputs", &mut io.inputs), ("Outputs", &mut io.outputs)]
                     {
@@ -914,13 +1026,17 @@ impl DataDraft {
                     optional_text(ui, "ID", &mut draft.id.value);
                     use processcraft_core::bpmn_data::DataAssociationKind;
                     egui::ComboBox::from_label("Activity owner")
-                        .selected_text(draft.value.owner.to_string())
+                        .selected_text(target_label(&draft.value.owner))
                         .show_ui(ui, |ui| {
                             for (id, name, _, _, _) in &owner_choices {
                                 ui.selectable_value(
                                     &mut draft.value.owner,
                                     id.clone(),
-                                    format!("{name} · {id}"),
+                                    if name.is_empty() {
+                                        target_label(id)
+                                    } else {
+                                        name.clone()
+                                    },
                                 );
                             }
                         });
@@ -973,7 +1089,10 @@ impl DataDraft {
                     }
                     for candidate in candidates {
                         let mut included = draft.value.sources.contains(&candidate);
-                        if ui.checkbox(&mut included, candidate.to_string()).changed() {
+                        if ui
+                            .checkbox(&mut included, target_label(&candidate))
+                            .changed()
+                        {
                             if included {
                                 draft.value.sources.push(candidate);
                             } else {
@@ -982,13 +1101,13 @@ impl DataDraft {
                         }
                     }
                     egui::ComboBox::from_label("Target")
-                        .selected_text(draft.value.target.to_string())
+                        .selected_text(target_label(&draft.value.target))
                         .show_ui(ui, |ui| {
                             for candidate in target_candidates {
                                 ui.selectable_value(
                                     &mut draft.value.target,
                                     candidate.clone(),
-                                    candidate.to_string(),
+                                    target_label(candidate),
                                 );
                             }
                         });
@@ -1070,14 +1189,18 @@ impl DataDraft {
                 .selected_text(
                     self.new_owner
                         .as_ref()
-                        .map_or("Select activity".into(), ToString::to_string),
+                        .map_or("Select activity".into(), &target_label),
                 )
                 .show_ui(ui, |ui| {
                     for (id, name, _, _, _) in &owner_choices {
                         ui.selectable_value(
                             &mut self.new_owner,
                             Some(id.clone()),
-                            format!("{name} · {id}"),
+                            if name.is_empty() {
+                                target_label(id)
+                            } else {
+                                name.clone()
+                            },
                         );
                     }
                 });
@@ -1115,14 +1238,14 @@ impl DataDraft {
                 .selected_text(
                     self.new_target
                         .as_ref()
-                        .map_or("Select target".into(), ToString::to_string),
+                        .map_or("Select target".into(), &target_label),
                 )
                 .show_ui(ui, |ui| {
                     for target in targets {
                         ui.selectable_value(
                             &mut self.new_target,
                             Some(target.clone()),
-                            target.to_string(),
+                            target_label(target),
                         );
                     }
                 });
@@ -1334,7 +1457,7 @@ impl ProcessCraft {
         }
         let draft = self.data_draft.as_mut().unwrap();
         ui.strong("Data declarations");
-        draft.ui(ui, &mut self.expression_draft);
+        draft.ui(ui, &mut self.expression_draft, document);
         if !draft.error.is_empty() {
             ui.label(&draft.error);
         }
@@ -1454,6 +1577,7 @@ mod tests {
         let root_object: XmlId = "RootObject".parse().unwrap();
         let sibling_object: XmlId = "SiblingObject".parse().unwrap();
         document.processes[0].data_objects.push(DataObject {
+            flow_metadata: None,
             base: None,
             id: Some(root_object.clone().into()),
             name: None,
@@ -1461,6 +1585,7 @@ mod tests {
             item_aware: None,
         });
         let make_subprocess = |id: &str, objects: Vec<DataObject>| Node {
+            flow_metadata: None,
             base_extras: None,
             id: id.parse().unwrap(),
             name: None,
@@ -1485,6 +1610,7 @@ mod tests {
         document.processes[0].nodes.push(make_subprocess(
             "Sibling",
             vec![DataObject {
+                flow_metadata: None,
                 base: None,
                 id: Some(sibling_object.clone().into()),
                 name: None,
@@ -1625,6 +1751,7 @@ mod tests {
             item_aware: None,
         });
         document.processes[0].data_objects.push(DataObject {
+            flow_metadata: None,
             base: None,
             id: None,
             name: Some(String::new()),
@@ -1727,7 +1854,9 @@ mod tests {
             .unwrap();
         let mut draft = DataDraft::new(document, scope);
         draft.objects.push(ObjectDraft {
+            categories: Vec::new(),
             value: DataObject {
+                flow_metadata: None,
                 base: None,
                 id: None,
                 name: None,

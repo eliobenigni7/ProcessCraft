@@ -1023,20 +1023,25 @@ fn definitions_namespace_survives_legacy_provenance_and_local_calls() {
     let output = export(&parsed);
     let xml = std::str::from_utf8(&output.bytes).unwrap();
     assert!(xml.contains("targetNamespace=\"urn:nested\""));
-    assert!(xml.contains("calledElement=\"tns:called\""));
-    assert!(
-        prepare_import(&output.bytes, "again")
-            .unwrap()
-            .report
-            .editable
-    );
+    let again = prepare_import(&output.bytes, "again").unwrap();
+    assert!(again.report.editable);
+    assert!(again.document.processes.iter().flat_map(|p| &p.nodes).any(|node| matches!(
+        &node.details,
+        Some(processcraft_core::bpmn_model::NodeDetails::CallActivity { called_element: Some(q) })
+            if q.namespace == "urn:nested" && q.local.to_string() == "called"
+    )));
 
     let unprefixed = std::str::from_utf8(input)
         .unwrap()
         .replace("calledElement=\"tns:called\"", "calledElement=\"called\"");
     let parsed = prepare_import(unprefixed.as_bytes(), "unprefixed").unwrap();
-    assert!(!parsed.report.editable);
-    assert_eq!(export(&parsed).bytes, unprefixed.as_bytes());
+    assert!(parsed.report.editable);
+    let roundtrip = prepare_import(&export(&parsed).bytes, "again").unwrap();
+    assert!(roundtrip.document.processes.iter().flat_map(|p| &p.nodes).any(|node| matches!(
+        &node.details,
+        Some(processcraft_core::bpmn_model::NodeDetails::CallActivity { called_element: Some(q) })
+            if q.namespace == "http://www.omg.org/spec/BPMN/20100524/MODEL" && q.local.to_string() == "called"
+    )));
 }
 
 #[test]
@@ -2904,4 +2909,79 @@ fn anonymous_event_property_output_and_set_keep_separate_metadata() {
             .details,
         event.details
     );
+}
+
+#[test]
+fn activity_correlation_and_callable_fixtures_roundtrip_with_values() {
+    use processcraft_core::bpmn_activity::{GlobalTaskKind, MultiInstanceFlowCondition};
+    use processcraft_core::bpmn_model::LoopCharacteristics;
+    let source = include_bytes!("../../../tests/fixtures/bpmn/activity-correlation.bpmn");
+    let imported = prepare_import(source, "correlation").unwrap();
+    assert!(imported.report.editable);
+    assert!(!imported.document.correlation_properties.is_empty());
+    let again = prepare_import(&export(&imported).bytes, "again").unwrap();
+    assert!(again.report.editable);
+    assert_eq!(
+        imported.document.correlation_properties,
+        again.document.correlation_properties
+    );
+
+    let source = include_bytes!("../../../tests/fixtures/bpmn/activity-callable-roles.bpmn");
+    let imported = prepare_import(source, "callable").unwrap();
+    assert!(imported.report.editable);
+    assert!(
+        imported
+            .document
+            .global_tasks
+            .iter()
+            .any(|task| matches!(task.kind, GlobalTaskKind::CallableElement))
+    );
+    let loop_value = imported
+        .document
+        .processes
+        .iter()
+        .flat_map(|p| &p.nodes)
+        .find_map(|node| match &node.loop_characteristics {
+            Some(LoopCharacteristics::MultiInstance {
+                behavior: Some(MultiInstanceFlowCondition::Complex),
+                complex_behavior_definitions,
+                is_sequential: Some(false),
+                ..
+            }) => Some(complex_behavior_definitions),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(loop_value.len(), 1);
+    assert!(
+        loop_value[0]
+            .event
+            .as_ref()
+            .is_some_and(|event| event.input_associations.len() == 1)
+    );
+    let again = prepare_import(&export(&imported).bytes, "again").unwrap();
+    assert!(again.report.editable);
+    assert_eq!(imported.document.global_tasks, again.document.global_tasks);
+    assert_eq!(
+        processcraft_io::interchange_compare::xml_model_value(&imported.document).unwrap(),
+        processcraft_io::interchange_compare::xml_model_value(&again.document).unwrap(),
+    );
+}
+
+#[test]
+fn multi_instance_behavior_qnames_preserve_empty_namespace_and_shadowed_prefixes() {
+    let imported = prepare_import(
+        include_bytes!("../../../tests/fixtures/bpmn/activity-loop-qnames.bpmn"),
+        "loops",
+    )
+    .unwrap();
+    assert!(imported.report.editable);
+    let output = export(&imported);
+    let again = prepare_import(&output.bytes, "again").unwrap();
+    assert!(again.report.editable);
+    assert_eq!(
+        processcraft_io::interchange_compare::xml_model_value(&imported.document).unwrap(),
+        processcraft_io::interchange_compare::xml_model_value(&again.document).unwrap()
+    );
+    let xml = std::str::from_utf8(&output.bytes).unwrap();
+    assert!(!xml.contains("xmlns:pc_loop_0=\"\""));
 }

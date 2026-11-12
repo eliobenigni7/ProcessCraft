@@ -11,6 +11,7 @@ where
 fn fixture() -> BpmnDocument {
     let mut d = BpmnDocument::new("Example".into(), id("defs"));
     d.processes.push(Process {
+        activity_metadata: None,
         is_executable: Some(false),
         io_specification: None,
         lane_set_id: None,
@@ -23,6 +24,7 @@ fn fixture() -> BpmnDocument {
         documentation: String::new().into(),
         base_extras: None,
         nodes: vec![Node {
+            flow_metadata: None,
             item_aware: None,
             activity: None,
             details: None,
@@ -183,6 +185,7 @@ fn preserved_source_is_not_presented_as_semantic_preview() {
 fn named_flow_without_di_label_is_visible() {
     let mut d = fixture();
     d.processes[0].flows.push(processcraft_core::model::Flow {
+        flow_metadata: None,
         association_direction: None,
         id: id("flow"),
         kind: processcraft_core::model::FlowKind::Sequence,
@@ -249,6 +252,7 @@ fn many_dashed_edges_fit_path_budget() {
     for i in 0..250 {
         let key: processcraft_core::ids::ElementIdentity = id(&format!("flow{i}"));
         d.processes[0].flows.push(processcraft_core::model::Flow {
+            flow_metadata: None,
             association_direction: None,
             id: key.clone(),
             kind: processcraft_core::model::FlowKind::Association,
@@ -331,6 +335,7 @@ fn viewport_clips_polyline_without_intermediate_arrows_or_duplicate_label() {
     let mut d = fixture();
     d.diagrams[0].shapes.clear();
     d.processes[0].flows.push(Flow {
+        flow_metadata: None,
         association_direction: None,
         id: id("f"),
         kind: FlowKind::Sequence,
@@ -506,6 +511,7 @@ fn viewport_displays_explicit_edge_label_when_edge_is_offscreen() {
     let mut d = fixture();
     d.diagrams[0].shapes.clear();
     d.processes[0].flows.push(Flow {
+        flow_metadata: None,
         association_direction: None,
         id: id("f"),
         kind: FlowKind::Sequence,
@@ -869,12 +875,13 @@ fn nested_flow_and_called_activity_use_semantic_ids() {
     called.id = id("nested_b");
     called.kind = NodeKind::CallActivity;
     called.details = Some(NodeDetails::CallActivity {
-        called_element: QNameRef {
+        called_element: Some(QNameRef {
             namespace: "urn:example".into(),
             local: id("called"),
-        },
+        }),
     });
     let flow = Flow {
+        flow_metadata: None,
         association_direction: None,
         id: id("inner_flow"),
         kind: FlowKind::Sequence,
@@ -945,24 +952,40 @@ fn loop_and_multi_instance_markers_use_distinct_shared_vectors() {
     d.processes[0].nodes[0].loop_characteristics = Some(LoopCharacteristics::Standard {
         id: None,
         base: None,
-        test_before: false,
+        test_before: Some(false),
         condition: None,
         maximum: None,
     });
     let standard = build(&d, Appearance::Light).scene.to_svg();
     assert_ne!(base, standard);
     d.processes[0].nodes[0].loop_characteristics = Some(LoopCharacteristics::MultiInstance {
+        behavior: None,
+        loop_data_input_ref: None,
+        loop_data_output_ref: None,
+        input_data_item: None,
+        output_data_item: None,
+        complex_behavior_definitions: vec![],
+        one_behavior_event_ref: None,
+        none_behavior_event_ref: None,
         id: None,
         base: None,
-        is_sequential: true,
+        is_sequential: Some(true),
         cardinality: None,
         completion_condition: None,
     });
     let sequential = build(&d, Appearance::Light).scene.to_svg();
     d.processes[0].nodes[0].loop_characteristics = Some(LoopCharacteristics::MultiInstance {
+        behavior: None,
+        loop_data_input_ref: None,
+        loop_data_output_ref: None,
+        input_data_item: None,
+        output_data_item: None,
+        complex_behavior_definitions: vec![],
+        one_behavior_event_ref: None,
+        none_behavior_event_ref: None,
         id: None,
         base: None,
-        is_sequential: false,
+        is_sequential: Some(false),
         cardinality: None,
         completion_condition: None,
     });
@@ -980,6 +1003,7 @@ fn conversation_hexagons_and_links_render_with_semantic_hits() {
     use processcraft_render::{BpmnViewport, Viewport};
     let mut d = fixture();
     d.collaboration = Some(Collaboration {
+        correlation_keys: vec![],
         base: None,
         name: None,
         id: id("collab"),
@@ -992,6 +1016,7 @@ fn conversation_hexagons_and_links_render_with_semantic_hits() {
         flows: vec![],
         conversation_nodes: vec![
             ConversationNode {
+                correlation_keys: vec![],
                 base: None,
                 id: id("conversation"),
                 name: Some("Order".into()),
@@ -1000,6 +1025,7 @@ fn conversation_hexagons_and_links_render_with_semantic_hits() {
                 parent: None,
             },
             ConversationNode {
+                correlation_keys: vec![],
                 base: None,
                 id: id("inner"),
                 name: Some("Inner".into()),
@@ -1201,6 +1227,8 @@ fn choreography_task_shows_participant_bands_and_sequence_flow() {
         ],
         message_flows: vec![],
         activities: vec![ChoreographyActivity {
+            flow_metadata: None,
+            correlation_keys: vec![],
             base: None,
             id: id("exchange"),
             name: Some("Exchange".into()),
@@ -1209,6 +1237,7 @@ fn choreography_task_shows_participant_bands_and_sequence_flow() {
             message_flow_refs: vec![],
         }],
         sequence_flows: vec![Flow {
+            flow_metadata: None,
             association_direction: None,
             id: id("seq"),
             kind: FlowKind::Sequence,
@@ -1262,6 +1291,7 @@ fn data_object_collection_marker_comes_from_referenced_definition() {
         data_object_ref: Some(id("data")),
     });
     d.processes[0].data_objects.push(DataObject {
+        flow_metadata: None,
         base: None,
         id: Some(id("data")),
         name: Some(String::new()),
@@ -1284,6 +1314,7 @@ fn gateway_default_flow_marker_uses_semantic_owner_and_shared_exports() {
     d.processes[0].nodes[0].kind = NodeKind::ExclusiveGateway;
     d.processes[0].nodes[0].name = Some(String::new());
     d.processes[0].flows.push(Flow {
+        flow_metadata: None,
         association_direction: None,
         id: id("default"),
         kind: FlowKind::Sequence,
@@ -1451,6 +1482,7 @@ fn association_directions_change_shared_vector_markers() {
     };
     let mut d = fixture();
     d.processes[0].flows.push(Flow {
+        flow_metadata: None,
         association_direction: None,
         id: id("assoc"),
         kind: FlowKind::Association,
@@ -1614,6 +1646,7 @@ fn activity_properties_change_shared_vectors_and_viewport() {
     d.processes[0].nodes[0].kind = NodeKind::SubProcess;
     d.diagrams[0].shapes[0].is_expanded = Some(true);
     d.processes[0].flows.push(Flow {
+        flow_metadata: None,
         association_direction: None,
         id: id("default_flow"),
         kind: FlowKind::Sequence,
@@ -1867,6 +1900,7 @@ fn data_reference_state_and_collection_share_scene_and_viewport() {
         }),
     });
     d.processes[0].data_objects.push(DataObject {
+        flow_metadata: None,
         base: None,
         id: Some(id("data")),
         name: Some("Order".into()),
@@ -2050,6 +2084,7 @@ fn nested_reference_resolves_ancestor_data_object_and_hides_when_collapsed() {
     use processcraft_core::{bpmn_data::DataObject, bpmn_model::NodeDetails, model::FlowContainer};
     let mut d = fixture();
     d.processes[0].data_objects.push(DataObject {
+        flow_metadata: None,
         base: None,
         id: Some(id("ancestor_data")),
         name: Some("Ancestor Order".into()),
@@ -2284,6 +2319,7 @@ fn conditional_source_marker_only_appears_for_nongateway_source() {
     let mut d = fixture();
     d.processes[0].nodes[0].name = None;
     d.processes[0].flows.push(Flow {
+        flow_metadata: None,
         id: id("conditional"),
         kind: FlowKind::Sequence,
         source: id("task"),
@@ -2830,6 +2866,7 @@ fn explicit_absent_flow_label_is_hidden_but_legacy_implicit_is_visible() {
     let mut d = fixture();
     d.processes[0].nodes[0].name = None;
     d.processes[0].flows.push(Flow {
+        flow_metadata: None,
         id: id("flow"),
         base_extras: None,
         kind: FlowKind::Sequence,
@@ -2876,4 +2913,291 @@ fn explicit_absent_flow_label_is_hidden_but_legacy_implicit_is_visible() {
     )
     .unwrap();
     assert!(!viewport.hits.iter().any(|hit| hit.label_id.is_some()));
+}
+
+#[test]
+fn instantiating_receive_task_adds_message_start_ring() {
+    use processcraft_core::bpmn_activity::ActivityProperties;
+    let mut d = fixture();
+    d.processes[0].nodes[0].kind = NodeKind::ReceiveTask;
+    d.processes[0].nodes[0].name = None;
+    d.processes[0].nodes[0].activity = Some(ActivityProperties {
+        instantiate: Some(false),
+        ..Default::default()
+    });
+    assert_valid_event_document(&d);
+    let regular = build(&d, Appearance::Light);
+    d.processes[0].nodes[0]
+        .activity
+        .as_mut()
+        .unwrap()
+        .instantiate = Some(true);
+    assert_valid_event_document(&d);
+    let initiating = build(&d, Appearance::Light);
+    assert_eq!(
+        initiating.scene.paths().count(),
+        regular.scene.paths().count() + 1
+    );
+    let x = (d.diagrams[0].shapes[0].bounds.x - initiating.origin.0) as f32;
+    let y = (d.diagrams[0].shapes[0].bounds.y - initiating.origin.1) as f32;
+    assert!(initiating.scene.paths().any(|path| {
+        let b = path.path.bounds();
+        (b.left() - (x + 3.0)).abs() < 2.0
+            && (b.top() - (y + 2.0)).abs() < 2.0
+            && (b.width() - 22.0).abs() < 3.0
+    }));
+}
+
+#[test]
+fn collapsed_activity_marker_group_keeps_loop_and_compensation_left_of_plus() {
+    use processcraft_core::{
+        bpmn_activity::ActivityProperties,
+        bpmn_model::{LoopCharacteristics, NodeDetails},
+        model::FlowContainer,
+    };
+    let mut d = fixture();
+    let node = &mut d.processes[0].nodes[0];
+    node.kind = NodeKind::SubProcess;
+    node.name = None;
+    node.details = Some(NodeDetails::SubProcess {
+        content: Box::new(FlowContainer::default()),
+    });
+    node.activity = Some(ActivityProperties {
+        is_for_compensation: Some(true),
+        ..Default::default()
+    });
+    node.loop_characteristics = Some(LoopCharacteristics::Standard {
+        id: None,
+        base: None,
+        test_before: Some(false),
+        condition: None,
+        maximum: None,
+    });
+    d.diagrams[0].shapes[0].is_expanded = Some(false);
+    d.diagrams[0].shapes[0].bounds = Bounds {
+        x: 0.0,
+        y: 0.0,
+        width: 120.0,
+        height: 80.0,
+    };
+    assert_valid_event_document(&d);
+    let scene = build(&d, Appearance::Light);
+    let x = -scene.origin.0 as f32;
+    let y = -scene.origin.1 as f32;
+    let near = |center: f32| {
+        scene
+            .scene
+            .paths()
+            .filter(|path| {
+                let b = path.path.bounds();
+                b.top() > y + 62.0
+                    && b.bottom() < y + 78.0
+                    && ((b.left() + b.right()) / 2.0 - (x + center)).abs() < 5.0
+            })
+            .count()
+    };
+    assert!(near(42.0) >= 1, "loop marker");
+    assert!(near(60.0) >= 2, "compensation marker");
+    assert!(near(78.0) >= 3, "collapsed marker");
+}
+
+#[test]
+fn local_global_call_task_uses_its_typed_marker_without_fabricating_an_id() {
+    use processcraft_core::{
+        bpmn_activity::{CallableMetadata, GlobalTask, GlobalTaskKind},
+        bpmn_model::{NodeDetails, QNameRef},
+        model::DefinitionsMetadata,
+    };
+    let mut d = fixture();
+    d.definitions = Some(DefinitionsMetadata {
+        target_namespace: "urn:local".into(),
+        name: None,
+        expression_language: None,
+        type_language: None,
+        exporter: None,
+        exporter_version: None,
+        imports: vec![],
+        namespaces: vec![],
+        foreign_attributes: vec![],
+    });
+    d.processes[0].nodes[0].kind = NodeKind::CallActivity;
+    d.processes[0].nodes[0].name = None;
+    d.processes[0].nodes[0].details = Some(NodeDetails::CallActivity {
+        called_element: Some(QNameRef {
+            namespace: "urn:local".into(),
+            local: id("global"),
+        }),
+    });
+    d.global_tasks.push(GlobalTask {
+        id: Some(id("global")),
+        base: None,
+        name: None,
+        callable: CallableMetadata::default(),
+        io_specification: None,
+        resource_roles: vec![],
+        kind: GlobalTaskKind::Task,
+    });
+    assert_valid_event_document(&d);
+    let generic = build(&d, Appearance::Light);
+    assert!(
+        !generic
+            .diagnostics
+            .iter()
+            .any(|m| m.contains("cannot be resolved"))
+    );
+    let generic_count = generic.scene.paths().count();
+    for kind in [
+        GlobalTaskKind::Manual,
+        GlobalTaskKind::User {
+            implementation: None,
+            renderings: vec![],
+        },
+        GlobalTaskKind::BusinessRule {
+            implementation: None,
+        },
+        GlobalTaskKind::Script {
+            script_language: None,
+            script: None,
+        },
+    ] {
+        d.global_tasks[0].kind = kind;
+        assert_valid_event_document(&d);
+        let scene = build(&d, Appearance::Light);
+        assert!(scene.scene.paths().count() > generic_count);
+        assert!(
+            !scene
+                .diagnostics
+                .iter()
+                .any(|m| m.contains("cannot be resolved"))
+        );
+    }
+    let Some(NodeDetails::CallActivity { called_element }) = &mut d.processes[0].nodes[0].details
+    else {
+        panic!("call activity")
+    };
+    *called_element = Some(QNameRef {
+        namespace: "urn:foreign".into(),
+        local: id("global"),
+    });
+    let external = build(&d, Appearance::Light);
+    assert!(
+        external
+            .diagnostics
+            .iter()
+            .any(|m| m.contains("cannot be resolved locally"))
+    );
+    assert_eq!(external.scene.paths().count(), generic_count);
+}
+
+#[test]
+fn multi_instance_omitted_sequential_uses_parallel_marker_without_storing_default() {
+    use processcraft_core::bpmn_model::LoopCharacteristics;
+    let mut d = fixture();
+    d.processes[0].nodes[0].kind = NodeKind::Task;
+    d.processes[0].nodes[0].name = None;
+    d.processes[0].nodes[0].loop_characteristics = Some(LoopCharacteristics::MultiInstance {
+        id: None,
+        base: None,
+        is_sequential: None,
+        behavior: None,
+        loop_data_input_ref: None,
+        loop_data_output_ref: None,
+        input_data_item: None,
+        output_data_item: None,
+        complex_behavior_definitions: vec![],
+        one_behavior_event_ref: None,
+        none_behavior_event_ref: None,
+        cardinality: None,
+        completion_condition: None,
+    });
+    assert_valid_event_document(&d);
+    let original = serde_json::to_vec(&d).unwrap();
+    let omitted = build(&d, Appearance::Light);
+    assert_eq!(serde_json::to_vec(&d).unwrap(), original);
+    let Some(LoopCharacteristics::MultiInstance { is_sequential, .. }) =
+        &mut d.processes[0].nodes[0].loop_characteristics
+    else {
+        panic!("loop")
+    };
+    *is_sequential = Some(false);
+    assert_eq!(
+        omitted.scene.to_svg(),
+        build(&d, Appearance::Light).scene.to_svg()
+    );
+    let Some(LoopCharacteristics::MultiInstance { is_sequential, .. }) =
+        &mut d.processes[0].nodes[0].loop_characteristics
+    else {
+        panic!("loop")
+    };
+    *is_sequential = Some(true);
+    let sequential = build(&d, Appearance::Light);
+    let bottom = (d.diagrams[0].shapes[0].bounds.y + d.diagrams[0].shapes[0].bounds.height
+        - sequential.origin.1) as f32;
+    let horizontal = sequential
+        .scene
+        .paths()
+        .filter(|path| {
+            let b = path.path.bounds();
+            b.top() > bottom - 20.0 && b.width() > 9.0 && b.height() < 3.0
+        })
+        .count();
+    let vertical = omitted
+        .scene
+        .paths()
+        .filter(|path| {
+            let b = path.path.bounds();
+            b.top() > bottom - 20.0 && b.height() > 9.0 && b.width() < 3.0
+        })
+        .count();
+    assert_eq!(horizontal, 3);
+    assert_eq!(vertical, 3);
+}
+
+#[test]
+fn local_process_call_defaults_to_collapsed_without_writing_di() {
+    use processcraft_core::{
+        bpmn_model::{NodeDetails, QNameRef},
+        model::DefinitionsMetadata,
+    };
+    let mut d = fixture();
+    d.definitions = Some(DefinitionsMetadata {
+        target_namespace: "urn:local".into(),
+        name: None,
+        expression_language: None,
+        type_language: None,
+        exporter: None,
+        exporter_version: None,
+        imports: vec![],
+        namespaces: vec![],
+        foreign_attributes: vec![],
+    });
+    d.processes[0].nodes[0].kind = NodeKind::CallActivity;
+    d.processes[0].nodes[0].name = None;
+    d.processes[0].nodes[0].details = Some(NodeDetails::CallActivity {
+        called_element: Some(QNameRef {
+            namespace: "urn:local".into(),
+            local: id("process"),
+        }),
+    });
+    d.diagrams[0].shapes[0].is_expanded = None;
+    assert_valid_event_document(&d);
+    let before = serde_json::to_vec(&d).unwrap();
+    let omitted = build(&d, Appearance::Light);
+    assert!(
+        !omitted
+            .diagnostics
+            .iter()
+            .any(|m| m.contains("expansion state"))
+    );
+    assert_eq!(serde_json::to_vec(&d).unwrap(), before);
+    d.diagrams[0].shapes[0].is_expanded = Some(false);
+    assert_eq!(
+        omitted.scene.paths().count(),
+        build(&d, Appearance::Light).scene.paths().count()
+    );
+    d.diagrams[0].shapes[0].is_expanded = Some(true);
+    assert_eq!(
+        omitted.scene.paths().count(),
+        build(&d, Appearance::Light).scene.paths().count() + 3
+    );
 }

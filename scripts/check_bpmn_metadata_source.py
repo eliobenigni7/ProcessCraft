@@ -20,6 +20,67 @@ OPAQUE = {"documentation", "extensionElements", "script", "text"}
 BODIES = {"script", "text", "conditionExpression", "condition", "timeDate", "timeDuration",
           "timeCycle", "loopCondition", "loopCardinality", "completionCondition",
           "activationCondition", "transformation", "from", "to"}
+BODIES |= {"messagePath", "dataPath", "expression"}
+# Fixed independently of the editable parser. This optional focused check keeps
+# omission-sensitive activity attributes and QName-valued text visible even if
+# both sides of a model round trip accidentally discard the same field.
+ACTIVITY_OWNERS = {
+    "process", "callableElement", "globalTask", "globalManualTask", "globalUserTask",
+    "globalScriptTask", "globalBusinessRuleTask", "task", "userTask", "manualTask",
+    "scriptTask", "businessRuleTask", "sendTask", "receiveTask", "serviceTask",
+    "callActivity", "subProcess", "transaction", "adHocSubProcess", "sequenceFlow",
+    "exclusiveGateway", "inclusiveGateway", "complexGateway", "parallelGateway",
+    "eventBasedGateway", "standardLoopCharacteristics", "multiInstanceLoopCharacteristics",
+    "complexBehaviorDefinition", "event", "implicitThrowEvent", "property", "ioBinding",
+    "resourceRole", "performer", "humanPerformer", "potentialOwner", "rendering",
+    "resourceAssignmentExpression", "resourceParameterBinding", "correlationProperty",
+    "correlationPropertyRetrievalExpression", "correlationKey", "correlationSubscription",
+    "correlationPropertyBinding", "auditing", "monitoring",
+}
+QNAME_ATTRIBUTES = {"calledElement", "definitionalCollaborationRef", "operationRef",
+                    "messageRef", "itemSubjectRef", "parameterRef", "correlationKeyRef",
+                    "correlationPropertyRef", "oneBehaviorEventRef", "noneBehaviorEventRef"}
+BOOLEAN_ATTRIBUTES = {"isClosed", "isExecutable", "testBefore", "isSequential",
+                      "isForCompensation", "instantiate", "triggeredByEvent",
+                      "cancelRemainingInstances", "isImmediate"}
+QNAME_TEXT_PARENTS = {
+    "supportedInterfaceRef": {"process", "callableElement", "globalTask", "globalManualTask",
+                               "globalUserTask", "globalScriptTask", "globalBusinessRuleTask"},
+    "supports": {"process"},
+    "resourceRef": {"resourceRole", "performer", "humanPerformer", "potentialOwner"},
+    "correlationPropertyRef": {"correlationKey"},
+    "loopDataInputRef": {"multiInstanceLoopCharacteristics"},
+    "loopDataOutputRef": {"multiInstanceLoopCharacteristics"},
+    "categoryValueRef": ACTIVITY_OWNERS | {"dataObject", "dataObjectReference", "dataStoreReference",
+        "startEvent", "endEvent", "boundaryEvent", "intermediateCatchEvent", "intermediateThrowEvent",
+        "choreographyTask", "callChoreography", "subChoreography"},
+}
+
+
+def expanded_qname(element, value):
+    value = value.strip()
+    prefix, local = value.split(":", 1) if ":" in value else ("", value)
+    return [namespace_map(element).get(prefix), local]
+
+
+def activity_kind(element):
+    name = E.QName(element).localname
+    if (name == "rootElement" and XSI_TYPE in element.attrib
+            and expanded_qname(element, element.get(XSI_TYPE)) == [BPMN, "tCallableElement"]):
+        return "callableElement"
+    return name
+
+
+def activity_attributes(element):
+    result = attributes(element)
+    for name, value in result.items():
+        if name in QNAME_ATTRIBUTES or name == "type" and E.QName(element).localname == "correlationProperty":
+            result[name] = expanded_qname(element, value)
+        elif name in BOOLEAN_ATTRIBUTES:
+            result[name] = value.strip() in {"true", "1"}
+        elif name in {"startQuantity", "completionQuantity", "loopMaximum"}:
+            result[name] = int(value)
+    return result
 
 
 def namespace_map(element):
@@ -48,7 +109,7 @@ def body(element):
             "children": [{"node": body(child), "tail": child.tail or ""} for child in element]}
 
 
-def records(tree):
+def records(tree, activity_fields=False):
     result = {}
 
     def visit(element, path, opaque):
@@ -60,6 +121,13 @@ def records(tree):
             result[path + "/xmlIdentity"] = {"idPresent": "id" in element.attrib,
                                               "id": element.get("id")}
         if semantic:
+            if activity_fields:
+                if activity_kind(element) in ACTIVITY_OWNERS:
+                    result[path + "/activityAttributes"] = activity_attributes(element)
+                parent = element.getparent()
+                if (parent is not None and parent.tag.startswith("{" + BPMN + "}")
+                        and activity_kind(parent) in QNAME_TEXT_PARENTS.get(tag.localname, set())):
+                    result[path + "/activityQName"] = expanded_qname(element, element.text or "")
             docs = element.findall("{" + BPMN + "}documentation")
             extension = element.find("{" + BPMN + "}extensionElements")
             foreign = {key: value for key, value in element.attrib.items()
@@ -93,6 +161,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=Path)
     parser.add_argument("output", type=Path)
+    parser.add_argument("--activity-fields", action="store_true",
+                        help="Also compare selected activity attributes and scoped QName text")
     arguments = parser.parse_args()
     schema = E.XMLSchema(E.parse(str(ROOT / "tests/fixtures/bpmn20-schema/BPMN20.xsd")))
     trees = []
@@ -102,12 +172,13 @@ def main():
             parser.error("DTD content is not accepted")
         schema.assertValid(tree)
         trees.append(tree)
-    expected, actual = map(records, trees)
+    expected, actual = [records(tree, arguments.activity_fields) for tree in trees]
     differences = [{"path": path, "before": expected.get(path), "after": actual.get(path)}
                    for path in sorted(expected.keys() | actual.keys()) if expected.get(path) != actual.get(path)]
     print(json.dumps({"source": str(arguments.source), "output": str(arguments.output),
-                      "sourceOwnerAndBodyRecords": sum(not path.endswith("/xmlIdentity") for path in expected),
+                      "sourceOwnerAndBodyRecords": sum(path.endswith(("/metadata", "/mixedBody")) for path in expected),
                       "standardElementIdentityRecords": sum(path.endswith("/xmlIdentity") for path in expected),
+                      "activityFieldRecords": sum(path.endswith(("/activityAttributes", "/activityQName")) for path in expected),
                       "anonymousOwnerRecords": sum(path.endswith("/metadata") and not value["idPresent"]
                                                    for path, value in expected.items()),
                       "differences": differences}, indent=2))

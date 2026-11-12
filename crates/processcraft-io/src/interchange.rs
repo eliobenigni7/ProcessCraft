@@ -100,6 +100,8 @@ struct Elem {
     foreign_attributes: Vec<processcraft_core::bpmn_xml::XmlAttribute>,
     anonymous_base: Option<PendingBase>,
     anonymous_base_consumed: std::cell::Cell<bool>,
+    flow_metadata: Option<processcraft_core::bpmn_activity::FlowElementMetadata>,
+    flow_metadata_consumed: std::cell::Cell<bool>,
 }
 enum ElemContent {
     Text(String),
@@ -308,6 +310,32 @@ fn supported_base_owner(name: &str) -> bool {
             | "standardLoopCharacteristics"
             | "multiInstanceLoopCharacteristics"
             | "relationship"
+            | "callableElement"
+            | "rootElement"
+            | "globalTask"
+            | "globalManualTask"
+            | "globalBusinessRuleTask"
+            | "globalScriptTask"
+            | "globalUserTask"
+            | "ioBinding"
+            | "auditing"
+            | "monitoring"
+            | "resourceRole"
+            | "performer"
+            | "humanPerformer"
+            | "potentialOwner"
+            | "resourceParameterBinding"
+            | "resourceAssignmentExpression"
+            | "rendering"
+            | "correlationProperty"
+            | "correlationPropertyRetrievalExpression"
+            | "correlationKey"
+            | "correlationSubscription"
+            | "correlationPropertyBinding"
+            | "inputDataItem"
+            | "outputDataItem"
+            | "complexBehaviorDefinition"
+            | "event"
     )
 }
 fn extract_owner_metadata(e: &mut Elem, pending: &mut BTreeMap<String, PendingBase>) -> Option<()> {
@@ -401,6 +429,149 @@ fn has_unconsumed_anonymous_base(e: &Elem) -> bool {
     (e.anonymous_base.is_some() && !e.anonymous_base_consumed.get())
         || e.children.iter().any(has_unconsumed_anonymous_base)
 }
+fn is_flow_element(name: &str) -> bool {
+    matches!(
+        name,
+        "task"
+            | "userTask"
+            | "manualTask"
+            | "serviceTask"
+            | "sendTask"
+            | "receiveTask"
+            | "scriptTask"
+            | "businessRuleTask"
+            | "callActivity"
+            | "subProcess"
+            | "adHocSubProcess"
+            | "transaction"
+            | "startEvent"
+            | "endEvent"
+            | "intermediateCatchEvent"
+            | "intermediateThrowEvent"
+            | "boundaryEvent"
+            | "exclusiveGateway"
+            | "inclusiveGateway"
+            | "parallelGateway"
+            | "complexGateway"
+            | "eventBasedGateway"
+            | "sequenceFlow"
+            | "dataObject"
+            | "dataObjectReference"
+            | "dataStoreReference"
+            | "choreographyTask"
+            | "event"
+    )
+}
+fn take_flow_metadata(e: &Elem) -> Option<processcraft_core::bpmn_activity::FlowElementMetadata> {
+    let metadata = e.flow_metadata.clone()?;
+    e.flow_metadata_consumed.set(true);
+    Some(metadata)
+}
+fn has_unconsumed_flow_metadata(e: &Elem) -> bool {
+    (e.flow_metadata.is_some() && !e.flow_metadata_consumed.get())
+        || e.children.iter().any(has_unconsumed_flow_metadata)
+}
+fn extract_flow_metadata(e: &mut Elem, target_namespace: &str) -> Option<()> {
+    if e.opaque {
+        return Some(());
+    }
+    for child in &mut e.children {
+        extract_flow_metadata(child, target_namespace)?;
+    }
+    if e.ns != B || !is_flow_element(&e.name) {
+        return Some(());
+    }
+    let mut result = processcraft_core::bpmn_activity::FlowElementMetadata::default();
+    if e.name == "sequenceFlow" {
+        result.is_immediate = optional_bool(e.attrs.get("isImmediate"))?;
+    }
+    let mut phase = 0;
+    let mut rest = Vec::new();
+    for child in std::mem::take(&mut e.children) {
+        match (child.ns.as_str(), child.name.as_str()) {
+            (B, "auditing") if phase == 0 && result.auditing.is_none() => {
+                if !attrs(&child, &["id"]) || !child.children.is_empty() {
+                    return None;
+                }
+                result.auditing = Some(processcraft_core::bpmn_activity::BaseOwner {
+                    id: optional_id(&child)?,
+                    base: take_anonymous_base(&child),
+                });
+                phase = 1;
+            }
+            (B, "monitoring") if phase <= 1 && result.monitoring.is_none() => {
+                if !attrs(&child, &["id"]) || !child.children.is_empty() {
+                    return None;
+                }
+                result.monitoring = Some(processcraft_core::bpmn_activity::BaseOwner {
+                    id: optional_id(&child)?,
+                    base: take_anonymous_base(&child),
+                });
+                phase = 2;
+            }
+            (B, "categoryValueRef") if phase <= 2 => {
+                if !attrs(&child, &[]) || !child.children.is_empty() {
+                    return None;
+                }
+                result.category_value_refs.push(event_reference(
+                    child.catalog_text_qname.as_ref()?,
+                    target_namespace,
+                ));
+                phase = 2;
+            }
+            (B, "incoming")
+                if phase <= 3
+                    && !matches!(
+                        e.name.as_str(),
+                        "sequenceFlow"
+                            | "dataObject"
+                            | "dataObjectReference"
+                            | "dataStoreReference"
+                    ) =>
+            {
+                if !attrs(&child, &[]) || !child.children.is_empty() {
+                    return None;
+                }
+                result.incoming.push(event_reference(
+                    child.catalog_text_qname.as_ref()?,
+                    target_namespace,
+                ));
+                phase = 3;
+            }
+            (B, "outgoing")
+                if phase <= 4
+                    && !matches!(
+                        e.name.as_str(),
+                        "sequenceFlow"
+                            | "dataObject"
+                            | "dataObjectReference"
+                            | "dataStoreReference"
+                    ) =>
+            {
+                if !attrs(&child, &[]) || !child.children.is_empty() {
+                    return None;
+                }
+                result.outgoing.push(event_reference(
+                    child.catalog_text_qname.as_ref()?,
+                    target_namespace,
+                ));
+                phase = 4;
+            }
+            (B, "auditing" | "monitoring" | "categoryValueRef" | "incoming" | "outgoing") => {
+                return None;
+            }
+            _ => {
+                phase = 5;
+                rest.push(child);
+            }
+        }
+    }
+    e.children = rest;
+    if result != processcraft_core::bpmn_activity::FlowElementMetadata::default() {
+        e.flow_metadata = Some(result);
+    }
+    Some(())
+}
 fn is_expression(name: &str) -> bool {
     matches!(
         name,
@@ -414,6 +585,9 @@ fn is_expression(name: &str) -> bool {
             | "completionCondition"
             | "activationCondition"
             | "transformation"
+            | "messagePath"
+            | "dataPath"
+            | "expression"
             | "from"
             | "to"
     )
@@ -501,6 +675,25 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                         continue;
                     }
                     if let ResolveResult::Bound(uri) = ns {
+                        if item.ns == B
+                            && item.name == "rootElement"
+                            && uri.0 == "http://www.w3.org/2001/XMLSchema-instance"
+                            && key == "type"
+                        {
+                            let value = a
+                                .normalized_value(XmlVersion::Implicit1_0)
+                                .ok()?
+                                .into_owned();
+                            let (resolved, name) = r.resolver().resolve_element(QName(&value));
+                            if !matches!(resolved, ResolveResult::Bound(uri) if uri.0 == B)
+                                || name.as_ref() != "tCallableElement"
+                            {
+                                return None;
+                            }
+                            item.attrs
+                                .insert("xsi:type".into(), "tCallableElement".into());
+                            continue;
+                        }
                         if item.ns != B
                             || !is_expression(&item.name)
                             || uri.0 != "http://www.w3.org/2001/XMLSchema-instance"
@@ -551,6 +744,18 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                                 | ("extension", "definition")
                                 | ("interface" | "operation", "implementationRef")
                                 | ("resourceParameter", "type")
+                                | ("correlationProperty", "type")
+                                | ("callActivity", "calledElement")
+                                | ("process", "definitionalCollaborationRef")
+                                | ("ioBinding", "operationRef")
+                                | ("resourceParameterBinding", "parameterRef")
+                                | ("correlationSubscription", "correlationKeyRef")
+                                | ("correlationPropertyBinding", "correlationPropertyRef")
+                                | ("correlationPropertyRetrievalExpression", "messageRef")
+                                | (
+                                    "multiInstanceLoopCharacteristics",
+                                    "oneBehaviorEventRef" | "noneBehaviorEventRef"
+                                )
                                 | ("serviceTask" | "sendTask" | "receiveTask", "operationRef")
                                 | ("sendTask" | "receiveTask", "messageRef")
                                 | ("dataStoreReference", "dataStoreRef")
@@ -568,6 +773,8 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                                         | "dataStoreReference"
                                         | "dataInput"
                                         | "dataOutput"
+                                        | "inputDataItem"
+                                        | "outputDataItem"
                                         | "property",
                                     "itemSubjectRef"
                                 )
@@ -607,7 +814,6 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                         (item.ns.as_str(), item.name.as_str(), key),
                         (B, "sequenceFlow", "sourceRef" | "targetRef")
                             | (B, "boundaryEvent", "attachedToRef")
-                            | (B, "callActivity", "calledElement")
                             | (B, "participant", "processRef")
                             | (B, "group", "categoryValueRef")
                             | (B, "choreographyTask", "initiatingParticipantRef")
@@ -670,6 +876,15 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                             | "errorRef"
                             | "eventDefinitionRef"
                             | "operationRef"
+                            | "supportedInterfaceRef"
+                            | "supports"
+                            | "resourceRef"
+                            | "correlationPropertyRef"
+                            | "categoryValueRef"
+                            | "loopDataInputRef"
+                            | "loopDataOutputRef"
+                            | "incoming"
+                            | "outgoing"
                             | "source"
                             | "target"
                     )
@@ -722,6 +937,15 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                                     | "errorRef"
                                     | "eventDefinitionRef"
                                     | "operationRef"
+                                    | "supportedInterfaceRef"
+                                    | "supports"
+                                    | "resourceRef"
+                                    | "correlationPropertyRef"
+                                    | "categoryValueRef"
+                                    | "loopDataInputRef"
+                                    | "loopDataOutputRef"
+                                    | "incoming"
+                                    | "outgoing"
                                     | "conditionExpression"
                                     | "condition"
                                     | "timeDate"
@@ -732,6 +956,9 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                                     | "completionCondition"
                                     | "activationCondition"
                                     | "transformation"
+                                    | "messagePath"
+                                    | "dataPath"
+                                    | "expression"
                                     | "from"
                                     | "to"
                                     | "script"
@@ -764,6 +991,9 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                                 | "completionCondition"
                                 | "activationCondition"
                                 | "transformation"
+                                | "messagePath"
+                                | "dataPath"
+                                | "expression"
                                 | "from"
                                 | "to"
                                 | "script"
@@ -804,6 +1034,9 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                                 | "completionCondition"
                                 | "activationCondition"
                                 | "transformation"
+                                | "messagePath"
+                                | "dataPath"
+                                | "expression"
                                 | "from"
                                 | "to"
                                 | "script"
@@ -984,6 +1217,346 @@ fn event_reference(qname: &QNameRef, target_namespace: &str) -> EventReference {
     } else {
         EventReference::Qualified(qname.clone())
     }
+}
+fn parse_correlation_key(
+    e: &Elem,
+    namespace: &str,
+) -> Option<processcraft_core::bpmn_activity::CorrelationKey> {
+    use processcraft_core::bpmn_activity::CorrelationKey;
+    if e.ns != B || e.name != "correlationKey" || !attrs(e, &["id", "name"]) {
+        return None;
+    }
+    let mut refs = Vec::new();
+    for child in &e.children {
+        if child.ns != B
+            || child.name != "correlationPropertyRef"
+            || !attrs(child, &[])
+            || !child.children.is_empty()
+        {
+            return None;
+        }
+        refs.push(event_reference(
+            child.catalog_text_qname.as_ref()?,
+            namespace,
+        ));
+    }
+    Some(CorrelationKey {
+        id: optional_id(e)?,
+        base: take_anonymous_base(e),
+        name: e.attrs.get("name").cloned(),
+        property_refs: refs,
+    })
+}
+fn parse_correlation_property(
+    e: &Elem,
+    namespace: &str,
+) -> Option<processcraft_core::bpmn_activity::CorrelationProperty> {
+    use processcraft_core::bpmn_activity::{CorrelationProperty, CorrelationRetrieval};
+    if e.ns != B
+        || e.name != "correlationProperty"
+        || !attrs(e, &["id", "name", "type"])
+        || e.children.is_empty()
+    {
+        return None;
+    }
+    let mut retrieval_expressions = Vec::new();
+    for child in &e.children {
+        if child.ns != B
+            || child.name != "correlationPropertyRetrievalExpression"
+            || !attrs(child, &["id", "messageRef"])
+            || child.children.len() != 1
+            || child.children[0].name != "messagePath"
+        {
+            return None;
+        }
+        retrieval_expressions.push(CorrelationRetrieval {
+            id: optional_id(child)?,
+            base: take_anonymous_base(child),
+            message_ref: Some(event_reference(
+                child.catalog_qnames.get("messageRef")?,
+                namespace,
+            )),
+            message_path: Some(parse_expression(&child.children[0], true)?),
+        });
+    }
+    Some(CorrelationProperty {
+        id: optional_id(e)?,
+        base: take_anonymous_base(e),
+        name: e.attrs.get("name").cloned(),
+        item_type: e.catalog_qnames.get("type").cloned(),
+        retrieval_expressions,
+    })
+}
+fn parse_correlation_subscription(
+    e: &Elem,
+    namespace: &str,
+) -> Option<processcraft_core::bpmn_activity::CorrelationSubscription> {
+    use processcraft_core::bpmn_activity::{CorrelationPropertyBinding, CorrelationSubscription};
+    if e.ns != B || e.name != "correlationSubscription" || !attrs(e, &["id", "correlationKeyRef"]) {
+        return None;
+    }
+    let mut bindings = Vec::new();
+    for child in &e.children {
+        if child.ns != B
+            || child.name != "correlationPropertyBinding"
+            || !attrs(child, &["id", "correlationPropertyRef"])
+            || child.children.len() != 1
+            || child.children[0].name != "dataPath"
+        {
+            return None;
+        }
+        bindings.push(CorrelationPropertyBinding {
+            id: optional_id(child)?,
+            base: take_anonymous_base(child),
+            property_ref: Some(event_reference(
+                child.catalog_qnames.get("correlationPropertyRef")?,
+                namespace,
+            )),
+            data_path: Some(parse_expression(&child.children[0], true)?),
+        });
+    }
+    Some(CorrelationSubscription {
+        id: optional_id(e)?,
+        base: take_anonymous_base(e),
+        key_ref: Some(event_reference(
+            e.catalog_qnames.get("correlationKeyRef")?,
+            namespace,
+        )),
+        bindings,
+    })
+}
+fn parse_audit_monitor(e: &Elem) -> Option<processcraft_core::bpmn_activity::AuditMonitor> {
+    if e.ns != B
+        || !matches!(e.name.as_str(), "auditing" | "monitoring")
+        || !attrs(e, &["id"])
+        || !e.children.is_empty()
+    {
+        return None;
+    }
+    Some(processcraft_core::bpmn_activity::BaseOwner {
+        id: optional_id(e)?,
+        base: take_anonymous_base(e),
+    })
+}
+fn parse_property(e: &Elem) -> Option<processcraft_core::bpmn_model::EventProperty> {
+    if e.ns != B || e.name != "property" || !attrs(e, &["id", "name", "itemSubjectRef"]) {
+        return None;
+    }
+    Some(processcraft_core::bpmn_model::EventProperty {
+        id: optional_id(e)?,
+        base: take_anonymous_base(e),
+        name: e.attrs.get("name").cloned(),
+        item_aware: parse_item_aware(e)?,
+    })
+}
+fn parse_io_binding(
+    e: &Elem,
+    namespace: &str,
+) -> Option<processcraft_core::bpmn_activity::IoBinding> {
+    if e.ns != B
+        || e.name != "ioBinding"
+        || !attrs(e, &["id", "operationRef", "inputDataRef", "outputDataRef"])
+        || !e.children.is_empty()
+    {
+        return None;
+    }
+    Some(processcraft_core::bpmn_activity::IoBinding {
+        id: optional_id(e)?,
+        base: take_anonymous_base(e),
+        operation_ref: Some(event_reference(
+            e.catalog_qnames.get("operationRef")?,
+            namespace,
+        )),
+        input_data_ref: Some(selector(e, "inputDataRef")?),
+        output_data_ref: Some(selector(e, "outputDataRef")?),
+    })
+}
+fn parse_rendering(e: &Elem) -> Option<processcraft_core::bpmn_activity::BaseOwner> {
+    if e.ns != B || e.name != "rendering" || !attrs(e, &["id"]) || !e.children.is_empty() {
+        return None;
+    }
+    Some(processcraft_core::bpmn_activity::BaseOwner {
+        id: optional_id(e)?,
+        base: take_anonymous_base(e),
+    })
+}
+fn parse_resource_role(
+    e: &Elem,
+    namespace: &str,
+) -> Option<processcraft_core::bpmn_activity::ResourceRole> {
+    use processcraft_core::bpmn_activity::{
+        ResourceAssignmentExpression, ResourceParameterBinding, ResourceRole,
+        ResourceRoleAssignment, ResourceRoleKind,
+    };
+    if e.ns != B || !attrs(e, &["id", "name"]) {
+        return None;
+    }
+    let kind = match e.name.as_str() {
+        "resourceRole" => ResourceRoleKind::ResourceRole,
+        "performer" => ResourceRoleKind::Performer,
+        "humanPerformer" => ResourceRoleKind::HumanPerformer,
+        "potentialOwner" => ResourceRoleKind::PotentialOwner,
+        _ => return None,
+    };
+    let assignment = if e.children.is_empty() {
+        ResourceRoleAssignment::None
+    } else if e.children[0].ns == B
+        && e.children[0].name == "resourceRef"
+        && attrs(&e.children[0], &[])
+        && e.children[0].children.is_empty()
+    {
+        let reference = event_reference(e.children[0].catalog_text_qname.as_ref()?, namespace);
+        let mut bindings = Vec::new();
+        for child in &e.children[1..] {
+            if child.ns != B
+                || child.name != "resourceParameterBinding"
+                || !attrs(child, &["id", "parameterRef"])
+                || child.children.len() != 1
+                || child.children[0].name != "expression"
+            {
+                return None;
+            }
+            bindings.push(ResourceParameterBinding {
+                id: optional_id(child)?,
+                base: take_anonymous_base(child),
+                parameter_ref: Some(event_reference(
+                    child.catalog_qnames.get("parameterRef")?,
+                    namespace,
+                )),
+                expression: Some(parse_expression(&child.children[0], false)?),
+            });
+        }
+        ResourceRoleAssignment::Resource {
+            reference,
+            bindings,
+        }
+    } else if e.children.len() == 1
+        && e.children[0].ns == B
+        && e.children[0].name == "resourceAssignmentExpression"
+    {
+        let child = &e.children[0];
+        if !attrs(child, &["id"])
+            || child.children.len() != 1
+            || child.children[0].name != "expression"
+        {
+            return None;
+        }
+        ResourceRoleAssignment::Expression {
+            assignment: ResourceAssignmentExpression {
+                id: optional_id(child)?,
+                base: take_anonymous_base(child),
+                expression: Some(parse_expression(&child.children[0], false)?),
+            },
+        }
+    } else {
+        return None;
+    };
+    Some(ResourceRole {
+        id: optional_id(e)?,
+        base: take_anonymous_base(e),
+        name: e.attrs.get("name").cloned(),
+        kind,
+        assignment,
+    })
+}
+fn parse_global_task(
+    e: &Elem,
+    namespace: &str,
+) -> Option<processcraft_core::bpmn_activity::GlobalTask> {
+    use processcraft_core::bpmn_activity::{CallableMetadata, GlobalTask, GlobalTaskKind};
+    if e.ns != B
+        || !attrs(
+            e,
+            &["id", "name", "implementation", "scriptLanguage", "xsi:type"],
+        )
+    {
+        return None;
+    }
+    let mut callable = CallableMetadata::default();
+    let mut io_specification = None;
+    let mut resource_roles = Vec::new();
+    let mut script = None;
+    let mut renderings = Vec::new();
+    let mut phase = 0u8;
+    for child in &e.children {
+        if child.ns != B {
+            return None;
+        }
+        match child.name.as_str() {
+            "supportedInterfaceRef"
+                if phase == 0 && attrs(child, &[]) && child.children.is_empty() =>
+            {
+                callable.supported_interface_refs.push(event_reference(
+                    child.catalog_text_qname.as_ref()?,
+                    namespace,
+                ))
+            }
+            "ioSpecification" if phase <= 1 && io_specification.is_none() => {
+                phase = 1;
+                io_specification = Some(parse_io_specification(child)?);
+            }
+            "ioBinding" if phase <= 2 => {
+                phase = 2;
+                callable
+                    .io_bindings
+                    .push(parse_io_binding(child, namespace)?);
+            }
+            "resourceRole" | "performer" | "humanPerformer" | "potentialOwner"
+                if phase <= 3 && e.name != "rootElement" =>
+            {
+                phase = 3;
+                resource_roles.push(parse_resource_role(child, namespace)?);
+            }
+            "script" if e.name == "globalScriptTask" && phase <= 4 && script.is_none() => {
+                phase = 4;
+                script = Some(mixed_body(child, true)?);
+            }
+            "rendering" if e.name == "globalUserTask" && phase <= 4 => {
+                phase = 4;
+                renderings.push(parse_rendering(child)?);
+            }
+            _ => return None,
+        }
+    }
+    let implementation = e.attrs.get("implementation").cloned();
+    let kind = match e.name.as_str() {
+        "rootElement"
+            if e.attrs.get("xsi:type").map(String::as_str) == Some("tCallableElement")
+                && implementation.is_none()
+                && !e.attrs.contains_key("scriptLanguage") =>
+        {
+            GlobalTaskKind::CallableElement
+        }
+        "globalTask" if implementation.is_none() && !e.attrs.contains_key("scriptLanguage") => {
+            GlobalTaskKind::Task
+        }
+        "globalManualTask"
+            if implementation.is_none() && !e.attrs.contains_key("scriptLanguage") =>
+        {
+            GlobalTaskKind::Manual
+        }
+        "globalBusinessRuleTask" if !e.attrs.contains_key("scriptLanguage") => {
+            GlobalTaskKind::BusinessRule { implementation }
+        }
+        "globalScriptTask" if implementation.is_none() => GlobalTaskKind::Script {
+            script_language: e.attrs.get("scriptLanguage").cloned(),
+            script,
+        },
+        "globalUserTask" if !e.attrs.contains_key("scriptLanguage") => GlobalTaskKind::User {
+            implementation,
+            renderings,
+        },
+        _ => return None,
+    };
+    Some(GlobalTask {
+        id: optional_id(e)?,
+        base: take_anonymous_base(e),
+        name: e.attrs.get("name").cloned(),
+        callable,
+        io_specification,
+        resource_roles,
+        kind,
+    })
 }
 fn parse_event_definition(e: &Elem, target_namespace: &str) -> Option<EventDefinition> {
     if e.ns != B {
@@ -1179,60 +1752,292 @@ fn gateway_details(e: &Elem) -> Option<(String, Option<NodeDetails>)> {
     };
     Some((doc, details))
 }
-fn loop_characteristics(e: &Elem) -> Option<LoopCharacteristics> {
-    let boolean = |v: Option<&String>| -> Option<bool> {
-        match v.map(String::as_str) {
-            None | Some("false" | "0") => Some(false),
-            Some("true" | "1") => Some(true),
-            _ => None,
-        }
-    };
-    let mut expressions = std::collections::BTreeMap::new();
+fn parse_implicit_input_association(
+    e: &Elem,
+) -> Option<processcraft_core::bpmn_activity::ImplicitInputAssociation> {
+    use processcraft_core::bpmn_activity::ImplicitInputAssociation;
+    use processcraft_core::bpmn_data::DataAssignment;
+    if e.ns != B || e.name != "dataInputAssociation" || !attrs(e, &["id"]) {
+        return None;
+    }
+    let mut sources = Vec::new();
+    let mut target = None;
+    let mut transformation = None;
+    let mut assignments = Vec::new();
     for child in &e.children {
-        if child.ns != B
-            || expressions
-                .insert(child.name.as_str(), parse_expression(child, false)?)
-                .is_some()
-        {
+        if child.ns != B {
             return None;
         }
-    }
-    match e.name.as_str() {
-        "standardLoopCharacteristics"
-            if attrs(e, &["id", "testBefore", "loopMaximum"])
-                && expressions.keys().all(|k| *k == "loopCondition") =>
-        {
-            let maximum = e.attrs.get("loopMaximum").cloned();
-            if let Some(v) = &maximum {
-                let digits = v.strip_prefix(['+', '-']).unwrap_or(v);
-                if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
-                    return None;
-                }
+        match child.name.as_str() {
+            "sourceRef" if target.is_none() && attrs(child, &[]) && child.children.is_empty() => {
+                sources.push(child.text.trim().parse().ok()?)
             }
-            Some(LoopCharacteristics::Standard {
-                base: take_anonymous_base(e),
-                id: optional_id(e)?,
-                test_before: boolean(e.attrs.get("testBefore"))?,
-                condition: expressions.remove("loopCondition"),
-                maximum,
-            })
+            "targetRef" if target.is_none() && attrs(child, &[]) && child.children.is_empty() => {
+                target = Some(child.text.trim().parse().ok()?)
+            }
+            "transformation"
+                if target.is_some() && transformation.is_none() && assignments.is_empty() =>
+            {
+                transformation = Some(parse_expression(child, true)?)
+            }
+            "assignment"
+                if target.is_some()
+                    && attrs(child, &["id"])
+                    && child.children.len() == 2
+                    && child.children[0].name == "from"
+                    && child.children[1].name == "to" =>
+            {
+                assignments.push(DataAssignment {
+                    id: optional_id(child)?,
+                    base: take_anonymous_base(child),
+                    from: parse_expression(&child.children[0], false)?,
+                    to: parse_expression(&child.children[1], false)?,
+                })
+            }
+            _ => return None,
         }
-        "multiInstanceLoopCharacteristics"
-            if attrs(e, &["id", "isSequential"])
-                && expressions
-                    .keys()
-                    .all(|k| matches!(*k, "loopCardinality" | "completionCondition")) =>
-        {
-            Some(LoopCharacteristics::MultiInstance {
-                base: take_anonymous_base(e),
-                id: optional_id(e)?,
-                is_sequential: boolean(e.attrs.get("isSequential"))?,
-                cardinality: expressions.remove("loopCardinality"),
-                completion_condition: expressions.remove("completionCondition"),
-            })
-        }
-        _ => None,
     }
+    Some(ImplicitInputAssociation {
+        id: optional_id(e)?,
+        base: take_anonymous_base(e),
+        sources,
+        target: Some(target?),
+        transformation,
+        assignments,
+    })
+}
+fn parse_implicit_throw(
+    e: &Elem,
+    namespace: &str,
+) -> Option<processcraft_core::bpmn_activity::ImplicitThrowEvent> {
+    use processcraft_core::bpmn_activity::ImplicitThrowEvent;
+    if e.ns != B || e.name != "event" || !attrs(e, &["id", "name"]) {
+        return None;
+    }
+    let mut flow = take_flow_metadata(e);
+    let incoming = flow
+        .as_mut()
+        .map(|metadata| std::mem::take(&mut metadata.incoming))
+        .unwrap_or_default();
+    let outgoing = flow
+        .as_mut()
+        .map(|metadata| std::mem::take(&mut metadata.outgoing))
+        .unwrap_or_default();
+    if flow.as_ref().is_some_and(|metadata| {
+        *metadata == processcraft_core::bpmn_activity::FlowElementMetadata::default()
+    }) {
+        flow = None;
+    }
+    let mut value = ImplicitThrowEvent {
+        id: optional_id(e)?,
+        name: e.attrs.get("name").cloned(),
+        base: take_anonymous_base(e),
+        flow,
+        properties: Vec::new(),
+        incoming,
+        outgoing,
+        inputs: Vec::new(),
+        input_associations: Vec::new(),
+        input_set: None,
+        definitions: Vec::new(),
+        definition_refs: Vec::new(),
+    };
+    let mut phase = 0;
+    for child in &e.children {
+        if child.ns != B {
+            return None;
+        }
+        match child.name.as_str() {
+            "property" if phase == 0 => value.properties.push(parse_property(child)?),
+            "dataInput" if phase <= 1 => {
+                phase = 1;
+                value.inputs.push(parse_data_port(child)?);
+            }
+            "dataInputAssociation" if phase <= 2 => {
+                phase = 2;
+                value
+                    .input_associations
+                    .push(parse_implicit_input_association(child)?);
+            }
+            "inputSet" if phase <= 3 && value.input_set.is_none() => {
+                phase = 3;
+                value.input_set = Some(parse_io_set(child, true)?);
+            }
+            "eventDefinitionRef"
+                if phase <= 5 && attrs(child, &[]) && child.children.is_empty() =>
+            {
+                phase = 5;
+                value.definition_refs.push(event_reference(
+                    child.catalog_text_qname.as_ref()?,
+                    namespace,
+                ));
+            }
+            name if name.ends_with("EventDefinition") && phase <= 4 => {
+                phase = 4;
+                value
+                    .definitions
+                    .push(parse_event_definition(child, namespace)?);
+            }
+            _ => return None,
+        }
+    }
+    Some(value)
+}
+fn loop_characteristics(e: &Elem, namespace: &str) -> Option<LoopCharacteristics> {
+    use processcraft_core::bpmn_activity::{ComplexBehaviorDefinition, MultiInstanceFlowCondition};
+    if e.name == "standardLoopCharacteristics" {
+        if !attrs(e, &["id", "testBefore", "loopMaximum"]) || e.children.len() > 1 {
+            return None;
+        }
+        let condition = if let Some(child) = e.children.first() {
+            if child.ns != B || child.name != "loopCondition" {
+                return None;
+            }
+            Some(parse_expression(child, false)?)
+        } else {
+            None
+        };
+        let maximum = e.attrs.get("loopMaximum").cloned();
+        if let Some(v) = &maximum {
+            let digits = v.strip_prefix(['+', '-']).unwrap_or(v);
+            if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
+                return None;
+            }
+        }
+        return Some(LoopCharacteristics::Standard {
+            base: take_anonymous_base(e),
+            id: optional_id(e)?,
+            test_before: optional_bool(e.attrs.get("testBefore"))?,
+            condition,
+            maximum,
+        });
+    }
+    if e.name != "multiInstanceLoopCharacteristics"
+        || !attrs(
+            e,
+            &[
+                "id",
+                "isSequential",
+                "behavior",
+                "oneBehaviorEventRef",
+                "noneBehaviorEventRef",
+            ],
+        )
+    {
+        return None;
+    }
+    let behavior = match e.attrs.get("behavior").map(String::as_str) {
+        None => None,
+        Some("None") => Some(MultiInstanceFlowCondition::None),
+        Some("One") => Some(MultiInstanceFlowCondition::One),
+        Some("All") => Some(MultiInstanceFlowCondition::All),
+        Some("Complex") => Some(MultiInstanceFlowCondition::Complex),
+        _ => return None,
+    };
+    let reference = |name: &str| {
+        e.catalog_qnames
+            .get(name)
+            .map(|q| event_reference(q, namespace))
+    };
+    let mut result = LoopCharacteristics::MultiInstance {
+        base: take_anonymous_base(e),
+        id: optional_id(e)?,
+        is_sequential: optional_bool(e.attrs.get("isSequential"))?,
+        behavior,
+        loop_data_input_ref: None,
+        loop_data_output_ref: None,
+        input_data_item: None,
+        output_data_item: None,
+        complex_behavior_definitions: Vec::new(),
+        one_behavior_event_ref: reference("oneBehaviorEventRef"),
+        none_behavior_event_ref: reference("noneBehaviorEventRef"),
+        cardinality: None,
+        completion_condition: None,
+    };
+    let LoopCharacteristics::MultiInstance {
+        cardinality,
+        loop_data_input_ref,
+        loop_data_output_ref,
+        input_data_item,
+        output_data_item,
+        complex_behavior_definitions,
+        completion_condition,
+        ..
+    } = &mut result
+    else {
+        unreachable!()
+    };
+    let mut phase = 0;
+    for child in &e.children {
+        if child.ns != B {
+            return None;
+        }
+        match child.name.as_str() {
+            "loopCardinality" if phase == 0 && cardinality.is_none() => {
+                *cardinality = Some(parse_expression(child, false)?);
+                phase = 1;
+            }
+            "loopDataInputRef"
+                if phase <= 1
+                    && loop_data_input_ref.is_none()
+                    && attrs(child, &[])
+                    && child.children.is_empty() =>
+            {
+                *loop_data_input_ref = Some(event_reference(
+                    child.catalog_text_qname.as_ref()?,
+                    namespace,
+                ));
+                phase = 2;
+            }
+            "loopDataOutputRef"
+                if phase <= 2
+                    && loop_data_output_ref.is_none()
+                    && attrs(child, &[])
+                    && child.children.is_empty() =>
+            {
+                *loop_data_output_ref = Some(event_reference(
+                    child.catalog_text_qname.as_ref()?,
+                    namespace,
+                ));
+                phase = 3;
+            }
+            "inputDataItem" if phase <= 3 && input_data_item.is_none() => {
+                *input_data_item = Some(parse_data_port(child)?);
+                phase = 4;
+            }
+            "outputDataItem" if phase <= 4 && output_data_item.is_none() => {
+                *output_data_item = Some(parse_data_port(child)?);
+                phase = 5;
+            }
+            "complexBehaviorDefinition"
+                if phase <= 5
+                    && attrs(child, &["id"])
+                    && (1..=2).contains(&child.children.len())
+                    && child.children[0].ns == B
+                    && child.children[0].name == "condition" =>
+            {
+                let condition = Some(parse_expression(&child.children[0], true)?);
+                let event = if child.children.len() == 2 {
+                    Some(parse_implicit_throw(&child.children[1], namespace)?)
+                } else {
+                    None
+                };
+                complex_behavior_definitions.push(ComplexBehaviorDefinition {
+                    id: optional_id(child)?,
+                    base: take_anonymous_base(child),
+                    condition,
+                    event,
+                });
+                phase = 5;
+            }
+            "completionCondition" if phase <= 5 && completion_condition.is_none() => {
+                *completion_condition = Some(parse_expression(child, false)?);
+                phase = 6;
+            }
+            _ => return None,
+        }
+    }
+    Some(result)
 }
 fn parse_item_aware(e: &Elem) -> Option<Option<processcraft_core::bpmn_data::ItemAwareMetadata>> {
     use processcraft_core::bpmn_data::{DataState, ItemAwareMetadata};
@@ -1281,7 +2086,10 @@ fn item_documentation(e: &Elem) -> Option<String> {
 }
 fn parse_data_port(e: &Elem) -> Option<processcraft_core::bpmn_data::DataPort> {
     if e.ns != B
-        || !matches!(e.name.as_str(), "dataInput" | "dataOutput")
+        || !matches!(
+            e.name.as_str(),
+            "dataInput" | "dataOutput" | "inputDataItem" | "outputDataItem"
+        )
         || !attrs(e, &["id", "name", "itemSubjectRef", "isCollection"])
         || e.children.iter().any(|c| c.name == "documentation")
     {
@@ -1592,6 +2400,7 @@ fn parse_event(
 }
 fn activity_properties(
     e: &Elem,
+    namespace: &str,
 ) -> Option<Option<processcraft_core::bpmn_activity::ActivityProperties>> {
     use processcraft_core::bpmn_activity::ActivityProperties;
     if ["messageRef", "operationRef"]
@@ -1622,6 +2431,15 @@ fn activity_properties(
         ..Default::default()
     };
     for child in &e.children {
+        match child.name.as_str() {
+            "property" => result.properties.push(parse_property(child)?),
+            "resourceRole" | "performer" | "humanPerformer" | "potentialOwner" => result
+                .resource_roles
+                .push(parse_resource_role(child, namespace)?),
+            "rendering" if e.name == "userTask" => result.renderings.push(parse_rendering(child)?),
+            "rendering" => return None,
+            _ => {}
+        }
         if child.name == "completionCondition" && e.name == "adHocSubProcess" {
             if child.ns != B || result.completion_condition.is_some() {
                 return None;
@@ -1641,7 +2459,7 @@ fn activity_properties(
         Some(Some(result))
     }
 }
-fn activity_parts(e: &Elem) -> Option<(String, Option<LoopCharacteristics>)> {
+fn activity_parts(e: &Elem, namespace: &str) -> Option<(String, Option<LoopCharacteristics>)> {
     let mut doc = String::new();
     let mut seen_doc = false;
     let mut lp = None;
@@ -1661,11 +2479,19 @@ fn activity_parts(e: &Elem) -> Option<(String, Option<LoopCharacteristics>)> {
             "standardLoopCharacteristics" | "multiInstanceLoopCharacteristics"
         ) && lp.is_none()
         {
-            lp = Some(loop_characteristics(child)?);
+            lp = Some(loop_characteristics(child, namespace)?);
         } else if (child.name == "script" && e.name == "scriptTask")
             || matches!(
                 child.name.as_str(),
-                "ioSpecification" | "dataInputAssociation" | "dataOutputAssociation"
+                "ioSpecification"
+                    | "property"
+                    | "dataInputAssociation"
+                    | "dataOutputAssociation"
+                    | "resourceRole"
+                    | "performer"
+                    | "humanPerformer"
+                    | "potentialOwner"
+                    | "rendering"
             )
         {
             continue;
@@ -1740,6 +2566,7 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
         return None;
     }
     let mut p = Process {
+        activity_metadata: None,
         lane_set_base: None,
         base_extras: anonymous_extras(e),
         is_executable: optional_bool(e.attrs.get("isExecutable"))?,
@@ -1757,7 +2584,75 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
     };
     let mut documentation_nodes = Vec::new();
     let mut seen_lane_set = false;
+    let mut process_metadata = processcraft_core::bpmn_activity::ProcessActivityMetadata::default();
+    if e.name == "process" {
+        process_metadata.process_type = match e.attrs.get("processType").map(String::as_str) {
+            None => None,
+            Some("None") => Some(processcraft_core::bpmn_activity::ProcessType::None),
+            Some("Public") => Some(processcraft_core::bpmn_activity::ProcessType::Public),
+            Some("Private") => Some(processcraft_core::bpmn_activity::ProcessType::Private),
+            _ => return None,
+        };
+        process_metadata.is_closed = optional_bool(e.attrs.get("isClosed"))?;
+        process_metadata.definitional_collaboration_ref = e
+            .catalog_qnames
+            .get("definitionalCollaborationRef")
+            .map(|q| event_reference(q, target_namespace));
+    }
     for n in &e.children {
+        if e.name == "process" && n.ns == B {
+            match n.name.as_str() {
+                "supportedInterfaceRef" if attrs(n, &[]) && n.children.is_empty() => {
+                    process_metadata
+                        .callable
+                        .supported_interface_refs
+                        .push(event_reference(
+                            n.catalog_text_qname.as_ref()?,
+                            target_namespace,
+                        ));
+                    continue;
+                }
+                "ioBinding" => {
+                    process_metadata
+                        .callable
+                        .io_bindings
+                        .push(parse_io_binding(n, target_namespace)?);
+                    continue;
+                }
+                "auditing" if process_metadata.auditing.is_none() => {
+                    process_metadata.auditing = Some(parse_audit_monitor(n)?);
+                    continue;
+                }
+                "monitoring" if process_metadata.monitoring.is_none() => {
+                    process_metadata.monitoring = Some(parse_audit_monitor(n)?);
+                    continue;
+                }
+                "property" => {
+                    process_metadata.properties.push(parse_property(n)?);
+                    continue;
+                }
+                "resourceRole" | "performer" | "humanPerformer" | "potentialOwner" => {
+                    process_metadata
+                        .resource_roles
+                        .push(parse_resource_role(n, target_namespace)?);
+                    continue;
+                }
+                "correlationSubscription" => {
+                    process_metadata
+                        .correlation_subscriptions
+                        .push(parse_correlation_subscription(n, target_namespace)?);
+                    continue;
+                }
+                "supports" if attrs(n, &[]) && n.children.is_empty() => {
+                    process_metadata.supports.push(event_reference(
+                        n.catalog_text_qname.as_ref()?,
+                        target_namespace,
+                    ));
+                    continue;
+                }
+                _ => {}
+            }
+        }
         if matches!(
             e.name.as_str(),
             "subProcess" | "adHocSubProcess" | "transaction"
@@ -1793,7 +2688,13 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
             "subProcess" | "adHocSubProcess" | "transaction"
         ) && matches!(
             n.name.as_str(),
-            "dataInputAssociation" | "dataOutputAssociation"
+            "property"
+                | "dataInputAssociation"
+                | "dataOutputAssociation"
+                | "resourceRole"
+                | "performer"
+                | "humanPerformer"
+                | "potentialOwner"
         ) {
             continue;
         }
@@ -1859,6 +2760,7 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
                 }
             }
             p.nodes.push(Node {
+                flow_metadata: take_flow_metadata(n),
                 base_extras: anonymous_extras(n),
                 item_aware: None,
                 id: element_identity(n)?,
@@ -1889,6 +2791,7 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
                 _ => return None,
             };
             p.flows.push(Flow {
+                flow_metadata: take_flow_metadata(n),
                 base_extras: anonymous_extras(n),
                 id: element_identity(n)?,
                 name: None,
@@ -1909,6 +2812,7 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
             }
             p.data_objects
                 .push(processcraft_core::bpmn_data::DataObject {
+                    flow_metadata: take_flow_metadata(n),
                     base: take_anonymous_base(n),
                     id: optional_id(n)?,
                     name: n.attrs.get("name").cloned(),
@@ -1950,6 +2854,7 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
                     .map(processcraft_core::bpmn_data::DataStoreRef::Qualified)
             };
             p.nodes.push(Node {
+                flow_metadata: take_flow_metadata(n),
                 base_extras: anonymous_extras(n),
                 item_aware: parse_item_aware(n)?,
                 id: element_identity(n)?,
@@ -1992,11 +2897,12 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
             ) {
                 return None;
             }
-            let (doc, lp) = activity_parts(n)?;
+            let (doc, lp) = activity_parts(n, target_namespace)?;
             let node_id = element_identity(n)?;
             let (io, associations) = activity_io(n, &node_id.selector())?;
             p.data_associations.extend(associations);
             p.nodes.push(Node {
+                flow_metadata: take_flow_metadata(n),
                 base_extras: anonymous_extras(n),
                 item_aware: None,
                 id: node_id,
@@ -2004,14 +2910,11 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
                 documentation: anonymous_documentation(n, doc),
                 kind: NodeKind::CallActivity,
                 details: Some(NodeDetails::CallActivity {
-                    called_element: processcraft_core::bpmn_model::QNameRef {
-                        namespace: target_namespace.into(),
-                        local: id(n, "calledElement")?,
-                    },
+                    called_element: n.catalog_qnames.get("calledElement").cloned(),
                 }),
                 owner: String::new(),
                 contact: String::new(),
-                activity: activity_properties(n)?,
+                activity: activity_properties(n, target_namespace)?,
                 io_specification: io,
                 loop_characteristics: lp,
             });
@@ -2052,13 +2955,14 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
                 return None;
             }
             let lp = match loops.first() {
-                Some(lp) => Some(loop_characteristics(lp)?),
+                Some(lp) => Some(loop_characteristics(lp, target_namespace)?),
                 None => None,
             };
             let child = parse_container(n, depth + 1, target_namespace)?;
             let (io, associations) = activity_io(n, &child.id.selector())?;
             p.data_associations.extend(associations);
             p.nodes.push(Node {
+                flow_metadata: take_flow_metadata(n),
                 base_extras: anonymous_extras(n),
                 item_aware: None,
                 id: child.id,
@@ -2083,7 +2987,7 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
                 }),
                 owner: String::new(),
                 contact: String::new(),
-                activity: activity_properties(n)?,
+                activity: activity_properties(n, target_namespace)?,
                 io_specification: io,
                 loop_characteristics: lp,
             });
@@ -2185,12 +3089,12 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
             ) {
                 gateway_details(n)?
             } else if kind.is_activity() {
-                (activity_parts(n)?.0, None)
+                (activity_parts(n, target_namespace)?.0, None)
             } else {
                 (documentation(n)?, None)
             };
             let lp = if kind.is_activity() {
-                activity_parts(n)?.1
+                activity_parts(n, target_namespace)?.1
             } else {
                 None
             };
@@ -2202,6 +3106,7 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
             p.data_associations.extend(associations);
             p.data_associations.extend(event_associations);
             p.nodes.push(Node {
+                flow_metadata: take_flow_metadata(n),
                 base_extras: anonymous_extras(n),
                 item_aware: None,
                 id: node_id,
@@ -2211,7 +3116,7 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
                 owner: String::new(),
                 contact: String::new(),
                 activity: if kind.is_activity() {
-                    activity_properties(n)?
+                    activity_properties(n, target_namespace)?
                 } else {
                     None
                 },
@@ -2219,8 +3124,11 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
                 loop_characteristics: lp,
                 details,
             });
-        } else if n.name == "sequenceFlow" && attrs(n, &["id", "name", "sourceRef", "targetRef"]) {
+        } else if n.name == "sequenceFlow"
+            && attrs(n, &["id", "name", "sourceRef", "targetRef", "isImmediate"])
+        {
             p.flows.push(Flow {
+                flow_metadata: take_flow_metadata(n),
                 base_extras: anonymous_extras(n),
                 association_direction: None,
                 id: element_identity(n)?,
@@ -2253,6 +3161,9 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
         p.documentation =
             processcraft_core::bpmn_metadata::DocumentationSet::Structured(documentation_nodes);
     }
+    if process_metadata != processcraft_core::bpmn_activity::ProcessActivityMetadata::default() {
+        p.activity_metadata = Some(process_metadata);
+    }
     Some(p)
 }
 struct Scope<'a> {
@@ -2261,6 +3172,7 @@ struct Scope<'a> {
     lanes: &'a [Lane],
     flows: &'a [Flow],
     groups: &'a [processcraft_core::bpmn_model::Group],
+    data_objects: &'a [processcraft_core::bpmn_data::DataObject],
     data_associations: &'a [processcraft_core::bpmn_data::DataAssociation],
 }
 fn scopes(d: &BpmnDocument) -> Option<Vec<Scope<'_>>> {
@@ -2275,6 +3187,7 @@ fn scopes(d: &BpmnDocument) -> Option<Vec<Scope<'_>>> {
                     lanes: &p.lanes,
                     flows: &p.flows,
                     groups: &p.groups,
+                    data_objects: &p.data_objects,
                     data_associations: &p.data_associations,
                 },
                 0,
@@ -2303,6 +3216,7 @@ fn scopes(d: &BpmnDocument) -> Option<Vec<Scope<'_>>> {
                         lanes: &content.lanes,
                         flows: &content.flows,
                         groups: &content.groups,
+                        data_objects: &content.data_objects,
                         data_associations: &content.data_associations,
                     },
                     depth + 1,
@@ -2318,6 +3232,7 @@ fn parse_conversation(
     parent: Option<ElementSelector>,
     out: &mut Vec<processcraft_core::bpmn_collaboration::ConversationNode>,
     depth: usize,
+    namespace: &str,
 ) -> Option<()> {
     use processcraft_core::bpmn_collaboration::{ConversationKind, ConversationNode};
     if depth > 32 || !attrs(e, &["id", "name"]) {
@@ -2330,6 +3245,7 @@ fn parse_conversation(
     };
     let node_id = element_identity(e)?;
     let mut refs = Vec::new();
+    let mut correlation_keys = Vec::new();
     for c in &e.children {
         if c.ns != B {
             return None;
@@ -2338,15 +3254,17 @@ fn parse_conversation(
             "participantRef" if c.attrs.is_empty() && c.children.is_empty() => {
                 refs.push(c.text.parse().ok()?)
             }
+            "correlationKey" => correlation_keys.push(parse_correlation_key(c, namespace)?),
             "conversation" | "subConversation"
                 if matches!(kind, ConversationKind::SubConversation) =>
             {
-                parse_conversation(c, Some(node_id.selector()), out, depth + 1)?
+                parse_conversation(c, Some(node_id.selector()), out, depth + 1, namespace)?
             }
             _ => return None,
         }
     }
     out.push(ConversationNode {
+        correlation_keys,
         base: take_anonymous_base(e),
         id: node_id,
         name: e.attrs.get("name").cloned(),
@@ -2356,12 +3274,13 @@ fn parse_conversation(
     });
     Some(())
 }
-fn parse_collaboration(e: &Elem) -> Option<Collaboration> {
+fn parse_collaboration(e: &Elem, namespace: &str) -> Option<Collaboration> {
     use processcraft_core::bpmn_collaboration::ConversationLink;
     if !attrs(e, &["id", "name"]) {
         return None;
     }
     let mut c = Collaboration {
+        correlation_keys: Vec::new(),
         base: take_anonymous_base(e),
         id: element_identity(e)?,
         name: e.attrs.get("name").cloned(),
@@ -2392,6 +3311,7 @@ fn parse_collaboration(e: &Elem) -> Option<Collaboration> {
             }
             "messageFlow" if attrs(child, &["id", "name", "sourceRef", "targetRef"]) => {
                 c.flows.push(Flow {
+                    flow_metadata: take_flow_metadata(child),
                     base_extras: anonymous_extras(child),
                     association_direction: None,
                     id: element_identity(child)?,
@@ -2404,8 +3324,11 @@ fn parse_collaboration(e: &Elem) -> Option<Collaboration> {
                 })
             }
             "conversation" | "subConversation" => {
-                parse_conversation(child, None, &mut c.conversation_nodes, 0)?
+                parse_conversation(child, None, &mut c.conversation_nodes, 0, namespace)?
             }
+            "correlationKey" => c
+                .correlation_keys
+                .push(parse_correlation_key(child, namespace)?),
             "conversationLink"
                 if attrs(child, &["id", "name", "sourceRef", "targetRef"])
                     && child.children.is_empty() =>
@@ -2423,7 +3346,10 @@ fn parse_collaboration(e: &Elem) -> Option<Collaboration> {
     }
     Some(c)
 }
-fn parse_choreography(e: &Elem) -> Option<processcraft_core::bpmn_collaboration::Choreography> {
+fn parse_choreography(
+    e: &Elem,
+    namespace: &str,
+) -> Option<processcraft_core::bpmn_collaboration::Choreography> {
     use processcraft_core::bpmn_collaboration::{Choreography, ChoreographyActivity};
     if !attrs(e, &["id", "name"]) {
         return None;
@@ -2459,6 +3385,7 @@ fn parse_choreography(e: &Elem) -> Option<processcraft_core::bpmn_collaboration:
             }
             "messageFlow" if attrs(child, &["id", "name", "sourceRef", "targetRef"]) => {
                 c.message_flows.push(Flow {
+                    flow_metadata: take_flow_metadata(child),
                     base_extras: anonymous_extras(child),
                     association_direction: None,
                     id: element_identity(child)?,
@@ -2473,7 +3400,12 @@ fn parse_choreography(e: &Elem) -> Option<processcraft_core::bpmn_collaboration:
             "choreographyTask" if attrs(child, &["id", "name", "initiatingParticipantRef"]) => {
                 let mut participants = Vec::new();
                 let mut messages = Vec::new();
+                let mut correlation_keys = Vec::new();
                 for reference in &child.children {
+                    if reference.ns == B && reference.name == "correlationKey" {
+                        correlation_keys.push(parse_correlation_key(reference, namespace)?);
+                        continue;
+                    }
                     if reference.ns != B
                         || !reference.attrs.is_empty()
                         || !reference.children.is_empty()
@@ -2490,6 +3422,8 @@ fn parse_choreography(e: &Elem) -> Option<processcraft_core::bpmn_collaboration:
                     return None;
                 }
                 c.activities.push(ChoreographyActivity {
+                    flow_metadata: take_flow_metadata(child),
+                    correlation_keys,
                     base: take_anonymous_base(child),
                     id: element_identity(child)?,
                     name: child.attrs.get("name").cloned(),
@@ -2498,8 +3432,14 @@ fn parse_choreography(e: &Elem) -> Option<processcraft_core::bpmn_collaboration:
                     message_flow_refs: messages,
                 });
             }
-            "sequenceFlow" if attrs(child, &["id", "name", "sourceRef", "targetRef"]) => {
+            "sequenceFlow"
+                if attrs(
+                    child,
+                    &["id", "name", "sourceRef", "targetRef", "isImmediate"],
+                ) =>
+            {
                 c.sequence_flows.push(Flow {
+                    flow_metadata: take_flow_metadata(child),
                     base_extras: anonymous_extras(child),
                     association_direction: None,
                     id: element_identity(child)?,
@@ -2706,6 +3646,8 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
     let mut root = tree(bytes)?;
     let mut pending_metadata = BTreeMap::new();
     extract_owner_metadata(&mut root, &mut pending_metadata)?;
+    let target_namespace = root.attrs.get("targetNamespace")?.clone();
+    extract_flow_metadata(&mut root, &target_namespace)?;
     // Until every owner has a metadata writer, foreign attributes must remain source-preserved.
     fn has_foreign_attributes(e: &Elem) -> bool {
         !e.foreign_attributes.is_empty() || e.children.iter().any(has_foreign_attributes)
@@ -2792,6 +3734,22 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
         }
         seen_non_import = true;
         match (e.ns.as_str(), e.name.as_str()) {
+            (B, "correlationProperty") => {
+                d.correlation_properties
+                    .push(parse_correlation_property(e, &target_namespace)?);
+            }
+            (
+                B,
+                "rootElement"
+                | "globalTask"
+                | "globalManualTask"
+                | "globalBusinessRuleTask"
+                | "globalScriptTask"
+                | "globalUserTask",
+            ) => {
+                d.global_tasks
+                    .push(parse_global_task(e, &target_namespace)?);
+            }
             (B, "extension") => {
                 if !attrs(e, &["definition", "mustUnderstand"]) || d.extensions.len() >= 256 {
                     return None;
@@ -2991,14 +3949,24 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                 });
             }
             (B, "choreography") => {
-                d.choreographies.push(parse_choreography(e)?);
+                d.choreographies
+                    .push(parse_choreography(e, &target_namespace)?);
             }
             (B, "collaboration") if d.collaboration.is_none() => {
-                d.collaboration = Some(parse_collaboration(e)?);
+                d.collaboration = Some(parse_collaboration(e, &target_namespace)?);
             }
             (B, "process") => {
-                if !attrs(e, &["id", "name", "isExecutable"])
-                    || optional_bool(e.attrs.get("isExecutable")).is_none()
+                if !attrs(
+                    e,
+                    &[
+                        "id",
+                        "name",
+                        "isExecutable",
+                        "processType",
+                        "isClosed",
+                        "definitionalCollaborationRef",
+                    ],
+                ) || optional_bool(e.attrs.get("isExecutable")).is_none()
                 {
                     return None;
                 }
@@ -3196,12 +4164,18 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
             }) {
                 return None;
             }
-            if let Some(NodeDetails::CallActivity { called_element }) = &node.details
-                && (called_element.namespace != *root.attrs.get("targetNamespace")?
-                    || !d
-                        .processes
-                        .iter()
-                        .any(|process| process.id.xml_id() == Some(&called_element.local)))
+            if let Some(NodeDetails::CallActivity {
+                called_element: Some(called_element),
+            }) = &node.details
+                && called_element.namespace == target_namespace
+                && !d
+                    .processes
+                    .iter()
+                    .any(|process| process.id.xml_id() == Some(&called_element.local))
+                && !d.global_tasks.iter().any(|task| {
+                    task.id.as_ref().and_then(ElementIdentity::xml_id)
+                        == Some(&called_element.local)
+                })
             {
                 return None;
             }
@@ -3394,6 +4368,7 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
     });
     if !pending_metadata.is_empty()
         || has_unconsumed_anonymous_base(&root)
+        || has_unconsumed_flow_metadata(&root)
         || collect_owner_metadata(&d).is_err()
     {
         return None;
@@ -3492,6 +4467,15 @@ fn collect_owner_metadata(document: &BpmnDocument) -> Result<BTreeMap<String, Pe
     }
     for process in &mut remaining.processes {
         clear_mixed(&mut process.nodes);
+    }
+    for task in &mut remaining.global_tasks {
+        if let processcraft_core::bpmn_activity::GlobalTaskKind::Script {
+            script: Some(body @ processcraft_core::bpmn_xml::MixedXml::Structured(_)),
+            ..
+        } = &mut task.kind
+        {
+            *body = processcraft_core::bpmn_xml::MixedXml::Text(String::new());
+        }
     }
     if invalid || remaining.has_semantic_common_metadata_features() {
         Err(())
@@ -3990,6 +4974,9 @@ fn write_conversations(
                 namespace,
             );
         }
+        for key in &node.correlation_keys {
+            write_correlation_key(xml, key, namespace, document);
+        }
         write_conversations(xml, nodes, Some(&node.id.selector()), namespace, document);
         xml.push_str(&format!("</{tag}>"));
     }
@@ -4084,6 +5071,457 @@ fn write_event_qname_text(
         esc(&qname.namespace),
         qname.local
     ));
+}
+#[allow(clippy::too_many_arguments)]
+fn write_reference_owner_open(
+    xml: &mut String,
+    tag: &str,
+    attribute: &str,
+    reference: &EventReference,
+    namespace: &str,
+    context: &ExportContext,
+    base: Option<&processcraft_core::bpmn_metadata::BaseMetadata>,
+    expressions: &[&Expression],
+) -> String {
+    let q = event_reference_qname(reference, namespace, context);
+    let candidates: Vec<_> = expressions
+        .iter()
+        .filter_map(|e| match e {
+            Expression::Structured(data) => Some(data),
+            _ => None,
+        })
+        .collect();
+    let find_prefix = |uri: &str| -> Option<String> {
+        if let Some(bindings) = metadata_context(base)
+            && let Some(binding) = bindings.iter().find(|binding| {
+                !binding.prefix.is_empty()
+                    && binding.prefix != "xml"
+                    && binding.uri == uri
+                    && candidates.iter().all(|candidate| {
+                        candidate
+                            .namespaces
+                            .iter()
+                            .any(|(p, u)| p == &binding.prefix && u == uri)
+                    })
+            })
+        {
+            return Some(binding.prefix.clone());
+        }
+        candidates.first().and_then(|first| {
+            first
+                .namespaces
+                .iter()
+                .find(|(prefix, value)| {
+                    !prefix.is_empty()
+                        && prefix != "xml"
+                        && value == uri
+                        && candidates.iter().all(|candidate| {
+                            candidate
+                                .namespaces
+                                .iter()
+                                .any(|(p, u)| p == prefix && u == uri)
+                        })
+                })
+                .map(|(prefix, _)| prefix.clone())
+        })
+    };
+    let owner_prefix = q
+        .namespace
+        .is_empty()
+        .then(|| find_prefix(B).unwrap_or_else(|| "pc_corr_owner".into()));
+    let name = owner_prefix
+        .as_ref()
+        .map(|prefix| format!("{prefix}:{tag}"))
+        .unwrap_or_else(|| tag.to_owned());
+    xml.push('<');
+    xml.push_str(&name);
+    if let Some(prefix) = &owner_prefix {
+        xml.push_str(&format!(" xmlns:{prefix}=\"{B}\" xmlns=\"\""));
+    }
+    if q.namespace.is_empty() || q.namespace == B {
+        xml.push_str(&format!(" {attribute}=\"{}\"", q.local));
+    } else {
+        let prefix = find_prefix(&q.namespace).unwrap_or_else(|| "pc_corr_ref".into());
+        xml.push_str(&format!(
+            " xmlns:{prefix}=\"{}\" {attribute}=\"{prefix}:{}\"",
+            esc(&q.namespace),
+            q.local
+        ));
+    }
+    name
+}
+fn write_audit_monitor(
+    xml: &mut String,
+    tag: &str,
+    value: &processcraft_core::bpmn_activity::AuditMonitor,
+) {
+    xml.push_str(&format!("<{tag} xmlns=\"{B}\""));
+    if let Some(id) = &value.id {
+        write_xml_id(xml, id);
+    }
+    anonymous_base_attributes(xml, value.id.as_ref(), value.base.as_ref());
+    xml.push('>');
+    anonymous_base_children(xml, value.id.as_ref(), value.base.as_ref());
+    xml.push_str(&format!("</{tag}>"));
+}
+fn write_flow_metadata(
+    xml: &mut String,
+    value: Option<&processcraft_core::bpmn_activity::FlowElementMetadata>,
+    namespace: &str,
+    context: &ExportContext,
+) {
+    if let Some(value) = value {
+        if let Some(audit) = &value.auditing {
+            write_audit_monitor(xml, "auditing", audit);
+        }
+        if let Some(monitor) = &value.monitoring {
+            write_audit_monitor(xml, "monitoring", monitor);
+        }
+        for reference in &value.category_value_refs {
+            write_event_qname_text(xml, "categoryValueRef", reference, namespace, context);
+        }
+        for reference in &value.incoming {
+            write_event_qname_text(xml, "incoming", reference, namespace, context);
+        }
+        for reference in &value.outgoing {
+            write_event_qname_text(xml, "outgoing", reference, namespace, context);
+        }
+    }
+}
+fn write_correlation_key(
+    xml: &mut String,
+    value: &processcraft_core::bpmn_activity::CorrelationKey,
+    namespace: &str,
+    context: &ExportContext,
+) {
+    xml.push_str(&format!("<correlationKey xmlns=\"{B}\""));
+    if let Some(id) = &value.id {
+        write_xml_id(xml, id);
+    }
+    write_xml_name(xml, value.name.as_deref());
+    anonymous_base_attributes(xml, value.id.as_ref(), value.base.as_ref());
+    xml.push('>');
+    anonymous_base_children(xml, value.id.as_ref(), value.base.as_ref());
+    for reference in &value.property_refs {
+        write_event_qname_text(xml, "correlationPropertyRef", reference, namespace, context);
+    }
+    xml.push_str("</correlationKey>");
+}
+fn write_correlation_property(
+    xml: &mut String,
+    value: &processcraft_core::bpmn_activity::CorrelationProperty,
+    namespace: &str,
+    context: &ExportContext,
+) {
+    let expressions: Vec<_> = value
+        .retrieval_expressions
+        .iter()
+        .filter_map(|r| r.message_path.as_ref())
+        .collect();
+    let tag = if let Some(q) = &value.item_type {
+        write_reference_owner_open(
+            xml,
+            "correlationProperty",
+            "type",
+            &EventReference::Qualified(q.clone()),
+            namespace,
+            context,
+            value.base.as_ref(),
+            &expressions,
+        )
+    } else {
+        xml.push_str("<correlationProperty");
+        "correlationProperty".to_owned()
+    };
+    if let Some(id) = &value.id {
+        write_xml_id(xml, id);
+    }
+    write_xml_name(xml, value.name.as_deref());
+    anonymous_base_attributes(xml, value.id.as_ref(), value.base.as_ref());
+    xml.push('>');
+    anonymous_base_children(xml, value.id.as_ref(), value.base.as_ref());
+    for retrieval in &value.retrieval_expressions {
+        let expressions: Vec<_> = retrieval.message_path.iter().collect();
+        let child = if let Some(reference) = &retrieval.message_ref {
+            write_reference_owner_open(
+                xml,
+                "correlationPropertyRetrievalExpression",
+                "messageRef",
+                reference,
+                namespace,
+                context,
+                retrieval.base.as_ref(),
+                &expressions,
+            )
+        } else {
+            xml.push_str("<correlationPropertyRetrievalExpression");
+            "correlationPropertyRetrievalExpression".to_owned()
+        };
+        if let Some(id) = &retrieval.id {
+            write_xml_id(xml, id);
+        }
+        anonymous_base_attributes(xml, retrieval.id.as_ref(), retrieval.base.as_ref());
+        xml.push('>');
+        anonymous_base_children(xml, retrieval.id.as_ref(), retrieval.base.as_ref());
+        if let Some(path) = &retrieval.message_path {
+            write_expression(xml, "messagePath", path, false);
+        }
+        xml.push_str(&format!("</{child}>"));
+    }
+    xml.push_str(&format!("</{tag}>"));
+}
+fn write_correlation_subscription(
+    xml: &mut String,
+    value: &processcraft_core::bpmn_activity::CorrelationSubscription,
+    namespace: &str,
+    context: &ExportContext,
+) {
+    let expressions: Vec<_> = value
+        .bindings
+        .iter()
+        .filter_map(|binding| binding.data_path.as_ref())
+        .collect();
+    let tag = if let Some(reference) = &value.key_ref {
+        write_reference_owner_open(
+            xml,
+            "correlationSubscription",
+            "correlationKeyRef",
+            reference,
+            namespace,
+            context,
+            value.base.as_ref(),
+            &expressions,
+        )
+    } else {
+        xml.push_str("<correlationSubscription");
+        "correlationSubscription".to_owned()
+    };
+    if let Some(id) = &value.id {
+        write_xml_id(xml, id);
+    }
+    anonymous_base_attributes(xml, value.id.as_ref(), value.base.as_ref());
+    xml.push('>');
+    anonymous_base_children(xml, value.id.as_ref(), value.base.as_ref());
+    for binding in &value.bindings {
+        let expressions: Vec<_> = binding.data_path.iter().collect();
+        let child = if let Some(reference) = &binding.property_ref {
+            write_reference_owner_open(
+                xml,
+                "correlationPropertyBinding",
+                "correlationPropertyRef",
+                reference,
+                namespace,
+                context,
+                binding.base.as_ref(),
+                &expressions,
+            )
+        } else {
+            xml.push_str("<correlationPropertyBinding");
+            "correlationPropertyBinding".to_owned()
+        };
+        if let Some(id) = &binding.id {
+            write_xml_id(xml, id);
+        }
+        anonymous_base_attributes(xml, binding.id.as_ref(), binding.base.as_ref());
+        xml.push('>');
+        anonymous_base_children(xml, binding.id.as_ref(), binding.base.as_ref());
+        if let Some(path) = &binding.data_path {
+            write_expression(xml, "dataPath", path, false);
+        }
+        xml.push_str(&format!("</{child}>"));
+    }
+    xml.push_str(&format!("</{tag}>"));
+}
+fn write_io_binding(
+    xml: &mut String,
+    value: &processcraft_core::bpmn_activity::IoBinding,
+    namespace: &str,
+    context: &ExportContext,
+) {
+    let tag = if let Some(reference) = &value.operation_ref {
+        write_reference_owner_open(
+            xml,
+            "ioBinding",
+            "operationRef",
+            reference,
+            namespace,
+            context,
+            value.base.as_ref(),
+            &[],
+        )
+    } else {
+        xml.push_str("<ioBinding");
+        "ioBinding".to_owned()
+    };
+    if let Some(id) = &value.id {
+        write_xml_id(xml, id);
+    }
+    if let Some(reference) = &value.input_data_ref {
+        xml.push_str(&format!(
+            " inputDataRef=\"{}\"",
+            xml_reference(context, reference)
+        ));
+    }
+    if let Some(reference) = &value.output_data_ref {
+        xml.push_str(&format!(
+            " outputDataRef=\"{}\"",
+            xml_reference(context, reference)
+        ));
+    }
+    anonymous_base_attributes(xml, value.id.as_ref(), value.base.as_ref());
+    xml.push('>');
+    anonymous_base_children(xml, value.id.as_ref(), value.base.as_ref());
+    xml.push_str(&format!("</{tag}>"));
+}
+fn write_rendering(xml: &mut String, rendering: &processcraft_core::bpmn_activity::BaseOwner) {
+    xml.push_str(&format!("<rendering xmlns=\"{B}\""));
+    if let Some(id) = &rendering.id {
+        write_xml_id(xml, id);
+    }
+    anonymous_base_attributes(xml, rendering.id.as_ref(), rendering.base.as_ref());
+    xml.push('>');
+    anonymous_base_children(xml, rendering.id.as_ref(), rendering.base.as_ref());
+    xml.push_str("</rendering>");
+}
+fn write_resource_role(
+    xml: &mut String,
+    role: &processcraft_core::bpmn_activity::ResourceRole,
+    namespace: &str,
+    context: &ExportContext,
+) {
+    use processcraft_core::bpmn_activity::{ResourceRoleAssignment, ResourceRoleKind};
+    let tag = match role.kind {
+        ResourceRoleKind::ResourceRole => "resourceRole",
+        ResourceRoleKind::Performer => "performer",
+        ResourceRoleKind::HumanPerformer => "humanPerformer",
+        ResourceRoleKind::PotentialOwner => "potentialOwner",
+    };
+    xml.push_str(&format!("<{tag} xmlns=\"{B}\""));
+    if let Some(id) = &role.id {
+        write_xml_id(xml, id);
+    }
+    write_xml_name(xml, role.name.as_deref());
+    anonymous_base_attributes(xml, role.id.as_ref(), role.base.as_ref());
+    xml.push('>');
+    anonymous_base_children(xml, role.id.as_ref(), role.base.as_ref());
+    match &role.assignment {
+        ResourceRoleAssignment::None => {}
+        ResourceRoleAssignment::Resource {
+            reference,
+            bindings,
+        } => {
+            write_event_qname_text(xml, "resourceRef", reference, namespace, context);
+            for binding in bindings {
+                let expressions: Vec<_> = binding.expression.iter().collect();
+                let child = if let Some(reference) = &binding.parameter_ref {
+                    write_reference_owner_open(
+                        xml,
+                        "resourceParameterBinding",
+                        "parameterRef",
+                        reference,
+                        namespace,
+                        context,
+                        binding.base.as_ref(),
+                        &expressions,
+                    )
+                } else {
+                    xml.push_str("<resourceParameterBinding");
+                    "resourceParameterBinding".to_owned()
+                };
+                if let Some(id) = &binding.id {
+                    write_xml_id(xml, id);
+                }
+                anonymous_base_attributes(xml, binding.id.as_ref(), binding.base.as_ref());
+                xml.push('>');
+                anonymous_base_children(xml, binding.id.as_ref(), binding.base.as_ref());
+                if let Some(expression) = &binding.expression {
+                    write_expression(xml, "expression", expression, false);
+                }
+                xml.push_str(&format!("</{child}>"));
+            }
+        }
+        ResourceRoleAssignment::Expression { assignment } => {
+            xml.push_str("<resourceAssignmentExpression");
+            if let Some(id) = &assignment.id {
+                write_xml_id(xml, id);
+            }
+            anonymous_base_attributes(xml, assignment.id.as_ref(), assignment.base.as_ref());
+            xml.push('>');
+            anonymous_base_children(xml, assignment.id.as_ref(), assignment.base.as_ref());
+            if let Some(expression) = &assignment.expression {
+                write_expression(xml, "expression", expression, false);
+            }
+            xml.push_str("</resourceAssignmentExpression>");
+        }
+    }
+    xml.push_str(&format!("</{tag}>"));
+}
+fn write_global_task(
+    xml: &mut String,
+    value: &processcraft_core::bpmn_activity::GlobalTask,
+    namespace: &str,
+    context: &ExportContext,
+) {
+    use processcraft_core::bpmn_activity::GlobalTaskKind;
+    let tag = match &value.kind {
+        GlobalTaskKind::CallableElement => "rootElement",
+        GlobalTaskKind::Task => "globalTask",
+        GlobalTaskKind::Manual => "globalManualTask",
+        GlobalTaskKind::BusinessRule { .. } => "globalBusinessRuleTask",
+        GlobalTaskKind::Script { .. } => "globalScriptTask",
+        GlobalTaskKind::User { .. } => "globalUserTask",
+    };
+    xml.push_str(&format!("<{tag}"));
+    if matches!(value.kind, GlobalTaskKind::CallableElement) {
+        xml.push_str(&format!(" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:bpmn=\"{B}\" xsi:type=\"bpmn:tCallableElement\""));
+    }
+    if let Some(id) = &value.id {
+        write_xml_id(xml, id);
+    }
+    write_xml_name(xml, value.name.as_deref());
+    match &value.kind {
+        GlobalTaskKind::BusinessRule { implementation }
+        | GlobalTaskKind::User { implementation, .. } => {
+            if let Some(value) = implementation {
+                xml.push_str(&format!(" implementation=\"{}\"", esc(value)));
+            }
+        }
+        GlobalTaskKind::Script {
+            script_language: Some(value),
+            ..
+        } => {
+            xml.push_str(&format!(" scriptLanguage=\"{}\"", esc(value)));
+        }
+        _ => {}
+    }
+    anonymous_base_attributes(xml, value.id.as_ref(), value.base.as_ref());
+    xml.push('>');
+    anonymous_base_children(xml, value.id.as_ref(), value.base.as_ref());
+    for reference in &value.callable.supported_interface_refs {
+        write_event_qname_text(xml, "supportedInterfaceRef", reference, namespace, context);
+    }
+    if let Some(io) = &value.io_specification {
+        write_io_specification(xml, io, false, context);
+    }
+    for binding in &value.callable.io_bindings {
+        write_io_binding(xml, binding, namespace, context);
+    }
+    for role in &value.resource_roles {
+        write_resource_role(xml, role, namespace, context);
+    }
+    match &value.kind {
+        GlobalTaskKind::Script {
+            script: Some(script),
+            ..
+        } => write_mixed_element(xml, "script", script),
+        GlobalTaskKind::User { renderings, .. } => {
+            for rendering in renderings {
+                write_rendering(xml, rendering);
+            }
+        }
+        _ => {}
+    }
+    xml.push_str(&format!("</{tag}>"));
 }
 fn write_event_definition(
     xml: &mut String,
@@ -4706,6 +6144,81 @@ fn write_data_association(
     }
     xml.push_str(&format!("</{tag}>"));
 }
+fn write_implicit_throw(
+    xml: &mut String,
+    event: &processcraft_core::bpmn_activity::ImplicitThrowEvent,
+    namespace: &str,
+    context: &ExportContext,
+) {
+    xml.push_str("<event");
+    if let Some(id) = &event.id {
+        write_xml_id(xml, id);
+    }
+    write_xml_name(xml, event.name.as_deref());
+    anonymous_base_attributes(xml, event.id.as_ref(), event.base.as_ref());
+    xml.push('>');
+    anonymous_base_children(xml, event.id.as_ref(), event.base.as_ref());
+    write_flow_metadata(xml, event.flow.as_ref(), namespace, context);
+    for value in &event.incoming {
+        write_event_qname_text(xml, "incoming", value, namespace, context);
+    }
+    for value in &event.outgoing {
+        write_event_qname_text(xml, "outgoing", value, namespace, context);
+    }
+    for value in &event.properties {
+        write_event_property(xml, value, false);
+    }
+    for value in &event.inputs {
+        write_event_port(xml, value, "dataInput", false);
+    }
+    for value in &event.input_associations {
+        xml.push_str("<dataInputAssociation");
+        if let Some(id) = &value.id {
+            write_xml_id(xml, id);
+        }
+        anonymous_base_attributes(xml, value.id.as_ref(), value.base.as_ref());
+        xml.push('>');
+        anonymous_base_children(xml, value.id.as_ref(), value.base.as_ref());
+        for source in &value.sources {
+            xml.push_str(&format!(
+                "<sourceRef>{}</sourceRef>",
+                xml_reference(context, source)
+            ));
+        }
+        if let Some(target) = &value.target {
+            xml.push_str(&format!(
+                "<targetRef>{}</targetRef>",
+                xml_reference(context, target)
+            ));
+        }
+        if let Some(expression) = &value.transformation {
+            write_expression(xml, "transformation", expression, false);
+        }
+        for assignment in &value.assignments {
+            xml.push_str("<assignment");
+            if let Some(id) = &assignment.id {
+                write_xml_id(xml, id);
+            }
+            anonymous_base_attributes(xml, assignment.id.as_ref(), assignment.base.as_ref());
+            xml.push('>');
+            anonymous_base_children(xml, assignment.id.as_ref(), assignment.base.as_ref());
+            write_expression(xml, "from", &assignment.from, false);
+            write_expression(xml, "to", &assignment.to, false);
+            xml.push_str("</assignment>");
+        }
+        xml.push_str("</dataInputAssociation>");
+    }
+    if let Some(value) = &event.input_set {
+        write_event_set(xml, value, true, false, context);
+    }
+    for value in &event.definitions {
+        write_event_definition(xml, value, false, namespace, context);
+    }
+    for value in &event.definition_refs {
+        write_event_qname_text(xml, "eventDefinitionRef", value, namespace, context);
+    }
+    xml.push_str("</event>");
+}
 // Recursive scope serialization shares the same document namespace and ID allocation.
 #[allow(clippy::too_many_arguments)]
 fn write_scope(
@@ -4750,6 +6263,7 @@ fn write_scope(
         anonymous_base_attributes(xml, o.id.as_ref(), o.base.as_ref());
         xml.push('>');
         anonymous_base_children(xml, o.id.as_ref(), o.base.as_ref());
+        write_flow_metadata(xml, o.flow_metadata.as_ref(), namespace, document);
         write_item_state(xml, o.item_aware.as_ref(), unqualified);
         xml.push_str(&format!("</{tag}>"));
     }
@@ -4798,14 +6312,14 @@ fn write_scope(
         let local_owner_qname = namespace.is_empty()
             && matches!(
                 &n.details,
-                Some(NodeDetails::CallActivity { .. })
-                    | Some(NodeDetails::Event {
-                        attached_to: Some(_),
-                        ..
-                    })
-                    | Some(NodeDetails::DataStoreReference {
-                        data_store_ref: Some(processcraft_core::bpmn_data::DataStoreRef::Legacy(_))
-                    })
+                Some(NodeDetails::CallActivity {
+                    called_element: Some(_)
+                }) | Some(NodeDetails::Event {
+                    attached_to: Some(_),
+                    ..
+                }) | Some(NodeDetails::DataStoreReference {
+                    data_store_ref: Some(processcraft_core::bpmn_data::DataStoreRef::Legacy(_))
+                })
             );
         let unqualified = local_owner_qname
             || refs.iter().flatten().any(|q| q.namespace.is_empty())
@@ -4813,7 +6327,8 @@ fn write_scope(
                 .as_ref()
                 .and_then(|m| m.item_subject_ref.as_ref())
                 .is_some_and(|q| q.namespace.is_empty())
-            || store_ref.is_some_and(|q| q.namespace.is_empty());
+            || store_ref.is_some_and(|q| q.namespace.is_empty())
+            || matches!(&n.details, Some(NodeDetails::CallActivity { called_element: Some(q) }) if q.namespace.is_empty());
         let mut expressions = Vec::new();
         if let Some(lp) = &n.loop_characteristics {
             match lp {
@@ -5119,13 +6634,45 @@ fn write_scope(
             },
             _ => {}
         }
-        if let Some(NodeDetails::CallActivity { called_element }) = &n.details {
-            if namespace.is_empty() {
+        if let Some(NodeDetails::CallActivity {
+            called_element: Some(called_element),
+        }) = &n.details
+        {
+            if called_element.namespace.is_empty() {
                 xml.push_str(&format!(" calledElement=\"{}\"", called_element.local));
+            } else if let Some(metadata) =
+                n.base_extras.as_ref().filter(|e| !e.namespaces.is_empty())
+            {
+                write_context_qname_attribute(
+                    xml,
+                    "calledElement",
+                    called_element,
+                    &metadata.namespaces,
+                );
             } else {
+                let prefix = contexts
+                    .first()
+                    .and_then(|first| {
+                        first
+                            .namespaces
+                            .iter()
+                            .find(|(prefix, uri)| {
+                                !prefix.is_empty()
+                                    && prefix != "xml"
+                                    && uri == &called_element.namespace
+                                    && contexts.iter().all(|context| {
+                                        context
+                                            .namespaces
+                                            .iter()
+                                            .any(|(p, u)| p == prefix && u == uri)
+                                    })
+                            })
+                            .map(|(prefix, _)| prefix.as_str())
+                    })
+                    .unwrap_or("pc_call");
                 xml.push_str(&format!(
-                    " xmlns:tns=\"{}\" calledElement=\"tns:{}\"",
-                    esc(namespace),
+                    " xmlns:{prefix}=\"{}\" calledElement=\"{prefix}:{}\"",
+                    esc(&called_element.namespace),
                     called_element.local
                 ));
             }
@@ -5133,6 +6680,7 @@ fn write_scope(
         anonymous_extras_attributes(xml, &n.id, n.base_extras.as_ref());
         xml.push('>');
         write_doc(xml, &n.documentation, n.base_extras.as_ref());
+        write_flow_metadata(xml, n.flow_metadata.as_ref(), namespace, document);
         write_item_state(xml, n.item_aware.as_ref(), unqualified);
         if let Some(NodeDetails::Event { properties, io, .. }) = &n.details {
             for property in properties {
@@ -5155,6 +6703,11 @@ fn write_scope(
         if let Some(io) = &n.io_specification {
             write_io_specification(xml, io, unqualified, document);
         }
+        if let Some(activity) = &n.activity {
+            for property in &activity.properties {
+                write_event_property(xml, property, unqualified);
+            }
+        }
         for association in associations.iter().filter(|a| {
             a.owner == n.id
                 && matches!(
@@ -5172,6 +6725,11 @@ fn write_scope(
                 )
         }) {
             write_data_association(xml, association, unqualified, document);
+        }
+        if let Some(activity) = &n.activity {
+            for role in &activity.resource_roles {
+                write_resource_role(xml, role, namespace, document);
+            }
         }
         if let Some(NodeDetails::Event { io, .. }) = &n.details {
             match io {
@@ -5204,14 +6762,16 @@ fn write_scope(
                     ..
                 } => {
                     xml.push_str(&format!(
-                        "<standardLoopCharacteristics{} testBefore=\"{}\"",
+                        "<standardLoopCharacteristics{}",
                         if unqualified {
                             format!(" xmlns=\"{B}\"")
                         } else {
                             String::new()
-                        },
-                        test_before
+                        }
                     ));
+                    if let Some(value) = test_before {
+                        xml.push_str(&format!(" testBefore=\"{value}\""));
+                    }
                     if let Some(maximum) = maximum {
                         xml.push_str(&format!(" loopMaximum=\"{}\"", esc(maximum)));
                     }
@@ -5232,17 +6792,130 @@ fn write_scope(
                     is_sequential,
                     cardinality,
                     completion_condition,
-                    ..
+                    behavior,
+                    loop_data_input_ref,
+                    loop_data_output_ref,
+                    input_data_item,
+                    output_data_item,
+                    complex_behavior_definitions,
+                    one_behavior_event_ref,
+                    none_behavior_event_ref,
                 } => {
-                    xml.push_str(&format!(
-                        "<multiInstanceLoopCharacteristics{} isSequential=\"{}\"",
-                        if unqualified {
-                            format!(" xmlns=\"{B}\"")
-                        } else {
-                            String::new()
-                        },
-                        is_sequential
-                    ));
+                    let refs: Vec<_> = [
+                        ("oneBehaviorEventRef", one_behavior_event_ref),
+                        ("noneBehaviorEventRef", none_behavior_event_ref),
+                    ]
+                    .into_iter()
+                    .filter_map(|(name, reference)| {
+                        reference
+                            .as_ref()
+                            .map(|r| (name, event_reference_qname(r, namespace, document)))
+                    })
+                    .collect();
+                    let empty_default = refs.iter().any(|(_, q)| q.namespace.is_empty());
+                    let mut expression_contexts = Vec::new();
+                    for expression in cardinality.iter().chain(completion_condition.iter()).chain(
+                        complex_behavior_definitions
+                            .iter()
+                            .filter_map(|c| c.condition.as_ref()),
+                    ) {
+                        if let Expression::Structured(data) = expression {
+                            expression_contexts.push(&data.namespaces);
+                        }
+                    }
+                    for complex in complex_behavior_definitions {
+                        if let Some(event) = &complex.event {
+                            for association in &event.input_associations {
+                                for expression in association.transformation.iter().chain(
+                                    association
+                                        .assignments
+                                        .iter()
+                                        .flat_map(|a| [&a.from, &a.to]),
+                                ) {
+                                    if let Expression::Structured(data) = expression {
+                                        expression_contexts.push(&data.namespaces);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    let mut used = std::collections::BTreeMap::<String, String>::new();
+                    let mut prefix_for = |uri: &str| -> String {
+                        if let Some((prefix, _)) = used.iter().find(|(_, value)| *value == uri) {
+                            return prefix.clone();
+                        }
+                        let candidates = expression_contexts.first();
+                        let prefix = candidates
+                            .and_then(|first| {
+                                first
+                                    .iter()
+                                    .find(|(prefix, value)| {
+                                        !prefix.is_empty()
+                                            && prefix != "xml"
+                                            && !used.contains_key(prefix)
+                                            && value == uri
+                                            && expression_contexts
+                                                .iter()
+                                                .all(|scope| scope.iter().any(|(p, _)| p == prefix))
+                                    })
+                                    .or_else(|| {
+                                        first.iter().find(|(prefix, _)| {
+                                            !prefix.is_empty()
+                                                && prefix != "xml"
+                                                && !used.contains_key(prefix)
+                                                && expression_contexts.iter().all(|scope| {
+                                                    scope.iter().any(|(p, _)| p == prefix)
+                                                })
+                                        })
+                                    })
+                            })
+                            .map(|(prefix, _)| prefix.clone())
+                            .unwrap_or_else(|| {
+                                let mut i = used.len();
+                                loop {
+                                    let name = format!("pc_loop_{i}");
+                                    if !used.contains_key(&name) {
+                                        break name;
+                                    }
+                                    i += 1;
+                                }
+                            });
+                        used.insert(prefix.clone(), uri.to_owned());
+                        prefix
+                    };
+                    let owner_prefix = empty_default.then(|| prefix_for(B));
+                    let mut written_refs = Vec::new();
+                    for (name, q) in &refs {
+                        let value =
+                            if q.namespace.is_empty() || (!empty_default && q.namespace == B) {
+                                q.local.to_string()
+                            } else {
+                                format!("{}:{}", prefix_for(&q.namespace), q.local)
+                            };
+                        written_refs.push((*name, value));
+                    }
+                    let loop_tag = owner_prefix
+                        .as_ref()
+                        .map(|p| format!("{p}:multiInstanceLoopCharacteristics"))
+                        .unwrap_or_else(|| "multiInstanceLoopCharacteristics".to_owned());
+                    xml.push_str(&format!("<{loop_tag}"));
+                    if empty_default {
+                        xml.push_str(" xmlns=\"\"");
+                    } else if unqualified {
+                        xml.push_str(&format!(" xmlns=\"{B}\""));
+                    }
+                    for (prefix, uri) in &used {
+                        xml.push_str(&format!(" xmlns:{prefix}=\"{}\"", esc(uri)));
+                    }
+                    for (name, value) in written_refs {
+                        xml.push_str(&format!(" {name}=\"{}\"", esc(&value)));
+                    }
+                    if let Some(value) = is_sequential {
+                        xml.push_str(&format!(" isSequential=\"{value}\""));
+                    }
+                    if let Some(value) = behavior {
+                        xml.push_str(&format!(" behavior=\"{value:?}\""));
+                    }
                     if let Some(id) = id {
                         write_xml_id(xml, id);
                     }
@@ -5250,12 +6923,49 @@ fn write_scope(
                     xml.push('>');
                     anonymous_base_children(xml, id.as_ref(), base.as_ref());
                     if let Some(value) = cardinality {
-                        write_expression(xml, "loopCardinality", value, false);
+                        write_loop_expression(xml, "loopCardinality", value, empty_default);
+                    }
+                    if let Some(value) = loop_data_input_ref {
+                        write_event_qname_text(xml, "loopDataInputRef", value, namespace, document);
+                    }
+                    if let Some(value) = loop_data_output_ref {
+                        write_event_qname_text(
+                            xml,
+                            "loopDataOutputRef",
+                            value,
+                            namespace,
+                            document,
+                        );
+                    }
+                    if let Some(value) = input_data_item {
+                        write_event_port(xml, value, "inputDataItem", empty_default);
+                    }
+                    if let Some(value) = output_data_item {
+                        write_event_port(xml, value, "outputDataItem", empty_default);
+                    }
+                    for value in complex_behavior_definitions {
+                        xml.push_str("<complexBehaviorDefinition");
+                        if empty_default {
+                            xml.push_str(&format!(" xmlns=\"{B}\""));
+                        }
+                        if let Some(id) = &value.id {
+                            write_xml_id(xml, id);
+                        }
+                        anonymous_base_attributes(xml, value.id.as_ref(), value.base.as_ref());
+                        xml.push('>');
+                        anonymous_base_children(xml, value.id.as_ref(), value.base.as_ref());
+                        if let Some(condition) = &value.condition {
+                            write_expression(xml, "condition", condition, false);
+                        }
+                        if let Some(event) = &value.event {
+                            write_implicit_throw(xml, event, namespace, document);
+                        }
+                        xml.push_str("</complexBehaviorDefinition>");
                     }
                     if let Some(value) = completion_condition {
-                        write_expression(xml, "completionCondition", value, false);
+                        write_loop_expression(xml, "completionCondition", value, empty_default);
                     }
-                    xml.push_str("</multiInstanceLoopCharacteristics>");
+                    xml.push_str(&format!("</{loop_tag}>"));
                 }
             }
         }
@@ -5263,6 +6973,11 @@ fn write_scope(
             && let Some(script) = &a.script
         {
             write_mixed_element(xml, "script", script);
+        }
+        if let Some(activity) = &n.activity {
+            for rendering in &activity.renderings {
+                write_rendering(xml, rendering);
+            }
         }
         if let Some(NodeDetails::SubProcess { content }) = &n.details {
             if content.lane_set_id.is_some()
@@ -5327,9 +7042,13 @@ fn write_scope(
             xml_reference(document, &f.source),
             xml_reference(document, &f.target)
         ));
+        if let Some(value) = f.flow_metadata.as_ref().and_then(|m| m.is_immediate) {
+            xml.push_str(&format!(" isImmediate=\"{value}\""));
+        }
         anonymous_extras_attributes(xml, &f.id, f.base_extras.as_ref());
         xml.push('>');
         write_doc(xml, &f.documentation, f.base_extras.as_ref());
+        write_flow_metadata(xml, f.flow_metadata.as_ref(), namespace, document);
         if let Some(condition) = &f.condition {
             write_expression(xml, "conditionExpression", condition, true);
         }
@@ -5472,6 +7191,105 @@ fn missing_xml_reference(document: &ExportContext) -> Option<ElementSelector> {
     fn check(document: &ExportContext, selector: &ElementSelector) -> Option<ElementSelector> {
         (!document.xml_ids.contains_key(selector)).then(|| selector.clone())
     }
+    fn check_ref(document: &ExportContext, reference: &EventReference) -> Option<ElementSelector> {
+        match reference {
+            EventReference::Local(selector) => check(document, selector),
+            EventReference::Qualified(_) => None,
+        }
+    }
+    fn check_key(
+        document: &ExportContext,
+        key: &processcraft_core::bpmn_activity::CorrelationKey,
+    ) -> Option<ElementSelector> {
+        key.property_refs
+            .iter()
+            .find_map(|reference| check_ref(document, reference))
+    }
+    for property in &document.correlation_properties {
+        for retrieval in &property.retrieval_expressions {
+            if let Some(missing) = retrieval
+                .message_ref
+                .as_ref()
+                .and_then(|reference| check_ref(document, reference))
+            {
+                return Some(missing);
+            }
+        }
+    }
+    if let Some(collaboration) = &document.collaboration {
+        for key in collaboration.correlation_keys.iter().chain(
+            collaboration
+                .conversation_nodes
+                .iter()
+                .flat_map(|node| &node.correlation_keys),
+        ) {
+            if let Some(missing) = check_key(document, key) {
+                return Some(missing);
+            }
+        }
+    }
+    for choreography in &document.choreographies {
+        for key in choreography
+            .activities
+            .iter()
+            .flat_map(|activity| &activity.correlation_keys)
+        {
+            if let Some(missing) = check_key(document, key) {
+                return Some(missing);
+            }
+        }
+    }
+    for process in &document.processes {
+        if let Some(metadata) = &process.activity_metadata {
+            for reference in metadata
+                .callable
+                .supported_interface_refs
+                .iter()
+                .chain(&metadata.supports)
+                .chain(metadata.definitional_collaboration_ref.iter())
+            {
+                if let Some(missing) = check_ref(document, reference) {
+                    return Some(missing);
+                }
+            }
+            for binding in &metadata.callable.io_bindings {
+                if let Some(missing) = binding
+                    .operation_ref
+                    .as_ref()
+                    .and_then(|reference| check_ref(document, reference))
+                {
+                    return Some(missing);
+                }
+                for reference in binding
+                    .input_data_ref
+                    .iter()
+                    .chain(binding.output_data_ref.iter())
+                {
+                    if let Some(missing) = check(document, reference) {
+                        return Some(missing);
+                    }
+                }
+            }
+            for subscription in &metadata.correlation_subscriptions {
+                if let Some(missing) = subscription
+                    .key_ref
+                    .as_ref()
+                    .and_then(|reference| check_ref(document, reference))
+                {
+                    return Some(missing);
+                }
+                for binding in &subscription.bindings {
+                    if let Some(missing) = binding
+                        .property_ref
+                        .as_ref()
+                        .and_then(|reference| check_ref(document, reference))
+                    {
+                        return Some(missing);
+                    }
+                }
+            }
+        }
+    }
     fn io_refs(
         document: &ExportContext,
         io: &processcraft_core::bpmn_data::IoSpecification,
@@ -5489,6 +7307,34 @@ fn missing_xml_reference(document: &ExportContext) -> Option<ElementSelector> {
             .find_map(|r| check(document, r))
     }
     for scope in scopes(document)? {
+        for metadata in scope
+            .nodes
+            .iter()
+            .filter_map(|node| node.flow_metadata.as_ref())
+            .chain(
+                scope
+                    .flows
+                    .iter()
+                    .filter_map(|flow| flow.flow_metadata.as_ref()),
+            )
+            .chain(
+                scope
+                    .data_objects
+                    .iter()
+                    .filter_map(|object| object.flow_metadata.as_ref()),
+            )
+        {
+            for reference in metadata
+                .category_value_refs
+                .iter()
+                .chain(&metadata.incoming)
+                .chain(&metadata.outgoing)
+            {
+                if let Some(missing) = check_ref(document, reference) {
+                    return Some(missing);
+                }
+            }
+        }
         for lane in scope.lanes {
             for reference in &lane.members {
                 if let Some(missing) = check(document, reference) {
@@ -5934,23 +7780,33 @@ fn export_document(
             return Err(ExportFailure { report });
         }
     };
+    if let Err(reason) = crate::activity_export::validate(document, &namespace) {
+        report.blocked.push(reason);
+        return Err(ExportFailure { report });
+    }
     if all_scopes
         .iter()
         .flat_map(|p| p.nodes)
         .any(|n| match &n.details {
-            Some(NodeDetails::CallActivity { called_element }) => {
-                called_element.namespace != namespace
-                    || !document
+            Some(NodeDetails::CallActivity {
+                called_element: Some(called_element),
+            }) => {
+                called_element.namespace == namespace
+                    && !document
                         .processes
                         .iter()
                         .any(|p| p.id.xml_id() == Some(&called_element.local))
+                    && !document.global_tasks.iter().any(|task| {
+                        task.id.as_ref().and_then(ElementIdentity::xml_id)
+                            == Some(&called_element.local)
+                    })
             }
             _ => false,
         })
     {
         report
             .blocked
-            .push("Call activity target is not a local process".into());
+            .push("Call activity target is not a local callable element".into());
         return Err(ExportFailure { report });
     }
     let mut xml = format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?><definitions xmlns=\"{B}\"");
@@ -6039,6 +7895,12 @@ fn export_document(
         xml.push_str(&format!("</{tag}>"));
     }
     write_catalog(&mut xml, &document.catalog);
+    for task in &document.global_tasks {
+        write_global_task(&mut xml, task, &namespace, &context);
+    }
+    for property in &document.correlation_properties {
+        write_correlation_property(&mut xml, property, &namespace, &context);
+    }
     for category in &document.categories {
         xml.push_str("<category");
         write_xml_id(&mut xml, &category.id);
@@ -6207,6 +8069,7 @@ fn export_document(
             anonymous_base_attributes(&mut xml, Some(&a.id), a.base.as_ref());
             xml.push('>');
             anonymous_base_children(&mut xml, Some(&a.id), a.base.as_ref());
+            write_flow_metadata(&mut xml, a.flow_metadata.as_ref(), &namespace, &context);
             for participant in &a.participant_refs {
                 write_local_qname_text(
                     &mut xml,
@@ -6223,6 +8086,9 @@ fn export_document(
                     &namespace,
                 );
             }
+            for key in &a.correlation_keys {
+                write_correlation_key(&mut xml, key, &namespace, &context);
+            }
             xml.push_str(&format!("</{tag}>"));
         }
         for f in &c.sequence_flows {
@@ -6234,9 +8100,13 @@ fn export_document(
                 xml_reference(&context, &f.source),
                 xml_reference(&context, &f.target)
             ));
+            if let Some(value) = f.flow_metadata.as_ref().and_then(|m| m.is_immediate) {
+                xml.push_str(&format!(" isImmediate=\"{value}\""));
+            }
             anonymous_extras_attributes(&mut xml, &f.id, f.base_extras.as_ref());
             xml.push('>');
             write_doc(&mut xml, &f.documentation, f.base_extras.as_ref());
+            write_flow_metadata(&mut xml, f.flow_metadata.as_ref(), &namespace, &context);
             if let Some(condition) = &f.condition {
                 write_expression(&mut xml, "conditionExpression", condition, true);
             }
@@ -6258,6 +8128,9 @@ fn export_document(
             write_message_flow(&mut xml, f, &namespace, &context);
         }
         write_conversations(&mut xml, &c.conversation_nodes, None, &namespace, &context);
+        for key in &c.correlation_keys {
+            write_correlation_key(&mut xml, key, &namespace, &context);
+        }
         for link in &c.conversation_links {
             let tag = write_local_qname_open(&mut xml, "conversationLink", &namespace);
             write_xml_id(&mut xml, &link.id);
@@ -6278,11 +8151,62 @@ fn export_document(
         if let Some(value) = p.is_executable {
             xml.push_str(&format!(" isExecutable=\"{value}\""));
         }
+        if let Some(metadata) = &p.activity_metadata {
+            if let Some(value) = metadata.process_type {
+                xml.push_str(&format!(" processType=\"{value:?}\""));
+            }
+            if let Some(value) = metadata.is_closed {
+                xml.push_str(&format!(" isClosed=\"{value}\""));
+            }
+            if let Some(reference) = &metadata.definitional_collaboration_ref {
+                let q = event_reference_qname(reference, &namespace, &context);
+                if let Some(extra) = p.base_extras.as_ref().filter(|e| !e.namespaces.is_empty()) {
+                    write_context_qname_attribute(
+                        &mut xml,
+                        "definitionalCollaborationRef",
+                        &q,
+                        &extra.namespaces,
+                    );
+                } else {
+                    write_catalog_qname_attribute(
+                        &mut xml,
+                        "definitionalCollaborationRef",
+                        &q,
+                        "pc_collab",
+                    );
+                }
+            }
+        }
         anonymous_extras_attributes(&mut xml, &p.id, p.base_extras.as_ref());
         xml.push('>');
         write_doc(&mut xml, &p.documentation, p.base_extras.as_ref());
+        if let Some(metadata) = &p.activity_metadata {
+            for reference in &metadata.callable.supported_interface_refs {
+                write_event_qname_text(
+                    &mut xml,
+                    "supportedInterfaceRef",
+                    reference,
+                    &namespace,
+                    &context,
+                );
+            }
+        }
         if let Some(io) = &p.io_specification {
             write_io_specification(&mut xml, io, false, &context);
+        }
+        if let Some(metadata) = &p.activity_metadata {
+            for binding in &metadata.callable.io_bindings {
+                write_io_binding(&mut xml, binding, &namespace, &context);
+            }
+            if let Some(audit) = &metadata.auditing {
+                write_audit_monitor(&mut xml, "auditing", audit);
+            }
+            if let Some(monitor) = &metadata.monitoring {
+                write_audit_monitor(&mut xml, "monitoring", monitor);
+            }
+            for property in &metadata.properties {
+                write_event_property(&mut xml, property, false);
+            }
         }
         if p.lane_set_id.is_some() || p.lane_set_base.is_some() || !p.lanes.is_empty() {
             xml.push_str("<laneSet");
@@ -6305,6 +8229,17 @@ fn export_document(
             &context,
             &namespace,
         );
+        if let Some(metadata) = &p.activity_metadata {
+            for role in &metadata.resource_roles {
+                write_resource_role(&mut xml, role, &namespace, &context);
+            }
+            for subscription in &metadata.correlation_subscriptions {
+                write_correlation_subscription(&mut xml, subscription, &namespace, &context);
+            }
+            for reference in &metadata.supports {
+                write_event_qname_text(&mut xml, "supports", reference, &namespace, &context);
+            }
+        }
         xml.push_str("</process>");
     }
     for d in &document.diagrams {
@@ -6898,6 +8833,23 @@ fn write_catalog(xml: &mut String, catalog: &processcraft_core::bpmn_catalog::Su
             }
         }
         xml.push_str(&format!("</{tag}>"));
+    }
+}
+fn write_loop_expression(
+    xml: &mut String,
+    tag: &str,
+    expression: &Expression,
+    restore_default: bool,
+) {
+    if restore_default && matches!(expression, Expression::Legacy(_)) {
+        let mut child = String::new();
+        write_expression(&mut child, tag, expression, false);
+        if let Some(index) = child.find(|c: char| c == '>' || c.is_whitespace()) {
+            child.insert_str(index, &format!(" xmlns=\"{B}\""));
+        }
+        xml.push_str(&child);
+    } else {
+        write_expression(xml, tag, expression, false);
     }
 }
 fn write_expression(xml: &mut String, tag: &str, expression: &Expression, legacy_formal: bool) {

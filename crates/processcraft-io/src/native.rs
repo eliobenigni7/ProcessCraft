@@ -36,6 +36,7 @@ const EXPANDED_DATA_CAPABILITY: &str = "bpmn-expanded-data";
 const NATIVE_IDENTITY_CAPABILITY: &str = "bpmn-native-element-identity";
 const EXPANDED_EVENTS_DI_CAPABILITY: &str = "bpmn-expanded-events-di";
 const COMMON_METADATA_CAPABILITY: &str = "bpmn-common-metadata-v1";
+const EXPANDED_ACTIVITIES_CAPABILITY: &str = "bpmn-expanded-activities-v1";
 
 fn has_native_identity_features(
     documents: &[Arc<BpmnDocument>],
@@ -358,6 +359,19 @@ pub fn write_bytes(project: &ProjectData) -> Result<Vec<u8>, NativeError> {
     {
         required_capabilities.push(COMMON_METADATA_CAPABILITY.into());
     }
+    if project
+        .documents
+        .iter()
+        .any(|d| d.has_expanded_activities())
+        || project.checkpoints.iter().any(|c| {
+            c.content
+                .documents
+                .iter()
+                .any(|d| d.has_expanded_activities())
+        })
+    {
+        required_capabilities.push(EXPANDED_ACTIVITIES_CAPABILITY.into());
+    }
     let manifest = Manifest {
         format: "processcraft".into(),
         schema: 3,
@@ -555,6 +569,7 @@ fn load_with_limits(
                 && cap != NATIVE_IDENTITY_CAPABILITY
                 && cap != EXPANDED_EVENTS_DI_CAPABILITY
                 && cap != COMMON_METADATA_CAPABILITY
+                && cap != EXPANDED_ACTIVITIES_CAPABILITY
         })
         || (manifest.schema < 3 && !manifest.required_capabilities.is_empty())
         || (manifest.schema == 3
@@ -743,6 +758,17 @@ fn load_with_limits(
             .any(|cap| cap == COMMON_METADATA_CAPABILITY)
     {
         return Err(err("common metadata requires capability"));
+    }
+    if (dto.documents.iter().any(|d| d.has_expanded_activities())
+        || frozen
+            .iter()
+            .any(|(_, c)| c.documents.iter().any(|d| d.has_expanded_activities())))
+        && !manifest
+            .required_capabilities
+            .iter()
+            .any(|cap| cap == EXPANDED_ACTIVITIES_CAPABILITY)
+    {
+        return Err(err("expanded activities require capability"));
     }
     for resources in std::iter::once(&dto.resources).chain(frozen.iter().map(|(_, c)| &c.resources))
     {
@@ -939,6 +965,7 @@ mod limit_tests {
         };
         let id = |s: &str| s.parse().unwrap();
         let node = |name: &str, kind, details| Node {
+            flow_metadata: None,
             base_extras: None,
             item_aware: None,
             id: id(name),
@@ -955,6 +982,7 @@ mod limit_tests {
         let document = || {
             let mut d = BpmnDocument::new("document".into(), id("defs"));
             d.processes.push(Process {
+                activity_metadata: None,
                 base_extras: None,
                 is_executable: Some(false),
                 io_specification: None,
@@ -1008,6 +1036,7 @@ mod limit_tests {
         assert!(d.has_expanded_data());
         let mut d = document();
         d.processes[0].data_objects.push(DataObject {
+            flow_metadata: None,
             base: None,
             id: None,
             name: Some(String::new()),
@@ -1084,6 +1113,7 @@ mod limit_tests {
             model::{FlowContainer, Node, NodeKind, Process},
         };
         let node = |id: &str, kind, details| Node {
+            flow_metadata: None,
             base_extras: None,
             item_aware: None,
             id: id.parse().unwrap(),
@@ -1142,6 +1172,7 @@ mod limit_tests {
             );
             let mut document = BpmnDocument::new("document".into(), "defs".parse().unwrap());
             document.processes.push(Process {
+                activity_metadata: None,
                 base_extras: None,
                 is_executable: Some(false),
                 io_specification: None,
@@ -1188,6 +1219,7 @@ mod limit_tests {
         for definition in definitions {
             let mut d = BpmnDocument::new("doc".into(), "defs".parse().unwrap());
             d.processes.push(Process {
+                activity_metadata: None,
                 base_extras: None,
                 id: "process".parse().unwrap(),
                 name: Some("process".into()),
@@ -1200,6 +1232,7 @@ mod limit_tests {
                 data_objects: vec![],
                 data_associations: vec![],
                 nodes: vec![Node {
+                    flow_metadata: None,
                     base_extras: None,
                     id: "start".parse().unwrap(),
                     name: Some("start".into()),

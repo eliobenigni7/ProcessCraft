@@ -19,6 +19,8 @@ pub struct DataStore {
 #[serde(deny_unknown_fields)]
 pub struct DataObject {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub flow_metadata: Option<crate::bpmn_activity::FlowElementMetadata>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub base: Option<crate::bpmn_metadata::BaseMetadata>,
 
     pub id: Option<crate::ids::ElementIdentity>,

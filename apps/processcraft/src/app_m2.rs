@@ -944,6 +944,7 @@ impl ProcessCraft {
             process_id: p.id.selector(),
             flow_id,
             node: Node {
+                flow_metadata: None,
                 base_extras: None,
                 item_aware: None,
                 activity: None,
@@ -958,6 +959,7 @@ impl ProcessCraft {
                 contact: String::new(),
             },
             new_flow: Flow {
+                flow_metadata: None,
                 base_extras: None,
                 association_direction: None,
                 id: new_flow_id.clone().into(),
@@ -1300,6 +1302,7 @@ mod tests {
         let lane = controller::id("Lane");
         for id in [&node, &target] {
             p.nodes.push(Node {
+                flow_metadata: None,
                 base_extras: None,
                 item_aware: None,
                 activity: None,
@@ -1324,6 +1327,7 @@ mod tests {
             members: vec![],
         });
         p.flows.push(Flow {
+            flow_metadata: None,
             base_extras: None,
             association_direction: None,
             id: flow.clone().into(),

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<b:definitions xmlns:b="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:v="urn:vendor" xmlns:pc_loop_0="urn:collision" targetNamespace="urn:process">
+ <b:process id="Process">
+  <b:task id="Task">
+   <b:multiInstanceLoopCharacteristics oneBehaviorEventRef="External" noneBehaviorEventRef="v:External" behavior="All">
+    <b:loopCardinality>pc_loop_0:value</b:loopCardinality>
+    <b:completionCondition xmlns:v="urn:shadow">v:done</b:completionCondition>
+   </b:multiInstanceLoopCharacteristics>
+  </b:task>
+ </b:process>
+</b:definitions>

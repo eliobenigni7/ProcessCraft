@@ -29,6 +29,7 @@ fn fixture() -> (Session, ElementKey) {
     let mut p = ProjectData::new("p".into());
     let mut d = BpmnDocument::new("doc".into(), id("defs"));
     d.processes.push(Process {
+        activity_metadata: None,
         base_extras: None,
         is_executable: Some(false),
         io_specification: None,
@@ -41,6 +42,7 @@ fn fixture() -> (Session, ElementKey) {
         name: Some(String::new()),
         documentation: String::new().into(),
         nodes: vec![Node {
+            flow_metadata: None,
             base_extras: None,
             item_aware: None,
             details: None,
@@ -281,6 +283,7 @@ fn splice_is_one_undo_and_rejects_branches() {
     let d = Arc::make_mut(&mut p.documents[0]);
     let pr = &mut d.processes[0];
     let node = |name: &str| Node {
+        flow_metadata: None,
         base_extras: None,
         item_aware: None,
         details: None,
@@ -296,6 +299,7 @@ fn splice_is_one_undo_and_rejects_branches() {
     };
     pr.nodes.push(node("target"));
     let flow = |name: &str, source: &str, target: &str| Flow {
+        flow_metadata: None,
         base_extras: None,
         association_direction: None,
         id: id(name),
@@ -674,6 +678,7 @@ fn nested_scope_edits_and_cross_scope_flows_are_atomic() {
     let mut project = (*session.snapshot().project).clone();
     let doc = Arc::make_mut(&mut project.documents[0]);
     doc.processes[0].nodes.push(Node {
+        flow_metadata: None,
         base_extras: None,
         item_aware: None,
         id: id("sub"),
@@ -688,6 +693,7 @@ fn nested_scope_edits_and_cross_scope_flows_are_atomic() {
                 data_objects: vec![],
                 data_associations: vec![],
                 nodes: vec![Node {
+                    flow_metadata: None,
                     base_extras: None,
                     item_aware: None,
                     id: id("inner"),
@@ -737,6 +743,7 @@ fn nested_scope_edits_and_cross_scope_flows_are_atomic() {
     );
     let before = session.snapshot().content_id;
     let cross = Flow {
+        flow_metadata: None,
         base_extras: None,
         association_direction: None,
         id: id("cross"),
@@ -835,9 +842,17 @@ fn loop_metadata_is_atomic_and_undoable() {
     let (mut session, key) = fixture();
     let original = session.snapshot().content_id;
     let metadata = LoopCharacteristics::MultiInstance {
+        behavior: None,
+        loop_data_input_ref: None,
+        loop_data_output_ref: None,
+        input_data_item: None,
+        output_data_item: None,
+        complex_behavior_definitions: vec![],
+        one_behavior_event_ref: None,
+        none_behavior_event_ref: None,
         id: None,
         base: None,
-        is_sequential: false,
+        is_sequential: Some(false),
         cardinality: Some("3".into()),
         completion_condition: None,
     };
@@ -882,7 +897,7 @@ fn loop_metadata_is_atomic_and_undoable() {
                 loop_characteristics: Some(LoopCharacteristics::Standard {
                     id: None,
                     base: None,
-                    test_before: false,
+                    test_before: Some(false),
                     condition: None,
                     maximum: None
                 })
@@ -901,6 +916,7 @@ fn conversation_crud_checks_references_and_undoes_atomically() {
     let (initial, key) = fixture();
     let mut project = (*initial.snapshot().project).clone();
     Arc::make_mut(&mut project.documents[0]).collaboration = Some(Collaboration {
+        correlation_keys: vec![],
         base: None,
         name: None,
         id: id("collaboration"),
@@ -916,6 +932,7 @@ fn conversation_crud_checks_references_and_undoes_atomically() {
     });
     let mut session = Session::new(project).unwrap();
     let node = ConversationNode {
+        correlation_keys: vec![],
         base: None,
         id: id("conversation"),
         name: Some("Order".into()),
@@ -1031,6 +1048,8 @@ fn choreography_crud_rejects_cross_scope_references_and_undoes() {
         ],
         message_flows: vec![],
         activities: vec![ChoreographyActivity {
+            correlation_keys: vec![],
+            flow_metadata: None,
             base: None,
             id: id("task_exchange"),
             name: Some("Exchange".into()),
@@ -1050,6 +1069,8 @@ fn choreography_crud_rejects_cross_scope_references_and_undoes() {
     .unwrap();
     let before = session.snapshot().content_id;
     let invalid = ChoreographyActivity {
+        correlation_keys: vec![],
+        flow_metadata: None,
         base: None,
         id: id("outside"),
         name: Some("Invalid".into()),
@@ -1099,6 +1120,7 @@ fn typed_data_association_is_scoped_to_owner_ports_and_undoable() {
     use processcraft_core::bpmn_model::NodeDetails;
     let (mut session, key) = fixture();
     let reference = Node {
+        flow_metadata: None,
         base_extras: None,
         item_aware: None,
         id: id("data_ref"),
@@ -1131,6 +1153,7 @@ fn typed_data_association_is_scoped_to_owner_ports_and_undoable() {
                 document_id: key.document_id,
                 scope_id: id("process"),
                 data_object: DataObject {
+                    flow_metadata: None,
                     base: None,
                     item_aware: None,
                     id: Some(id("data_object")),
@@ -1267,6 +1290,7 @@ fn nested_data_associations_resolve_ancestor_and_global_endpoints() {
         output_sets: vec![],
     });
     process.data_objects.push(DataObject {
+        flow_metadata: None,
         base: None,
         id: Some(id("outer_object")),
         name: None,
@@ -1274,6 +1298,7 @@ fn nested_data_associations_resolve_ancestor_and_global_endpoints() {
         item_aware: None,
     });
     let reference = Node {
+        flow_metadata: None,
         base_extras: None,
         id: id("outer_reference"),
         name: Some(String::new()),
@@ -1291,6 +1316,7 @@ fn nested_data_associations_resolve_ancestor_and_global_endpoints() {
     };
     process.nodes.push(reference);
     let task = Node {
+        flow_metadata: None,
         base_extras: None,
         id: id("nested_task"),
         name: Some(String::new()),
@@ -1322,6 +1348,7 @@ fn nested_data_associations_resolve_ancestor_and_global_endpoints() {
         assignments: vec![],
     };
     let sub = |name: &str, content| Node {
+        flow_metadata: None,
         base_extras: None,
         id: id(name),
         name: Some(String::new()),
@@ -1384,6 +1411,7 @@ fn nested_data_associations_resolve_ancestor_and_global_endpoints() {
             lane_set_base: None,
             groups: vec![],
             data_objects: vec![DataObject {
+                flow_metadata: None,
                 base: None,
                 id: Some(id("sibling_object")),
                 name: None,
@@ -1467,6 +1495,7 @@ fn conversation_delete_removes_di_and_undo_restores_it() {
     let mut project = (*initial.snapshot().project).clone();
     let doc = Arc::make_mut(&mut project.documents[0]);
     doc.collaboration = Some(Collaboration {
+        correlation_keys: vec![],
         base: None,
         name: None,
         id: id("collaboration"),
@@ -1478,6 +1507,7 @@ fn conversation_delete_removes_di_and_undo_restores_it() {
         }],
         flows: vec![],
         conversation_nodes: vec![ConversationNode {
+            correlation_keys: vec![],
             base: None,
             id: id("conversation"),
             name: Some("Order".into()),
@@ -1686,6 +1716,7 @@ fn descriptive_commands_validate_references_and_undo_atomically() {
     let (mut session, key) = fixture();
     let before = session.snapshot().content_id;
     let annotation = Node {
+        flow_metadata: None,
         base_extras: None,
         item_aware: None,
         id: id("note"),
@@ -1703,6 +1734,7 @@ fn descriptive_commands_validate_references_and_undo_atomically() {
         contact: String::new(),
     };
     let association = Flow {
+        flow_metadata: None,
         base_extras: None,
         id: id("association"),
         kind: FlowKind::Association,
@@ -1883,6 +1915,7 @@ fn activity_properties_validate_scope_and_kind_and_undo() {
     use processcraft_core::bpmn_activity::ActivityProperties;
     let (mut session, key) = fixture();
     let target = Node {
+        flow_metadata: None,
         base_extras: None,
         item_aware: None,
         id: id("activity_target"),
@@ -1897,6 +1930,7 @@ fn activity_properties_validate_scope_and_kind_and_undo() {
         contact: String::new(),
     };
     let flow = Flow {
+        flow_metadata: None,
         base_extras: None,
         id: id("activity_default"),
         kind: FlowKind::Sequence,

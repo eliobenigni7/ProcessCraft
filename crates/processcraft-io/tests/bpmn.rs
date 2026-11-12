@@ -604,3 +604,118 @@ fn processing_instruction_targets_require_namespace_conformant_xml_names() {
         assert_eq!(import_bpmn(&bytes).unwrap_err().kind, ImportErrorKind::Xml);
     }
 }
+
+#[test]
+fn activity_reference_attributes_retain_expanded_names_and_check_local_ids() {
+    // These are structural-source probes, not complete XSD-qualified models.
+    for (element, attribute) in [
+        ("callActivity", "calledElement"),
+        ("process", "definitionalCollaborationRef"),
+        ("correlationSubscription", "correlationKeyRef"),
+        ("correlationPropertyBinding", "correlationPropertyRef"),
+        ("correlationPropertyRetrievalExpression", "messageRef"),
+        ("resourceParameterBinding", "parameterRef"),
+        ("multiInstanceLoopCharacteristics", "oneBehaviorEventRef"),
+        ("multiInstanceLoopCharacteristics", "noneBehaviorEventRef"),
+        ("messageFlow", "messageRef"),
+    ] {
+        let source = |value: &str| {
+            format!(
+            "<b:definitions xmlns:b='http://www.omg.org/spec/BPMN/20100524/MODEL' xmlns:t='urn:model' xmlns:e='urn:external' targetNamespace='urn:model'><b:task id='Known'/><b:{element} {attribute}='{value}'/></b:definitions>"
+        ).into_bytes()
+        };
+        let local = source("t:Known");
+        assert_eq!(import_bpmn(&local).unwrap().export_source(), local);
+        assert_eq!(
+            import_bpmn(&source("t:Missing")).unwrap_err().kind,
+            ImportErrorKind::Reference,
+            "{element}@{attribute}"
+        );
+        let external = source("e:Known");
+        let imported = import_bpmn(&external).unwrap();
+        assert!(
+            imported
+                .report()
+                .qname_values
+                .iter()
+                .any(|name| name.namespace_uri.as_deref() == Some("urn:external")
+                    && name.local_name == "Known")
+        );
+        assert_eq!(imported.export_source(), external);
+        assert_eq!(
+            import_bpmn(&source("unbound:Known")).unwrap_err().kind,
+            ImportErrorKind::Xml,
+            "{element}@{attribute}"
+        );
+    }
+}
+
+#[test]
+fn activity_qname_text_is_parent_scoped_and_never_treated_as_idref() {
+    for (parent, child) in [
+        ("process", "supportedInterfaceRef"),
+        ("globalUserTask", "supportedInterfaceRef"),
+        ("process", "supports"),
+        ("potentialOwner", "resourceRef"),
+        ("correlationKey", "correlationPropertyRef"),
+        ("multiInstanceLoopCharacteristics", "loopDataInputRef"),
+        ("multiInstanceLoopCharacteristics", "loopDataOutputRef"),
+        ("sequenceFlow", "categoryValueRef"),
+    ] {
+        let source = |value: &str| {
+            format!(
+            "<b:definitions xmlns:b='http://www.omg.org/spec/BPMN/20100524/MODEL' xmlns:t='urn:model' xmlns:e='urn:external' targetNamespace='urn:model'><b:task id='Known'/><b:{parent}><b:{child}>{value}</b:{child}></b:{parent}></b:definitions>"
+        ).into_bytes()
+        };
+        for value in ["t:Known", "e:Known", "e:Missing"] {
+            let bytes = source(value);
+            let imported = import_bpmn(&bytes).unwrap();
+            assert_eq!(imported.export_source(), bytes);
+            assert!(
+                imported
+                    .report()
+                    .qname_values
+                    .iter()
+                    .any(|name| name.local_name == value.split(':').nth(1).unwrap())
+            );
+        }
+        assert_eq!(
+            import_bpmn(&source("t:Missing")).unwrap_err().kind,
+            ImportErrorKind::Reference,
+            "{parent}/{child}"
+        );
+        assert_eq!(
+            import_bpmn(&source("t:Known extra")).unwrap_err().kind,
+            ImportErrorKind::Xml,
+            "{parent}/{child}"
+        );
+        let opaque = wrap(&format!(
+            "<b:documentation><b:{parent}><b:{child}>unknown:Missing</b:{child}></b:{parent}></b:documentation>"
+        ));
+        assert_eq!(import_bpmn(&opaque).unwrap().export_source(), opaque);
+    }
+    // An unknown/inapplicable parent does not turn literal text into a reference.
+    let text = wrap("<b:unknown><b:resourceRef>unknown:Missing</b:resourceRef></b:unknown>");
+    assert_eq!(import_bpmn(&text).unwrap().export_source(), text);
+}
+
+#[test]
+fn concrete_callable_root_uses_expanded_xsi_type_for_reference_context() {
+    let bytes = fixture("activity-callable-roles");
+    let imported = import_bpmn(&bytes).unwrap();
+    assert_eq!(imported.export_source(), bytes);
+    let missing = String::from_utf8(bytes).unwrap().replacen(
+        "<supportedInterfaceRef>tns:Interface</supportedInterfaceRef>",
+        "<supportedInterfaceRef>tns:Missing</supportedInterfaceRef>",
+        1,
+    );
+    assert_eq!(
+        import_bpmn(missing.as_bytes()).unwrap_err().kind,
+        ImportErrorKind::Reference
+    );
+    let external = missing.replace("tns:Missing", "ext:Interface");
+    assert_eq!(
+        import_bpmn(external.as_bytes()).unwrap().export_source(),
+        external.as_bytes()
+    );
+}

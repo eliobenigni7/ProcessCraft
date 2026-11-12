@@ -5,6 +5,7 @@ use processcraft_render::{Appearance, ExportFormat, ExportOptions, TextEngine, e
 fn document() -> BpmnDocument {
     let mut d = BpmnDocument::new("test".into(), "defs".parse().unwrap());
     d.processes.push(Process {
+        activity_metadata: None,
         is_executable: Some(false),
         io_specification: None,
         lane_set_id: None,
@@ -17,6 +18,7 @@ fn document() -> BpmnDocument {
         documentation: String::new().into(),
         base_extras: None,
         nodes: vec![Node {
+            flow_metadata: None,
             item_aware: None,
             activity: None,
             io_specification: None,

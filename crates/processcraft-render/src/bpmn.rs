@@ -435,6 +435,56 @@ fn is_task_kind(kind: Option<NodeKind>) -> bool {
     )
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CalledTarget {
+    Unspecified,
+    Process,
+    Global(NodeKind),
+    Unresolved,
+}
+fn called_target(node: Option<&Node>, document: &BpmnDocument) -> CalledTarget {
+    let Some(Node {
+        kind: NodeKind::CallActivity,
+        details: Some(NodeDetails::CallActivity { called_element }),
+        ..
+    }) = node
+    else {
+        return CalledTarget::Unspecified;
+    };
+    let Some(reference) = called_element else {
+        return CalledTarget::Unspecified;
+    };
+    let is_local = document
+        .definitions
+        .as_ref()
+        .is_some_and(|definitions| definitions.target_namespace == reference.namespace);
+    if !is_local {
+        return CalledTarget::Unresolved;
+    }
+    if document
+        .processes
+        .iter()
+        .any(|process| process.id.xml_id() == Some(&reference.local))
+    {
+        return CalledTarget::Process;
+    }
+    let Some(task) = document
+        .global_tasks
+        .iter()
+        .find(|task| task.id.as_ref().and_then(|id| id.xml_id()) == Some(&reference.local))
+    else {
+        return CalledTarget::Unresolved;
+    };
+    use processcraft_core::bpmn_activity::GlobalTaskKind;
+    CalledTarget::Global(match task.kind {
+        GlobalTaskKind::CallableElement | GlobalTaskKind::Task => NodeKind::Task,
+        GlobalTaskKind::Manual => NodeKind::ManualTask,
+        GlobalTaskKind::BusinessRule { .. } => NodeKind::BusinessRuleTask,
+        GlobalTaskKind::Script { .. } => NodeKind::ScriptTask,
+        GlobalTaskKind::User { .. } => NodeKind::UserTask,
+    })
+}
+
 fn node_display_name(node: &Node) -> (std::borrow::Cow<'_, str>, bool) {
     use processcraft_core::bpmn_xml::{MixedXml, XmlNode};
     if let Some(NodeDetails::TextAnnotation {
@@ -770,6 +820,16 @@ impl BpmnScene {
             let conversation = semantics.conversation(&shape.element);
             let choreography = semantics.choreography(&shape.element);
             let details = node.and_then(|node| node.details.as_ref());
+            let call_target = called_target(node, document);
+            let marker_kind = match call_target {
+                CalledTarget::Global(task_kind) => Some(task_kind),
+                _ => kind,
+            };
+            if matches!(kind, Some(NodeKind::CallActivity))
+                && matches!(call_target, CalledTarget::Unresolved)
+            {
+                diagnostics.push(format!("Call activity {} target cannot be resolved locally; called task marker omitted", shape.element));
+            }
             let node_name = node.map(node_display_name);
             if node_name.as_ref().is_some_and(|(_, truncated)| *truncated) {
                 diagnostics.push(format!(
@@ -1187,7 +1247,7 @@ impl BpmnScene {
                     1.5,
                 )?,
             }
-            match kind {
+            match marker_kind {
                 Some(NodeKind::UserTask) => {
                     let mut head = PathBuilder::new();
                     ellipse(&mut head, x + 8.0, y + 6.0, 7.0, 7.0);
@@ -1249,7 +1309,7 @@ impl BpmnScene {
                 }
                 _ => {}
             }
-            if matches!(
+            let expandable = matches!(
                 kind,
                 Some(
                     NodeKind::SubProcess
@@ -1257,28 +1317,64 @@ impl BpmnScene {
                         | NodeKind::Transaction
                         | NodeKind::CallActivity
                 )
-            ) {
-                match shape.is_expanded {
-                    Some(false) | None if !matches!(kind, Some(NodeKind::CallActivity)) => {
-                        let offset = if node.is_some_and(|n| n.loop_characteristics.is_some()) {
-                            -9.0
-                        } else {
-                            0.0
-                        };
-                        let (cx, cy) = (x + w / 2.0 + offset, y + h - 10.0);
-                        let box_pts = [
-                            (cx - 6.0, cy - 6.0),
-                            (cx + 6.0, cy - 6.0),
-                            (cx + 6.0, cy + 6.0),
-                            (cx - 6.0, cy + 6.0),
-                            (cx - 6.0, cy - 6.0),
-                        ];
-                        lines(&mut scene, &box_pts, stroke, 1.0)?;
-                        lines(&mut scene, &[(cx - 4.0, cy), (cx + 4.0, cy)], stroke, 1.0)?;
-                        lines(&mut scene, &[(cx, cy - 4.0), (cx, cy + 4.0)], stroke, 1.0)?;
+            );
+            let collapsed = expandable
+                && match (kind, call_target) {
+                    (Some(NodeKind::CallActivity), CalledTarget::Process) => {
+                        shape.is_expanded != Some(true)
                     }
-                    Some(false) => {
-                        let (cx, cy) = (x + w / 2.0, y + h - 10.0);
+                    (Some(NodeKind::CallActivity), _) => false,
+                    _ => shape.is_expanded != Some(true),
+                };
+            if expandable
+                && shape.is_expanded.is_none()
+                && matches!(kind, Some(NodeKind::CallActivity))
+                && matches!(call_target, CalledTarget::Unresolved)
+            {
+                diagnostics.push(format!(
+                    "Activity {} expansion state is unspecified; collapsed marker omitted",
+                    shape.element
+                ));
+            }
+            let loop_marker = node.and_then(|node| node.loop_characteristics.as_ref());
+            let compensation = node
+                .and_then(|node| node.activity.as_ref())
+                .is_some_and(|activity| activity.is_for_compensation == Some(true));
+            let ad_hoc = matches!(kind, Some(NodeKind::AdHocSubProcess));
+            let marker_count = usize::from(loop_marker.is_some())
+                + usize::from(compensation)
+                + usize::from(collapsed)
+                + usize::from(ad_hoc);
+            if marker_count > 0 {
+                if w < marker_count as f32 * 18.0 || h < 30.0 {
+                    diagnostics.push(format!(
+                        "Activity {} is too small to show its markers",
+                        shape.element
+                    ));
+                } else {
+                    let mut cx = x + w / 2.0 - (marker_count as f32 - 1.0) * 9.0;
+                    let cy = y + h - 10.0;
+                    if let Some(characteristics) = loop_marker {
+                        draw_loop_marker(&mut scene, characteristics, cx, cy, stroke)?;
+                        cx += 18.0;
+                    }
+                    if compensation {
+                        for dx in [-5.0_f32, 1.0] {
+                            lines(
+                                &mut scene,
+                                &[
+                                    (cx + dx + 5.0, cy - 5.0),
+                                    (cx + dx, cy),
+                                    (cx + dx + 5.0, cy + 5.0),
+                                    (cx + dx + 5.0, cy - 5.0),
+                                ],
+                                stroke,
+                                1.1,
+                            )?;
+                        }
+                        cx += 18.0;
+                    }
+                    if collapsed {
                         lines(
                             &mut scene,
                             &[
@@ -1293,12 +1389,22 @@ impl BpmnScene {
                         )?;
                         lines(&mut scene, &[(cx - 4.0, cy), (cx + 4.0, cy)], stroke, 1.0)?;
                         lines(&mut scene, &[(cx, cy - 4.0), (cx, cy + 4.0)], stroke, 1.0)?;
+                        cx += 18.0;
                     }
-                    None => diagnostics.push(format!(
-                        "Activity {} expansion state is unspecified; collapsed marker omitted",
-                        shape.element
-                    )),
-                    Some(true) => {}
+                    if ad_hoc {
+                        lines(
+                            &mut scene,
+                            &[
+                                (cx - 7.0, cy),
+                                (cx - 4.0, cy - 2.0),
+                                (cx, cy + 2.0),
+                                (cx + 4.0, cy + 2.0),
+                                (cx + 7.0, cy),
+                            ],
+                            stroke,
+                            1.2,
+                        )?;
+                    }
                 }
             }
             if let Some((scope, activity)) = choreography {
@@ -1433,71 +1539,6 @@ impl BpmnScene {
                     )?;
                 }
             }
-            if let Some(characteristics) = node.and_then(|n| n.loop_characteristics.as_ref()) {
-                let offset = if shape.is_expanded == Some(false)
-                    && matches!(
-                        kind,
-                        Some(
-                            NodeKind::SubProcess
-                                | NodeKind::AdHocSubProcess
-                                | NodeKind::Transaction
-                                | NodeKind::CallActivity
-                        )
-                    ) {
-                    9.0
-                } else {
-                    0.0
-                };
-                if w < 40.0 || h < 30.0 {
-                    diagnostics.push(format!(
-                        "Activity {} is too small to show its loop marker",
-                        shape.element
-                    ));
-                } else {
-                    draw_loop_marker(
-                        &mut scene,
-                        characteristics,
-                        x + w / 2.0 + offset,
-                        y + h - 10.0,
-                        stroke,
-                    )?;
-                }
-            }
-            if node
-                .and_then(|n| n.activity.as_ref())
-                .is_some_and(|a| a.is_for_compensation == Some(true))
-            {
-                let has_neighbor = node.is_some_and(|n| n.loop_characteristics.is_some())
-                    || shape.is_expanded == Some(false);
-                if w < if has_neighbor { 60.0 } else { 30.0 } || h < 30.0 {
-                    diagnostics.push(format!(
-                        "Activity {} is too small to show its compensation marker",
-                        shape.element
-                    ));
-                } else {
-                    let offset = if node.is_some_and(|n| n.loop_characteristics.is_some())
-                        || shape.is_expanded == Some(false)
-                    {
-                        20.0
-                    } else {
-                        0.0
-                    };
-                    let (cx, cy) = (x + w / 2.0 + offset, y + h - 10.0);
-                    for dx in [-5.0_f32, 1.0] {
-                        lines(
-                            &mut scene,
-                            &[
-                                (cx + dx + 5.0, cy - 5.0),
-                                (cx + dx, cy),
-                                (cx + dx + 5.0, cy + 5.0),
-                                (cx + dx + 5.0, cy - 5.0),
-                            ],
-                            stroke,
-                            1.1,
-                        )?;
-                    }
-                }
-            }
             let effective = match effective_event_definitions(details, document) {
                 Ok(effective) => Some(effective),
                 Err(()) => {
@@ -1510,9 +1551,11 @@ impl BpmnScene {
             };
             draw_new_markers(
                 &mut scene,
-                kind,
+                marker_kind,
                 details,
                 effective,
+                node.and_then(|node| node.activity.as_ref())
+                    .is_some_and(|activity| activity.instantiate == Some(true)),
                 x,
                 y,
                 w,
@@ -1554,8 +1597,8 @@ impl BpmnScene {
                     width: b.width,
                     height: b.height * 0.5,
                 }
-            } else if is_task_kind(kind) {
-                let top = if matches!(kind, Some(NodeKind::Task)) {
+            } else if is_task_kind(marker_kind) {
+                let top = if matches!(marker_kind, Some(NodeKind::Task)) {
                     0.0
                 } else {
                     20.0
@@ -1606,7 +1649,7 @@ impl BpmnScene {
                         .as_ref()
                         .and_then(|label| label.bounds.as_ref())
                         .is_none()
-                        && is_task_kind(kind),
+                        && is_task_kind(marker_kind),
                     &mut diagnostics,
                 )?;
             }
@@ -2204,6 +2247,7 @@ fn draw_new_markers(
     kind: Option<NodeKind>,
     details: Option<&NodeDetails>,
     effective: Option<(Vec<&EventDefinition>, bool)>,
+    instantiate: bool,
     x: f32,
     y: f32,
     w: f32,
@@ -2311,21 +2355,6 @@ fn draw_new_markers(
                 lines(scene, &points, stroke, 1.2)?;
             }
         }
-        Some(NodeKind::AdHocSubProcess) => {
-            let y = y + h - 24.0;
-            lines(
-                scene,
-                &[
-                    (cx - 7.0, y),
-                    (cx - 4.0, y - 2.0),
-                    (cx, y + 2.0),
-                    (cx + 4.0, y + 2.0),
-                    (cx + 7.0, y),
-                ],
-                stroke,
-                1.2,
-            )?;
-        }
         Some(NodeKind::ServiceTask) => {
             let (mx, my) = (x + 14.0, y + 13.0);
             ring(scene, mx - 4.0, my - 4.0, 8.0, 8.0, stroke, 1.2)?;
@@ -2343,6 +2372,9 @@ fn draw_new_markers(
             }
         }
         Some(NodeKind::SendTask | NodeKind::ReceiveTask) => {
+            if matches!(kind, Some(NodeKind::ReceiveTask)) && instantiate {
+                ring(scene, x + 3.0, y + 2.0, 22.0, 22.0, stroke, 1.2)?;
+            }
             let pts = [
                 (x + 7.0, y + 8.0),
                 (x + 21.0, y + 8.0),
@@ -2699,7 +2731,7 @@ fn draw_loop_marker(
         }
         LoopCharacteristics::MultiInstance { is_sequential, .. } => {
             for offset in [-3.5_f32, 0.0, 3.5] {
-                if *is_sequential {
+                if *is_sequential == Some(true) {
                     lines(
                         scene,
                         &[(cx - 5.0, cy + offset), (cx + 5.0, cy + offset)],
@@ -3013,6 +3045,10 @@ impl BpmnViewport {
                 .map(|node| node.kind)
                 .or(port.map(|_| NodeKind::DataObjectReference))
                 .or(store.map(|_| NodeKind::DataStoreReference));
+            let marker_kind = match called_target(node, document) {
+                CalledTarget::Global(task_kind) => Some(task_kind),
+                _ => kind,
+            };
             let conversation = semantics.conversation(&shape.element);
             let choreography = semantics.choreography(&shape.element);
             let node_name = node.map(node_display_name);
@@ -3117,8 +3153,8 @@ impl BpmnViewport {
                     width: b.width,
                     height: b.height * 0.5,
                 }
-            } else if is_task_kind(kind) {
-                let top = if matches!(kind, Some(NodeKind::Task)) {
+            } else if is_task_kind(marker_kind) {
+                let top = if matches!(marker_kind, Some(NodeKind::Task)) {
                     0.0
                 } else {
                     20.0
@@ -3186,7 +3222,7 @@ impl BpmnViewport {
                     .as_ref()
                     .and_then(|label| label.bounds.as_ref())
                     .is_none()
-                    && is_task_kind(kind),
+                    && is_task_kind(marker_kind),
                 &mut built.diagnostics,
             )?;
             if shape.label.is_some() {

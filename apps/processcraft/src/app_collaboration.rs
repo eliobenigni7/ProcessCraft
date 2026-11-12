@@ -186,6 +186,7 @@ impl ProcessCraft {
                 self.ctl.mutate(vec![Mutation::CreateCollaboration {
                     document_id: id,
                     collaboration: Collaboration {
+                        correlation_keys: Vec::new(),
                         base: None,
                         name: None,
                         id: controller::id("Collaboration").into(),
@@ -356,6 +357,11 @@ impl ProcessCraft {
                     return;
                 };
                 let node = ConversationNode {
+                    correlation_keys: collaboration
+                        .conversation_nodes
+                        .iter()
+                        .find(|node| node.id.selector() == node_id)
+                        .map_or_else(Vec::new, |node| node.correlation_keys.clone()),
                     base: collaboration
                         .conversation_nodes
                         .iter()
@@ -663,7 +669,7 @@ impl ProcessCraft {
                         Mutation::CreateDataObject {
                             document_id: doc.id,
                             scope_id: scope.id.selector(),
-                            data_object: processcraft_core::bpmn_data::DataObject { base: None,
+                            data_object: processcraft_core::bpmn_data::DataObject { flow_metadata: None, base: None,
                                 item_aware: None,
                                 id: Some(controller::id("DataObject").into()),
                                 name: Some(self.collaboration.data_name.clone()),
@@ -764,7 +770,7 @@ impl ProcessCraft {
                     let mut mutations = vec![Mutation::CreateElement {
                         document_id: doc.id,
                         process_id: scope.id.selector(),
-                        element: Node { base_extras: None,
+                        element: Node { flow_metadata: None, base_extras: None,
                             item_aware: None,
                             id: node_id.clone().into(),
                             name: Some(self.collaboration.reference_name.clone()),
@@ -1142,7 +1148,7 @@ impl ProcessCraft {
                     if ui.button("Create choreography and diagram").clicked() {
                         if self.collaboration.root_name.trim().is_empty() || self.collaboration.root_first.trim().is_empty() || self.collaboration.root_second.trim().is_empty() || self.collaboration.root_task.trim().is_empty() { self.ctl.error = "Enter a choreography, two participants, and a first task.".into(); return; }
                         let root = controller::id("Choreography"); let diagram = controller::id("ChoreographyDiagram"); let task = controller::id("ChoreographyTask"); let first = controller::id("Participant"); let second = controller::id("Participant");
-                        let choreography = processcraft_core::bpmn_collaboration::Choreography { base: None,  id:root.clone().into(), name:Some(self.collaboration.root_name.clone()), participants:vec![Participant {base: None,id:first.clone().into(),name:Some(self.collaboration.root_first.clone()),process:None},Participant {base: None,id:second.clone().into(),name:Some(self.collaboration.root_second.clone()),process:None}],message_flows:vec![],activities:vec![processcraft_core::bpmn_collaboration::ChoreographyActivity{base: None,id:task.clone().into(),name:Some(self.collaboration.root_task.clone()),participant_refs:vec![first.clone().into(),second.into()],initiating_participant:first.into(),message_flow_refs:vec![]}],sequence_flows:vec![] };
+                        let choreography = processcraft_core::bpmn_collaboration::Choreography { base: None,  id:root.clone().into(), name:Some(self.collaboration.root_name.clone()), participants:vec![Participant {base: None,id:first.clone().into(),name:Some(self.collaboration.root_first.clone()),process:None},Participant {base: None,id:second.clone().into(),name:Some(self.collaboration.root_second.clone()),process:None}],message_flows:vec![],activities:vec![processcraft_core::bpmn_collaboration::ChoreographyActivity{ correlation_keys: Vec::new(), flow_metadata: None,base: None,id:task.clone().into(),name:Some(self.collaboration.root_task.clone()),participant_refs:vec![first.clone().into(),second.into()],initiating_participant:first.into(),message_flow_refs:vec![]}],sequence_flows:vec![] };
                         let diagram_value = Diagram { documentation: None, label_styles: Vec::new(), resolution: None,  name:None, id:diagram.clone().into(),plane_id:controller::id("ChoreographyPlane").into(),plane:root.clone().into(),shapes:vec![Shape{ label_visibility: Some(DiLabelVisibility::Explicit), is_horizontal: None, is_marker_visible: None,id:controller::id("ChoreographyShape").into(),element:task.into(),is_expanded:None,bounds:Bounds{x:80.0,y:80.0,width:180.0,height:100.0},label:Some(Label::default()),style:None}],edges:vec![] };
                         if self.commit_draft() && self.ctl.mutate(vec![Mutation::CreateChoreography {document_id:doc.id,choreography},Mutation::CreateDiagram {document_id:doc.id,diagram:diagram_value}]) {
                             self.diagram_id = Some(diagram.into()); self.process_id = None;
@@ -1178,7 +1184,7 @@ impl ProcessCraft {
                     let (Some(first),Some(second)) = (self.collaboration.choreography_first.clone(),self.collaboration.choreography_second.clone()) else { self.ctl.error = "Select two participants.".into(); return; };
                     if first == second { self.ctl.error = "Select two different participants.".into(); return; }
                     let node_id = controller::id("ChoreographyTask");
-                    let mut mutations = vec![Mutation::CreateChoreographyActivity { document_id:doc.id,choreography_id:choreo.id.selector(),activity:processcraft_core::bpmn_collaboration::ChoreographyActivity {base: None,id:node_id.clone().into(),name:Some(self.collaboration.choreography_name.clone()),participant_refs:vec![first.clone(),second],initiating_participant:first,message_flow_refs:vec![]}}];
+                    let mut mutations = vec![Mutation::CreateChoreographyActivity { document_id:doc.id,choreography_id:choreo.id.selector(),activity:processcraft_core::bpmn_collaboration::ChoreographyActivity { correlation_keys: Vec::new(), flow_metadata: None,base: None,id:node_id.clone().into(),name:Some(self.collaboration.choreography_name.clone()),participant_refs:vec![first.clone(),second],initiating_participant:first,message_flow_refs:vec![]}}];
                     if let Some(diagram) = doc.diagrams.iter().find(|d| self.diagram_id.as_ref().is_none_or(|id| &d.id == id) && d.plane == choreo.id) {
                         mutations.push(Mutation::CreateShape { document_id:doc.id,diagram_id:diagram.id.selector(),shape:Shape{ label_visibility: Some(DiLabelVisibility::Explicit), is_horizontal: None, is_marker_visible: None,id:controller::id("ChoreographyShape").into(),element:node_id.into(),is_expanded:None,bounds:Bounds{x:self.camera.0+120.0,y:self.camera.1+80.0+choreo.activities.len() as f64*90.0,width:160.0,height:100.0},label:Some(Label::default()),style:None}});
                     }

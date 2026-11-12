@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:tns="urn:activity-correlation" xmlns:ext="urn:external" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" targetNamespace="urn:activity-correlation" id="defs">
+ <message id="message" name="Message"/>
+ <category id="category"><categoryValue id="categoryValue" value="Class"/></category>
+ <correlationProperty id="correlationProperty" name="Order" type="ext:type"><correlationPropertyRetrievalExpression id="retrieval" messageRef="tns:message"><messagePath xmlns:path="urn:path">path:order</messagePath></correlationPropertyRetrievalExpression></correlationProperty>
+ <collaboration id="collaboration"><correlationKey id="key" name="Key"><correlationPropertyRef>tns:correlationProperty</correlationPropertyRef></correlationKey></collaboration>
+ <process id="process" processType="Private" isClosed="false"><auditing id="processAudit"/><monitoring id="processMonitor"/><task id="task"><auditing/><monitoring/><categoryValueRef>tns:categoryValue</categoryValueRef><standardLoopCharacteristics id="loop" testBefore="false"><loopCondition>repeat</loopCondition></standardLoopCharacteristics></task><correlationSubscription id="subscription" correlationKeyRef="tns:key"><correlationPropertyBinding id="binding" correlationPropertyRef="tns:correlationProperty"><dataPath xmlns:path="urn:path">path:order</dataPath></correlationPropertyBinding></correlationSubscription></process>
+</definitions>

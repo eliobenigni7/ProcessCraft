@@ -18,6 +18,7 @@ pub fn id(prefix: &str) -> XmlId {
 pub fn blank_document() -> BpmnDocument {
     let mut d = BpmnDocument::new("Untitled process".into(), id("Definitions").into());
     let process = Process {
+        activity_metadata: None,
         lane_set_base: None,
         base_extras: None,
         is_executable: Some(false),
@@ -481,6 +482,7 @@ mod lifecycle {
             Mutation::CreateCollaboration {
                 document_id: d.id,
                 collaboration: Collaboration {
+                    correlation_keys: Vec::new(),
                     base: None,
                     name: None,
                     conversation_nodes: vec![],

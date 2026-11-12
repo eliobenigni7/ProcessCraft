@@ -190,6 +190,15 @@ pub struct ProcessCraft {
     metadata_draft: Option<base_metadata::MetadataDraft>,
     style_draft: Option<di_style::StyleDraft>,
     definitions_extra_draft: Option<definitions_extra::DefinitionsExtraDraft>,
+    correlation_catalog_draft: Option<correlation::CorrelationCatalogDraft>,
+    activity_roles_draft: Option<roles::ActivityRolesDraft>,
+    callable_catalog_draft: Option<callable::CallableCatalogDraft>,
+    call_draft: Option<call::CallDraft>,
+    process_activity_draft: Option<process_activity::ProcessActivityDraft>,
+    flow_metadata_draft: Option<flow_metadata::FlowDraft>,
+    correlation_keys_draft: Option<correlation_keys::CorrelationKeysDraft>,
+    loop_advanced_draft: Option<loop_advanced::LoopAdvancedDraft>,
+    choreography_flow_draft: Option<choreography_flow::ChoreographyFlowDraft>,
     event_draft: Option<event::EventDraft>,
     event_catalog_draft: Option<event::EventCatalogDraft>,
     identity_page: usize,
@@ -304,6 +313,15 @@ impl Default for ProcessCraft {
             metadata_draft: None,
             style_draft: None,
             definitions_extra_draft: None,
+            correlation_catalog_draft: None,
+            activity_roles_draft: None,
+            callable_catalog_draft: None,
+            call_draft: None,
+            process_activity_draft: None,
+            flow_metadata_draft: None,
+            correlation_keys_draft: None,
+            loop_advanced_draft: None,
+            choreography_flow_draft: None,
             event_draft: None,
             event_catalog_draft: None,
             identity_page: 0,
@@ -374,6 +392,15 @@ impl ProcessCraft {
             || self.metadata_draft.is_some()
             || self.style_draft.is_some()
             || self.definitions_extra_draft.is_some()
+            || self.correlation_catalog_draft.is_some()
+            || self.activity_roles_draft.is_some()
+            || self.callable_catalog_draft.is_some()
+            || self.call_draft.is_some()
+            || self.process_activity_draft.is_some()
+            || self.flow_metadata_draft.is_some()
+            || self.correlation_keys_draft.is_some()
+            || self.loop_advanced_draft.is_some()
+            || self.choreography_flow_draft.is_some()
             || self.event_draft.is_some()
             || self.event_catalog_draft.is_some())
             && !self.commit_draft()
@@ -538,6 +565,42 @@ impl ProcessCraft {
     fn commit_draft(&mut self) -> bool {
         if self.event_draft.is_some() || self.event_catalog_draft.is_some() {
             self.ctl.error = "Apply or cancel the event draft first.".into();
+            return false;
+        }
+        if self.choreography_flow_draft.is_some() {
+            self.ctl.error = "Apply or cancel the choreography details draft first.".into();
+            return false;
+        }
+        if self.loop_advanced_draft.is_some() {
+            self.ctl.error = "Apply or cancel the multi-instance draft first.".into();
+            return false;
+        }
+        if self.correlation_keys_draft.is_some() {
+            self.ctl.error = "Apply or cancel the correlation keys draft first.".into();
+            return false;
+        }
+        if self.flow_metadata_draft.is_some() {
+            self.ctl.error = "Apply or cancel the flow details draft first.".into();
+            return false;
+        }
+        if self.process_activity_draft.is_some() {
+            self.ctl.error = "Apply or cancel the process behavior draft first.".into();
+            return false;
+        }
+        if self.call_draft.is_some() {
+            self.ctl.error = "Apply or cancel the called element draft first.".into();
+            return false;
+        }
+        if self.callable_catalog_draft.is_some() {
+            self.ctl.error = "Apply or cancel the global task draft first.".into();
+            return false;
+        }
+        if self.activity_roles_draft.is_some() {
+            self.ctl.error = "Apply or cancel the activity roles draft first.".into();
+            return false;
+        }
+        if self.correlation_catalog_draft.is_some() {
+            self.ctl.error = "Apply or cancel the correlation draft first.".into();
             return false;
         }
         if self.definitions_extra_draft.is_some() {
@@ -837,6 +900,28 @@ impl ProcessCraft {
         self.multi = ids;
         self.ctl.session.set_selection(keys);
     }
+    fn ordinary_property_locked(&self) -> bool {
+        self.catalog_draft.is_some()
+            || self.data_draft.is_some()
+            || self.xml_id_draft.is_some()
+            || self.di_draft.is_some()
+            || self.documentation_draft.is_some()
+            || self.body_draft.is_some()
+            || self.metadata_draft.is_some()
+            || self.style_draft.is_some()
+            || self.definitions_extra_draft.is_some()
+            || self.event_draft.is_some()
+            || self.event_catalog_draft.is_some()
+            || self.correlation_catalog_draft.is_some()
+            || self.activity_roles_draft.is_some()
+            || self.callable_catalog_draft.is_some()
+            || self.call_draft.is_some()
+            || self.process_activity_draft.is_some()
+            || self.flow_metadata_draft.is_some()
+            || self.correlation_keys_draft.is_some()
+            || self.loop_advanced_draft.is_some()
+            || self.choreography_flow_draft.is_some()
+    }
     fn has_drafts(&self) -> bool {
         self.collaboration.has_draft()
             || self.expression_draft.is_some()
@@ -850,6 +935,15 @@ impl ProcessCraft {
             || self.metadata_draft.is_some()
             || self.style_draft.is_some()
             || self.definitions_extra_draft.is_some()
+            || self.correlation_catalog_draft.is_some()
+            || self.activity_roles_draft.is_some()
+            || self.callable_catalog_draft.is_some()
+            || self.call_draft.is_some()
+            || self.process_activity_draft.is_some()
+            || self.flow_metadata_draft.is_some()
+            || self.correlation_keys_draft.is_some()
+            || self.loop_advanced_draft.is_some()
+            || self.choreography_flow_draft.is_some()
             || self.event_draft.is_some()
             || self.event_catalog_draft.is_some()
             || self.m3.has_draft()
@@ -919,6 +1013,15 @@ impl ProcessCraft {
         self.metadata_draft = None;
         self.style_draft = None;
         self.definitions_extra_draft = None;
+        self.correlation_catalog_draft = None;
+        self.activity_roles_draft = None;
+        self.callable_catalog_draft = None;
+        self.call_draft = None;
+        self.process_activity_draft = None;
+        self.flow_metadata_draft = None;
+        self.correlation_keys_draft = None;
+        self.loop_advanced_draft = None;
+        self.choreography_flow_draft = None;
         self.event_draft = None;
         self.event_catalog_draft = None;
         self.definitions_dirty = false;
@@ -1160,6 +1263,7 @@ impl ProcessCraft {
                 document_id: d.id,
                 process_id: p.id.selector(),
                 element: Node {
+                    flow_metadata: None,
                     base_extras: None,
                     item_aware: None,
                     activity: None,
@@ -1208,6 +1312,7 @@ impl ProcessCraft {
             batch.push(Mutation::CreateCollaboration {
                 document_id: d.id,
                 collaboration: Collaboration {
+                    correlation_keys: Vec::new(),
                     base: None,
                     name: None,
                     conversation_nodes: vec![],
@@ -1496,6 +1601,7 @@ impl ProcessCraft {
                 document_id: d.id,
                 process_id: Some(p.id.selector()),
                 flow: Flow {
+                    flow_metadata: None,
                     base_extras: None,
                     association_direction: None,
                     id: eid.clone().into(),
@@ -2087,6 +2193,7 @@ mod tests {
         let node: XmlId = "Node".parse().unwrap();
         let shape: XmlId = "Shape".parse().unwrap();
         doc.processes[0].nodes.push(Node {
+            flow_metadata: None,
             base_extras: None,
             item_aware: None,
             activity: None,
@@ -2601,6 +2708,7 @@ mod tests {
         let mut project = controller::blank_project();
         let document = std::sync::Arc::make_mut(&mut project.documents[0]);
         document.processes[0].nodes.push(Node {
+            flow_metadata: None,
             base_extras: None,
             id: "Note".parse().unwrap(),
             name: Some("Old body".into()),
@@ -2817,10 +2925,22 @@ mod m2;
 
 #[path = "app_base_metadata.rs"]
 mod base_metadata;
+#[path = "app_call.rs"]
+mod call;
+#[path = "app_callable.rs"]
+mod callable;
+#[path = "app_callable_io.rs"]
+mod callable_io;
 #[path = "app_canvas.rs"]
 mod canvas;
 #[path = "app_catalog.rs"]
 mod catalog;
+#[path = "app_choreography_flow.rs"]
+mod choreography_flow;
+#[path = "app_correlation.rs"]
+mod correlation;
+#[path = "app_correlation_keys.rs"]
+mod correlation_keys;
 #[path = "app_data.rs"]
 mod data;
 #[path = "app_definitions_extra.rs"]
@@ -2833,10 +2953,18 @@ mod di_style;
 mod documentation;
 #[path = "app_event.rs"]
 mod event;
+#[path = "app_flow_metadata.rs"]
+mod flow_metadata;
 #[path = "app_inspector.rs"]
 mod inspector;
+#[path = "app_loop_advanced.rs"]
+mod loop_advanced;
 #[path = "app_mixed_body.rs"]
 mod mixed_body;
+#[path = "app_process_activity.rs"]
+mod process_activity;
+#[path = "app_roles.rs"]
+mod roles;
 #[path = "app_shell.rs"]
 mod shell;
 #[path = "app_xml.rs"]

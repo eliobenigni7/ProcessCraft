@@ -144,6 +144,7 @@ fn comparison_separates_rename_properties_geometry_and_frozen_context() {
     let mut project = ProjectData::new("Analysis".into());
     let mut document = BpmnDocument::new("Model".into(), "Definitions".parse().unwrap());
     document.processes.push(Process {
+        activity_metadata: None,
         base_extras: None,
         is_executable: Some(false),
         io_specification: None,
@@ -156,6 +157,7 @@ fn comparison_separates_rename_properties_geometry_and_frozen_context() {
         data_objects: vec![],
         data_associations: vec![],
         nodes: vec![Node {
+            flow_metadata: None,
             base_extras: None,
             item_aware: None,
             activity: None,

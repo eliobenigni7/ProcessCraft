@@ -1,0 +1,203 @@
+use super::callable::reference_list_ui;
+use super::catalog::optional_text;
+use super::event::{ReferenceDraft, local_choice_label};
+use super::*;
+use processcraft_core::bpmn_activity::CorrelationKey;
+use processcraft_core::bpmn_collaboration::{ChoreographyActivity, ConversationNode};
+#[derive(Clone)]
+enum KeyOwner {
+    Collaboration,
+    Conversation(Box<ConversationNode>),
+    Choreography(ElementSelector, Box<ChoreographyActivity>),
+}
+struct KeyDraft {
+    value: CorrelationKey,
+    properties: Vec<ReferenceDraft>,
+}
+pub(super) struct CorrelationKeysDraft {
+    owner: KeyOwner,
+    keys: Vec<KeyDraft>,
+    error: String,
+}
+impl CorrelationKeysDraft {
+    fn new(owner: KeyOwner, values: &[CorrelationKey]) -> Self {
+        Self {
+            owner,
+            keys: values
+                .iter()
+                .map(|k| KeyDraft {
+                    value: k.clone(),
+                    properties: k.property_refs.iter().map(ReferenceDraft::new).collect(),
+                })
+                .collect(),
+            error: String::new(),
+        }
+    }
+    fn build(&self) -> Result<Vec<CorrelationKey>, String> {
+        self.keys
+            .iter()
+            .map(|k| {
+                let mut v = k.value.clone();
+                v.property_refs = k
+                    .properties
+                    .iter()
+                    .map(ReferenceDraft::build)
+                    .collect::<Result<_, _>>()?;
+                Ok(v)
+            })
+            .collect()
+    }
+}
+impl ProcessCraft {
+    pub(super) fn correlation_keys_ui(
+        &mut self,
+        ui: &mut egui::Ui,
+        document: &BpmnDocument,
+        editable: bool,
+    ) {
+        if self.correlation_keys_draft.is_none() {
+            ui.menu_button("Edit correlation keys…", |ui| {
+                if let Some(c) = &document.collaboration {
+                    if ui
+                        .add_enabled(
+                            editable && !self.draft_dirty,
+                            egui::Button::new("Collaboration"),
+                        )
+                        .clicked()
+                        && self.commit_draft()
+                    {
+                        self.correlation_keys_draft = Some(CorrelationKeysDraft::new(
+                            KeyOwner::Collaboration,
+                            &c.correlation_keys,
+                        ));
+                        ui.close();
+                    }
+                    for (i, node) in c.conversation_nodes.iter().enumerate() {
+                        let label = local_choice_label(
+                            node.name.as_deref(),
+                            "Conversation",
+                            &node.id,
+                            i + 1,
+                        );
+                        if ui
+                            .add_enabled(editable && !self.draft_dirty, egui::Button::new(label))
+                            .clicked()
+                            && self.commit_draft()
+                        {
+                            self.correlation_keys_draft = Some(CorrelationKeysDraft::new(
+                                KeyOwner::Conversation(Box::new(node.clone())),
+                                &node.correlation_keys,
+                            ));
+                            ui.close();
+                        }
+                    }
+                }
+                for choreography in &document.choreographies {
+                    for (i, activity) in choreography.activities.iter().enumerate() {
+                        let label = local_choice_label(
+                            activity.name.as_deref(),
+                            "Choreography activity",
+                            &activity.id,
+                            i + 1,
+                        );
+                        if ui
+                            .add_enabled(editable && !self.draft_dirty, egui::Button::new(label))
+                            .clicked()
+                            && self.commit_draft()
+                        {
+                            self.correlation_keys_draft = Some(CorrelationKeysDraft::new(
+                                KeyOwner::Choreography(
+                                    choreography.id.selector(),
+                                    Box::new(activity.clone()),
+                                ),
+                                &activity.correlation_keys,
+                            ));
+                            ui.close();
+                        }
+                    }
+                }
+            });
+            return;
+        }
+        let draft = self.correlation_keys_draft.as_mut().unwrap();
+        ui.strong("Correlation keys");
+        let choices = super::process_activity::correlation_properties(document);
+        let mut remove = None;
+        let mut up = None;
+        for (i, k) in draft.keys.iter_mut().enumerate() {
+            ui.push_id(i, |ui| {
+                ui.separator();
+                ui.label(format!("Key {}", i + 1));
+                optional_text(ui, "Name", &mut k.value.name);
+                reference_list_ui(ui, "Correlation property", &mut k.properties, &choices);
+                if ui
+                    .add_enabled(i > 0, egui::Button::new("Move key up"))
+                    .clicked()
+                {
+                    up = Some(i);
+                }
+                if ui.button("Remove key").clicked() {
+                    remove = Some(i);
+                }
+            });
+        }
+        if let Some(i) = remove {
+            draft.keys.remove(i);
+        } else if let Some(i) = up {
+            draft.keys.swap(i, i - 1);
+        }
+        if ui
+            .add_enabled(draft.keys.len() < 256, egui::Button::new("Add key"))
+            .clicked()
+        {
+            draft.keys.push(KeyDraft {
+                value: CorrelationKey {
+                    id: None,
+                    base: None,
+                    name: None,
+                    property_refs: vec![],
+                },
+                properties: vec![],
+            });
+        }
+        if !draft.error.is_empty() {
+            ui.label(&draft.error);
+        }
+        if ui.button("Apply correlation keys").clicked() {
+            match draft.build() {
+                Ok(keys) => {
+                    let mutation = match &draft.owner {
+                        KeyOwner::Collaboration => Mutation::SetCollaborationCorrelationKeys {
+                            document_id: document.id,
+                            correlation_keys: keys,
+                        },
+                        KeyOwner::Conversation(node) => {
+                            let mut node = node.as_ref().clone();
+                            node.correlation_keys = keys;
+                            Mutation::UpdateConversationNode {
+                                document_id: document.id,
+                                node,
+                            }
+                        }
+                        KeyOwner::Choreography(id, activity) => {
+                            let mut activity = activity.as_ref().clone();
+                            activity.correlation_keys = keys;
+                            Mutation::UpdateChoreographyActivity {
+                                document_id: document.id,
+                                choreography_id: id.clone(),
+                                activity,
+                            }
+                        }
+                    };
+                    if self.ctl.mutate(vec![mutation]) {
+                        self.correlation_keys_draft = None;
+                    }
+                }
+                Err(error) => draft.error = error,
+            }
+        }
+        if ui.button("Cancel correlation keys").clicked() {
+            self.correlation_keys_draft = None;
+        }
+    }
+}

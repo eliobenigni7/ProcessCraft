@@ -29,4 +29,5 @@ pub mod bpmn_collaboration;
 
 pub mod bpmn_data;
 
+mod activity_read;
 pub mod bpmn_activity;

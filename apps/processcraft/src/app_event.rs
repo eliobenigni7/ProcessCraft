@@ -6,18 +6,18 @@ use processcraft_core::bpmn_model::{
 };
 
 #[derive(Clone)]
-enum ReferenceDraft {
+pub(super) enum ReferenceDraft {
     Local(Option<ElementSelector>),
     Qualified(QNameDraft),
 }
 impl ReferenceDraft {
-    fn new(value: &R) -> Self {
+    pub(super) fn new(value: &R) -> Self {
         match value {
             R::Local(value) => Self::Local(Some(value.clone())),
             R::Qualified(value) => Self::Qualified(QNameDraft::from(value)),
         }
     }
-    fn build(&self) -> Result<R, String> {
+    pub(super) fn build(&self) -> Result<R, String> {
         match self {
             Self::Local(value) => Ok(R::Local(value.clone().ok_or("Select a local reference.")?)),
             Self::Qualified(value) => Ok(R::Qualified(
@@ -32,7 +32,7 @@ fn unavailable_target_label(id: &ElementSelector) -> String {
         ElementSelector::Native { .. } => "Unavailable target".into(),
     }
 }
-fn local_choice_label(
+pub(super) fn local_choice_label(
     name: Option<&str>,
     kind: &str,
     identity: &processcraft_core::ids::ElementIdentity,
@@ -44,7 +44,7 @@ fn local_choice_label(
         |id| format!("{name} · {id}"),
     )
 }
-fn ref_ui(
+pub(super) fn ref_ui(
     ui: &mut egui::Ui,
     label: &str,
     value: &mut Option<ReferenceDraft>,
@@ -96,18 +96,18 @@ fn ref_ui(
         }
     }
 }
-fn build_ref(value: &Option<ReferenceDraft>) -> Result<Option<R>, String> {
+pub(super) fn build_ref(value: &Option<ReferenceDraft>) -> Result<Option<R>, String> {
     value.as_ref().map(ReferenceDraft::build).transpose()
 }
 #[derive(Clone)]
-struct DefinitionDraft {
+pub(super) struct DefinitionDraft {
     value: D,
     first: Option<ReferenceDraft>,
     second: Option<ReferenceDraft>,
     sources: Vec<ReferenceDraft>,
 }
 impl DefinitionDraft {
-    fn new(value: &D) -> Self {
+    pub(super) fn new(value: &D) -> Self {
         let (first, second, sources) = match value {
             D::Message {
                 message_ref,
@@ -130,7 +130,7 @@ impl DefinitionDraft {
             sources: sources.iter().map(ReferenceDraft::new).collect(),
         }
     }
-    fn build(&self) -> Result<D, String> {
+    pub(super) fn build(&self) -> Result<D, String> {
         let mut value = self.value.clone();
         match &mut value {
             D::Message {
@@ -232,14 +232,14 @@ fn new_definition(kind: &str) -> D {
     }
 }
 #[derive(Clone)]
-struct PropertyDraft {
-    base: Option<processcraft_core::bpmn_metadata::BaseMetadata>,
-    id: super::catalog::IdentityDraft,
-    name: Option<String>,
-    item: Option<super::data::ItemDraft>,
+pub(super) struct PropertyDraft {
+    pub(super) base: Option<processcraft_core::bpmn_metadata::BaseMetadata>,
+    pub(super) id: super::catalog::IdentityDraft,
+    pub(super) name: Option<String>,
+    pub(super) item: Option<super::data::ItemDraft>,
 }
 impl PropertyDraft {
-    fn new(value: &processcraft_core::bpmn_model::EventProperty) -> Self {
+    pub(super) fn new(value: &processcraft_core::bpmn_model::EventProperty) -> Self {
         Self {
             base: value.base.clone(),
             id: super::catalog::id_string(&value.id),
@@ -250,7 +250,7 @@ impl PropertyDraft {
                 .map(super::data::ItemDraft::from_item),
         }
     }
-    fn build(&self) -> Result<processcraft_core::bpmn_model::EventProperty, String> {
+    pub(super) fn build(&self) -> Result<processcraft_core::bpmn_model::EventProperty, String> {
         Ok(processcraft_core::bpmn_model::EventProperty {
             base: self.base.clone(),
             id: super::catalog::id_build(&self.id)?,
@@ -302,13 +302,13 @@ impl EventSetDraft {
     }
 }
 #[derive(Clone)]
-struct EventIoDraft {
+pub(super) struct EventIoDraft {
     catch: bool,
     ports: Vec<EventPortDraft>,
     set: Option<EventSetDraft>,
 }
 impl EventIoDraft {
-    fn new(value: &processcraft_core::bpmn_model::EventIo) -> Self {
+    pub(super) fn new(value: &processcraft_core::bpmn_model::EventIo) -> Self {
         use processcraft_core::bpmn_model::EventIo;
         match value {
             EventIo::Catch {
@@ -326,7 +326,7 @@ impl EventIoDraft {
             },
         }
     }
-    fn build(&self) -> Result<processcraft_core::bpmn_model::EventIo, String> {
+    pub(super) fn build(&self) -> Result<processcraft_core::bpmn_model::EventIo, String> {
         let ports = self
             .ports
             .iter()
@@ -411,7 +411,7 @@ impl EventDraft {
     }
 }
 
-fn local_choices(
+pub(super) fn local_choices(
     document: &BpmnDocument,
     kind: &str,
     scope: Option<&ElementSelector>,
@@ -506,11 +506,11 @@ fn definition_id(value: &D) -> Option<&processcraft_core::ids::ElementIdentity> 
         | D::Timer { id, .. } => id.as_ref(),
     }
 }
-struct DefinitionOptions<'a> {
-    label: &'a str,
-    allowed: &'a [&'a str],
+pub(super) struct DefinitionOptions<'a> {
+    pub(super) label: &'a str,
+    pub(super) allowed: &'a [&'a str],
 }
-fn definitions_ui(
+pub(super) fn definitions_ui(
     ui: &mut egui::Ui,
     definitions: &mut Vec<DefinitionDraft>,
     new_kind: &mut String,
@@ -524,6 +524,7 @@ fn definitions_ui(
         allowed,
     } = options;
     let mut remove = None;
+    let mut up = None;
     for (index, draft) in definitions.iter_mut().enumerate() {
         ui.push_id(index, |ui| {
             ui.separator();
@@ -663,6 +664,15 @@ fn definitions_ui(
             }
             if ui
                 .add_enabled(
+                    expression_draft.is_none() && index > 0,
+                    egui::Button::new("Move definition up"),
+                )
+                .clicked()
+            {
+                up = Some(index);
+            }
+            if ui
+                .add_enabled(
                     expression_draft.is_none(),
                     egui::Button::new("Remove definition"),
                 )
@@ -674,6 +684,8 @@ fn definitions_ui(
     }
     if let Some(index) = remove {
         definitions.remove(index);
+    } else if let Some(index) = up {
+        definitions.swap(index, index - 1);
     }
     egui::ComboBox::from_label("New definition type")
         .selected_text(new_kind.as_str())
@@ -851,25 +863,10 @@ fn set_refs_ui(
     refs: &mut Vec<ElementSelector>,
     choices: &[ElementSelector],
 ) {
-    ui.label(label);
-    let mut values = choices.to_vec();
-    for reference in refs.iter() {
-        if !values.contains(reference) {
-            values.push(reference.clone());
-        }
-    }
-    for id in values {
-        let mut selected = refs.contains(&id);
-        if ui.checkbox(&mut selected, id.to_string()).changed() {
-            if selected {
-                refs.push(id);
-            } else {
-                refs.retain(|value| value != &id);
-            }
-        }
-    }
+    super::data::reference_checkboxes(ui, label, refs, choices);
 }
-fn event_io_ui(ui: &mut egui::Ui, io: &mut Option<EventIoDraft>, catch: bool) {
+
+pub(super) fn event_io_ui(ui: &mut egui::Ui, io: &mut Option<EventIoDraft>, catch: bool) {
     let mut present = io.is_some();
     ui.checkbox(&mut present, "Event input/output");
     if !present {
@@ -887,6 +884,7 @@ fn event_io_ui(ui: &mut egui::Ui, io: &mut Option<EventIoDraft>, catch: bool) {
         "Data inputs"
     });
     let mut remove = None;
+    let mut up = None;
     for (index, port) in io.ports.iter_mut().enumerate() {
         ui.push_id(index, |ui| {
             ui.separator();
@@ -894,6 +892,12 @@ fn event_io_ui(ui: &mut egui::Ui, io: &mut Option<EventIoDraft>, catch: bool) {
             optional_text(ui, "Name", &mut port.value.name);
             optional_bool(ui, "Collection", &mut port.value.is_collection);
             super::data::item_ui(ui, &mut port.item);
+            if ui
+                .add_enabled(index > 0, egui::Button::new("Move port up"))
+                .clicked()
+            {
+                up = Some(index);
+            }
             if ui.button("Remove port").clicked() {
                 remove = Some(index);
             }
@@ -901,6 +905,8 @@ fn event_io_ui(ui: &mut egui::Ui, io: &mut Option<EventIoDraft>, catch: bool) {
     }
     if let Some(index) = remove {
         io.ports.remove(index);
+    } else if let Some(index) = up {
+        io.ports.swap(index, index - 1);
     }
     if ui
         .add_enabled(io.ports.len() < 256, egui::Button::new("Add port"))
@@ -1071,14 +1077,22 @@ impl ProcessCraft {
         } = &mut draft.base
         {
             if node.kind == NodeKind::BoundaryEvent {
+                let activities = local_choices(document, "Activity", scope.as_ref());
                 egui::ComboBox::from_label("Attached activity")
-                    .selected_text(
-                        attached_to
-                            .as_ref()
-                            .map_or("Select activity".into(), ToString::to_string),
-                    )
+                    .selected_text(attached_to.as_ref().map_or_else(
+                        || "Select activity".into(),
+                        |id| {
+                            activities
+                                .iter()
+                                .find(|(candidate, _)| candidate == id)
+                                .map_or_else(
+                                    || unavailable_target_label(id),
+                                    |(_, name)| name.clone(),
+                                )
+                        },
+                    ))
                     .show_ui(ui, |ui| {
-                        for (id, name) in local_choices(document, "Activity", scope.as_ref()) {
+                        for (id, name) in activities {
                             ui.selectable_value(attached_to, Some(id), name);
                         }
                     });

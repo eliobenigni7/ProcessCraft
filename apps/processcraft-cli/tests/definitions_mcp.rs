@@ -14,6 +14,139 @@ impl Drop for Server {
 }
 
 #[test]
+fn activity_commands_use_real_stdio_pages_and_exact_history() {
+    use processcraft_core::{
+        bpmn_activity::{CallableMetadata, GlobalTask, GlobalTaskKind},
+        ids::ElementIdentity,
+    };
+    let mut server = Server(
+        Command::new(env!("CARGO_BIN_EXE_processcraft-cli"))
+            .args(["mcp", "--new", "Activities"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap(),
+    );
+    let mut input = server.0.stdin.take().unwrap();
+    let mut output = BufReader::new(server.0.stdout.take().unwrap());
+    let mut call = |value: Value| {
+        writeln!(input, "{value}").unwrap();
+        input.flush().unwrap();
+        let mut line = String::new();
+        assert!(output.read_line(&mut line).unwrap() > 0);
+        serde_json::from_str::<Value>(&line).unwrap()
+    };
+    assert!(call(json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{
+        "protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"activity-test","version":"1"}
+    }}))["result"].is_object());
+    let tools = call(json!({"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}));
+    let apply = tools["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|tool| tool["name"] == "apply")
+        .unwrap();
+    assert!(apply["inputSchema"]["$defs"]["GlobalTask"].is_object());
+    let inspect = |id| json!({"jsonrpc":"2.0","id":id,"method":"tools/call","params":{"name":"inspect","arguments":{}}});
+    let session = call(inspect(3))["result"]["structuredContent"]["sessionId"].clone();
+    let doc = BpmnDocument::new("Model".into(), "Definitions".parse().unwrap());
+    let document_id = doc.id;
+    let envelope = |id, request_id: &str, generation, request| {
+        json!({"jsonrpc":"2.0","id":id,"method":"tools/call","params":{"name":"apply","arguments":{
+            "sessionId":session,"requestId":request_id,"expectedGeneration":generation,"request":request
+        }}})
+    };
+    let created = call(envelope(
+        4,
+        "create",
+        0,
+        json!({"type":"batch","mutations":[{"type":"createDocument","document":doc}]}),
+    ));
+    assert_eq!(created["result"]["structuredContent"]["ok"], true);
+    let before = call(inspect(5));
+    let identity = ElementIdentity::anonymous();
+    let task = GlobalTask {
+        id: Some(identity.clone()),
+        base: None,
+        name: Some(String::new()),
+        callable: CallableMetadata::default(),
+        io_specification: None,
+        resource_roles: vec![],
+        kind: GlobalTaskKind::Script {
+            script_language: Some("urn:inert".into()),
+            script: Some("inert & preserved".into()),
+        },
+    };
+    let request = json!({"type":"batch","mutations":[{"type":"setGlobalTasks","document_id":document_id,"global_tasks":[task]}]});
+    let changed = call(envelope(6, "activity", 1, request.clone()));
+    assert_eq!(
+        changed["result"]["structuredContent"]["ok"], true,
+        "{changed}"
+    );
+    assert_eq!(
+        call(envelope(7, "activity", 1, request))["result"]["structuredContent"],
+        changed["result"]["structuredContent"]
+    );
+    let after = call(inspect(8));
+    assert_ne!(
+        before["result"]["structuredContent"]["contentId"],
+        after["result"]["structuredContent"]["contentId"]
+    );
+    let mut offset = 0;
+    let mut rows = std::collections::BTreeMap::new();
+    loop {
+        let page = call(
+            json!({"jsonrpc":"2.0","id":100+offset,"method":"tools/call","params":{"name":"query","arguments":{
+                "kind":"model","document_id":document_id,"offset":offset,"limit":4
+            }}}),
+        );
+        let page = &page["result"]["structuredContent"];
+        assert_eq!(page["generation"], 2);
+        assert_eq!(
+            page["contentId"],
+            after["result"]["structuredContent"]["contentId"]
+        );
+        let items = page["items"].as_array().unwrap();
+        assert!(items.len() <= 4);
+        for row in items {
+            assert!(
+                rows.insert(
+                    row["path"].as_str().unwrap().to_owned(),
+                    row["value"].clone()
+                )
+                .is_none()
+            );
+        }
+        if let Some(next) = page["nextOffset"].as_u64() {
+            assert!(next as usize > offset);
+            offset = next as usize;
+        } else {
+            assert_eq!(page["total"], rows.len());
+            break;
+        }
+    }
+    assert_eq!(
+        rows["/global_tasks/0/id/native_id"],
+        serde_json::to_value(&identity).unwrap()["native_id"]
+    );
+    assert_eq!(rows["/global_tasks/0/id/xml_id"], Value::Null);
+    assert_eq!(rows["/global_tasks/0/name"], "");
+    assert_eq!(rows["/global_tasks/0/kind/script"], "inert & preserved");
+    for (id, generation, kind, expected) in [(2000, 2, "undo", &before), (2002, 3, "redo", &after)]
+    {
+        assert_eq!(
+            call(envelope(id, kind, generation, json!({"type":kind})))["result"]["structuredContent"]
+                ["ok"],
+            true
+        );
+        assert_eq!(
+            call(inspect(id + 1))["result"]["structuredContent"]["contentId"],
+            expected["result"]["structuredContent"]["contentId"]
+        );
+    }
+}
+
+#[test]
 fn definitions_metadata_uses_discovered_mcp_command_and_exact_history() {
     // No file grants: this exercises the shared in-memory engine on every platform.
     let mut server = Server(
