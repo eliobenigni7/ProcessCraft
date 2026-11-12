@@ -410,6 +410,7 @@ impl ProcessCraft {
                         self.history(Request::Redo);
                         ui.close();
                     }
+                    self.edit_menu_items(ui);
                 });
                 ui.menu_button("View", |ui| {
                     if wide {
