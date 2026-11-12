@@ -202,6 +202,14 @@ impl StringCost for Option<String> {
         self.as_ref().map_or(0, string)
     }
 }
+impl StringCost for crate::bpmn_metadata::DocumentationSet {
+    fn string_cost(&self) -> usize {
+        match self {
+            Self::Legacy(value) => string(value),
+            Self::Structured(_) => 0,
+        }
+    }
+}
 fn string(s: &impl StringCost) -> usize {
     s.string_cost()
 }
@@ -248,7 +256,10 @@ fn flow(f: &Flow) -> usize {
         + xml(&f.target)
         + string(&f.name)
         + string(&f.documentation)
-        + f.condition.as_ref().map_or(0, |value| value.text().len())
+        + f.condition
+            .as_ref()
+            .and_then(|value| value.plain_text())
+            .map_or(0, str::len)
 }
 fn document(d: &BpmnDocument) -> usize {
     // Charge the complete typed payload, including nested/new BPMN families. Streaming avoids
@@ -357,12 +368,42 @@ mod tests {
         document
             .event_resources
             .push(crate::bpmn_model::EventResource::Message {
+                base: None,
                 item_ref: None,
                 id: "Message".parse().unwrap(),
                 name: Some("x".repeat(100_000)),
             });
         let bytes = super::document(&document);
         assert!(bytes >= 400_000, "typed root metadata was omitted: {bytes}");
+    }
+    #[test]
+    fn structured_documentation_is_charged_to_history_budget() {
+        use crate::{
+            bpmn_metadata::{Documentation, DocumentationSet},
+            bpmn_xml::MixedXml,
+        };
+        let mut document = BpmnDocument::new("Model".into(), "Definitions".parse().unwrap());
+        document.processes.push(Process {
+            id: "process".parse().unwrap(),
+            name: Some("Process".into()),
+            documentation: DocumentationSet::Structured(vec![Documentation {
+                id: None,
+                text_format: None,
+                content: MixedXml::Text("x".repeat(100_000)),
+            }]),
+            base_extras: None,
+            is_executable: Some(false),
+            io_specification: None,
+            lane_set_id: None,
+            lane_set_base: None,
+            groups: vec![],
+            data_objects: vec![],
+            data_associations: vec![],
+            nodes: vec![],
+            lanes: vec![],
+            flows: vec![],
+        });
+        assert!(super::document(&document) >= 400_000);
     }
     #[test]
     fn required_undo_refusal_preserves_existing_history() {

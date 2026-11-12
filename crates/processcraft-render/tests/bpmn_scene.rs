@@ -14,12 +14,14 @@ fn fixture() -> BpmnDocument {
         is_executable: Some(false),
         io_specification: None,
         lane_set_id: None,
+        lane_set_base: None,
         groups: vec![],
         data_objects: vec![],
         data_associations: vec![],
         id: id("process"),
         name: Some(String::new()),
-        documentation: String::new(),
+        documentation: String::new().into(),
+        base_extras: None,
         nodes: vec![Node {
             item_aware: None,
             activity: None,
@@ -28,7 +30,8 @@ fn fixture() -> BpmnDocument {
             io_specification: None,
             id: id("task"),
             name: Some("Review".into()),
-            documentation: String::new(),
+            documentation: String::new().into(),
+            base_extras: None,
             kind: NodeKind::UserTask,
             owner: String::new(),
             contact: String::new(),
@@ -38,10 +41,14 @@ fn fixture() -> BpmnDocument {
     });
     d.diagrams.push(Diagram {
         name: None,
+        documentation: None,
+        resolution: None,
+        label_styles: vec![],
         id: id("diagram"),
         plane_id: id("plane"),
         plane: id("process"),
         shapes: vec![Shape {
+            label_visibility: None,
             is_horizontal: None,
             is_marker_visible: None,
             is_expanded: None,
@@ -182,13 +189,15 @@ fn named_flow_without_di_label_is_visible() {
         source: id("task"),
         target: id("task"),
         name: Some("Approved".into()),
-        documentation: String::new(),
+        documentation: String::new().into(),
+        base_extras: None,
         condition: None,
     });
     d.diagrams[0].edges.push(processcraft_core::model::Edge {
         id: id("edge"),
         element: id("flow"),
         source_element: None,
+        label_visibility: None,
         target_element: None,
         waypoints: vec![
             processcraft_core::model::Point { x: 10., y: 100. },
@@ -216,12 +225,14 @@ fn large_diagram_renders_viewport_without_full_allocation() {
 fn small_label_bounds_report_omission() {
     let mut d = fixture();
     d.diagrams[0].shapes[0].label = Some(processcraft_core::model::Label {
-        bounds: Bounds {
+        id: None,
+        style_ref: None,
+        bounds: Some(Bounds {
             x: 0.,
             y: 0.,
             width: 20.,
             height: 5.,
-        },
+        }),
         style: None,
     });
     let s = build(&d, Appearance::Light);
@@ -244,13 +255,15 @@ fn many_dashed_edges_fit_path_budget() {
             source: id("task"),
             target: id("task"),
             name: Some(String::new()),
-            documentation: String::new(),
+            documentation: String::new().into(),
+            base_extras: None,
             condition: None,
         });
         d.diagrams[0].edges.push(processcraft_core::model::Edge {
             id: id(&format!("edge{i}")),
             element: key.selector(),
             source_element: None,
+            label_visibility: None,
             target_element: None,
             waypoints: vec![
                 processcraft_core::model::Point { x: 0., y: i as f64 },
@@ -324,13 +337,15 @@ fn viewport_clips_polyline_without_intermediate_arrows_or_duplicate_label() {
         source: id("task"),
         target: id("task"),
         name: Some("A very long label".into()),
-        documentation: String::new(),
+        documentation: String::new().into(),
+        base_extras: None,
         condition: None,
     });
     d.diagrams[0].edges.push(Edge {
         id: id("e"),
         element: id("f"),
         source_element: None,
+        label_visibility: None,
         target_element: None,
         waypoints: vec![
             Point { x: 10., y: 50. },
@@ -339,12 +354,14 @@ fn viewport_clips_polyline_without_intermediate_arrows_or_duplicate_label() {
             Point { x: 200., y: 90. },
         ],
         label: Some(Label {
-            bounds: Bounds {
+            id: None,
+            style_ref: None,
+            bounds: Some(Bounds {
                 x: 10.,
                 y: 5.,
                 width: 20.,
                 height: 5.,
-            },
+            }),
             style: None,
         }),
         style: None,
@@ -418,12 +435,14 @@ fn viewport_displays_explicit_shape_label_when_shape_is_offscreen() {
     let mut d = fixture();
     d.diagrams[0].shapes[0].bounds.x = 500.;
     d.diagrams[0].shapes[0].label = Some(Label {
-        bounds: Bounds {
+        id: None,
+        style_ref: None,
+        bounds: Some(Bounds {
             x: 10.,
             y: 10.,
             width: 100.,
             height: 40.,
-        },
+        }),
         style: None,
     });
     let s = BpmnViewport::build(
@@ -453,12 +472,14 @@ fn viewport_does_not_fallback_when_explicit_shape_label_is_offscreen() {
     use processcraft_render::{BpmnViewport, Viewport};
     let mut d = fixture();
     d.diagrams[0].shapes[0].label = Some(Label {
-        bounds: Bounds {
+        id: None,
+        style_ref: None,
+        bounds: Some(Bounds {
             x: 500.,
             y: 500.,
             width: 100.,
             height: 40.,
-        },
+        }),
         style: None,
     });
     let s = BpmnViewport::build(
@@ -491,22 +512,26 @@ fn viewport_displays_explicit_edge_label_when_edge_is_offscreen() {
         source: id("task"),
         target: id("task"),
         name: Some("Visible".into()),
-        documentation: String::new(),
+        documentation: String::new().into(),
+        base_extras: None,
         condition: None,
     });
     d.diagrams[0].edges.push(Edge {
         id: id("e"),
         element: id("f"),
         source_element: None,
+        label_visibility: None,
         target_element: None,
         waypoints: vec![Point { x: 500., y: 500. }, Point { x: 600., y: 500. }],
         label: Some(Label {
-            bounds: Bounds {
+            id: None,
+            style_ref: None,
+            bounds: Some(Bounds {
                 x: 10.,
                 y: 10.,
                 width: 100.,
                 height: 40.,
-            },
+            }),
             style: None,
         }),
         style: None,
@@ -538,12 +563,14 @@ fn viewport_clicks_external_label_of_visible_shape() {
     use processcraft_render::{BpmnViewport, Viewport};
     let mut d = fixture();
     d.diagrams[0].shapes[0].label = Some(Label {
-        bounds: Bounds {
+        id: None,
+        style_ref: None,
+        bounds: Some(Bounds {
             x: 110.,
             y: 110.,
             width: 70.,
             height: 30.,
-        },
+        }),
         style: None,
     });
     let s = BpmnViewport::build(
@@ -578,6 +605,7 @@ fn typed_timer_event_has_circle_hits_and_shared_vector_marker() {
         properties: vec![],
         io: None,
         definitions: vec![EventDefinition::Timer {
+            base: None,
             id: None,
             kind: Some(TimerKind::Duration),
             expression: Some("PT5M".into()),
@@ -619,7 +647,10 @@ fn unsupported_event_definition_produces_export_diagnostic() {
         is_interrupting: None,
         properties: vec![],
         io: None,
-        definitions: vec![EventDefinition::Terminate { id: None }],
+        definitions: vec![EventDefinition::Terminate {
+            base: None,
+            id: None,
+        }],
         attached_to: None,
         cancel_activity: None,
     });
@@ -668,6 +699,7 @@ fn non_interrupting_boundary_and_compensation_have_distinct_shared_vectors() {
         properties: vec![],
         io: None,
         definitions: vec![EventDefinition::Compensate {
+            base: None,
             id: None,
             wait_for_completion: None,
             activity_ref: None,
@@ -703,10 +735,12 @@ fn multiple_event_uses_one_marker_and_unsupported_kind_is_diagnosed() {
         io: None,
         definitions: vec![
             EventDefinition::Signal {
+                base: None,
                 id: None,
                 signal_ref: None,
             },
             EventDefinition::Message {
+                base: None,
                 id: None,
                 message_ref: None,
                 operation_ref: None,
@@ -738,6 +772,7 @@ fn nested_diagram_shows_children_and_collapsed_parent_hides_them() {
     parent.details = Some(NodeDetails::SubProcess {
         content: Box::new(FlowContainer {
             lane_set_id: None,
+            lane_set_base: None,
             groups: vec![],
             data_objects: vec![],
             data_associations: vec![],
@@ -846,7 +881,8 @@ fn nested_flow_and_called_activity_use_semantic_ids() {
         source: id("nested_a"),
         target: id("nested_b"),
         name: Some("Inner".into()),
-        documentation: String::new(),
+        documentation: String::new().into(),
+        base_extras: None,
         condition: None,
     };
     let parent = &mut d.processes[0].nodes[0];
@@ -854,6 +890,7 @@ fn nested_flow_and_called_activity_use_semantic_ids() {
     parent.details = Some(NodeDetails::SubProcess {
         content: Box::new(FlowContainer {
             lane_set_id: None,
+            lane_set_base: None,
             groups: vec![],
             data_objects: vec![],
             data_associations: vec![],
@@ -878,6 +915,7 @@ fn nested_flow_and_called_activity_use_semantic_ids() {
         id: id("inner_di"),
         element: id("inner_flow"),
         source_element: None,
+        label_visibility: None,
         target_element: None,
         waypoints: vec![Point { x: 250.0, y: 50.0 }, Point { x: 300.0, y: 50.0 }],
         label: None,
@@ -905,6 +943,8 @@ fn loop_and_multi_instance_markers_use_distinct_shared_vectors() {
     d.processes[0].nodes[0].name = Some(String::new());
     let base = build(&d, Appearance::Light).scene.to_svg();
     d.processes[0].nodes[0].loop_characteristics = Some(LoopCharacteristics::Standard {
+        id: None,
+        base: None,
         test_before: false,
         condition: None,
         maximum: None,
@@ -912,12 +952,16 @@ fn loop_and_multi_instance_markers_use_distinct_shared_vectors() {
     let standard = build(&d, Appearance::Light).scene.to_svg();
     assert_ne!(base, standard);
     d.processes[0].nodes[0].loop_characteristics = Some(LoopCharacteristics::MultiInstance {
+        id: None,
+        base: None,
         is_sequential: true,
         cardinality: None,
         completion_condition: None,
     });
     let sequential = build(&d, Appearance::Light).scene.to_svg();
     d.processes[0].nodes[0].loop_characteristics = Some(LoopCharacteristics::MultiInstance {
+        id: None,
+        base: None,
         is_sequential: false,
         cardinality: None,
         completion_condition: None,
@@ -936,9 +980,11 @@ fn conversation_hexagons_and_links_render_with_semantic_hits() {
     use processcraft_render::{BpmnViewport, Viewport};
     let mut d = fixture();
     d.collaboration = Some(Collaboration {
+        base: None,
         name: None,
         id: id("collab"),
         participants: vec![Participant {
+            base: None,
             id: id("participant"),
             name: Some("Buyer".into()),
             process: Some(id("process")),
@@ -946,6 +992,7 @@ fn conversation_hexagons_and_links_render_with_semantic_hits() {
         flows: vec![],
         conversation_nodes: vec![
             ConversationNode {
+                base: None,
                 id: id("conversation"),
                 name: Some("Order".into()),
                 kind: ConversationKind::SubConversation,
@@ -953,6 +1000,7 @@ fn conversation_hexagons_and_links_render_with_semantic_hits() {
                 parent: None,
             },
             ConversationNode {
+                base: None,
                 id: id("inner"),
                 name: Some("Inner".into()),
                 kind: ConversationKind::Conversation,
@@ -961,6 +1009,7 @@ fn conversation_hexagons_and_links_render_with_semantic_hits() {
             },
         ],
         conversation_links: vec![ConversationLink {
+            base: None,
             id: id("link"),
             name: Some("Coordination".into()),
             source: id("participant"),
@@ -973,6 +1022,7 @@ fn conversation_hexagons_and_links_render_with_semantic_hits() {
     diagram.shapes.push(Shape {
         id: id("conversation_di"),
         element: id("conversation"),
+        label_visibility: None,
         is_horizontal: None,
         is_marker_visible: None,
         is_expanded: Some(false),
@@ -988,6 +1038,7 @@ fn conversation_hexagons_and_links_render_with_semantic_hits() {
     diagram.shapes.push(Shape {
         id: id("inner_di"),
         element: id("inner"),
+        label_visibility: None,
         is_horizontal: None,
         is_marker_visible: None,
         is_expanded: None,
@@ -1004,6 +1055,7 @@ fn conversation_hexagons_and_links_render_with_semantic_hits() {
         id: id("link_di"),
         element: id("link"),
         source_element: None,
+        label_visibility: None,
         target_element: None,
         waypoints: vec![Point { x: 0.0, y: 100.0 }, Point { x: 50.0, y: 100.0 }],
         label: None,
@@ -1074,6 +1126,7 @@ fn data_store_and_association_are_drawn_in_scene_and_viewport() {
     d.processes[0].nodes[0].kind = NodeKind::DataStoreReference;
     d.processes[0].nodes[0].name = Some("Archive".into());
     d.processes[0].data_associations.push(DataAssociation {
+        base: None,
         id: Some(id("assoc")),
         transformation: None,
         assignments: vec![],
@@ -1086,6 +1139,7 @@ fn data_store_and_association_are_drawn_in_scene_and_viewport() {
         id: id("assoc_di"),
         element: id("assoc"),
         source_element: None,
+        label_visibility: None,
         target_element: None,
         waypoints: vec![Point { x: 0.0, y: 110.0 }, Point { x: 100.0, y: 110.0 }],
         label: None,
@@ -1128,15 +1182,18 @@ fn choreography_task_shows_participant_bands_and_sequence_flow() {
     };
     let mut d = fixture();
     d.choreographies.push(Choreography {
+        base: None,
         id: id("choreo"),
         name: Some("Choreography".into()),
         participants: vec![
             Participant {
+                base: None,
                 id: id("buyer"),
                 name: Some("Buyer".into()),
                 process: None,
             },
             Participant {
+                base: None,
                 id: id("seller"),
                 name: Some("Seller".into()),
                 process: None,
@@ -1144,6 +1201,7 @@ fn choreography_task_shows_participant_bands_and_sequence_flow() {
         ],
         message_flows: vec![],
         activities: vec![ChoreographyActivity {
+            base: None,
             id: id("exchange"),
             name: Some("Exchange".into()),
             participant_refs: vec![id("buyer"), id("seller")],
@@ -1157,7 +1215,8 @@ fn choreography_task_shows_participant_bands_and_sequence_flow() {
             source: id("exchange"),
             target: id("exchange"),
             name: Some(String::new()),
-            documentation: String::new(),
+            documentation: String::new().into(),
+            base_extras: None,
             condition: None,
         }],
     });
@@ -1175,6 +1234,7 @@ fn choreography_task_shows_participant_bands_and_sequence_flow() {
         id: id("seq_di"),
         element: id("seq"),
         source_element: None,
+        label_visibility: None,
         target_element: None,
         waypoints: vec![Point { x: 260.0, y: 70.0 }, Point { x: 300.0, y: 70.0 }],
         label: None,
@@ -1202,6 +1262,7 @@ fn data_object_collection_marker_comes_from_referenced_definition() {
         data_object_ref: Some(id("data")),
     });
     d.processes[0].data_objects.push(DataObject {
+        base: None,
         id: Some(id("data")),
         name: Some(String::new()),
         item_aware: None,
@@ -1229,13 +1290,15 @@ fn gateway_default_flow_marker_uses_semantic_owner_and_shared_exports() {
         source: id("task"),
         target: id("task"),
         name: Some(String::new()),
-        documentation: String::new(),
+        documentation: String::new().into(),
+        base_extras: None,
         condition: None,
     });
     d.diagrams[0].edges.push(Edge {
         id: id("edge_di"),
         element: id("default"),
         source_element: None,
+        label_visibility: None,
         target_element: None,
         waypoints: vec![Point { x: 95.0, y: 50.0 }, Point { x: 180.0, y: 50.0 }],
         label: None,
@@ -1338,10 +1401,12 @@ fn group_is_drawn_and_keeps_contained_node_selectable() {
     use processcraft_core::bpmn_model::Group;
     let mut d = fixture();
     d.processes[0].groups.push(Group {
+        base: None,
         id: id("group"),
         category_value_ref: None,
     });
     d.diagrams[0].shapes.push(Shape {
+        label_visibility: None,
         is_horizontal: None,
         is_marker_visible: None,
         is_expanded: None,
@@ -1392,13 +1457,15 @@ fn association_directions_change_shared_vector_markers() {
         source: id("task"),
         target: id("task"),
         name: Some(String::new()),
-        documentation: String::new(),
+        documentation: String::new().into(),
+        base_extras: None,
         condition: None,
     });
     d.diagrams[0].edges.push(Edge {
         id: id("assoc_edge"),
         element: id("assoc"),
         source_element: None,
+        label_visibility: None,
         target_element: None,
         waypoints: vec![Point { x: 0., y: 100. }, Point { x: 90., y: 100. }],
         label: None,
@@ -1422,18 +1489,22 @@ fn group_category_label_uses_di_bounds_style_and_viewport_hit() {
     use processcraft_render::{BpmnViewport, Viewport};
     let mut d = fixture();
     d.categories.push(Category {
+        base: None,
         id: id("category"),
         name: None,
         values: vec![CategoryValue {
+            base: None,
             id: id("value"),
             value: Some("Compliance".into()),
         }],
     });
     d.processes[0].groups.push(Group {
+        base: None,
         id: id("group"),
         category_value_ref: Some(id("value")),
     });
     d.diagrams[0].shapes.push(Shape {
+        label_visibility: None,
         is_horizontal: None,
         is_marker_visible: None,
         is_expanded: None,
@@ -1446,12 +1517,14 @@ fn group_category_label_uses_di_bounds_style_and_viewport_hit() {
             height: 120.,
         },
         label: Some(Label {
-            bounds: Bounds {
+            id: None,
+            style_ref: None,
+            bounds: Some(Bounds {
                 x: 10.,
                 y: 110.,
                 width: 140.,
                 height: 30.,
-            },
+            }),
             style: Some(Style {
                 fill: None,
                 stroke: None,
@@ -1493,6 +1566,8 @@ fn group_category_label_uses_di_bounds_style_and_viewport_hit() {
         .as_mut()
         .unwrap()
         .bounds
+        .as_mut()
+        .unwrap()
         .width = 15.0;
     assert!(
         build(&d, Appearance::Light)
@@ -1507,12 +1582,12 @@ fn group_category_label_uses_di_bounds_style_and_viewport_hit() {
         .label
         .as_mut()
         .unwrap()
-        .bounds = Bounds {
+        .bounds = Some(Bounds {
         x: 0.,
         y: 20.,
         width: 70.,
         height: 25.,
-    };
+    });
     assert!(
         build(&d, Appearance::Light)
             .diagnostics
@@ -1545,13 +1620,15 @@ fn activity_properties_change_shared_vectors_and_viewport() {
         source: id("task"),
         target: id("task"),
         name: Some(String::new()),
-        documentation: String::new(),
+        documentation: String::new().into(),
+        base_extras: None,
         condition: None,
     });
     d.diagrams[0].edges.push(Edge {
         id: id("edge"),
         element: id("default_flow"),
         source_element: None,
+        label_visibility: None,
         target_element: None,
         waypoints: vec![Point { x: 0., y: 100. }, Point { x: 90., y: 100. }],
         label: None,
@@ -1634,6 +1711,7 @@ fn link_markers_distinguish_catch_and_throw_in_shared_scene() {
             properties: vec![],
             io: None,
             definitions: vec![EventDefinition::Link {
+                base: None,
                 id: None,
                 name: "link".into(),
                 sources: vec![],
@@ -1664,6 +1742,7 @@ fn cancel_boundary_and_end_use_hollow_and_filled_crosses() {
     transaction.details = Some(NodeDetails::SubProcess {
         content: Box::new(FlowContainer {
             lane_set_id: None,
+            lane_set_base: None,
             groups: vec![],
             data_objects: vec![],
             data_associations: vec![],
@@ -1682,7 +1761,10 @@ fn cancel_boundary_and_end_use_hollow_and_filled_crosses() {
         is_interrupting: None,
         properties: vec![],
         io: None,
-        definitions: vec![EventDefinition::Cancel { id: None }],
+        definitions: vec![EventDefinition::Cancel {
+            base: None,
+            id: None,
+        }],
         attached_to: Some(id("transaction")),
         cancel_activity: Some(true),
     });
@@ -1696,7 +1778,10 @@ fn cancel_boundary_and_end_use_hollow_and_filled_crosses() {
         is_interrupting: None,
         properties: vec![],
         io: None,
-        definitions: vec![EventDefinition::Cancel { id: None }],
+        definitions: vec![EventDefinition::Cancel {
+            base: None,
+            id: None,
+        }],
         attached_to: None,
         cancel_activity: None,
     });
@@ -1728,6 +1813,7 @@ fn compensation_boundary_and_throw_render_distinct_markers() {
         properties: vec![],
         io: None,
         definitions: vec![EventDefinition::Compensate {
+            base: None,
             id: None,
             wait_for_completion: None,
             activity_ref: None,
@@ -1745,6 +1831,7 @@ fn compensation_boundary_and_throw_render_distinct_markers() {
         properties: vec![],
         io: None,
         definitions: vec![EventDefinition::Compensate {
+            base: None,
             id: None,
             wait_for_completion: None,
             activity_ref: None,
@@ -1774,11 +1861,13 @@ fn data_reference_state_and_collection_share_scene_and_viewport() {
     node.item_aware = Some(ItemAwareMetadata {
         item_subject_ref: None,
         data_state: Some(DataState {
+            base: None,
             id: Some(id("state")),
             name: Some("Approved".into()),
         }),
     });
     d.processes[0].data_objects.push(DataObject {
+        base: None,
         id: Some(id("data")),
         name: Some("Order".into()),
         is_collection: Some(true),
@@ -1840,11 +1929,13 @@ fn process_data_ports_render_direction_collection_state_and_hits() {
     use processcraft_render::{BpmnViewport, Viewport};
     let mut d = fixture();
     let port = |name: &str| DataPort {
+        base: None,
         id: Some(id(name)),
         name: Some(name.into()),
         item_aware: Some(ItemAwareMetadata {
             item_subject_ref: None,
             data_state: Some(DataState {
+                base: None,
                 id: None,
                 name: Some("Ready".into()),
             }),
@@ -1852,6 +1943,7 @@ fn process_data_ports_render_direction_collection_state_and_hits() {
         is_collection: Some(true),
     };
     d.processes[0].io_specification = Some(IoSpecification {
+        base: None,
         id: None,
         inputs: vec![port("input")],
         outputs: vec![port("output")],
@@ -1906,6 +1998,7 @@ fn global_data_store_shape_uses_cylinder_state_and_viewport_hits() {
     use processcraft_render::{BpmnViewport, Viewport};
     let mut d = fixture();
     d.data_stores.push(DataStore {
+        base: None,
         id: Some(id("store")),
         name: Some("Archive".into()),
         capacity: None,
@@ -1913,6 +2006,7 @@ fn global_data_store_shape_uses_cylinder_state_and_viewport_hits() {
         item_aware: Some(ItemAwareMetadata {
             item_subject_ref: None,
             data_state: Some(DataState {
+                base: None,
                 id: None,
                 name: Some("Ready".into()),
             }),
@@ -1956,6 +2050,7 @@ fn nested_reference_resolves_ancestor_data_object_and_hides_when_collapsed() {
     use processcraft_core::{bpmn_data::DataObject, bpmn_model::NodeDetails, model::FlowContainer};
     let mut d = fixture();
     d.processes[0].data_objects.push(DataObject {
+        base: None,
         id: Some(id("ancestor_data")),
         name: Some("Ancestor Order".into()),
         is_collection: Some(true),
@@ -1975,6 +2070,7 @@ fn nested_reference_resolves_ancestor_data_object_and_hides_when_collapsed() {
     parent.details = Some(NodeDetails::SubProcess {
         content: Box::new(FlowContainer {
             lane_set_id: None,
+            lane_set_base: None,
             groups: vec![],
             data_objects: vec![],
             data_associations: vec![],
@@ -2031,6 +2127,7 @@ fn data_store_reference_displays_its_own_name_including_empty() {
     };
     let mut d = fixture();
     d.data_stores.push(DataStore {
+        base: None,
         id: Some(id("store")),
         name: Some("Declaration Name".into()),
         capacity: None,
@@ -2124,8 +2221,10 @@ fn activity_port_shape_is_diagnosed_without_scene_or_viewport_hit() {
     use processcraft_render::{BpmnViewport, Viewport};
     let mut d = fixture();
     d.processes[0].nodes[0].io_specification = Some(IoSpecification {
+        base: None,
         id: None,
         inputs: vec![DataPort {
+            base: None,
             id: Some(id("activity_input")),
             name: Some("Local port".into()),
             item_aware: None,
@@ -2140,12 +2239,14 @@ fn activity_port_shape_is_diagnosed_without_scene_or_viewport_hit() {
     });
     d.diagrams[0].shapes[0].element = id("activity_input");
     d.diagrams[0].shapes[0].label = Some(processcraft_core::model::Label {
-        bounds: Bounds {
+        id: None,
+        style_ref: None,
+        bounds: Some(Bounds {
             x: 0.0,
             y: 0.0,
             width: 100.0,
             height: 30.0,
-        },
+        }),
         style: None,
     });
     assert_valid_event_document(&d);
@@ -2188,7 +2289,8 @@ fn conditional_source_marker_only_appears_for_nongateway_source() {
         source: id("task"),
         target: id("task"),
         name: None,
-        documentation: String::new(),
+        documentation: String::new().into(),
+        base_extras: None,
         condition: None,
         association_direction: None,
     });
@@ -2196,6 +2298,7 @@ fn conditional_source_marker_only_appears_for_nongateway_source() {
         id: id("conditional_di"),
         element: id("conditional"),
         source_element: None,
+        label_visibility: None,
         target_element: None,
         waypoints: vec![Point { x: 95.0, y: 50.0 }, Point { x: 150.0, y: 50.0 }],
         label: None,
@@ -2227,6 +2330,7 @@ fn effective_multiple_event_resolves_root_and_parallel_marker() {
     use processcraft_core::bpmn_model::{EventDefinition, EventReference, NodeDetails, QNameRef};
     let mut d = fixture();
     d.root_event_definitions.push(EventDefinition::Signal {
+        base: None,
         id: Some(id("root_signal")),
         signal_ref: None,
     });
@@ -2235,6 +2339,7 @@ fn effective_multiple_event_resolves_root_and_parallel_marker() {
     node.name = None;
     node.details = Some(NodeDetails::Event {
         definitions: vec![EventDefinition::Message {
+            base: None,
             id: None,
             message_ref: None,
             operation_ref: None,
@@ -2328,7 +2433,9 @@ fn lane_orientation_places_divider_on_corresponding_axis() {
     use processcraft_core::model::Lane;
     let mut d = fixture();
     d.processes[0].lanes.push(Lane {
+        base: None,
         child_lane_set_id: None,
+        child_lane_set_base: None,
         id: id("lane"),
         name: None,
         parent: None,
@@ -2372,6 +2479,7 @@ fn event_subprocess_start_interrupting_flag_controls_outer_ring() {
     start.kind = NodeKind::StartEvent;
     start.details = Some(NodeDetails::Event {
         definitions: vec![EventDefinition::Message {
+            base: None,
             id: None,
             message_ref: None,
             operation_ref: None,
@@ -2435,4 +2543,337 @@ fn event_subprocess_start_interrupting_flag_controls_outer_ring() {
         build(&d, Appearance::Light).scene.paths().count(),
         solid_count + 15
     );
+}
+
+#[test]
+fn implicit_task_label_centers_each_line_in_shared_scene() {
+    let mut d = fixture();
+    d.processes[0].nodes[0].kind = NodeKind::Task;
+    d.processes[0].nodes[0].name = Some("Approve\nOrder".into());
+    d.diagrams[0].shapes[0].bounds = Bounds {
+        x: 0.0,
+        y: 0.0,
+        width: 120.0,
+        height: 80.0,
+    };
+    let before = serde_json::to_vec(&d).unwrap();
+    let scene = build(&d, Appearance::Light);
+    let label = &scene.scene.labels()[0];
+    for line in [0, 1] {
+        let glyphs: Vec<_> = label
+            .layout
+            .glyphs()
+            .iter()
+            .filter(|glyph| glyph.source_line == line)
+            .collect();
+        assert!(!glyphs.is_empty());
+        let left = glyphs.iter().map(|g| g.x).fold(f32::INFINITY, f32::min) + label.x;
+        let right = glyphs
+            .iter()
+            .map(|g| g.x + g.advance)
+            .fold(f32::NEG_INFINITY, f32::max)
+            + label.x;
+        let expected = (60.0 - scene.origin.0) as f32;
+        assert!(((left + right) / 2.0 - expected).abs() < 2.0);
+    }
+    assert!(label.y > (scene.origin.1.abs() as f32) + 10.0);
+    assert_eq!(serde_json::to_vec(&d).unwrap(), before);
+}
+
+#[test]
+fn explicit_label_presence_and_shared_di_font_are_rendered_without_mutation() {
+    use processcraft_core::model::{DiFont, DiLabelVisibility, DiStyleRef, Label, LabelStyle};
+    let mut d = fixture();
+    d.processes[0].nodes[0].kind = NodeKind::Task;
+    d.processes[0].nodes[0].name = Some("Styled label".into());
+    d.diagrams[0].label_styles.push(LabelStyle {
+        id: Some(id("style")),
+        font: Some(DiFont {
+            name: Some("Noto Sans".into()),
+            size: Some(16.0),
+            is_bold: Some(true),
+            is_italic: Some(true),
+            is_underline: Some(true),
+            is_strike_through: Some(true),
+        }),
+    });
+    let shape = &mut d.diagrams[0].shapes[0];
+    shape.label_visibility = Some(DiLabelVisibility::Explicit);
+    shape.label = None;
+    let hidden = build(&d, Appearance::Light);
+    assert!(hidden.scene.labels().is_empty());
+    d.diagrams[0].shapes[0].label = Some(Label {
+        id: Some(id("label")),
+        bounds: None,
+        style_ref: Some(DiStyleRef::Local(id("style"))),
+        style: None,
+    });
+    let mut second = d.diagrams[0].shapes[0].clone();
+    second.id = id("second_shape");
+    second.bounds.y = 110.0;
+    second.label.as_mut().unwrap().id = Some(id("second_label"));
+    d.diagrams[0].shapes.push(second);
+    assert_valid_event_document(&d);
+    let before = serde_json::to_vec(&d).unwrap();
+    let styled = build(&d, Appearance::Light);
+    assert_eq!(styled.scene.labels().len(), 2);
+    assert_eq!(serde_json::to_vec(&d).unwrap(), before);
+    assert!(
+        !styled
+            .diagnostics
+            .iter()
+            .any(|message| message.contains("unavailable") || message.contains("unresolved"))
+    );
+    let styled_count = styled.scene.paths().count();
+    let styled_svg = styled.scene.to_svg();
+    let font = d.diagrams[0].label_styles[0].font.as_mut().unwrap();
+    font.is_bold = Some(false);
+    font.is_italic = Some(false);
+    font.is_underline = Some(false);
+    font.is_strike_through = Some(false);
+    let regular = build(&d, Appearance::Light);
+    assert!(styled_count >= regular.scene.paths().count() + 4);
+    assert_ne!(styled_svg, regular.scene.to_svg());
+    assert_ne!(serde_json::to_vec(&d).unwrap(), before);
+}
+
+#[test]
+fn mixed_annotation_projects_inert_text_without_markup_or_execution() {
+    use processcraft_core::{
+        bpmn_model::NodeDetails,
+        bpmn_xml::{MixedXml, XmlContent, XmlElement, XmlNode},
+    };
+    let mut d = fixture();
+    let node = &mut d.processes[0].nodes[0];
+    node.kind = NodeKind::TextAnnotation;
+    node.name = None;
+    node.details = Some(NodeDetails::TextAnnotation {
+        text_format: None,
+        text: Some(MixedXml::Structured(XmlContent {
+            namespaces: vec![],
+            nodes: vec![
+                XmlNode::Text {
+                    text: "Before ".into(),
+                },
+                XmlNode::Element {
+                    element: XmlElement {
+                        namespace: String::new(),
+                        local: id("emphasis"),
+                        prefix: None,
+                        namespaces: vec![],
+                        attributes: vec![],
+                        children: vec![XmlNode::Text {
+                            text: "inside".into(),
+                        }],
+                    },
+                },
+                XmlNode::Comment {
+                    text: "hidden comment".into(),
+                },
+                XmlNode::ProcessingInstruction {
+                    target: id("pi"),
+                    data: Some("hidden instruction".into()),
+                },
+            ],
+        })),
+    });
+    assert_valid_event_document(&d);
+    let before = serde_json::to_vec(&d).unwrap();
+    let scene = build(&d, Appearance::Light);
+    let text = scene.scene.labels()[0].layout.text();
+    assert_eq!(text, "Before inside");
+    assert_eq!(serde_json::to_vec(&d).unwrap(), before);
+}
+
+#[test]
+fn explicit_external_label_hit_keeps_independent_identity_in_scene_and_viewport() {
+    use processcraft_core::model::{DiLabelVisibility, Label};
+    use processcraft_render::{BpmnViewport, Viewport};
+    let mut d = fixture();
+    let shape = &mut d.diagrams[0].shapes[0];
+    shape.label_visibility = Some(DiLabelVisibility::Explicit);
+    shape.label = Some(Label {
+        id: Some(id("label")),
+        bounds: Some(Bounds {
+            x: 150.0,
+            y: 20.0,
+            width: 120.0,
+            height: 40.0,
+        }),
+        style_ref: None,
+        style: None,
+    });
+    assert_valid_event_document(&d);
+    let scene = build(&d, Appearance::Light);
+    let hit = scene.hit_test(170.0, 35.0, 0.0).unwrap();
+    assert_eq!(hit.label_id, Some(id("label")));
+    assert_eq!(
+        hit.diagram_element_id,
+        id::<processcraft_core::ids::ElementSelector>("shape")
+    );
+    let viewport = BpmnViewport::build(
+        &d,
+        &id("diagram"),
+        Appearance::Light,
+        &mut TextEngine::new(),
+        "Noto Sans",
+        Viewport {
+            x: 130.0,
+            y: 0.0,
+            width: 160.0,
+            height: 100.0,
+            zoom: 1.0,
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        viewport.hit_test(170.0, 35.0, 0.0).unwrap().label_id,
+        Some(id("label"))
+    );
+}
+
+#[test]
+fn di_font_absence_and_unsupported_values_have_explicit_fallbacks() {
+    use processcraft_core::{
+        bpmn_model::QNameRef,
+        model::{DefinitionsMetadata, DiFont, DiLabelVisibility, DiStyleRef, Label, LabelStyle},
+    };
+    let mut d = fixture();
+    d.definitions = Some(DefinitionsMetadata {
+        target_namespace: "urn:local".into(),
+        name: None,
+        expression_language: None,
+        type_language: None,
+        exporter: None,
+        exporter_version: None,
+        imports: vec![],
+        namespaces: vec![],
+        foreign_attributes: vec![],
+    });
+    d.processes[0].nodes[0].kind = NodeKind::Task;
+    d.processes[0].nodes[0].name = Some("Style".into());
+    d.diagrams[0].label_styles.push(LabelStyle {
+        id: Some(id("style")),
+        font: Some(DiFont::default()),
+    });
+    d.diagrams[0].shapes[0].label_visibility = Some(DiLabelVisibility::Explicit);
+    d.diagrams[0].shapes[0].label = Some(Label {
+        id: None,
+        bounds: None,
+        style_ref: Some(DiStyleRef::Local(id("style"))),
+        style: None,
+    });
+    assert_valid_event_document(&d);
+    let absent = build(&d, Appearance::Light).scene.to_svg();
+    let font = d.diagrams[0].label_styles[0].font.as_mut().unwrap();
+    font.is_bold = Some(false);
+    font.is_italic = Some(false);
+    font.is_underline = Some(false);
+    font.is_strike_through = Some(false);
+    assert_eq!(absent, build(&d, Appearance::Light).scene.to_svg());
+    let font = d.diagrams[0].label_styles[0].font.as_mut().unwrap();
+    font.name = Some(String::new());
+    font.size = Some(0.0);
+    let before = serde_json::to_vec(&d).unwrap();
+    let fallback = build(&d, Appearance::Light);
+    assert!(
+        fallback
+            .diagnostics
+            .iter()
+            .any(|s| s.contains("font size") && s.contains("default"))
+    );
+    assert!(
+        fallback
+            .diagnostics
+            .iter()
+            .any(|s| s.contains("Missing font"))
+    );
+    assert_eq!(serde_json::to_vec(&d).unwrap(), before);
+    d.diagrams[0].label_styles[0].font = None;
+    assert!(
+        build(&d, Appearance::Light)
+            .diagnostics
+            .iter()
+            .any(|s| s.contains("no font"))
+    );
+    d.diagrams[0].shapes[0].label.as_mut().unwrap().style_ref =
+        Some(DiStyleRef::Qualified(QNameRef {
+            namespace: "urn:foreign".into(),
+            local: id("style"),
+        }));
+    let external = build(&d, Appearance::Light);
+    assert!(
+        external
+            .diagnostics
+            .iter()
+            .any(|s| s.contains("unresolved"))
+    );
+    assert!(!external.diagnostics.iter().any(|s| s.contains("no font")));
+    d.diagrams[0].label_styles[0].font = Some(DiFont::default());
+    d.diagrams[0].shapes[0].label.as_mut().unwrap().style_ref =
+        Some(DiStyleRef::Qualified(QNameRef {
+            namespace: "urn:local".into(),
+            local: id("style"),
+        }));
+    assert!(
+        !build(&d, Appearance::Light)
+            .diagnostics
+            .iter()
+            .any(|s| s.contains("unresolved"))
+    );
+}
+
+#[test]
+fn explicit_absent_flow_label_is_hidden_but_legacy_implicit_is_visible() {
+    use processcraft_core::model::{DiLabelVisibility, Edge, Flow, FlowKind, Point};
+    use processcraft_render::{BpmnViewport, Viewport};
+    let mut d = fixture();
+    d.processes[0].nodes[0].name = None;
+    d.processes[0].flows.push(Flow {
+        id: id("flow"),
+        base_extras: None,
+        kind: FlowKind::Sequence,
+        source: id("task"),
+        target: id("task"),
+        name: Some("Flow label".into()),
+        documentation: String::new().into(),
+        condition: None,
+        association_direction: None,
+    });
+    d.diagrams[0].edges.push(Edge {
+        id: id("edge"),
+        element: id("flow"),
+        source_element: None,
+        target_element: None,
+        waypoints: vec![Point { x: 95.0, y: 40.0 }, Point { x: 160.0, y: 40.0 }],
+        label: None,
+        label_visibility: None,
+        style: None,
+    });
+    assert!(
+        build(&d, Appearance::Light)
+            .scene
+            .to_svg()
+            .contains("Flow label")
+    );
+    d.diagrams[0].edges[0].label_visibility = Some(DiLabelVisibility::Explicit);
+    assert_valid_event_document(&d);
+    let hidden = build(&d, Appearance::Light);
+    assert!(!hidden.scene.to_svg().contains("Flow label"));
+    let viewport = BpmnViewport::build(
+        &d,
+        &id("diagram"),
+        Appearance::Light,
+        &mut TextEngine::new(),
+        "Noto Sans",
+        Viewport {
+            x: 100.0,
+            y: 0.0,
+            width: 200.0,
+            height: 100.0,
+            zoom: 1.0,
+        },
+    )
+    .unwrap();
+    assert!(!viewport.hits.iter().any(|hit| hit.label_id.is_some()));
 }

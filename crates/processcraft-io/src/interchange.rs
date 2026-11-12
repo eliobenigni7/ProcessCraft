@@ -41,7 +41,18 @@ pub fn prepare_import(bytes: &[u8], source_name: &str) -> Result<PreparedImport,
         .parse()
         .expect("generated ID");
     let resource = Resource::new(rid.clone(), "application/xml".into(), Arc::from(bytes));
-    let mut doc = parse_profile(bytes).unwrap_or_else(|| {
+    let initial = parse_profile(bytes);
+    let projected = initial.and_then(|document| {
+        let check = document
+            .has_semantic_common_metadata_features()
+            .then(|| export_document(&document, std::slice::from_ref(&resource), true));
+        if let Some(Err(_)) = check {
+            None
+        } else {
+            Some(document)
+        }
+    });
+    let mut doc = projected.unwrap_or_else(|| {
         let mut d = BpmnDocument::new(
             source_name.into(),
             "preserved_definitions".parse().expect("constant"),
@@ -81,6 +92,276 @@ struct Elem {
     type_ref: Option<QNameRef>,
     catalog_qnames: BTreeMap<String, QNameRef>,
     catalog_text_qname: Option<QNameRef>,
+    content: Vec<ElemContent>,
+    opaque: bool,
+    prefix: Option<String>,
+    xml_attributes: Vec<processcraft_core::bpmn_xml::XmlAttribute>,
+    foreign_attributes: Vec<processcraft_core::bpmn_xml::XmlAttribute>,
+}
+enum ElemContent {
+    Text(String),
+    Child(usize),
+    Comment(String),
+    ProcessingInstruction {
+        target: String,
+        data: Option<String>,
+    },
+}
+fn xml_namespaces(e: &Elem) -> Vec<processcraft_core::bpmn_xml::NamespaceBinding> {
+    e.namespaces
+        .iter()
+        .map(
+            |(prefix, uri)| processcraft_core::bpmn_xml::NamespaceBinding {
+                prefix: prefix.clone(),
+                uri: uri.clone(),
+            },
+        )
+        .collect()
+}
+fn xml_content(e: &Elem) -> Option<processcraft_core::bpmn_xml::XmlContent> {
+    use processcraft_core::bpmn_xml::{XmlContent, XmlElement, XmlNode};
+    let mut nodes = Vec::new();
+    for part in &e.content {
+        let node = match part {
+            ElemContent::Text(text) => XmlNode::Text { text: text.clone() },
+            ElemContent::Comment(text) => XmlNode::Comment { text: text.clone() },
+            ElemContent::ProcessingInstruction { target, data } => XmlNode::ProcessingInstruction {
+                target: target.parse().ok()?,
+                data: data.clone(),
+            },
+            ElemContent::Child(index) => {
+                let child = e.children.get(*index)?;
+                XmlNode::Element {
+                    element: XmlElement {
+                        namespace: child.ns.clone(),
+                        local: child.name.parse().ok()?,
+                        prefix: child.prefix.as_ref().map(|p| p.parse()).transpose().ok()?,
+                        namespaces: xml_namespaces(child),
+                        attributes: child.xml_attributes.clone(),
+                        children: xml_content(child)?.nodes,
+                    },
+                }
+            }
+        };
+        if let XmlNode::Text { text } = &node
+            && let Some(XmlNode::Text { text: previous }) = nodes.last_mut()
+        {
+            previous.push_str(text);
+        } else {
+            nodes.push(node);
+        }
+    }
+    Some(XmlContent {
+        namespaces: xml_namespaces(e),
+        nodes,
+    })
+}
+fn structured_documentation(e: &Elem) -> Option<processcraft_core::bpmn_metadata::Documentation> {
+    use processcraft_core::{bpmn_metadata::Documentation, bpmn_xml::MixedXml};
+    if e.ns != B
+        || e.name != "documentation"
+        || !attrs(e, &["id", "textFormat"])
+        || e.children.len() > 1
+    {
+        return None;
+    }
+    let content = MixedXml::Structured(xml_content(e)?);
+    processcraft_core::bpmn_xml::validate_mixed(&content).ok()?;
+    Some(Documentation {
+        id: optional_id(e)?,
+        text_format: e.attrs.get("textFormat").cloned(),
+        content,
+    })
+}
+fn mixed_body(e: &Elem, preserve_context: bool) -> Option<processcraft_core::bpmn_xml::MixedXml> {
+    use processcraft_core::bpmn_xml::{MixedXml, validate_mixed};
+    if !attrs(e, &[]) || e.children.len() > 1 {
+        return None;
+    }
+    let body = if (!preserve_context
+        || e.namespaces.len() == 1 && e.namespaces.get("").is_some_and(|v| v == B))
+        && e.content
+            .iter()
+            .all(|part| matches!(part, ElemContent::Text(_)))
+    {
+        MixedXml::Text(e.text.clone())
+    } else {
+        MixedXml::Structured(xml_content(e)?)
+    };
+    validate_mixed(&body).ok()?;
+    Some(body)
+}
+fn extension_elements(e: &Elem) -> Option<processcraft_core::bpmn_metadata::ExtensionElements> {
+    if e.ns != B || e.name != "extensionElements" || !attrs(e, &[]) {
+        return None;
+    }
+    let content = xml_content(e)?;
+    processcraft_core::bpmn_xml::validate_extension(&content).ok()?;
+    Some(processcraft_core::bpmn_metadata::ExtensionElements { content })
+}
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct PendingBase {
+    docs: Vec<processcraft_core::bpmn_metadata::Documentation>,
+    extras: processcraft_core::bpmn_metadata::BaseExtras,
+}
+fn documentation_set(
+    docs: Vec<processcraft_core::bpmn_metadata::Documentation>,
+) -> processcraft_core::bpmn_metadata::DocumentationSet {
+    use processcraft_core::{
+        bpmn_metadata::DocumentationSet,
+        bpmn_xml::{MixedXml, XmlNode},
+    };
+    if docs.is_empty() {
+        return DocumentationSet::Legacy(String::new());
+    }
+    if docs.len() == 1
+        && docs[0].id.is_none()
+        && docs[0].text_format.is_none()
+        && let MixedXml::Structured(content) = &docs[0].content
+        && let [XmlNode::Text { text }] = content.nodes.as_slice()
+        && !text.is_empty()
+    {
+        return DocumentationSet::Legacy(text.clone());
+    }
+    DocumentationSet::Structured(docs)
+}
+fn supported_base_owner(name: &str) -> bool {
+    matches!(
+        name,
+        "process"
+            | "subProcess"
+            | "adHocSubProcess"
+            | "transaction"
+            | "task"
+            | "userTask"
+            | "manualTask"
+            | "serviceTask"
+            | "sendTask"
+            | "receiveTask"
+            | "scriptTask"
+            | "businessRuleTask"
+            | "callActivity"
+            | "startEvent"
+            | "endEvent"
+            | "intermediateCatchEvent"
+            | "intermediateThrowEvent"
+            | "boundaryEvent"
+            | "exclusiveGateway"
+            | "inclusiveGateway"
+            | "parallelGateway"
+            | "complexGateway"
+            | "eventBasedGateway"
+            | "sequenceFlow"
+            | "messageFlow"
+            | "association"
+            | "textAnnotation"
+            | "group"
+            | "lane"
+            | "laneSet"
+            | "childLaneSet"
+            | "dataObject"
+            | "dataObjectReference"
+            | "dataStore"
+            | "dataStoreReference"
+            | "dataInput"
+            | "dataOutput"
+            | "dataState"
+            | "dataInputAssociation"
+            | "dataOutputAssociation"
+            | "assignment"
+            | "ioSpecification"
+            | "inputSet"
+            | "outputSet"
+            | "property"
+            | "category"
+            | "categoryValue"
+            | "message"
+            | "signal"
+            | "error"
+            | "escalation"
+            | "itemDefinition"
+            | "interface"
+            | "operation"
+            | "resource"
+            | "resourceParameter"
+            | "collaboration"
+            | "participant"
+            | "conversation"
+            | "subConversation"
+            | "callConversation"
+            | "conversationLink"
+            | "choreography"
+            | "choreographyTask"
+            | "messageEventDefinition"
+            | "signalEventDefinition"
+            | "errorEventDefinition"
+            | "escalationEventDefinition"
+            | "cancelEventDefinition"
+            | "compensateEventDefinition"
+            | "terminateEventDefinition"
+            | "conditionalEventDefinition"
+            | "timerEventDefinition"
+            | "linkEventDefinition"
+            | "standardLoopCharacteristics"
+            | "multiInstanceLoopCharacteristics"
+            | "relationship"
+    )
+}
+fn extract_owner_metadata(e: &mut Elem, pending: &mut BTreeMap<String, PendingBase>) -> Option<()> {
+    if e.opaque {
+        return Some(());
+    }
+    for child in &mut e.children {
+        extract_owner_metadata(child, pending)?;
+    }
+    if e.ns != B || !supported_base_owner(&e.name) {
+        return Some(());
+    }
+    let mut docs = Vec::new();
+    let mut extension = None;
+    let mut rest = Vec::new();
+    let mut phase = 0;
+    for child in std::mem::take(&mut e.children) {
+        if child.ns == B && child.name == "documentation" && phase == 0 {
+            docs.push(structured_documentation(&child)?);
+        } else if child.ns == B
+            && child.name == "extensionElements"
+            && phase == 0
+            && extension.is_none()
+        {
+            extension = Some(extension_elements(&child)?);
+            phase = 1;
+        } else {
+            phase = 2;
+            rest.push(child);
+        }
+    }
+    e.children = rest;
+    if docs.is_empty() && extension.is_none() && e.foreign_attributes.is_empty() {
+        return Some(());
+    }
+    let attributes = std::mem::take(&mut e.foreign_attributes);
+    let namespaces = if attributes.is_empty() {
+        Vec::new()
+    } else {
+        xml_namespaces(e)
+    };
+    if !attributes.is_empty() {
+        processcraft_core::bpmn_xml::validate_foreign_attributes(&attributes, &namespaces).ok()?;
+    }
+    let extras = processcraft_core::bpmn_metadata::BaseExtras {
+        namespaces,
+        foreign_attributes: attributes,
+        extension_elements: extension,
+    };
+    let identity = e.attrs.get("id")?.clone();
+    if pending
+        .insert(identity, PendingBase { docs, extras })
+        .is_some()
+    {
+        return None;
+    }
+    Some(())
 }
 fn is_expression(name: &str) -> bool {
     matches!(
@@ -108,22 +389,31 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
     loop {
         match r.read_event().ok()? {
             Event::Start(e) => {
+                let opaque = stack.last().is_some_and(|parent| {
+                    parent.opaque
+                        || (parent.ns == B
+                            && matches!(
+                                parent.name.as_str(),
+                                "documentation" | "script" | "text" | "extensionElements"
+                            ))
+                });
                 let (ns, local) = r.resolver().resolve_element(e.name());
                 let ns = match ns {
                     ResolveResult::Bound(n) => n.0.to_string(),
+                    ResolveResult::Unbound if opaque => String::new(),
                     _ => return None,
                 };
                 let mut item = Elem {
                     ns,
                     name: local.as_ref().into(),
+                    opaque,
+                    prefix: e
+                        .name()
+                        .0
+                        .split_once(':')
+                        .map(|(prefix, _)| prefix.to_owned()),
                     ..Elem::default()
                 };
-                if item.ns == B && matches!(item.name.as_str(), "script" | "text") {
-                    let (default, _) = r.resolver().resolve_element(QName("context"));
-                    if !matches!(default, ResolveResult::Bound(uri) if uri.0 == B) {
-                        return None;
-                    }
-                }
                 item.namespaces = stack
                     .last()
                     .map(|parent| parent.namespaces.clone())
@@ -148,13 +438,54 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                     }
                     let (ns, local) = r.resolver().resolve_attribute(a.key);
                     let key = local.as_ref();
+                    if opaque {
+                        let namespace = match ns {
+                            ResolveResult::Bound(uri) => uri.0.to_owned(),
+                            ResolveResult::Unbound => String::new(),
+                            ResolveResult::Unknown(_) => return None,
+                        };
+                        item.xml_attributes
+                            .push(processcraft_core::bpmn_xml::XmlAttribute {
+                                namespace,
+                                local: key.parse().ok()?,
+                                prefix: a
+                                    .key
+                                    .0
+                                    .split_once(':')
+                                    .map(|(p, _)| p.parse())
+                                    .transpose()
+                                    .ok()?,
+                                value: a
+                                    .normalized_value(XmlVersion::Implicit1_0)
+                                    .ok()?
+                                    .into_owned(),
+                            });
+                        continue;
+                    }
                     if let ResolveResult::Bound(uri) = ns {
                         if item.ns != B
                             || !is_expression(&item.name)
                             || uri.0 != "http://www.w3.org/2001/XMLSchema-instance"
                             || key != "type"
                         {
-                            return None;
+                            item.foreign_attributes.push(
+                                processcraft_core::bpmn_xml::XmlAttribute {
+                                    namespace: uri.0.to_owned(),
+                                    local: key.parse().ok()?,
+                                    prefix: a
+                                        .key
+                                        .0
+                                        .split_once(':')
+                                        .map(|(p, _)| p.parse())
+                                        .transpose()
+                                        .ok()?,
+                                    value: a
+                                        .normalized_value(XmlVersion::Implicit1_0)
+                                        .ok()?
+                                        .into_owned(),
+                                },
+                            );
+                            continue;
                         }
                         let value = a
                             .normalized_value(XmlVersion::Implicit1_0)
@@ -175,10 +506,11 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                         .normalized_value(XmlVersion::Implicit1_0)
                         .ok()?
                         .into_owned();
-                    if item.ns == B
+                    if (item.ns == B
                         && matches!(
                             (item.name.as_str(), key),
                             ("itemDefinition", "structureRef")
+                                | ("extension", "definition")
                                 | ("interface" | "operation", "implementationRef")
                                 | ("resourceParameter", "type")
                                 | ("serviceTask" | "sendTask" | "receiveTask", "operationRef")
@@ -201,7 +533,8 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                                         | "property",
                                     "itemSubjectRef"
                                 )
-                        )
+                        ))
+                        || (item.ns == BD && item.name == "BPMNLabel" && key == "labelStyle")
                     {
                         let (resolved, local) = r.resolver().resolve_element(QName(value.trim()));
                         let namespace = match resolved {
@@ -315,6 +648,9 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                     });
                 }
                 if let Some(parent) = stack.last_mut() {
+                    parent
+                        .content
+                        .push(ElemContent::Child(parent.children.len()));
                     parent.children.push(item);
                 } else if root.replace(item).is_some() {
                     return None;
@@ -322,31 +658,64 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
             }
             Event::Text(t) => {
                 if let Some(last) = stack.last_mut() {
-                    if last.ns == B
-                        && matches!(
+                    if last.opaque
+                        || last.ns == B
+                            && matches!(
+                                last.name.as_str(),
+                                "documentation"
+                                    | "flowNodeRef"
+                                    | "participantRef"
+                                    | "text"
+                                    | "dataInputRefs"
+                                    | "optionalInputRefs"
+                                    | "whileExecutingInputRefs"
+                                    | "outputSetRefs"
+                                    | "dataOutputRefs"
+                                    | "optionalOutputRefs"
+                                    | "whileExecutingOutputRefs"
+                                    | "inputSetRefs"
+                                    | "sourceRef"
+                                    | "targetRef"
+                                    | "source"
+                                    | "target"
+                                    | "messageFlowRef"
+                                    | "inMessageRef"
+                                    | "outMessageRef"
+                                    | "errorRef"
+                                    | "eventDefinitionRef"
+                                    | "operationRef"
+                                    | "conditionExpression"
+                                    | "condition"
+                                    | "timeDate"
+                                    | "timeDuration"
+                                    | "timeCycle"
+                                    | "loopCondition"
+                                    | "loopCardinality"
+                                    | "completionCondition"
+                                    | "activationCondition"
+                                    | "transformation"
+                                    | "from"
+                                    | "to"
+                                    | "script"
+                            )
+                    {
+                        last.text.push_str(t.as_ref());
+                        last.content.push(ElemContent::Text(t.as_ref().to_owned()));
+                    } else if !t.trim().is_empty() {
+                        return None;
+                    }
+                } else if !t.trim().is_empty() {
+                    return None;
+                }
+            }
+            Event::GeneralRef(value) => {
+                let last = stack.last_mut()?;
+                if !last.opaque
+                    && (last.ns != B
+                        || !matches!(
                             last.name.as_str(),
                             "documentation"
-                                | "flowNodeRef"
-                                | "participantRef"
-                                | "text"
-                                | "dataInputRefs"
-                                | "optionalInputRefs"
-                                | "whileExecutingInputRefs"
-                                | "outputSetRefs"
-                                | "dataOutputRefs"
-                                | "optionalOutputRefs"
-                                | "whileExecutingOutputRefs"
-                                | "inputSetRefs"
-                                | "sourceRef"
-                                | "targetRef"
-                                | "source"
-                                | "target"
-                                | "messageFlowRef"
-                                | "inMessageRef"
-                                | "outMessageRef"
-                                | "errorRef"
-                                | "eventDefinitionRef"
-                                | "operationRef"
+                                | "extensionElements"
                                 | "conditionExpression"
                                 | "condition"
                                 | "timeDate"
@@ -360,37 +729,8 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                                 | "from"
                                 | "to"
                                 | "script"
-                        )
-                    {
-                        last.text.push_str(t.as_ref());
-                    } else if !t.trim().is_empty() {
-                        return None;
-                    }
-                } else if !t.trim().is_empty() {
-                    return None;
-                }
-            }
-            Event::GeneralRef(value) => {
-                let last = stack.last_mut()?;
-                if last.ns != B
-                    || !matches!(
-                        last.name.as_str(),
-                        "documentation"
-                            | "conditionExpression"
-                            | "condition"
-                            | "timeDate"
-                            | "timeDuration"
-                            | "timeCycle"
-                            | "loopCondition"
-                            | "loopCardinality"
-                            | "completionCondition"
-                            | "activationCondition"
-                            | "transformation"
-                            | "from"
-                            | "to"
-                            | "script"
-                            | "text"
-                    )
+                                | "text"
+                        ))
                 {
                     return None;
                 }
@@ -407,40 +747,59 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                     }
                 };
                 last.text.push(c);
+                last.content.push(ElemContent::Text(c.to_string()));
             }
             Event::CData(t) => {
                 let last = stack.last_mut()?;
-                if last.ns != B
-                    || !matches!(
-                        last.name.as_str(),
-                        "documentation"
-                            | "conditionExpression"
-                            | "condition"
-                            | "timeDate"
-                            | "timeDuration"
-                            | "timeCycle"
-                            | "loopCondition"
-                            | "loopCardinality"
-                            | "completionCondition"
-                            | "activationCondition"
-                            | "transformation"
-                            | "from"
-                            | "to"
-                            | "script"
-                            | "text"
-                    )
+                if !last.opaque
+                    && (last.ns != B
+                        || !matches!(
+                            last.name.as_str(),
+                            "documentation"
+                                | "conditionExpression"
+                                | "condition"
+                                | "timeDate"
+                                | "timeDuration"
+                                | "timeCycle"
+                                | "loopCondition"
+                                | "loopCardinality"
+                                | "completionCondition"
+                                | "activationCondition"
+                                | "transformation"
+                                | "from"
+                                | "to"
+                                | "script"
+                                | "text"
+                        ))
                 {
                     return None;
                 }
                 last.text.push_str(t.as_ref());
+                last.content.push(ElemContent::Text(t.as_ref().to_owned()));
             }
-            Event::PI(_) => return None,
-            Event::Comment(_)
-                if stack
-                    .last()
-                    .is_some_and(|e| e.ns == B && is_expression(&e.name)) =>
-            {
-                return None;
+            Event::PI(pi) => {
+                let last = stack.last_mut()?;
+                if !last.opaque
+                    && !(last.ns == B
+                        && (matches!(last.name.as_str(), "documentation" | "script" | "text")
+                            || is_expression(&last.name)))
+                {
+                    return None;
+                }
+                let data = pi
+                    .content()
+                    .strip_prefix(char::is_whitespace)
+                    .unwrap_or(pi.content());
+                last.content.push(ElemContent::ProcessingInstruction {
+                    target: pi.target().to_owned(),
+                    data: (!data.is_empty()).then(|| data.to_owned()),
+                });
+            }
+            Event::Comment(comment) => {
+                if let Some(last) = stack.last_mut() {
+                    last.content
+                        .push(ElemContent::Comment(comment.as_ref().to_owned()));
+                }
             }
             Event::Eof => break,
             _ => {}
@@ -449,7 +808,7 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
     root
 }
 fn attrs(e: &Elem, allowed: &[&str]) -> bool {
-    e.attrs.keys().all(|k| allowed.contains(&k.as_str()))
+    e.foreign_attributes.is_empty() && e.attrs.keys().all(|k| allowed.contains(&k.as_str()))
 }
 fn id(e: &Elem, key: &str) -> Option<XmlId> {
     e.attrs.get(key)?.parse().ok()
@@ -472,13 +831,29 @@ fn bounds(e: &Elem) -> Option<Bounds> {
         height: number(e, "height")?,
     })
 }
-fn parse_label(e: &Elem) -> Option<Label> {
-    if e.ns != BD || e.name != "BPMNLabel" || !e.attrs.is_empty() || e.children.len() != 1 {
+fn parse_label(e: &Elem, target_namespace: &str) -> Option<Label> {
+    if e.ns != BD
+        || e.name != "BPMNLabel"
+        || !attrs(e, &["id", "labelStyle"])
+        || e.children.len() > 1
+    {
         return None;
     }
     Some(Label {
-        bounds: bounds(&e.children[0])?,
+        id: optional_id(e)?,
+        bounds: if let Some(child) = e.children.first() {
+            Some(bounds(child)?)
+        } else {
+            None
+        },
         style: None,
+        style_ref: e.catalog_qnames.get("labelStyle").map(|q| {
+            if q.namespace == target_namespace {
+                DiStyleRef::Local(q.local.clone().into())
+            } else {
+                DiStyleRef::Qualified(q.clone())
+            }
+        }),
     })
 }
 fn parse_expression(e: &Elem, implicit_formal: bool) -> Option<Expression> {
@@ -489,7 +864,6 @@ fn parse_expression(e: &Elem, implicit_formal: bool) -> Option<Expression> {
             .iter()
             .any(|(p, u)| p.len() > 16_384 || u.len() > 16_384)
         || e.attrs.get("language").is_some_and(|v| v.len() > 16_384)
-        || !e.children.is_empty()
         || !attrs(e, &["id", "xsi:type", "language", "evaluatesToTypeRef"])
     {
         return None;
@@ -504,7 +878,44 @@ fn parse_expression(e: &Elem, implicit_formal: bool) -> Option<Expression> {
     if !formal && (e.attrs.contains_key("language") || e.attrs.contains_key("evaluatesToTypeRef")) {
         return None;
     }
+    let mut has_markup = false;
+    let mut parts = Vec::new();
+    let mut seen_extension = false;
+    for part in &e.content {
+        use processcraft_core::bpmn_model::ExpressionPart;
+        parts.push(match part {
+            ElemContent::Text(text) => ExpressionPart::Text { text: text.clone() },
+            ElemContent::Comment(text) => {
+                has_markup = true;
+                ExpressionPart::Comment { text: text.clone() }
+            }
+            ElemContent::ProcessingInstruction { target, data } => {
+                has_markup = true;
+                ExpressionPart::ProcessingInstruction {
+                    target: target.parse().ok()?,
+                    data: data.clone(),
+                }
+            }
+            ElemContent::Child(index) => {
+                has_markup = true;
+                let child = e.children.get(*index)?;
+                if child.ns == B && child.name == "documentation" && !seen_extension {
+                    ExpressionPart::Documentation {
+                        documentation: structured_documentation(child)?,
+                    }
+                } else if child.ns == B && child.name == "extensionElements" && !seen_extension {
+                    seen_extension = true;
+                    ExpressionPart::ExtensionElements {
+                        extension_elements: extension_elements(child)?,
+                    }
+                } else {
+                    return None;
+                }
+            }
+        });
+    }
     Some(Expression::Structured(ExpressionData {
+        foreign_attributes: Vec::new(),
         id: optional_id(e)?,
         kind: if formal {
             ExpressionKind::Formal {
@@ -517,7 +928,11 @@ fn parse_expression(e: &Elem, implicit_formal: bool) -> Option<Expression> {
                 explicit_type: explicit.is_some(),
             }
         },
-        text: e.text.clone(),
+        text: if has_markup {
+            processcraft_core::bpmn_model::ExpressionBody::Mixed { parts }
+        } else {
+            e.text.clone().into()
+        },
         namespaces: e
             .namespaces
             .iter()
@@ -560,6 +975,7 @@ fn parse_event_definition(e: &Elem, target_namespace: &str) -> Option<EventDefin
                 ));
             }
             EventDefinition::Message {
+                base: None,
                 id,
                 message_ref: reference("messageRef"),
                 operation_ref,
@@ -567,12 +983,14 @@ fn parse_event_definition(e: &Elem, target_namespace: &str) -> Option<EventDefin
         }
         "signalEventDefinition" if attrs(e, &["id", "signalRef"]) && e.children.is_empty() => {
             EventDefinition::Signal {
+                base: None,
                 id,
                 signal_ref: reference("signalRef"),
             }
         }
         "errorEventDefinition" if attrs(e, &["id", "errorRef"]) && e.children.is_empty() => {
             EventDefinition::Error {
+                base: None,
                 id,
                 error_ref: reference("errorRef"),
             }
@@ -581,29 +999,32 @@ fn parse_event_definition(e: &Elem, target_namespace: &str) -> Option<EventDefin
             if attrs(e, &["id", "escalationRef"]) && e.children.is_empty() =>
         {
             EventDefinition::Escalation {
+                base: None,
                 id,
                 escalation_ref: reference("escalationRef"),
             }
         }
         "cancelEventDefinition" if attrs(e, &["id"]) && e.children.is_empty() => {
-            EventDefinition::Cancel { id }
+            EventDefinition::Cancel { base: None, id }
         }
         "compensateEventDefinition"
             if attrs(e, &["id", "waitForCompletion", "activityRef"]) && e.children.is_empty() =>
         {
             EventDefinition::Compensate {
+                base: None,
                 id,
                 wait_for_completion: optional_bool(e.attrs.get("waitForCompletion"))?,
                 activity_ref: reference("activityRef"),
             }
         }
         "terminateEventDefinition" if attrs(e, &["id"]) && e.children.is_empty() => {
-            EventDefinition::Terminate { id }
+            EventDefinition::Terminate { base: None, id }
         }
         "conditionalEventDefinition"
             if attrs(e, &["id"]) && e.children.len() == 1 && e.children[0].name == "condition" =>
         {
             EventDefinition::Conditional {
+                base: None,
                 id,
                 expression: parse_expression(&e.children[0], false)?,
             }
@@ -621,6 +1042,7 @@ fn parse_event_definition(e: &Elem, target_namespace: &str) -> Option<EventDefin
                 (None, None)
             };
             EventDefinition::Timer {
+                base: None,
                 id,
                 kind,
                 expression,
@@ -642,6 +1064,7 @@ fn parse_event_definition(e: &Elem, target_namespace: &str) -> Option<EventDefin
                 }
             }
             EventDefinition::Link {
+                base: None,
                 id,
                 name: e.attrs.get("name")?.clone(),
                 sources,
@@ -743,6 +1166,8 @@ fn loop_characteristics(e: &Elem) -> Option<LoopCharacteristics> {
                 }
             }
             Some(LoopCharacteristics::Standard {
+                base: None,
+                id: None,
                 test_before: boolean(e.attrs.get("testBefore"))?,
                 condition: expressions.remove("loopCondition"),
                 maximum,
@@ -755,6 +1180,8 @@ fn loop_characteristics(e: &Elem) -> Option<LoopCharacteristics> {
                     .all(|k| matches!(*k, "loopCardinality" | "completionCondition")) =>
         {
             Some(LoopCharacteristics::MultiInstance {
+                base: None,
+                id: None,
                 is_sequential: boolean(e.attrs.get("isSequential"))?,
                 cardinality: expressions.remove("loopCardinality"),
                 completion_condition: expressions.remove("completionCondition"),
@@ -772,6 +1199,7 @@ fn parse_item_aware(e: &Elem) -> Option<Option<processcraft_core::bpmn_data::Ite
                 return None;
             }
             state = Some(DataState {
+                base: None,
                 id: optional_id(child)?,
                 name: child.attrs.get("name").cloned(),
             });
@@ -816,6 +1244,7 @@ fn parse_data_port(e: &Elem) -> Option<processcraft_core::bpmn_data::DataPort> {
         return None;
     }
     Some(processcraft_core::bpmn_data::DataPort {
+        base: None,
         id: optional_id(e)?,
         name: e.attrs.get("name").cloned(),
         item_aware: parse_item_aware(e)?,
@@ -827,6 +1256,7 @@ fn parse_io_set(child: &Elem, input: bool) -> Option<processcraft_core::bpmn_dat
         return None;
     }
     let mut set = processcraft_core::bpmn_data::IoSet {
+        base: None,
         id: optional_id(child)?,
         name: child.attrs.get("name").cloned(),
         ..Default::default()
@@ -856,6 +1286,7 @@ fn parse_io_specification(e: &Elem) -> Option<processcraft_core::bpmn_data::IoSp
         return None;
     }
     let mut io = IoSpecification {
+        base: None,
         id: optional_id(e)?,
         ..Default::default()
     };
@@ -939,6 +1370,7 @@ fn parse_data_association(
                     return None;
                 }
                 assignments.push(processcraft_core::bpmn_data::DataAssignment {
+                    base: None,
                     id: optional_id(child)?,
                     from: parse_expression(&child.children[0], false)?,
                     to: parse_expression(&child.children[1], false)?,
@@ -948,6 +1380,7 @@ fn parse_data_association(
         }
     }
     Some(DataAssociation {
+        base: None,
         id: optional_id(e)?,
         owner: owner.clone(),
         kind,
@@ -1022,6 +1455,7 @@ fn parse_event(
             {
                 phase = 1;
                 properties.push(EventProperty {
+                    base: None,
                     id: optional_id(child)?,
                     name: child.attrs.get("name").cloned(),
                     item_aware: parse_item_aware(child)?,
@@ -1151,15 +1585,10 @@ fn activity_properties(
             result.completion_condition = Some(parse_expression(child, false)?);
         }
         if child.name == "script" {
-            if e.name != "scriptTask"
-                || child.ns != B
-                || !child.attrs.is_empty()
-                || !child.children.is_empty()
-                || result.script.is_some()
-            {
+            if e.name != "scriptTask" || child.ns != B || result.script.is_some() {
                 return None;
             }
-            result.script = Some(child.text.clone());
+            result.script = Some(mixed_body(child, true)?);
         }
     }
     if result == ActivityProperties::default() {
@@ -1246,6 +1675,8 @@ fn parse_lane_set(
             }
         }
         lanes.push(Lane {
+            child_lane_set_base: None,
+            base: None,
             child_lane_set_id: child_set,
             id: lane_id,
             name: lane.attrs.get("name").cloned(),
@@ -1260,6 +1691,8 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
         return None;
     }
     let mut p = Process {
+        lane_set_base: None,
+        base_extras: None,
         is_executable: optional_bool(e.attrs.get("isExecutable"))?,
         io_specification: None,
         lane_set_id: None,
@@ -1268,12 +1701,12 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
         data_associations: vec![],
         id: element_identity(e)?,
         name: e.attrs.get("name").cloned(),
-        documentation: String::new(),
+        documentation: String::new().into(),
         nodes: vec![],
         lanes: vec![],
         flows: vec![],
     };
-    let mut seen_documentation = false;
+    let mut documentation_nodes = Vec::new();
     let mut seen_lane_set = false;
     for n in &e.children {
         if matches!(
@@ -1290,14 +1723,8 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
         if e.name == "adHocSubProcess" && n.ns == B && n.name == "completionCondition" {
             continue;
         }
-        if n.ns == B
-            && n.name == "documentation"
-            && n.attrs.is_empty()
-            && n.children.is_empty()
-            && !seen_documentation
-        {
-            p.documentation = n.text.clone();
-            seen_documentation = true;
+        if n.ns == B && n.name == "documentation" {
+            documentation_nodes.push(structured_documentation(n)?);
             continue;
         }
         if n.ns != B {
@@ -1335,6 +1762,7 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
                 return None;
             }
             p.groups.push(processcraft_core::bpmn_model::Group {
+                base: None,
                 id: element_identity(n)?,
                 category_value_ref: n
                     .attrs
@@ -1349,20 +1777,28 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
             if !attrs(n, &["id", "textFormat"]) {
                 return None;
             }
-            let mut text = String::new();
+            let mut text = None;
             let mut doc = String::new();
             let mut seen_text = false;
             let mut seen_doc = false;
             for c in &n.children {
-                if c.ns != B || !c.attrs.is_empty() || !c.children.is_empty() {
+                if c.ns != B {
                     return None;
                 }
                 match c.name.as_str() {
                     "text" if !seen_text => {
-                        text = c.text.clone();
+                        text = Some(mixed_body(
+                            c,
+                            n.attrs
+                                .get("textFormat")
+                                .is_some_and(|format| format != "text/plain"),
+                        )?);
                         seen_text = true;
                     }
                     "documentation" if !seen_doc => {
+                        if !c.attrs.is_empty() || !c.children.is_empty() {
+                            return None;
+                        }
                         doc = c.text.clone();
                         seen_doc = true;
                     }
@@ -1370,14 +1806,15 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
                 }
             }
             p.nodes.push(Node {
+                base_extras: None,
                 item_aware: None,
                 id: element_identity(n)?,
                 name: None,
-                documentation: doc,
+                documentation: doc.into(),
                 kind: NodeKind::TextAnnotation,
                 details: Some(NodeDetails::TextAnnotation {
                     text_format: n.attrs.get("textFormat").cloned(),
-                    text: seen_text.then_some(text),
+                    text,
                 }),
                 owner: String::new(),
                 contact: String::new(),
@@ -1399,12 +1836,13 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
                 _ => return None,
             };
             p.flows.push(Flow {
+                base_extras: None,
                 id: element_identity(n)?,
                 name: None,
                 kind: FlowKind::Association,
                 source: selector(n, "sourceRef")?,
                 target: selector(n, "targetRef")?,
-                documentation: documentation(n)?,
+                documentation: documentation(n)?.into(),
                 condition: None,
                 association_direction: direction,
             });
@@ -1418,6 +1856,7 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
             }
             p.data_objects
                 .push(processcraft_core::bpmn_data::DataObject {
+                    base: None,
                     id: optional_id(n)?,
                     name: n.attrs.get("name").cloned(),
                     is_collection: optional_bool(n.attrs.get("isCollection"))?,
@@ -1458,10 +1897,11 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
                     .map(processcraft_core::bpmn_data::DataStoreRef::Qualified)
             };
             p.nodes.push(Node {
+                base_extras: None,
                 item_aware: parse_item_aware(n)?,
                 id: element_identity(n)?,
                 name: n.attrs.get("name").cloned(),
-                documentation: item_documentation(n)?,
+                documentation: item_documentation(n)?.into(),
                 kind: if object {
                     NodeKind::DataObjectReference
                 } else {
@@ -1504,10 +1944,11 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
             let (io, associations) = activity_io(n, &node_id.selector())?;
             p.data_associations.extend(associations);
             p.nodes.push(Node {
+                base_extras: None,
                 item_aware: None,
                 id: node_id,
                 name: n.attrs.get("name").cloned(),
-                documentation: doc,
+                documentation: doc.into(),
                 kind: NodeKind::CallActivity,
                 details: Some(NodeDetails::CallActivity {
                     called_element: processcraft_core::bpmn_model::QNameRef {
@@ -1565,6 +2006,7 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
             let (io, associations) = activity_io(n, &child.id.selector())?;
             p.data_associations.extend(associations);
             p.nodes.push(Node {
+                base_extras: None,
                 item_aware: None,
                 id: child.id,
                 name: child.name,
@@ -1576,6 +2018,7 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
                 },
                 details: Some(NodeDetails::SubProcess {
                     content: Box::new(FlowContainer {
+                        lane_set_base: None,
                         lane_set_id: child.lane_set_id,
                         groups: child.groups,
                         data_objects: child.data_objects,
@@ -1706,10 +2149,11 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
             p.data_associations.extend(associations);
             p.data_associations.extend(event_associations);
             p.nodes.push(Node {
+                base_extras: None,
                 item_aware: None,
                 id: node_id,
                 name: n.attrs.get("name").cloned(),
-                documentation,
+                documentation: documentation.into(),
                 kind,
                 owner: String::new(),
                 contact: String::new(),
@@ -1724,18 +2168,37 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
             });
         } else if n.name == "sequenceFlow" && attrs(n, &["id", "name", "sourceRef", "targetRef"]) {
             p.flows.push(Flow {
+                base_extras: None,
                 association_direction: None,
                 id: element_identity(n)?,
                 kind: FlowKind::Sequence,
                 source: selector(n, "sourceRef")?,
                 target: selector(n, "targetRef")?,
                 name: n.attrs.get("name").cloned(),
-                documentation: flow_parts(n)?.0,
+                documentation: flow_parts(n)?.0.into(),
                 condition: flow_parts(n)?.1,
             });
         } else {
             return None;
         }
+    }
+    if documentation_nodes.len() == 1
+        && documentation_nodes[0].id.is_none()
+        && documentation_nodes[0].text_format.is_none()
+        && matches!(&documentation_nodes[0].content, processcraft_core::bpmn_xml::MixedXml::Structured(content) if content.nodes.len() == 1 && matches!(&content.nodes[0], processcraft_core::bpmn_xml::XmlNode::Text { text } if !text.is_empty()))
+    {
+        let processcraft_core::bpmn_xml::MixedXml::Structured(content) =
+            &documentation_nodes[0].content
+        else {
+            unreachable!()
+        };
+        let processcraft_core::bpmn_xml::XmlNode::Text { text } = &content.nodes[0] else {
+            unreachable!()
+        };
+        p.documentation = text.clone().into();
+    } else if !documentation_nodes.is_empty() {
+        p.documentation =
+            processcraft_core::bpmn_metadata::DocumentationSet::Structured(documentation_nodes);
     }
     Some(p)
 }
@@ -1831,6 +2294,7 @@ fn parse_conversation(
         }
     }
     out.push(ConversationNode {
+        base: None,
         id: node_id,
         name: e.attrs.get("name").cloned(),
         kind,
@@ -1845,6 +2309,7 @@ fn parse_collaboration(e: &Elem) -> Option<Collaboration> {
         return None;
     }
     let mut c = Collaboration {
+        base: None,
         id: element_identity(e)?,
         name: e.attrs.get("name").cloned(),
         participants: vec![],
@@ -1861,6 +2326,7 @@ fn parse_collaboration(e: &Elem) -> Option<Collaboration> {
                 if attrs(child, &["id", "name", "processRef"]) && child.children.is_empty() =>
             {
                 c.participants.push(Participant {
+                    base: None,
                     id: element_identity(child)?,
                     name: child.attrs.get("name").cloned(),
                     process: child
@@ -1873,13 +2339,14 @@ fn parse_collaboration(e: &Elem) -> Option<Collaboration> {
             }
             "messageFlow" if attrs(child, &["id", "name", "sourceRef", "targetRef"]) => {
                 c.flows.push(Flow {
+                    base_extras: None,
                     association_direction: None,
                     id: element_identity(child)?,
                     name: child.attrs.get("name").cloned(),
                     kind: FlowKind::Message,
                     source: selector(child, "sourceRef")?,
                     target: selector(child, "targetRef")?,
-                    documentation: documentation(child)?,
+                    documentation: documentation(child)?.into(),
                     condition: None,
                 })
             }
@@ -1891,6 +2358,7 @@ fn parse_collaboration(e: &Elem) -> Option<Collaboration> {
                     && child.children.is_empty() =>
             {
                 c.conversation_links.push(ConversationLink {
+                    base: None,
                     id: element_identity(child)?,
                     name: child.attrs.get("name").cloned(),
                     source: selector(child, "sourceRef")?,
@@ -1908,6 +2376,7 @@ fn parse_choreography(e: &Elem) -> Option<processcraft_core::bpmn_collaboration:
         return None;
     }
     let mut c = Choreography {
+        base: None,
         id: element_identity(e)?,
         name: e.attrs.get("name").cloned(),
         participants: vec![],
@@ -1924,6 +2393,7 @@ fn parse_choreography(e: &Elem) -> Option<processcraft_core::bpmn_collaboration:
                 if attrs(child, &["id", "name", "processRef"]) && child.children.is_empty() =>
             {
                 c.participants.push(Participant {
+                    base: None,
                     id: element_identity(child)?,
                     name: child.attrs.get("name").cloned(),
                     process: child
@@ -1936,13 +2406,14 @@ fn parse_choreography(e: &Elem) -> Option<processcraft_core::bpmn_collaboration:
             }
             "messageFlow" if attrs(child, &["id", "name", "sourceRef", "targetRef"]) => {
                 c.message_flows.push(Flow {
+                    base_extras: None,
                     association_direction: None,
                     id: element_identity(child)?,
                     name: child.attrs.get("name").cloned(),
                     kind: FlowKind::Message,
                     source: selector(child, "sourceRef")?,
                     target: selector(child, "targetRef")?,
-                    documentation: documentation(child)?,
+                    documentation: documentation(child)?.into(),
                     condition: None,
                 })
             }
@@ -1966,6 +2437,7 @@ fn parse_choreography(e: &Elem) -> Option<processcraft_core::bpmn_collaboration:
                     return None;
                 }
                 c.activities.push(ChoreographyActivity {
+                    base: None,
                     id: element_identity(child)?,
                     name: child.attrs.get("name").cloned(),
                     initiating_participant: selector(child, "initiatingParticipantRef")?,
@@ -1975,13 +2447,14 @@ fn parse_choreography(e: &Elem) -> Option<processcraft_core::bpmn_collaboration:
             }
             "sequenceFlow" if attrs(child, &["id", "name", "sourceRef", "targetRef"]) => {
                 c.sequence_flows.push(Flow {
+                    base_extras: None,
                     association_direction: None,
                     id: element_identity(child)?,
                     name: child.attrs.get("name").cloned(),
                     kind: FlowKind::Sequence,
                     source: selector(child, "sourceRef")?,
                     target: selector(child, "targetRef")?,
-                    documentation: flow_parts(child)?.0,
+                    documentation: flow_parts(child)?.0.into(),
                     condition: flow_parts(child)?.1,
                 })
             }
@@ -2008,6 +2481,7 @@ fn catalog_item(e: &Elem) -> Option<ItemDefinition> {
         return None;
     }
     Some(ItemDefinition {
+        base: None,
         id: optional_id(e)?,
         structure_ref: e.catalog_qnames.get("structureRef").cloned(),
         is_collection: optional_bool(e.attrs.get("isCollection"))?,
@@ -2052,6 +2526,7 @@ fn catalog_interface(e: &Elem) -> Option<Interface> {
             }
         }
         operations.push(Operation {
+            base: None,
             id: optional_id(op)?,
             name: op.attrs.get("name")?.clone(),
             implementation_ref: op.catalog_qnames.get("implementationRef").cloned(),
@@ -2061,6 +2536,7 @@ fn catalog_interface(e: &Elem) -> Option<Interface> {
         });
     }
     Some(Interface {
+        base: None,
         id: optional_id(e)?,
         name: e.attrs.get("name")?.clone(),
         implementation_ref: e.catalog_qnames.get("implementationRef").cloned(),
@@ -2081,6 +2557,7 @@ fn catalog_resource(e: &Elem) -> Option<BpmnResource> {
             return None;
         }
         parameters.push(ResourceParameter {
+            base: None,
             id: optional_id(p)?,
             name: p.attrs.get("name").cloned(),
             type_ref: p.catalog_qnames.get("type").cloned(),
@@ -2088,6 +2565,7 @@ fn catalog_resource(e: &Elem) -> Option<BpmnResource> {
         });
     }
     Some(BpmnResource {
+        base: None,
         id: optional_id(e)?,
         name: e.attrs.get("name")?.clone(),
         parameters,
@@ -2147,9 +2625,9 @@ fn event_definition_identity(definition: &EventDefinition) -> Option<&ElementIde
         | EventDefinition::Escalation { id, .. }
         | EventDefinition::Conditional { id, .. }
         | EventDefinition::Link { id, .. }
-        | EventDefinition::Cancel { id }
+        | EventDefinition::Cancel { id, .. }
         | EventDefinition::Compensate { id, .. }
-        | EventDefinition::Terminate { id }
+        | EventDefinition::Terminate { id, .. }
         | EventDefinition::Timer { id, .. } => id.as_ref(),
     }
 }
@@ -2172,12 +2650,19 @@ fn event_definition_resources_valid(document: &BpmnDocument, definition: &EventD
     }
 }
 fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
-    let root = tree(bytes)?;
+    let mut root = tree(bytes)?;
+    let mut pending_metadata = BTreeMap::new();
+    extract_owner_metadata(&mut root, &mut pending_metadata)?;
+    // Until every owner has a metadata writer, foreign attributes must remain source-preserved.
+    fn has_foreign_attributes(e: &Elem) -> bool {
+        !e.foreign_attributes.is_empty() || e.children.iter().any(has_foreign_attributes)
+    }
+    if root.children.iter().any(has_foreign_attributes) {
+        return None;
+    }
     if root.ns != B
         || root.name != "definitions"
-        || !attrs(
-            &root,
-            &[
+        || !root.attrs.keys().all(|key| [
                 "id",
                 "targetNamespace",
                 "name",
@@ -2185,8 +2670,7 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                 "typeLanguage",
                 "exporter",
                 "exporterVersion",
-            ],
-        )
+            ].contains(&key.as_str()))
         || !root.attrs.contains_key("targetNamespace")
         // The editable profile must fit the native metadata limits.
         || ["targetNamespace", "name", "expressionLanguage", "typeLanguage", "exporter", "exporterVersion"]
@@ -2197,6 +2681,12 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
     }
     let mut d = BpmnDocument::new(String::new(), element_identity(&root)?);
     d.definitions = Some(DefinitionsMetadata {
+        namespaces: if root.foreign_attributes.is_empty() {
+            Vec::new()
+        } else {
+            xml_namespaces(&root)
+        },
+        foreign_attributes: root.foreign_attributes.clone(),
         target_namespace: root.attrs.get("targetNamespace")?.clone(),
         name: root.attrs.get("name").cloned(),
         expression_language: root.attrs.get("expressionLanguage").cloned(),
@@ -2206,7 +2696,19 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
         imports: Vec::new(),
     });
     let mut seen_non_import = false;
+    let mut root_phase = 0;
     for e in &root.children {
+        let phase = match (e.ns.as_str(), e.name.as_str()) {
+            (B, "import") => 0,
+            (B, "extension") => 1,
+            (BD, "BPMNDiagram") => 3,
+            (B, "relationship") => 4,
+            _ => 2,
+        };
+        if phase < root_phase {
+            return None;
+        }
+        root_phase = phase;
         if e.ns == B && e.name == "import" {
             if seen_non_import
                 || !attrs(e, &["namespace", "location", "importType"])
@@ -2237,6 +2739,63 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
         }
         seen_non_import = true;
         match (e.ns.as_str(), e.name.as_str()) {
+            (B, "extension") => {
+                if !attrs(e, &["definition", "mustUnderstand"]) || d.extensions.len() >= 256 {
+                    return None;
+                }
+                let must_understand = optional_bool(e.attrs.get("mustUnderstand"))?;
+                if must_understand == Some(true) {
+                    return None;
+                }
+                let documentation = e
+                    .children
+                    .iter()
+                    .map(structured_documentation)
+                    .collect::<Option<Vec<_>>>()?;
+                d.extensions.push(DefinitionsExtension {
+                    documentation,
+                    definition: e.catalog_qnames.get("definition").cloned(),
+                    must_understand,
+                });
+            }
+            (B, "relationship") => {
+                if !attrs(e, &["id", "type", "direction"]) || d.relationships.len() >= 256 {
+                    return None;
+                }
+                let direction = match e.attrs.get("direction").map(String::as_str) {
+                    None => None,
+                    Some("None") => Some(RelationshipDirection::None),
+                    Some("Forward") => Some(RelationshipDirection::Forward),
+                    Some("Backward") => Some(RelationshipDirection::Backward),
+                    Some("Both") => Some(RelationshipDirection::Both),
+                    _ => return None,
+                };
+                let mut sources = Vec::new();
+                let mut targets = Vec::new();
+                for child in &e.children {
+                    if child.ns != B || !attrs(child, &[]) || !child.children.is_empty() {
+                        return None;
+                    }
+                    match child.name.as_str() {
+                        "source" if targets.is_empty() => {
+                            sources.push(child.catalog_text_qname.clone()?)
+                        }
+                        "target" => targets.push(child.catalog_text_qname.clone()?),
+                        _ => return None,
+                    }
+                }
+                if sources.is_empty() || targets.is_empty() {
+                    return None;
+                }
+                d.relationships.push(DefinitionsRelationship {
+                    id: optional_id(e)?,
+                    base: None,
+                    relationship_type: e.attrs.get("type")?.clone(),
+                    direction,
+                    sources,
+                    targets,
+                });
+            }
             (
                 B,
                 "messageEventDefinition"
@@ -2276,11 +2835,13 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                         return None;
                     }
                     values.push(processcraft_core::bpmn_model::CategoryValue {
+                        base: None,
                         id: element_identity(child)?,
                         value: child.attrs.get("value").cloned(),
                     });
                 }
                 d.categories.push(processcraft_core::bpmn_model::Category {
+                    base: None,
                     id: element_identity(e)?,
                     name: e.attrs.get("name").cloned(),
                     values,
@@ -2295,6 +2856,7 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                     return None;
                 }
                 d.data_stores.push(processcraft_core::bpmn_data::DataStore {
+                    base: None,
                     id: optional_id(e)?,
                     name: e.attrs.get("name").cloned(),
                     capacity: e.attrs.get("capacity").cloned(),
@@ -2329,6 +2891,7 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                 }
                 d.event_resources.push(if e.name == "error" {
                     EventResource::Error {
+                        base: None,
                         id: root_id,
                         name,
                         code,
@@ -2336,6 +2899,7 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                     }
                 } else {
                     EventResource::Escalation {
+                        base: None,
                         id: root_id,
                         name,
                         code,
@@ -2359,12 +2923,14 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                 let name = e.attrs.get("name").cloned();
                 d.event_resources.push(if e.name == "signal" {
                     EventResource::Signal {
+                        base: None,
                         id: root_id,
                         name,
                         structure_ref: e.catalog_qnames.get("structureRef").cloned(),
                     }
                 } else {
                     EventResource::Message {
+                        base: None,
                         id: root_id,
                         name,
                         item_ref: e.catalog_qnames.get("itemRef").cloned(),
@@ -2387,7 +2953,9 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                 d.processes.push(p);
             }
             (BD, "BPMNDiagram") => {
-                if !attrs(e, &["id", "name"]) || e.children.len() != 1 {
+                if !attrs(e, &["id", "name", "documentation", "resolution"])
+                    || e.children.is_empty()
+                {
                     return None;
                 }
                 let plane = &e.children[0];
@@ -2400,11 +2968,57 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                 let mut diagram = Diagram {
                     id: element_identity(e)?,
                     name: e.attrs.get("name").cloned(),
+                    documentation: e.attrs.get("documentation").cloned(),
+                    resolution: e
+                        .attrs
+                        .get("resolution")
+                        .map(|v| v.parse())
+                        .transpose()
+                        .ok()?,
+                    label_styles: Vec::new(),
                     plane_id: element_identity(plane)?,
                     plane: selector(plane, "bpmnElement")?,
                     shapes: vec![],
                     edges: vec![],
                 };
+                for style in &e.children[1..] {
+                    if style.ns != BD
+                        || style.name != "BPMNLabelStyle"
+                        || !attrs(style, &["id"])
+                        || style.children.len() != 1
+                    {
+                        return None;
+                    }
+                    let font = &style.children[0];
+                    if font.ns != DC
+                        || font.name != "Font"
+                        || !attrs(
+                            font,
+                            &[
+                                "name",
+                                "size",
+                                "isBold",
+                                "isItalic",
+                                "isUnderline",
+                                "isStrikeThrough",
+                            ],
+                        )
+                        || !font.children.is_empty()
+                    {
+                        return None;
+                    }
+                    diagram.label_styles.push(LabelStyle {
+                        id: optional_id(style)?,
+                        font: Some(DiFont {
+                            name: font.attrs.get("name").cloned(),
+                            size: font.attrs.get("size").map(|v| v.parse()).transpose().ok()?,
+                            is_bold: optional_bool(font.attrs.get("isBold"))?,
+                            is_italic: optional_bool(font.attrs.get("isItalic"))?,
+                            is_underline: optional_bool(font.attrs.get("isUnderline"))?,
+                            is_strike_through: optional_bool(font.attrs.get("isStrikeThrough"))?,
+                        }),
+                    });
+                }
                 for item in &plane.children {
                     if item.ns != BD
                         || !attrs(
@@ -2430,7 +3044,10 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                                 return None;
                             }
                             let label = if item.children.len() == 2 {
-                                Some(parse_label(&item.children[1])?)
+                                Some(parse_label(
+                                    &item.children[1],
+                                    root.attrs.get("targetNamespace")?,
+                                )?)
                             } else {
                                 None
                             };
@@ -2451,6 +3068,7 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                                 )?,
                                 bounds: bounds(&item.children[0])?,
                                 label,
+                                label_visibility: Some(DiLabelVisibility::Explicit),
                                 style: None,
                             });
                         }
@@ -2459,7 +3077,8 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                             let mut label = None;
                             for pt in &item.children {
                                 if pt.ns == BD && pt.name == "BPMNLabel" && label.is_none() {
-                                    label = Some(parse_label(pt)?);
+                                    label =
+                                        Some(parse_label(pt, root.attrs.get("targetNamespace")?)?);
                                     continue;
                                 }
                                 if label.is_some() {
@@ -2497,6 +3116,7 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                                     .ok()?,
                                 waypoints: points,
                                 label,
+                                label_visibility: Some(DiLabelVisibility::Explicit),
                                 style: None,
                             });
                         }
@@ -2694,7 +3314,573 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
     let mut validation = ProjectData::new("validation".into());
     validation.documents.push(Arc::new(d.clone()));
     validation.validate().ok()?;
+    processcraft_core::metadata_visit::visit_base_metadata_mut(&mut d, |owner, base| {
+        if let Some(id) = owner.and_then(ElementIdentity::xml_id)
+            && let Some(pending) = pending_metadata.remove(&id.to_string())
+        {
+            *base = Some(processcraft_core::bpmn_metadata::BaseMetadata {
+                namespaces: pending.extras.namespaces,
+                documentation: pending.docs,
+                foreign_attributes: pending.extras.foreign_attributes,
+                extension_elements: pending.extras.extension_elements,
+            });
+        }
+    });
+    processcraft_core::metadata_visit::visit_legacy_metadata_mut(&mut d, |owner, docs, extras| {
+        if let Some(id) = owner.xml_id()
+            && let Some(pending) = pending_metadata.remove(&id.to_string())
+        {
+            *docs = documentation_set(pending.docs);
+            if !pending.extras.namespaces.is_empty()
+                || !pending.extras.foreign_attributes.is_empty()
+                || pending.extras.extension_elements.is_some()
+            {
+                *extras = Some(pending.extras);
+            }
+        }
+    });
+    if !pending_metadata.is_empty() || collect_owner_metadata(&d).is_err() {
+        return None;
+    }
     Some(d)
+}
+// Process documentation is fully represented; reject all other common metadata until each
+// owner has a qualified serializer, rather than silently discarding native fields.
+fn collect_owner_metadata(document: &BpmnDocument) -> Result<BTreeMap<String, PendingBase>, ()> {
+    let mut remaining = document.clone();
+    let mut pending = BTreeMap::new();
+    let mut invalid = false;
+    invalid |= remaining
+        .extensions
+        .iter()
+        .any(|e| e.must_understand == Some(true));
+    invalid |= remaining
+        .relationships
+        .iter()
+        .any(|r| r.sources.is_empty() || r.targets.is_empty());
+    remaining.extensions.clear();
+    if let Some(definitions) = &mut remaining.definitions {
+        definitions.namespaces.clear();
+        definitions.foreign_attributes.clear();
+    }
+    processcraft_core::metadata_visit::visit_base_metadata_mut(&mut remaining, |owner, base| {
+        if let Some(base) = base.take() {
+            if let Some(id) = owner.and_then(ElementIdentity::xml_id) {
+                let value = PendingBase {
+                    docs: base.documentation,
+                    extras: processcraft_core::bpmn_metadata::BaseExtras {
+                        namespaces: base.namespaces,
+                        foreign_attributes: base.foreign_attributes,
+                        extension_elements: base.extension_elements,
+                    },
+                };
+                invalid |= pending.insert(id.to_string(), value).is_some();
+            } else {
+                invalid = true;
+            }
+        }
+    });
+    processcraft_core::metadata_visit::visit_legacy_metadata_mut(
+        &mut remaining,
+        |owner, docs, extras| {
+            *docs = processcraft_core::bpmn_metadata::DocumentationSet::Legacy(String::new());
+            if let Some(mut extras) = extras.take() {
+                // Legacy owners write the extension after their own documentation.
+                extras.extension_elements = None;
+                if extras.namespaces.is_empty() && extras.foreign_attributes.is_empty() {
+                    return;
+                }
+                if let Some(id) = owner.xml_id() {
+                    invalid |= pending
+                        .insert(
+                            id.to_string(),
+                            PendingBase {
+                                docs: Vec::new(),
+                                extras,
+                            },
+                        )
+                        .is_some();
+                } else {
+                    invalid = true;
+                }
+            }
+        },
+    );
+    processcraft_core::metadata_visit::visit_expressions_mut(&mut remaining, |expression| {
+        if let Expression::Structured(data) = expression {
+            data.text = processcraft_core::bpmn_model::ExpressionBody::Text(String::new());
+        }
+    });
+    remaining.relationships.clear();
+    fn clear_mixed(nodes: &mut [Node], invalid: &mut bool) {
+        use processcraft_core::bpmn_xml::MixedXml;
+        for node in nodes {
+            if let Some(body @ MixedXml::Structured(_)) =
+                node.activity.as_mut().and_then(|a| a.script.as_mut())
+            {
+                *invalid |= node.id.xml_id().is_none();
+                *body = MixedXml::Text(String::new());
+            }
+            if let Some(NodeDetails::TextAnnotation {
+                text: Some(body @ MixedXml::Structured(_)),
+                ..
+            }) = &mut node.details
+            {
+                *invalid |= node.id.xml_id().is_none();
+                *body = MixedXml::Text(String::new());
+            }
+            if let Some(NodeDetails::SubProcess { content }) = &mut node.details {
+                clear_mixed(&mut content.nodes, invalid);
+            }
+        }
+    }
+    for process in &mut remaining.processes {
+        clear_mixed(&mut process.nodes, &mut invalid);
+    }
+    if invalid || remaining.has_semantic_common_metadata_features() {
+        Err(())
+    } else {
+        Ok(pending)
+    }
+}
+fn canonical_mixed_bodies(
+    document: &BpmnDocument,
+) -> BTreeMap<String, processcraft_core::bpmn_xml::MixedXml> {
+    let mut result = BTreeMap::new();
+    for scope in processcraft_core::queries::scopes(document) {
+        for node in scope.nodes {
+            let Some(id) = node.id.xml_id() else {
+                continue;
+            };
+            if let Some(body) = node.activity.as_ref().and_then(|a| a.script.as_ref()) {
+                result.insert(format!("script:{id}"), body.clone());
+            }
+            if let Some(NodeDetails::TextAnnotation { text, .. }) = &node.details {
+                if let Some(body) = text {
+                    result.insert(format!("text:{id}"), body.clone());
+                } else if let Some(body) = &node.name {
+                    result.insert(
+                        format!("text:{id}"),
+                        processcraft_core::bpmn_xml::MixedXml::Text(body.clone()),
+                    );
+                }
+            }
+        }
+    }
+    result
+}
+fn restore_owner_defaults(xml: &str, pending: &BTreeMap<String, PendingBase>) -> Option<String> {
+    struct Frame {
+        name: Option<String>,
+        changed: bool,
+    }
+    let mut reader = NsReader::from_reader(xml.as_bytes());
+    let mut stack: Vec<Frame> = Vec::new();
+    let mut edits = Vec::new();
+    loop {
+        let start = usize::try_from(reader.buffer_position()).ok()?;
+        let event = reader.read_event().ok()?;
+        let end = usize::try_from(reader.buffer_position()).ok()?;
+        match event {
+            Event::Start(element) | Event::Empty(element) => {
+                let empty = xml.get(start..end)?.ends_with("/>");
+                let (ns, local) = reader.resolver().resolve_element(element.name());
+                let is_bpmn = matches!(ns, ResolveResult::Bound(uri) if uri.0 == B);
+                let local_name = local.as_ref().to_owned();
+                let parent_changed = stack.last().is_some_and(|frame| frame.changed);
+                let mut id = None;
+                let mut has_default = false;
+                let mut ordinary = Vec::new();
+                for attribute in element.attributes() {
+                    let attribute = attribute.ok()?;
+                    let key = attribute.key.0;
+                    let value = attribute
+                        .normalized_value(XmlVersion::Implicit1_0)
+                        .ok()?
+                        .into_owned();
+                    if key == "id" {
+                        id = Some(value.clone());
+                    }
+                    if key == "xmlns" {
+                        has_default = true;
+                    }
+                    if key != "xmlns" && !key.starts_with("xmlns:") {
+                        ordinary.push((key.to_owned(), value));
+                    }
+                }
+                let metadata = id.as_ref().and_then(|id| pending.get(id));
+                let context = metadata
+                    .map(|m| m.extras.namespaces.as_slice())
+                    .filter(|c| !c.is_empty());
+                let original_default = match reader.resolver().resolve_element(QName("scope")).0 {
+                    ResolveResult::Bound(uri) => uri.0.to_owned(),
+                    _ => String::new(),
+                };
+                let desired_default = context
+                    .and_then(|c| c.iter().find(|n| n.prefix.is_empty()))
+                    .map(|n| n.uri.as_str())
+                    .unwrap_or(&original_default);
+                let rewrite = is_bpmn
+                    && context.is_some()
+                    && (desired_default != original_default
+                        || (parent_changed && desired_default != B));
+                let mut renamed = None;
+                let mut changed = false;
+                if rewrite {
+                    let context = context?;
+                    let tag = if desired_default == B {
+                        local_name.clone()
+                    } else {
+                        let prefix = context
+                            .iter()
+                            .find(|n| !n.prefix.is_empty() && n.uri == B)?
+                            .prefix
+                            .as_str();
+                        format!("{prefix}:{local_name}")
+                    };
+                    let mut replacement = format!("<{tag}");
+                    write_namespace_context(&mut replacement, context);
+                    for (key, mut value) in ordinary {
+                        let qname = matches!(
+                            key.as_str(),
+                            "structureRef"
+                                | "implementationRef"
+                                | "itemRef"
+                                | "itemSubjectRef"
+                                | "messageRef"
+                                | "signalRef"
+                                | "errorRef"
+                                | "escalationRef"
+                                | "operationRef"
+                                | "dataStoreRef"
+                                | "activityRef"
+                                | "categoryValueRef"
+                                | "calledElement"
+                                | "processRef"
+                                | "initiatingParticipantRef"
+                                | "attachedToRef"
+                        ) || (key == "type" && local_name == "resourceParameter")
+                            || (matches!(key.as_str(), "sourceRef" | "targetRef")
+                                && local_name != "sequenceFlow");
+                        if qname {
+                            let (resolved, name) =
+                                reader.resolver().resolve_element(QName(value.trim()));
+                            let uri = match resolved {
+                                ResolveResult::Bound(uri) => uri.0,
+                                ResolveResult::Unbound => "",
+                                ResolveResult::Unknown(_) => return None,
+                            };
+                            value = if uri == desired_default {
+                                name.as_ref().to_owned()
+                            } else {
+                                let prefix = context
+                                    .iter()
+                                    .find(|n| !n.prefix.is_empty() && n.uri == uri)?
+                                    .prefix
+                                    .as_str();
+                                format!("{prefix}:{}", name.as_ref())
+                            };
+                        }
+                        replacement.push_str(&format!(" {key}=\"{}\"", esc(&value)));
+                    }
+                    replacement.push_str(if empty { "/>" } else { ">" });
+                    edits.push((start, end, replacement));
+                    renamed = Some(tag);
+                    changed = desired_default != original_default;
+                } else if parent_changed
+                    && is_bpmn
+                    && !has_default
+                    && !matches!(local_name.as_str(), "documentation" | "extensionElements")
+                {
+                    let tag = xml.get(start..end)?;
+                    let ending = if empty { "/>" } else { ">" };
+                    edits.push((
+                        start,
+                        end,
+                        format!(
+                            "{} xmlns=\"{}\"{ending}",
+                            tag.strip_suffix(ending)?,
+                            esc(&original_default)
+                        ),
+                    ));
+                }
+                if !empty {
+                    stack.push(Frame {
+                        name: renamed,
+                        changed,
+                    });
+                }
+            }
+            Event::End(_) => {
+                let frame = stack.pop()?;
+                if let Some(name) = frame.name {
+                    edits.push((start, end, format!("</{name}>")));
+                }
+            }
+            Event::Eof => break,
+            _ => {}
+        }
+    }
+    let mut result = xml.to_owned();
+    for (start, end, replacement) in edits.into_iter().rev() {
+        result.replace_range(start..end, &replacement);
+    }
+    Some(result)
+}
+fn canonical_documentation(
+    document: &BpmnDocument,
+) -> BTreeMap<String, processcraft_core::bpmn_metadata::DocumentationSet> {
+    use processcraft_core::bpmn_metadata::DocumentationSet;
+    let mut copy = document.clone();
+    let mut result = BTreeMap::new();
+    processcraft_core::metadata_visit::visit_legacy_metadata_mut(&mut copy, |owner, docs, _| {
+        let Some(id) = owner.xml_id() else {
+            return;
+        };
+        if let DocumentationSet::Structured(items) = docs {
+            for item in items.iter_mut() {
+                item.id = item
+                    .id
+                    .as_ref()
+                    .and_then(ElementIdentity::xml_id)
+                    .cloned()
+                    .map(ElementIdentity::Legacy);
+            }
+        }
+        result.insert(id.to_string(), docs.clone());
+    });
+    result
+}
+fn insert_owner_metadata(xml: &str, mut pending: BTreeMap<String, PendingBase>) -> Option<String> {
+    if pending.is_empty() {
+        return Some(xml.to_owned());
+    }
+    let mut reader = NsReader::from_reader(xml.as_bytes());
+    let mut edits = Vec::new();
+    loop {
+        let start = usize::try_from(reader.buffer_position()).ok()?;
+        let event = reader.read_event().ok()?;
+        let end = usize::try_from(reader.buffer_position()).ok()?;
+        let (element, empty) = match event {
+            Event::Start(e) => (e, false),
+            Event::Empty(e) => (e, true),
+            Event::Eof => break,
+            _ => continue,
+        };
+        let (namespace, _) = reader.resolver().resolve_element(element.name());
+        if !matches!(namespace, ResolveResult::Bound(uri) if uri.0 == B) {
+            continue;
+        }
+        let mut owner_id = None;
+        let mut declared = BTreeMap::new();
+        let mut ordinary = Vec::new();
+        for attribute in element.attributes() {
+            let attribute = attribute.ok()?;
+            let key = attribute.key.0;
+            if key == "id" {
+                owner_id = Some(
+                    attribute
+                        .normalized_value(XmlVersion::Implicit1_0)
+                        .ok()?
+                        .into_owned(),
+                );
+            }
+            if let Some(prefix) = key.strip_prefix("xmlns:") {
+                declared.insert(
+                    prefix.to_owned(),
+                    attribute
+                        .normalized_value(XmlVersion::Implicit1_0)
+                        .ok()?
+                        .into_owned(),
+                );
+            } else if key == "xmlns" {
+                declared.insert(
+                    String::new(),
+                    attribute
+                        .normalized_value(XmlVersion::Implicit1_0)
+                        .ok()?
+                        .into_owned(),
+                );
+            } else {
+                ordinary.push((
+                    key.to_owned(),
+                    attribute
+                        .normalized_value(XmlVersion::Implicit1_0)
+                        .ok()?
+                        .into_owned(),
+                ));
+            }
+        }
+        let Some(metadata) = owner_id.as_ref().and_then(|id| pending.remove(id)) else {
+            continue;
+        };
+        if metadata.docs.is_empty()
+            && metadata.extras.namespaces.is_empty()
+            && metadata.extras.foreign_attributes.is_empty()
+            && metadata.extras.extension_elements.is_none()
+        {
+            return None;
+        }
+        let mut attributes = String::new();
+        let owner_name = element.name().0.to_owned();
+        let owner_prefix = owner_name.split_once(':').map(|(p, _)| p);
+        let needs_rewrite = empty
+            && !metadata.extras.namespaces.is_empty()
+            && metadata.extras.namespaces.iter().any(|binding| {
+                let probe = if binding.prefix.is_empty() {
+                    "scope".to_owned()
+                } else {
+                    format!("{}:scope", binding.prefix)
+                };
+                let actual = match reader.resolver().resolve_element(QName(&probe)).0 {
+                    ResolveResult::Bound(uri) => uri.0,
+                    _ => "",
+                };
+                actual != binding.uri
+            });
+        if needs_rewrite {
+            let context = &metadata.extras.namespaces;
+            let default = context
+                .iter()
+                .find(|n| n.prefix.is_empty())
+                .map(|n| n.uri.as_str())
+                .unwrap_or("");
+            let local_name = owner_name.rsplit(':').next()?;
+            let tag = if default == B {
+                local_name.to_owned()
+            } else {
+                let prefix = context
+                    .iter()
+                    .find(|n| !n.prefix.is_empty() && n.uri == B)?
+                    .prefix
+                    .as_str();
+                format!("{prefix}:{local_name}")
+            };
+            let mut replacement = format!("<{tag}");
+            write_namespace_context(&mut replacement, context);
+            for (key, mut value) in ordinary {
+                let qname_attribute = matches!(
+                    key.as_str(),
+                    "structureRef"
+                        | "implementationRef"
+                        | "itemRef"
+                        | "itemSubjectRef"
+                        | "messageRef"
+                        | "signalRef"
+                        | "errorRef"
+                        | "escalationRef"
+                        | "operationRef"
+                        | "dataStoreRef"
+                        | "activityRef"
+                        | "categoryValueRef"
+                        | "calledElement"
+                        | "processRef"
+                        | "initiatingParticipantRef"
+                        | "attachedToRef"
+                ) || (key == "type" && local_name == "resourceParameter")
+                    || (matches!(key.as_str(), "sourceRef" | "targetRef")
+                        && local_name != "sequenceFlow");
+                if qname_attribute {
+                    let (resolved, local) = reader.resolver().resolve_element(QName(value.trim()));
+                    let uri = match resolved {
+                        ResolveResult::Bound(uri) => uri.0,
+                        ResolveResult::Unbound => "",
+                        ResolveResult::Unknown(_) => return None,
+                    };
+                    value = if uri == default {
+                        local.as_ref().to_owned()
+                    } else {
+                        let prefix = context
+                            .iter()
+                            .find(|n| !n.prefix.is_empty() && n.uri == uri)?
+                            .prefix
+                            .as_str();
+                        format!("{prefix}:{}", local.as_ref())
+                    };
+                }
+                replacement.push_str(&format!(" {key}=\"{}\"", esc(&value)));
+            }
+            for attribute in &metadata.extras.foreign_attributes {
+                let prefix = attribute.prefix.as_ref()?;
+                replacement.push_str(&format!(
+                    " {prefix}:{}=\"{}\"",
+                    attribute.local,
+                    esc(&attribute.value)
+                ));
+            }
+            replacement.push('>');
+            for doc in &metadata.docs {
+                write_structured_documentation(&mut replacement, doc);
+            }
+            if let Some(extension) = &metadata.extras.extension_elements {
+                write_extension_elements(&mut replacement, extension);
+            }
+            replacement.push_str(&format!("</{tag}>"));
+            edits.push((start, end, replacement));
+            continue;
+        }
+        for binding in &metadata.extras.namespaces {
+            if binding.prefix == "xml" {
+                continue;
+            }
+            let probe = if binding.prefix.is_empty() {
+                "scope".to_owned()
+            } else {
+                format!("{}:scope", binding.prefix)
+            };
+            let actual = match reader.resolver().resolve_element(QName(&probe)).0 {
+                ResolveResult::Bound(uri) => uri.0,
+                ResolveResult::Unbound => "",
+                ResolveResult::Unknown(_) => "",
+            };
+            if actual == binding.uri {
+                continue;
+            }
+            if binding.prefix.is_empty()
+                || owner_prefix == Some(binding.prefix.as_str())
+                || declared.contains_key(&binding.prefix)
+            {
+                return None;
+            }
+            attributes.push_str(&format!(
+                " xmlns:{}=\"{}\"",
+                binding.prefix,
+                esc(&binding.uri)
+            ));
+        }
+        for attribute in &metadata.extras.foreign_attributes {
+            let prefix = attribute.prefix.as_ref()?;
+            attributes.push_str(&format!(
+                " {prefix}:{}=\"{}\"",
+                attribute.local,
+                esc(&attribute.value)
+            ));
+        }
+        let mut body = String::new();
+        for doc in &metadata.docs {
+            write_structured_documentation(&mut body, doc);
+        }
+        if let Some(extension) = &metadata.extras.extension_elements {
+            write_extension_elements(&mut body, extension);
+        }
+        let tag = xml.get(start..end)?;
+        let ending = if empty { "/>" } else { ">" };
+        let opening = tag.strip_suffix(ending)?;
+        let replacement = if empty {
+            format!("{opening}{attributes}>{body}</{owner_name}>")
+        } else {
+            format!("{opening}{attributes}>{body}")
+        };
+        edits.push((start, end, replacement));
+    }
+    if !pending.is_empty() {
+        return None;
+    }
+    let mut result = xml.to_owned();
+    for (start, end, replacement) in edits.into_iter().rev() {
+        result.replace_range(start..end, &replacement);
+    }
+    Some(result)
 }
 
 #[derive(Debug, Default)]
@@ -2822,14 +4008,7 @@ fn write_message_flow(xml: &mut String, flow: &Flow, namespace: &str, document: 
         local_qname_value(xml_reference(document, &flow.source), namespace),
         local_qname_value(xml_reference(document, &flow.target), namespace)
     ));
-    if namespace.is_empty() && !flow.documentation.is_empty() {
-        xml.push_str(&format!(
-            "<documentation xmlns=\"{B}\">{}</documentation>",
-            esc(&flow.documentation)
-        ));
-    } else {
-        write_doc(xml, &flow.documentation);
-    }
+    write_doc(xml, &flow.documentation, flow.base_extras.as_ref());
     xml.push_str(&format!("</{tag}>"));
 }
 fn event_reference_qname(
@@ -2874,17 +4053,19 @@ fn write_event_definition(
             id,
             message_ref.as_ref().map(|r| ("messageRef", r)),
         ),
-        EventDefinition::Signal { id, signal_ref } => (
+        EventDefinition::Signal { id, signal_ref, .. } => (
             "signalEventDefinition",
             id,
             signal_ref.as_ref().map(|r| ("signalRef", r)),
         ),
-        EventDefinition::Error { id, error_ref } => (
+        EventDefinition::Error { id, error_ref, .. } => (
             "errorEventDefinition",
             id,
             error_ref.as_ref().map(|r| ("errorRef", r)),
         ),
-        EventDefinition::Escalation { id, escalation_ref } => (
+        EventDefinition::Escalation {
+            id, escalation_ref, ..
+        } => (
             "escalationEventDefinition",
             id,
             escalation_ref.as_ref().map(|r| ("escalationRef", r)),
@@ -2899,8 +4080,8 @@ fn write_event_definition(
         EventDefinition::Conditional { id, .. } => ("conditionalEventDefinition", id, None),
         EventDefinition::Timer { id, .. } => ("timerEventDefinition", id, None),
         EventDefinition::Link { id, .. } => ("linkEventDefinition", id, None),
-        EventDefinition::Cancel { id } => ("cancelEventDefinition", id, None),
-        EventDefinition::Terminate { id } => ("terminateEventDefinition", id, None),
+        EventDefinition::Cancel { id, .. } => ("cancelEventDefinition", id, None),
+        EventDefinition::Terminate { id, .. } => ("terminateEventDefinition", id, None),
     };
     let name = if let Some((_, reference)) = attribute_reference {
         let qname = event_reference_qname(reference, namespace, context);
@@ -3019,9 +4200,29 @@ fn write_lanes(
 fn write_item_attributes(
     xml: &mut String,
     metadata: Option<&processcraft_core::bpmn_data::ItemAwareMetadata>,
+    context: Option<&[processcraft_core::bpmn_xml::NamespaceBinding]>,
 ) {
     if let Some(q) = metadata.and_then(|m| m.item_subject_ref.as_ref()) {
-        write_catalog_qname_attribute(xml, "itemSubjectRef", q, "pc_item");
+        if let Some(context) = context {
+            let default = context
+                .iter()
+                .find(|n| n.prefix.is_empty())
+                .map(|n| n.uri.as_str())
+                .unwrap_or("");
+            let value = if q.namespace == default {
+                q.local.to_string()
+            } else {
+                let prefix = context
+                    .iter()
+                    .find(|n| !n.prefix.is_empty() && n.uri == q.namespace)
+                    .map(|n| n.prefix.as_str())
+                    .unwrap_or("!");
+                format!("{prefix}:{}", q.local)
+            };
+            xml.push_str(&format!(" itemSubjectRef=\"{value}\""));
+        } else {
+            write_catalog_qname_attribute(xml, "itemSubjectRef", q, "pc_item");
+        }
     }
 }
 fn write_item_state(
@@ -3082,7 +4283,11 @@ fn write_io_specification(
             if let Some(value) = port.is_collection {
                 xml.push_str(&format!(" isCollection=\"{value}\""));
             }
-            write_item_attributes(xml, port.item_aware.as_ref());
+            write_item_attributes(
+                xml,
+                port.item_aware.as_ref(),
+                metadata_context(port.base.as_ref()),
+            );
             xml.push('>');
             write_item_state(xml, port.item_aware.as_ref(), unqualified_item);
             xml.push_str(&format!("</{element}>"));
@@ -3174,7 +4379,11 @@ fn write_event_port(
     if let Some(collection) = port.is_collection {
         xml.push_str(&format!(" isCollection=\"{collection}\""));
     }
-    write_item_attributes(xml, port.item_aware.as_ref());
+    write_item_attributes(
+        xml,
+        port.item_aware.as_ref(),
+        metadata_context(port.base.as_ref()),
+    );
     xml.push('>');
     write_item_state(xml, port.item_aware.as_ref(), empty_qname);
     xml.push_str(&format!("</{element}>"));
@@ -3260,7 +4469,11 @@ fn write_event_property(xml: &mut String, property: &EventProperty, restore_defa
         write_xml_id(xml, id);
     }
     write_xml_name(xml, property.name.as_deref());
-    write_item_attributes(xml, property.item_aware.as_ref());
+    write_item_attributes(
+        xml,
+        property.item_aware.as_ref(),
+        metadata_context(property.base.as_ref()),
+    );
     xml.push('>');
     write_item_state(xml, property.item_aware.as_ref(), empty_qname);
     xml.push_str(&format!("</{tag}>"));
@@ -3341,7 +4554,11 @@ fn write_scope(
         if let Some(name) = &o.name {
             xml.push_str(&format!(" name=\"{}\"", esc(name)));
         }
-        write_item_attributes(xml, o.item_aware.as_ref());
+        write_item_attributes(
+            xml,
+            o.item_aware.as_ref(),
+            metadata_context(o.base.as_ref()),
+        );
         if let Some(value) = o.is_collection {
             xml.push_str(&format!(" isCollection=\"{}\"", value));
         }
@@ -3506,7 +4723,14 @@ fn write_scope(
             .enumerate()
         {
             if let Some(reference) = reference {
-                if reference.namespace.is_empty() {
+                if let Some(context) = n
+                    .base_extras
+                    .as_ref()
+                    .filter(|e| !e.namespaces.is_empty())
+                    .map(|e| e.namespaces.as_slice())
+                {
+                    write_context_qname_attribute(xml, name, reference, context);
+                } else if reference.namespace.is_empty() {
                     xml.push_str(&format!(" {name}=\"{}\"", reference.local));
                 } else {
                     let prefix = if prefixes.is_empty() {
@@ -3571,7 +4795,13 @@ fn write_scope(
                 xml.push_str(&format!(" cancelActivity=\"{}\"", cancel));
             }
         }
-        write_item_attributes(xml, n.item_aware.as_ref());
+        write_item_attributes(
+            xml,
+            n.item_aware.as_ref(),
+            n.base_extras.as_ref().and_then(|extra| {
+                (!extra.namespaces.is_empty()).then_some(extra.namespaces.as_slice())
+            }),
+        );
         if let Some(NodeDetails::Event {
             parallel_multiple,
             is_interrupting,
@@ -3659,7 +4889,22 @@ fn write_scope(
                 data_store_ref: Some(reference),
             }) => match reference {
                 processcraft_core::bpmn_data::DataStoreRef::Legacy(id) => {
-                    if namespace.is_empty() {
+                    if let Some(context) = n
+                        .base_extras
+                        .as_ref()
+                        .filter(|e| !e.namespaces.is_empty())
+                        .map(|e| e.namespaces.as_slice())
+                    {
+                        write_context_qname_attribute(
+                            xml,
+                            "dataStoreRef",
+                            &QNameRef {
+                                namespace: namespace.to_owned(),
+                                local: xml_reference(document, id).clone(),
+                            },
+                            context,
+                        );
+                    } else if namespace.is_empty() {
                         xml.push_str(&format!(
                             " dataStoreRef=\"{}\"",
                             xml_reference(document, id)
@@ -3673,7 +4918,16 @@ fn write_scope(
                     }
                 }
                 processcraft_core::bpmn_data::DataStoreRef::Qualified(q) => {
-                    write_catalog_qname_attribute(xml, "dataStoreRef", q, "pc_store")
+                    if let Some(context) = n
+                        .base_extras
+                        .as_ref()
+                        .filter(|e| !e.namespaces.is_empty())
+                        .map(|e| e.namespaces.as_slice())
+                    {
+                        write_context_qname_attribute(xml, "dataStoreRef", q, context);
+                    } else {
+                        write_catalog_qname_attribute(xml, "dataStoreRef", q, "pc_store")
+                    }
                 }
             },
             _ => {}
@@ -3690,14 +4944,7 @@ fn write_scope(
             }
         }
         xml.push('>');
-        if unqualified && !n.documentation.is_empty() {
-            xml.push_str(&format!(
-                "<documentation xmlns=\"{B}\">{}</documentation>",
-                esc(&n.documentation)
-            ));
-        } else {
-            write_doc(xml, &n.documentation);
-        }
+        write_doc(xml, &n.documentation, n.base_extras.as_ref());
         write_item_state(xml, n.item_aware.as_ref(), unqualified);
         if let Some(NodeDetails::Event { properties, io, .. }) = &n.details {
             for property in properties {
@@ -3764,6 +5011,7 @@ fn write_scope(
                     test_before,
                     condition,
                     maximum,
+                    ..
                 } => {
                     xml.push_str(&format!(
                         "<standardLoopCharacteristics{} testBefore=\"{}\"",
@@ -3787,6 +5035,7 @@ fn write_scope(
                     is_sequential,
                     cardinality,
                     completion_condition,
+                    ..
                 } => {
                     xml.push_str(&format!(
                         "<multiInstanceLoopCharacteristics{} isSequential=\"{}\">",
@@ -3810,7 +5059,7 @@ fn write_scope(
         if let Some(a) = &n.activity
             && let Some(script) = &a.script
         {
-            xml.push_str(&format!("<script>{}</script>", esc(script)));
+            write_mixed_element(xml, "script", script);
         }
         if let Some(NodeDetails::SubProcess { content }) = &n.details {
             if content.lane_set_id.is_some() || !content.lanes.is_empty() {
@@ -3862,7 +5111,7 @@ fn write_scope(
             xml_reference(document, &f.source),
             xml_reference(document, &f.target)
         ));
-        write_doc(xml, &f.documentation);
+        write_doc(xml, &f.documentation, f.base_extras.as_ref());
         if let Some(condition) = &f.condition {
             write_expression(xml, "conditionExpression", condition, true);
         }
@@ -3882,15 +5131,18 @@ fn write_scope(
             xml.push_str(&format!(" textFormat=\"{}\"", esc(format)));
         }
         xml.push('>');
-        write_doc(xml, &n.documentation);
+        write_doc(xml, &n.documentation, n.base_extras.as_ref());
         let body = match &n.details {
             Some(NodeDetails::TextAnnotation {
                 text: Some(text), ..
-            }) => Some(text.as_str()),
-            _ => n.name.as_deref(),
+            }) => Some(text.clone()),
+            _ => n
+                .name
+                .as_ref()
+                .map(|s| processcraft_core::bpmn_xml::MixedXml::Text(s.clone())),
         };
         if let Some(body) = body {
-            xml.push_str(&format!("<text>{}</text>", esc(body)));
+            write_mixed_element(xml, "text", &body);
         }
         xml.push_str("</textAnnotation>");
     }
@@ -3921,14 +5173,7 @@ fn write_scope(
             xml.push_str(&format!(" associationDirection=\"{:?}\"", direction));
         }
         xml.push('>');
-        if namespace.is_empty() && !f.documentation.is_empty() {
-            xml.push_str(&format!(
-                "<documentation xmlns=\"{B}\">{}</documentation>",
-                esc(&f.documentation)
-            ));
-        } else {
-            write_doc(xml, &f.documentation);
-        }
+        write_doc(xml, &f.documentation, f.base_extras.as_ref());
         xml.push_str(&format!("</{tag}>"));
     }
 }
@@ -4200,6 +5445,18 @@ fn missing_xml_reference(document: &ExportContext) -> Option<ElementSelector> {
                 }
             }
         }
+        for label in diagram
+            .shapes
+            .iter()
+            .filter_map(|s| s.label.as_ref())
+            .chain(diagram.edges.iter().filter_map(|e| e.label.as_ref()))
+        {
+            if let Some(DiStyleRef::Local(reference)) = &label.style_ref
+                && let Some(missing) = check(document, reference)
+            {
+                return Some(missing);
+            }
+        }
         for r in diagram
             .shapes
             .iter()
@@ -4236,6 +5493,43 @@ fn export_document(
         report
             .blocked
             .push("Retained extensions cannot be safely reconstructed".into());
+        return Err(ExportFailure { report });
+    }
+    if document
+        .extensions
+        .iter()
+        .any(|extension| extension.must_understand == Some(true))
+    {
+        report.blocked.push(
+            "Required extension semantics are not understood; BPMN export is protected".into(),
+        );
+        return Err(ExportFailure { report });
+    }
+    if document
+        .relationships
+        .iter()
+        .any(|relationship| relationship.sources.is_empty() || relationship.targets.is_empty())
+    {
+        report.blocked.push(
+            "A BPMN relationship requires at least one source and target before export".into(),
+        );
+        return Err(ExportFailure { report });
+    }
+    let Ok(owner_metadata) = collect_owner_metadata(document) else {
+        report
+            .blocked
+            .push("Common BPMN metadata is not yet fully representable by this exporter".into());
+        return Err(ExportFailure { report });
+    };
+    if document
+        .diagrams
+        .iter()
+        .flat_map(|d| &d.label_styles)
+        .any(|style| style.font.is_none())
+    {
+        report
+            .blocked
+            .push("BPMN label styles require a Font before export".into());
         return Err(ExportFailure { report });
     }
     let activity_ports = activity_ports(document).unwrap_or_default();
@@ -4444,6 +5738,36 @@ fn export_document(
                 xml.push_str(&format!(" {name}=\"{}\"", esc(value)));
             }
         }
+        for binding in &definitions.namespaces {
+            if binding.prefix.is_empty() {
+                if binding.uri != B {
+                    report.blocked.push(
+                        "Definitions default namespace cannot preserve foreign attribute context"
+                            .into(),
+                    );
+                    return Err(ExportFailure { report });
+                }
+            } else if binding.prefix != "xml" {
+                xml.push_str(&format!(
+                    " xmlns:{}=\"{}\"",
+                    binding.prefix,
+                    esc(&binding.uri)
+                ));
+            }
+        }
+        for attribute in &definitions.foreign_attributes {
+            let Some(prefix) = &attribute.prefix else {
+                report
+                    .blocked
+                    .push("Definitions foreign attribute lacks a prefix".into());
+                return Err(ExportFailure { report });
+            };
+            xml.push_str(&format!(
+                " {prefix}:{}=\"{}\"",
+                attribute.local,
+                esc(&attribute.value)
+            ));
+        }
         xml.push('>');
     }
     if let Some(definitions) = &document.definitions {
@@ -4455,6 +5779,32 @@ fn export_document(
                 esc(&import.import_type)
             ));
         }
+    }
+    for extension in &document.extensions {
+        let unqualified = extension
+            .definition
+            .as_ref()
+            .is_some_and(|q| q.namespace.is_empty());
+        let tag = if unqualified {
+            "pc_definition:extension"
+        } else {
+            "extension"
+        };
+        xml.push_str(&format!("<{tag}"));
+        if unqualified {
+            xml.push_str(&format!(" xmlns:pc_definition=\"{B}\" xmlns=\"\""));
+        }
+        if let Some(q) = &extension.definition {
+            write_catalog_qname_attribute(&mut xml, "definition", q, "pc_extension");
+        }
+        if let Some(value) = extension.must_understand {
+            xml.push_str(&format!(" mustUnderstand=\"{value}\""));
+        }
+        xml.push('>');
+        for documentation in &extension.documentation {
+            write_structured_documentation(&mut xml, documentation);
+        }
+        xml.push_str(&format!("</{tag}>"));
     }
     write_catalog(&mut xml, &document.catalog);
     for category in &document.categories {
@@ -4495,7 +5845,11 @@ fn export_document(
         if let Some(name) = &store.name {
             xml.push_str(&format!(" name=\"{}\"", esc(name)));
         }
-        write_item_attributes(&mut xml, store.item_aware.as_ref());
+        write_item_attributes(
+            &mut xml,
+            store.item_aware.as_ref(),
+            metadata_context(store.base.as_ref()),
+        );
         if let Some(capacity) = &store.capacity {
             xml.push_str(&format!(" capacity=\"{}\"", esc(capacity)));
         }
@@ -4512,13 +5866,16 @@ fn export_document(
                 id,
                 name,
                 structure_ref,
+                ..
             } => (
                 "signal",
                 id,
                 name,
                 structure_ref.as_ref().map(|q| ("structureRef", q)),
             ),
-            EventResource::Message { id, name, item_ref } => (
+            EventResource::Message {
+                id, name, item_ref, ..
+            } => (
                 "message",
                 id,
                 name,
@@ -4630,7 +5987,7 @@ fn export_document(
                 xml_reference(&context, &f.source),
                 xml_reference(&context, &f.target)
             ));
-            write_doc(&mut xml, &f.documentation);
+            write_doc(&mut xml, &f.documentation, f.base_extras.as_ref());
             if let Some(condition) = &f.condition {
                 write_expression(&mut xml, "conditionExpression", condition, true);
             }
@@ -4671,7 +6028,7 @@ fn export_document(
             xml.push_str(&format!(" isExecutable=\"{value}\""));
         }
         xml.push('>');
-        write_doc(&mut xml, &p.documentation);
+        write_doc(&mut xml, &p.documentation, p.base_extras.as_ref());
         if let Some(io) = &p.io_specification {
             write_io_specification(&mut xml, io, false, &context);
         }
@@ -4703,6 +6060,12 @@ fn export_document(
         ));
         write_xml_id(&mut xml, &d.id);
         write_xml_name(&mut xml, d.name.as_deref());
+        if let Some(documentation) = &d.documentation {
+            xml.push_str(&format!(" documentation=\"{}\"", esc(documentation)));
+        }
+        if let Some(resolution) = d.resolution {
+            xml.push_str(&format!(" resolution=\"{resolution}\""));
+        }
         xml.push_str("><bpmndi:BPMNPlane");
         xml.push_str(&ns_binding);
         write_xml_id(&mut xml, &d.plane_id);
@@ -4733,7 +6096,7 @@ fn export_document(
                 b.x, b.y, b.width, b.height
             ));
             if let Some(label) = &s.label {
-                write_label(&mut xml, label);
+                write_label(&mut xml, label, &namespace, &context);
             }
             xml.push_str("</bpmndi:BPMNShape>");
         }
@@ -4762,15 +6125,134 @@ fn export_document(
                 xml.push_str(&format!("<di:waypoint x=\"{}\" y=\"{}\"/>", p.x, p.y));
             }
             if let Some(label) = &e.label {
-                write_label(&mut xml, label);
+                write_label(&mut xml, label, &namespace, &context);
             }
             xml.push_str("</bpmndi:BPMNEdge>");
         }
-        xml.push_str("</bpmndi:BPMNPlane></bpmndi:BPMNDiagram>");
+        xml.push_str("</bpmndi:BPMNPlane>");
+        for style in &d.label_styles {
+            xml.push_str("<bpmndi:BPMNLabelStyle");
+            if let Some(id) = &style.id {
+                write_xml_id(&mut xml, id);
+            }
+            xml.push('>');
+            if let Some(font) = &style.font {
+                xml.push_str("<dc:Font");
+                if let Some(name) = &font.name {
+                    xml.push_str(&format!(" name=\"{}\"", esc(name)));
+                }
+                if let Some(size) = font.size {
+                    xml.push_str(&format!(" size=\"{size}\""));
+                }
+                for (key, value) in [
+                    ("isBold", font.is_bold),
+                    ("isItalic", font.is_italic),
+                    ("isUnderline", font.is_underline),
+                    ("isStrikeThrough", font.is_strike_through),
+                ] {
+                    if let Some(value) = value {
+                        xml.push_str(&format!(" {key}=\"{value}\""));
+                    }
+                }
+                xml.push_str("/>");
+            }
+            xml.push_str("</bpmndi:BPMNLabelStyle>");
+        }
+        xml.push_str("</bpmndi:BPMNDiagram>");
+    }
+    for relationship in &document.relationships {
+        xml.push_str("<relationship");
+        if let Some(id) = &relationship.id {
+            write_xml_id(&mut xml, id);
+        }
+        xml.push_str(&format!(
+            " type=\"{}\"",
+            esc(&relationship.relationship_type)
+        ));
+        if let Some(direction) = relationship.direction {
+            xml.push_str(&format!(" direction=\"{direction:?}\""));
+        }
+        xml.push('>');
+        for (tag, values) in [
+            ("source", &relationship.sources),
+            ("target", &relationship.targets),
+        ] {
+            for q in values {
+                xml.push_str(&format!("<pc_relationship:{tag} xmlns:pc_relationship=\"{B}\" xmlns=\"{}\">{}</pc_relationship:{tag}>", esc(&q.namespace), q.local));
+            }
+        }
+        xml.push_str("</relationship>");
     }
     xml.push_str("</definitions>");
+    let Some(xml) = restore_owner_defaults(&xml, &owner_metadata) else {
+        report
+            .blocked
+            .push("BPMN owner namespace context cannot be restored safely".into());
+        return Err(ExportFailure { report });
+    };
+    let Some(xml) = insert_owner_metadata(&xml, owner_metadata) else {
+        report
+            .blocked
+            .push("BPMN metadata owner or namespace context cannot be represented safely".into());
+        return Err(ExportFailure { report });
+    };
     let reparsed = parse_profile(xml.as_bytes());
     if let Some(parsed) = &reparsed {
+        if document
+            .definitions
+            .as_ref()
+            .is_some_and(|d| !d.foreign_attributes.is_empty() || !d.namespaces.is_empty())
+            && document.definitions != parsed.definitions
+        {
+            report
+                .blocked
+                .push("Definitions foreign attribute context cannot be preserved".into());
+            return Err(ExportFailure { report });
+        }
+        if document.extensions != parsed.extensions {
+            report
+                .blocked
+                .push("Definitions extension declarations cannot be preserved".into());
+            return Err(ExportFailure { report });
+        }
+        let relationship_values = |d: &BpmnDocument| {
+            d.relationships
+                .iter()
+                .map(|r| {
+                    (
+                        r.id.as_ref().and_then(ElementIdentity::xml_id).cloned(),
+                        r.relationship_type.clone(),
+                        r.direction,
+                        r.sources.clone(),
+                        r.targets.clone(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        if relationship_values(document) != relationship_values(parsed) {
+            report
+                .blocked
+                .push("Definitions relationships cannot be preserved".into());
+            return Err(ExportFailure { report });
+        }
+        if collect_owner_metadata(document) != collect_owner_metadata(parsed) {
+            report
+                .blocked
+                .push("BPMN metadata namespace context or ownership cannot be preserved".into());
+            return Err(ExportFailure { report });
+        }
+        if canonical_documentation(document) != canonical_documentation(parsed) {
+            report
+                .blocked
+                .push("BPMN documentation cannot be preserved with its namespace context".into());
+            return Err(ExportFailure { report });
+        }
+        if canonical_mixed_bodies(document) != canonical_mixed_bodies(parsed) {
+            report
+                .blocked
+                .push("BPMN mixed body or namespace context cannot be preserved".into());
+            return Err(ExportFailure { report });
+        }
         let expected = document.expressions();
         let actual = parsed.expressions();
         if expected.len() != actual.len()
@@ -4830,6 +6312,165 @@ fn esc(s: &str) -> String {
         .replace('\n', "&#10;")
         .replace('\r', "&#13;")
 }
+fn write_namespace_context(
+    xml: &mut String,
+    namespaces: &[processcraft_core::bpmn_xml::NamespaceBinding],
+) {
+    for binding in namespaces {
+        if binding.prefix == "xml" {
+            continue;
+        }
+        if binding.prefix.is_empty() {
+            xml.push_str(&format!(" xmlns=\"{}\"", esc(&binding.uri)));
+        } else {
+            xml.push_str(&format!(
+                " xmlns:{}=\"{}\"",
+                binding.prefix,
+                esc(&binding.uri)
+            ));
+        }
+    }
+}
+fn write_xml_nodes(xml: &mut String, nodes: &[processcraft_core::bpmn_xml::XmlNode]) {
+    use processcraft_core::bpmn_xml::XmlNode;
+    for node in nodes {
+        match node {
+            XmlNode::Text { text } => xml.push_str(&esc(text)),
+            XmlNode::Comment { text } => xml.push_str(&format!("<!--{text}-->")),
+            XmlNode::ProcessingInstruction { target, data } => {
+                xml.push_str(&format!("<?{target}"));
+                if let Some(data) = data {
+                    xml.push(' ');
+                    xml.push_str(data);
+                }
+                xml.push_str("?>");
+            }
+            XmlNode::Element { element } => {
+                let name = element
+                    .prefix
+                    .as_ref()
+                    .map(|p| format!("{p}:{}", element.local))
+                    .unwrap_or_else(|| element.local.to_string());
+                xml.push('<');
+                xml.push_str(&name);
+                write_namespace_context(xml, &element.namespaces);
+                for attribute in &element.attributes {
+                    xml.push(' ');
+                    if let Some(prefix) = &attribute.prefix {
+                        xml.push_str(&prefix.to_string());
+                        xml.push(':');
+                    }
+                    xml.push_str(&attribute.local.to_string());
+                    xml.push_str(&format!("=\"{}\"", esc(&attribute.value)));
+                }
+                xml.push('>');
+                write_xml_nodes(xml, &element.children);
+                xml.push_str(&format!("</{name}>"));
+            }
+        }
+    }
+}
+fn write_structured_documentation(
+    xml: &mut String,
+    doc: &processcraft_core::bpmn_metadata::Documentation,
+) {
+    use processcraft_core::bpmn_xml::MixedXml;
+    let (name, namespaces) = match &doc.content {
+        MixedXml::Text(_) => ("documentation".to_owned(), None),
+        MixedXml::Structured(content) => {
+            let name = if content
+                .namespaces
+                .iter()
+                .any(|n| n.prefix.is_empty() && n.uri == B)
+            {
+                "documentation".to_owned()
+            } else {
+                let prefix = content
+                    .namespaces
+                    .iter()
+                    .find(|n| !n.prefix.is_empty() && n.uri == B)
+                    .map(|n| n.prefix.as_str())
+                    .unwrap_or("!");
+                format!("{prefix}:documentation")
+            };
+            (name, Some(content.namespaces.as_slice()))
+        }
+    };
+    xml.push('<');
+    xml.push_str(&name);
+    if let Some(namespaces) = namespaces {
+        write_namespace_context(xml, namespaces);
+    } else {
+        xml.push_str(&format!(" xmlns=\"{B}\""));
+    }
+    if let Some(id) = &doc.id {
+        write_xml_id(xml, id);
+    }
+    if let Some(format) = &doc.text_format {
+        xml.push_str(&format!(" textFormat=\"{}\"", esc(format)));
+    }
+    xml.push('>');
+    match &doc.content {
+        MixedXml::Text(text) => xml.push_str(&esc(text)),
+        MixedXml::Structured(content) => write_xml_nodes(xml, &content.nodes),
+    }
+    xml.push_str(&format!("</{name}>"));
+}
+fn write_mixed_element(xml: &mut String, tag: &str, body: &processcraft_core::bpmn_xml::MixedXml) {
+    use processcraft_core::bpmn_xml::MixedXml;
+    match body {
+        MixedXml::Text(text) => xml.push_str(&format!("<{tag}>{}</{tag}>", esc(text))),
+        MixedXml::Structured(content) => {
+            let name = if content
+                .namespaces
+                .iter()
+                .any(|n| n.prefix.is_empty() && n.uri == B)
+            {
+                tag.to_owned()
+            } else {
+                format!(
+                    "{}:{tag}",
+                    content
+                        .namespaces
+                        .iter()
+                        .find(|n| !n.prefix.is_empty() && n.uri == B)
+                        .map(|n| n.prefix.as_str())
+                        .unwrap_or("!")
+                )
+            };
+            xml.push('<');
+            xml.push_str(&name);
+            write_namespace_context(xml, &content.namespaces);
+            xml.push('>');
+            write_xml_nodes(xml, &content.nodes);
+            xml.push_str(&format!("</{name}>"));
+        }
+    }
+}
+fn write_extension_elements(
+    xml: &mut String,
+    extension: &processcraft_core::bpmn_metadata::ExtensionElements,
+) {
+    let context = &extension.content.namespaces;
+    let tag = if context.iter().any(|n| n.prefix.is_empty() && n.uri == B) {
+        "extensionElements".to_owned()
+    } else {
+        format!(
+            "{}:extensionElements",
+            context
+                .iter()
+                .find(|n| !n.prefix.is_empty() && n.uri == B)
+                .map(|n| n.prefix.as_str())
+                .unwrap_or("!")
+        )
+    };
+    xml.push('<');
+    xml.push_str(&tag);
+    write_namespace_context(xml, context);
+    xml.push('>');
+    write_xml_nodes(xml, &extension.content.nodes);
+    xml.push_str(&format!("</{tag}>"));
+}
 
 fn write_catalog_qname_attribute(xml: &mut String, attribute: &str, q: &QNameRef, prefix: &str) {
     if q.namespace.is_empty() {
@@ -4842,27 +6483,123 @@ fn write_catalog_qname_attribute(xml: &mut String, attribute: &str, q: &QNameRef
         ));
     }
 }
+fn write_context_qname_attribute(
+    xml: &mut String,
+    name: &str,
+    q: &QNameRef,
+    context: &[processcraft_core::bpmn_xml::NamespaceBinding],
+) {
+    let default = context
+        .iter()
+        .find(|n| n.prefix.is_empty())
+        .map(|n| n.uri.as_str())
+        .unwrap_or("");
+    let value = if q.namespace == default {
+        q.local.to_string()
+    } else {
+        let prefix = context
+            .iter()
+            .find(|n| !n.prefix.is_empty() && n.uri == q.namespace)
+            .map(|n| n.prefix.as_str())
+            .unwrap_or("!");
+        format!("{prefix}:{}", q.local)
+    };
+    xml.push_str(&format!(" {name}=\"{value}\""));
+}
 fn write_catalog_qname_text(xml: &mut String, tag: &str, q: &QNameRef) {
     if q.namespace.is_empty() {
-        xml.push_str(&format!("<bpmn:{tag}>{}</bpmn:{tag}>", q.local));
+        xml.push_str(&format!(
+            "<bpmn:{tag} xmlns:bpmn=\"{B}\" xmlns=\"\">{}</bpmn:{tag}>",
+            q.local
+        ));
     } else {
         xml.push_str(&format!(
-            "<bpmn:{tag} xmlns:q=\"{}\">q:{}</bpmn:{tag}>",
+            "<bpmn:{tag} xmlns:bpmn=\"{B}\" xmlns:q=\"{}\">q:{}</bpmn:{tag}>",
             esc(&q.namespace),
             q.local
         ));
     }
 }
+fn metadata_context(
+    base: Option<&processcraft_core::bpmn_metadata::BaseMetadata>,
+) -> Option<&[processcraft_core::bpmn_xml::NamespaceBinding]> {
+    let base = base?;
+    if !base.namespaces.is_empty() {
+        return Some(&base.namespaces);
+    }
+    for doc in &base.documentation {
+        if let processcraft_core::bpmn_xml::MixedXml::Structured(content) = &doc.content {
+            return Some(&content.namespaces);
+        }
+    }
+    base.extension_elements
+        .as_ref()
+        .map(|extension| extension.content.namespaces.as_slice())
+}
+fn catalog_open(
+    xml: &mut String,
+    local: &str,
+    base: Option<&processcraft_core::bpmn_metadata::BaseMetadata>,
+) -> String {
+    if let Some(context) = metadata_context(base) {
+        let tag = if context.iter().any(|n| n.prefix.is_empty() && n.uri == B) {
+            local.to_owned()
+        } else {
+            let prefix = context
+                .iter()
+                .find(|n| !n.prefix.is_empty() && n.uri == B)
+                .map(|n| n.prefix.as_str())
+                .unwrap_or("!");
+            format!("{prefix}:{local}")
+        };
+        xml.push('<');
+        xml.push_str(&tag);
+        write_namespace_context(xml, context);
+        tag
+    } else {
+        let tag = format!("bpmn:{local}");
+        xml.push('<');
+        xml.push_str(&tag);
+        xml.push_str(&format!(" xmlns:bpmn=\"{B}\" xmlns=\"\""));
+        tag
+    }
+}
+fn catalog_attribute(
+    xml: &mut String,
+    name: &str,
+    q: &QNameRef,
+    base: Option<&processcraft_core::bpmn_metadata::BaseMetadata>,
+    generated_prefix: &str,
+) {
+    if let Some(context) = metadata_context(base) {
+        let default = context
+            .iter()
+            .find(|n| n.prefix.is_empty())
+            .map(|n| n.uri.as_str())
+            .unwrap_or("");
+        let value = if q.namespace == default {
+            q.local.to_string()
+        } else {
+            let prefix = context
+                .iter()
+                .find(|n| !n.prefix.is_empty() && n.uri == q.namespace)
+                .map(|n| n.prefix.as_str())
+                .unwrap_or("!");
+            format!("{prefix}:{}", q.local)
+        };
+        xml.push_str(&format!(" {name}=\"{value}\""));
+    } else {
+        write_catalog_qname_attribute(xml, name, q, generated_prefix);
+    }
+}
 fn write_catalog(xml: &mut String, catalog: &processcraft_core::bpmn_catalog::SupportingCatalog) {
     for item in &catalog.item_definitions {
-        xml.push_str(&format!(
-            "<bpmn:itemDefinition xmlns:bpmn=\"{B}\" xmlns=\"\""
-        ));
+        let _tag = catalog_open(xml, "itemDefinition", item.base.as_ref());
         if let Some(id) = &item.id {
             write_xml_id(xml, id);
         }
         if let Some(q) = &item.structure_ref {
-            write_catalog_qname_attribute(xml, "structureRef", q, "q");
+            catalog_attribute(xml, "structureRef", q, item.base.as_ref(), "q");
         }
         if let Some(value) = item.is_collection {
             xml.push_str(&format!(" isCollection=\"{value}\""));
@@ -4873,24 +6610,23 @@ fn write_catalog(xml: &mut String, catalog: &processcraft_core::bpmn_catalog::Su
         xml.push_str("/>");
     }
     for interface in &catalog.interfaces {
-        xml.push_str(&format!(
-            "<bpmn:interface xmlns:bpmn=\"{B}\" xmlns=\"\" name=\"{}\"",
-            esc(&interface.name)
-        ));
+        let tag = catalog_open(xml, "interface", interface.base.as_ref());
+        xml.push_str(&format!(" name=\"{}\"", esc(&interface.name)));
         if let Some(id) = &interface.id {
             write_xml_id(xml, id);
         }
         if let Some(q) = &interface.implementation_ref {
-            write_catalog_qname_attribute(xml, "implementationRef", q, "q");
+            catalog_attribute(xml, "implementationRef", q, interface.base.as_ref(), "q");
         }
         xml.push('>');
         for op in &interface.operations {
-            xml.push_str(&format!("<bpmn:operation name=\"{}\"", esc(&op.name)));
+            let op_tag = catalog_open(xml, "operation", op.base.as_ref());
+            xml.push_str(&format!(" name=\"{}\"", esc(&op.name)));
             if let Some(id) = &op.id {
                 write_xml_id(xml, id);
             }
             if let Some(q) = &op.implementation_ref {
-                write_catalog_qname_attribute(xml, "implementationRef", q, "r");
+                catalog_attribute(xml, "implementationRef", q, op.base.as_ref(), "r");
             }
             xml.push('>');
             write_catalog_qname_text(xml, "inMessageRef", &op.in_message_ref);
@@ -4900,21 +6636,19 @@ fn write_catalog(xml: &mut String, catalog: &processcraft_core::bpmn_catalog::Su
             for q in &op.error_refs {
                 write_catalog_qname_text(xml, "errorRef", q);
             }
-            xml.push_str("</bpmn:operation>");
+            xml.push_str(&format!("</{op_tag}>"));
         }
-        xml.push_str("</bpmn:interface>");
+        xml.push_str(&format!("</{tag}>"));
     }
     for resource in &catalog.resources {
-        xml.push_str(&format!(
-            "<bpmn:resource xmlns:bpmn=\"{B}\" xmlns=\"\" name=\"{}\"",
-            esc(&resource.name)
-        ));
+        let tag = catalog_open(xml, "resource", resource.base.as_ref());
+        xml.push_str(&format!(" name=\"{}\"", esc(&resource.name)));
         if let Some(id) = &resource.id {
             write_xml_id(xml, id);
         }
         xml.push('>');
         for parameter in &resource.parameters {
-            xml.push_str("<bpmn:resourceParameter");
+            let _tag = catalog_open(xml, "resourceParameter", parameter.base.as_ref());
             if let Some(id) = &parameter.id {
                 write_xml_id(xml, id);
             }
@@ -4922,14 +6656,14 @@ fn write_catalog(xml: &mut String, catalog: &processcraft_core::bpmn_catalog::Su
                 xml.push_str(&format!(" name=\"{}\"", esc(name)));
             }
             if let Some(q) = &parameter.type_ref {
-                write_catalog_qname_attribute(xml, "type", q, "q");
+                catalog_attribute(xml, "type", q, parameter.base.as_ref(), "q");
             }
             if let Some(value) = parameter.is_required {
                 xml.push_str(&format!(" isRequired=\"{value}\""));
             }
             xml.push_str("/>");
         }
-        xml.push_str("</bpmn:resource>");
+        xml.push_str(&format!("</{tag}>"));
     }
 }
 fn write_expression(xml: &mut String, tag: &str, expression: &Expression, legacy_formal: bool) {
@@ -4939,7 +6673,10 @@ fn write_expression(xml: &mut String, tag: &str, expression: &Expression, legacy
         } else {
             ""
         };
-        xml.push_str(&format!("<{tag}{xsi}>{}</{tag}>", esc(expression.text())));
+        xml.push_str(&format!(
+            "<{tag}{xsi}>{}</{tag}>",
+            esc(expression.plain_text().unwrap_or(""))
+        ));
         return;
     };
     let existing = |uri: &str| {
@@ -5034,11 +6771,61 @@ fn write_expression(xml: &mut String, tag: &str, expression: &Expression, legacy
             }
         }
     }
-    xml.push_str(&format!(">{}</{tag_name}>", esc(&data.text)));
+    xml.push('>');
+    match &data.text {
+        processcraft_core::bpmn_model::ExpressionBody::Text(text) => xml.push_str(&esc(text)),
+        processcraft_core::bpmn_model::ExpressionBody::Mixed { parts } => {
+            use processcraft_core::bpmn_model::ExpressionPart;
+            for part in parts {
+                match part {
+                    ExpressionPart::Text { text } => xml.push_str(&esc(text)),
+                    ExpressionPart::Documentation { documentation } => {
+                        write_structured_documentation(xml, documentation)
+                    }
+                    ExpressionPart::ExtensionElements { extension_elements } => {
+                        write_extension_elements(xml, extension_elements);
+                    }
+                    ExpressionPart::Comment { text } => xml.push_str(&format!("<!--{text}-->")),
+                    ExpressionPart::ProcessingInstruction { target, data } => {
+                        xml.push_str(&format!("<?{target}"));
+                        if let Some(data) = data {
+                            xml.push(' ');
+                            xml.push_str(data);
+                        }
+                        xml.push_str("?>");
+                    }
+                }
+            }
+        }
+    }
+    xml.push_str(&format!("</{tag_name}>"));
 }
-fn write_label(xml: &mut String, label: &Label) {
-    let b = &label.bounds;
-    xml.push_str(&format!("<bpmndi:BPMNLabel><dc:Bounds x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\"/></bpmndi:BPMNLabel>", b.x,b.y,b.width,b.height));
+fn write_label(xml: &mut String, label: &Label, namespace: &str, document: &ExportContext) {
+    xml.push_str("<bpmndi:BPMNLabel");
+    if let Some(id) = &label.id {
+        write_xml_id(xml, id);
+    }
+    if let Some(reference) = &label.style_ref {
+        let (uri, local) = match reference {
+            DiStyleRef::Local(selector) => {
+                (namespace, xml_reference(document, selector).to_string())
+            }
+            DiStyleRef::Qualified(q) => (q.namespace.as_str(), q.local.to_string()),
+        };
+        xml.push_str(&format!(
+            " xmlns=\"{}\" labelStyle=\"{}\"",
+            esc(uri),
+            esc(&local)
+        ));
+    }
+    xml.push('>');
+    if let Some(b) = &label.bounds {
+        xml.push_str(&format!(
+            "<dc:Bounds x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\"/>",
+            b.x, b.y, b.width, b.height
+        ));
+    }
+    xml.push_str("</bpmndi:BPMNLabel>");
 }
 
 fn documentation(e: &Elem) -> Option<String> {
@@ -5054,11 +6841,27 @@ fn documentation(e: &Elem) -> Option<String> {
     }
     Some(d.text.clone())
 }
-fn write_doc(xml: &mut String, text: &str) {
-    if !text.is_empty() {
-        xml.push_str("<documentation>");
-        xml.push_str(&esc(text));
-        xml.push_str("</documentation>");
+fn write_doc(
+    xml: &mut String,
+    docs: &processcraft_core::bpmn_metadata::DocumentationSet,
+    extras: Option<&processcraft_core::bpmn_metadata::BaseExtras>,
+) {
+    match docs {
+        processcraft_core::bpmn_metadata::DocumentationSet::Legacy(text) if !text.is_empty() => {
+            xml.push_str(&format!(
+                "<documentation xmlns=\"{B}\">{}</documentation>",
+                esc(text)
+            ));
+        }
+        processcraft_core::bpmn_metadata::DocumentationSet::Structured(docs) => {
+            for doc in docs {
+                write_structured_documentation(xml, doc);
+            }
+        }
+        _ => {}
+    }
+    if let Some(extension) = extras.and_then(|extra| extra.extension_elements.as_ref()) {
+        write_extension_elements(xml, extension);
     }
 }
 
@@ -5067,11 +6870,11 @@ fn flow_parts(e: &Elem) -> Option<(String, Option<Expression>)> {
     let mut condition = None;
     let mut seen_doc = false;
     for c in &e.children {
-        if c.ns != B || !c.children.is_empty() {
+        if c.ns != B {
             return None;
         }
         match c.name.as_str() {
-            "documentation" if !seen_doc && c.attrs.is_empty() => {
+            "documentation" if !seen_doc && c.attrs.is_empty() && c.children.is_empty() => {
                 documentation = c.text.clone();
                 seen_doc = true;
             }

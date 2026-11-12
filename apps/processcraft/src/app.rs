@@ -72,8 +72,7 @@ fn diagram_extents(diagram: &Diagram) -> Option<(f64, f64, f64, f64)> {
         let b = &shape.bounds;
         include(b.x, b.y);
         include(b.x + b.width, b.y + b.height);
-        if let Some(l) = &shape.label {
-            let b = &l.bounds;
+        if let Some(b) = shape.label.as_ref().and_then(|label| label.bounds.as_ref()) {
             include(b.x, b.y);
             include(b.x + b.width, b.y + b.height);
         }
@@ -82,8 +81,7 @@ fn diagram_extents(diagram: &Diagram) -> Option<(f64, f64, f64, f64)> {
         for point in &edge.waypoints {
             include(point.x, point.y);
         }
-        if let Some(l) = &edge.label {
-            let b = &l.bounds;
+        if let Some(b) = edge.label.as_ref().and_then(|label| label.bounds.as_ref()) {
             include(b.x, b.y);
             include(b.x + b.width, b.y + b.height);
         } else if let Some(p) = edge.waypoints.get(edge.waypoints.len() / 2) {
@@ -179,6 +177,7 @@ pub struct ProcessCraft {
     problem_key: Option<(String, u64)>,
     problems: Vec<processcraft_core::Diagnostic>,
     docs: String,
+    docs_dirty: bool,
     condition: Option<processcraft_core::bpmn_model::Expression>,
     expression_draft: Option<inspector::ExpressionDraft>,
     catalog_draft: Option<catalog::CatalogDraft>,
@@ -186,6 +185,11 @@ pub struct ProcessCraft {
     data_draft: Option<data::DataDraft>,
     xml_id_draft: Option<inspector::XmlIdDraft>,
     di_draft: Option<di::DiDraft>,
+    documentation_draft: Option<documentation::DocumentationDraft>,
+    body_draft: Option<mixed_body::BodyDraft>,
+    metadata_draft: Option<base_metadata::MetadataDraft>,
+    style_draft: Option<di_style::StyleDraft>,
+    definitions_extra_draft: Option<definitions_extra::DefinitionsExtraDraft>,
     event_draft: Option<event::EventDraft>,
     event_catalog_draft: Option<event::EventCatalogDraft>,
     identity_page: usize,
@@ -287,6 +291,7 @@ impl Default for ProcessCraft {
             problem_key: None,
             problems: vec![],
             docs: String::new(),
+            docs_dirty: false,
             condition: None,
             expression_draft: None,
             catalog_draft: None,
@@ -294,6 +299,11 @@ impl Default for ProcessCraft {
             data_draft: None,
             xml_id_draft: None,
             di_draft: None,
+            documentation_draft: None,
+            body_draft: None,
+            metadata_draft: None,
+            style_draft: None,
+            definitions_extra_draft: None,
             event_draft: None,
             event_catalog_draft: None,
             identity_page: 0,
@@ -343,6 +353,8 @@ fn empty_definitions_metadata() -> processcraft_core::model::DefinitionsMetadata
         exporter: None,
         exporter_version: None,
         imports: Vec::new(),
+        namespaces: Vec::new(),
+        foreign_attributes: Vec::new(),
     }
 }
 impl ProcessCraft {
@@ -357,6 +369,11 @@ impl ProcessCraft {
             || self.data_draft.is_some()
             || self.xml_id_draft.is_some()
             || self.di_draft.is_some()
+            || self.documentation_draft.is_some()
+            || self.body_draft.is_some()
+            || self.metadata_draft.is_some()
+            || self.style_draft.is_some()
+            || self.definitions_extra_draft.is_some()
             || self.event_draft.is_some()
             || self.event_catalog_draft.is_some())
             && !self.commit_draft()
@@ -371,6 +388,7 @@ impl ProcessCraft {
         self.bpmn_loop = None;
         self.bpmn_activity = None;
         self.docs.clear();
+        self.docs_dirty = false;
         self.condition = None;
         self.association_direction = None;
         self.owner.clear();
@@ -460,9 +478,9 @@ impl ProcessCraft {
                                 },
                             ) = &n.details
                         {
-                            self.draft = text.clone();
+                            self.draft = text.plain_text().unwrap_or_default().to_owned();
                         }
-                        self.docs = n.documentation.clone();
+                        self.docs = n.documentation.plain_text().unwrap_or_default().to_owned();
                         self.is_node = true;
                         self.bpmn_details = n.details.clone();
                         self.bpmn_loop = n.loop_characteristics.clone();
@@ -487,7 +505,7 @@ impl ProcessCraft {
                     {
                         self.draft_name_present = f.name.is_some();
                         self.draft = f.name.clone().unwrap_or_default();
-                        self.docs = f.documentation.clone();
+                        self.docs = f.documentation.plain_text().unwrap_or_default().to_owned();
                         self.condition = f.condition.clone();
                         self.is_flow = true;
                         self.association_direction = f.association_direction;
@@ -520,6 +538,26 @@ impl ProcessCraft {
     fn commit_draft(&mut self) -> bool {
         if self.event_draft.is_some() || self.event_catalog_draft.is_some() {
             self.ctl.error = "Apply or cancel the event draft first.".into();
+            return false;
+        }
+        if self.definitions_extra_draft.is_some() {
+            self.ctl.error = "Apply or cancel the definitions details draft first.".into();
+            return false;
+        }
+        if self.style_draft.is_some() {
+            self.ctl.error = "Apply or cancel the diagram font draft first.".into();
+            return false;
+        }
+        if self.metadata_draft.is_some() {
+            self.ctl.error = "Apply or cancel the advanced metadata draft first.".into();
+            return false;
+        }
+        if self.body_draft.is_some() {
+            self.ctl.error = "Apply or cancel the content draft first.".into();
+            return false;
+        }
+        if self.documentation_draft.is_some() {
+            self.ctl.error = "Apply or cancel the documentation draft first.".into();
             return false;
         }
         if self.di_draft.is_some() {
@@ -560,7 +598,11 @@ impl ProcessCraft {
                         Some(processcraft_core::bpmn_model::NodeDetails::TextAnnotation {
                             text,
                             ..
-                        }) => text.as_deref().or(node.name.as_deref()).unwrap_or(""),
+                        }) => match text {
+                            Some(body) => body.plain_text(),
+                            None => node.name.as_deref(),
+                        }
+                        .unwrap_or(""),
                         _ => node.name.as_deref().unwrap_or(""),
                     };
                     if original != self.draft {
@@ -579,7 +621,7 @@ impl ProcessCraft {
                         name: self.draft_name_present.then(|| self.draft.clone()),
                     });
                 }
-                if self.is_node || self.is_flow {
+                if (self.is_node || self.is_flow) && self.docs_dirty {
                     mutations.push(Mutation::Documentation {
                         document_id: d.id,
                         element_id: id.clone(),
@@ -723,6 +765,7 @@ impl ProcessCraft {
             }
         }
         self.definitions_dirty = false;
+        self.docs_dirty = false;
         self.draft_dirty = false;
         true
     }
@@ -802,6 +845,11 @@ impl ProcessCraft {
             || self.data_draft.is_some()
             || self.xml_id_draft.is_some()
             || self.di_draft.is_some()
+            || self.documentation_draft.is_some()
+            || self.body_draft.is_some()
+            || self.metadata_draft.is_some()
+            || self.style_draft.is_some()
+            || self.definitions_extra_draft.is_some()
             || self.event_draft.is_some()
             || self.event_catalog_draft.is_some()
             || self.m3.has_draft()
@@ -866,9 +914,15 @@ impl ProcessCraft {
         self.data_draft = None;
         self.xml_id_draft = None;
         self.di_draft = None;
+        self.documentation_draft = None;
+        self.body_draft = None;
+        self.metadata_draft = None;
+        self.style_draft = None;
+        self.definitions_extra_draft = None;
         self.event_draft = None;
         self.event_catalog_draft = None;
         self.definitions_dirty = false;
+        self.docs_dirty = false;
         self.draft_dirty = false;
     }
     fn execute(&mut self, action: &'static str) {
@@ -1014,7 +1068,7 @@ impl ProcessCraft {
         let details = if kind == NodeKind::TextAnnotation {
             Some(processcraft_core::bpmn_model::NodeDetails::TextAnnotation {
                 text_format: None,
-                text: Some(String::new()),
+                text: Some(String::new().into()),
             })
         } else if subprocess {
             Some(processcraft_core::bpmn_model::NodeDetails::SubProcess {
@@ -1031,6 +1085,7 @@ impl ProcessCraft {
                 properties: Vec::new(),
                 io: None,
                 definitions: vec![processcraft_core::bpmn_model::EventDefinition::Timer {
+                    base: None,
                     id: None,
                     kind: Some(processcraft_core::bpmn_model::TimerKind::Duration),
                     expression: Some("PT1M".into()),
@@ -1071,6 +1126,7 @@ impl ProcessCraft {
             )
         };
         let shape = Shape {
+            label_visibility: None,
             is_horizontal: None,
             is_marker_visible: None,
             is_expanded: subprocess.then_some(true),
@@ -1084,12 +1140,14 @@ impl ProcessCraft {
             },
             label: if event || gateway {
                 Some(Label {
-                    bounds: Bounds {
+                    id: None,
+                    style_ref: None,
+                    bounds: Some(Bounds {
                         x: x + (width - 140.0) / 2.0,
                         y: y + height + 4.0,
                         width: 140.0,
                         height: 30.0,
-                    },
+                    }),
                     style: None,
                 })
             } else {
@@ -1102,6 +1160,7 @@ impl ProcessCraft {
                 document_id: d.id,
                 process_id: p.id.selector(),
                 element: Node {
+                    base_extras: None,
                     item_aware: None,
                     activity: None,
                     io_specification: None,
@@ -1109,7 +1168,7 @@ impl ProcessCraft {
                     details,
                     id: eid.clone(),
                     name: (kind != NodeKind::TextAnnotation).then(|| label.into()),
-                    documentation: String::new(),
+                    documentation: String::new().into(),
                     kind,
                     owner: String::new(),
                     contact: String::new(),
@@ -1149,6 +1208,7 @@ impl ProcessCraft {
             batch.push(Mutation::CreateCollaboration {
                 document_id: d.id,
                 collaboration: Collaboration {
+                    base: None,
                     name: None,
                     conversation_nodes: vec![],
                     conversation_links: vec![],
@@ -1166,6 +1226,7 @@ impl ProcessCraft {
         batch.push(Mutation::CreateParticipant {
             document_id: d.id,
             participant: Participant {
+                base: None,
                 id: participant.clone().into(),
                 name: Some("Pool".into()),
                 process: Some(p.id.selector()),
@@ -1175,6 +1236,7 @@ impl ProcessCraft {
             document_id: d.id,
             diagram_id: diagram.id.selector(),
             shape: Shape {
+                label_visibility: None,
                 is_horizontal: None,
                 is_marker_visible: None,
                 is_expanded: None,
@@ -1214,6 +1276,8 @@ impl ProcessCraft {
                 document_id: d.id,
                 process_id: p.id.selector(),
                 lane: Lane {
+                    base: None,
+                    child_lane_set_base: None,
                     child_lane_set_id: None,
                     id: lane.clone().into(),
                     name: Some("Lane".into()),
@@ -1225,6 +1289,7 @@ impl ProcessCraft {
                 document_id: d.id,
                 diagram_id: diagram.id.selector(),
                 shape: Shape {
+                    label_visibility: None,
                     is_horizontal: None,
                     is_marker_visible: None,
                     is_expanded: None,
@@ -1431,13 +1496,14 @@ impl ProcessCraft {
                 document_id: d.id,
                 process_id: Some(p.id.selector()),
                 flow: Flow {
+                    base_extras: None,
                     association_direction: None,
                     id: eid.clone().into(),
                     kind: self.connection_kind,
                     source: a.id.selector(),
                     target: b.id.selector(),
                     name: (self.connection_kind != FlowKind::Association).then(String::new),
-                    documentation: String::new(),
+                    documentation: String::new().into(),
                     condition: None,
                 },
             },
@@ -1445,6 +1511,7 @@ impl ProcessCraft {
                 document_id: d.id,
                 diagram_id: diagram.id.selector(),
                 edge: Edge {
+                    label_visibility: None,
                     source_element: None,
                     target_element: None,
                     id: controller::id("Edge").into(),
@@ -1995,6 +2062,7 @@ mod tests {
         let node: XmlId = "Node".parse().unwrap();
         let shape: XmlId = "Shape".parse().unwrap();
         doc.processes[0].nodes.push(Node {
+            base_extras: None,
             item_aware: None,
             activity: None,
             io_specification: None,
@@ -2002,12 +2070,13 @@ mod tests {
             details: None,
             id: node.clone().into(),
             name: Some("Task".into()),
-            documentation: String::new(),
+            documentation: String::new().into(),
             kind: NodeKind::Task,
             owner: String::new(),
             contact: String::new(),
         });
         doc.diagrams[0].shapes.push(Shape {
+            label_visibility: None,
             is_horizontal: None,
             is_marker_visible: None,
             is_expanded: None,
@@ -2118,11 +2187,15 @@ mod tests {
     #[test]
     fn fit_extents_include_external_label_and_edge() {
         let diagram = Diagram {
+            documentation: None,
+            label_styles: Vec::new(),
+            resolution: None,
             name: None,
             id: "Diagram".parse().unwrap(),
             plane_id: "Plane".parse().unwrap(),
             plane: "Process".parse().unwrap(),
             shapes: vec![Shape {
+                label_visibility: None,
                 is_horizontal: None,
                 is_marker_visible: None,
                 is_expanded: None,
@@ -2135,17 +2208,20 @@ mod tests {
                     height: 40.0,
                 },
                 label: Some(Label {
-                    bounds: Bounds {
+                    id: None,
+                    style_ref: None,
+                    bounds: Some(Bounds {
                         x: 0.0,
                         y: 74.0,
                         width: 140.0,
                         height: 30.0,
-                    },
+                    }),
                     style: None,
                 }),
                 style: None,
             }],
             edges: vec![Edge {
+                label_visibility: None,
                 source_element: None,
                 target_element: None,
                 id: "Edge".parse().unwrap(),
@@ -2232,6 +2308,7 @@ mod tests {
         let mut app = ProcessCraft::default();
         app.add(NodeKind::IntermediateCatchEvent);
         let link = EventDefinition::Link {
+            base: None,
             id: Some("LinkDefinition".parse().unwrap()),
             name: "handoff".into(),
             sources: Vec::new(),
@@ -2259,6 +2336,7 @@ mod tests {
         );
         app.add(NodeKind::IntermediateThrowEvent);
         let compensate = EventDefinition::Compensate {
+            base: None,
             id: None,
             wait_for_completion: Some(false),
             activity_ref: None,
@@ -2295,7 +2373,10 @@ mod tests {
             is_interrupting: None,
             properties: Vec::new(),
             io: None,
-            definitions: vec![EventDefinition::Cancel { id: None }],
+            definitions: vec![EventDefinition::Cancel {
+                base: None,
+                id: None,
+            }],
             attached_to: Some(transaction),
             cancel_activity: Some(true),
         });
@@ -2327,15 +2408,18 @@ mod tests {
         let mut project = crate::controller::blank_project();
         let document = std::sync::Arc::make_mut(&mut project.documents[0]);
         document.event_resources.push(EventResource::Message {
+            base: None,
             item_ref: None,
             id: message.local.clone().into(),
             name: None,
         });
         document.catalog.interfaces.push(Interface {
+            base: None,
             id: None,
             name: "Service".into(),
             implementation_ref: None,
             operations: vec![Operation {
+                base: None,
                 id: Some(operation.local.clone().into()),
                 name: "Send".into(),
                 implementation_ref: None,
@@ -2492,9 +2576,10 @@ mod tests {
         let mut project = controller::blank_project();
         let document = std::sync::Arc::make_mut(&mut project.documents[0]);
         document.processes[0].nodes.push(Node {
+            base_extras: None,
             id: "Note".parse().unwrap(),
             name: Some("Old body".into()),
-            documentation: String::new(),
+            documentation: String::new().into(),
             kind: NodeKind::TextAnnotation,
             item_aware: None,
             details: Some(NodeDetails::TextAnnotation {
@@ -2513,6 +2598,7 @@ mod tests {
         app.select(Some(selected.clone()));
         assert_eq!(app.draft, "Old body");
         app.docs = "Description".into();
+        app.docs_dirty = true;
         app.draft_dirty = true;
         assert!(app.commit_draft(), "{}", app.ctl.error);
         let snapshot = app.ctl.session.snapshot();
@@ -2531,7 +2617,7 @@ mod tests {
             .unwrap();
         assert!(node.name.is_none());
         assert!(
-            matches!(&node.details, Some(NodeDetails::TextAnnotation { text: Some(text), .. }) if text == "New body")
+            matches!(&node.details, Some(NodeDetails::TextAnnotation { text: Some(text), .. }) if text.plain_text() == Some("New body"))
         );
         app.history(Request::Undo);
         assert_eq!(app.draft, "Old body");
@@ -2551,14 +2637,15 @@ mod tests {
             .unwrap();
         assert!(node.name.is_none());
         assert!(
-            matches!(&node.details, Some(NodeDetails::TextAnnotation { text: Some(text), .. }) if text == "A note")
+            matches!(&node.details, Some(NodeDetails::TextAnnotation { text: Some(text), .. }) if text.plain_text() == Some("A note"))
         );
         app.docs = "Description".into();
+        app.docs_dirty = true;
         app.draft_dirty = true;
         assert!(app.commit_draft(), "{}", app.ctl.error);
         let snapshot = app.ctl.session.snapshot();
         assert!(
-            matches!(&processcraft_core::queries::find_node(&snapshot.project.documents[0], &selected).unwrap().details, Some(NodeDetails::TextAnnotation { text: Some(text), .. }) if text == "A note")
+            matches!(&processcraft_core::queries::find_node(&snapshot.project.documents[0], &selected).unwrap().details, Some(NodeDetails::TextAnnotation { text: Some(text), .. }) if text.plain_text() == Some("A note"))
         );
         app.history(Request::Undo);
         app.history(Request::Redo);
@@ -2567,7 +2654,7 @@ mod tests {
             .unwrap();
         assert!(node.name.is_none());
         assert!(
-            matches!(&node.details, Some(NodeDetails::TextAnnotation { text: Some(text), .. }) if text == "A note")
+            matches!(&node.details, Some(NodeDetails::TextAnnotation { text: Some(text), .. }) if text.plain_text() == Some("A note"))
         );
     }
 
@@ -2597,6 +2684,7 @@ mod tests {
                 ),
                 ("ex".into(), "urn:example".into()),
             ],
+            foreign_attributes: Vec::new(),
         });
         app.bpmn_details = Some(NodeDetails::Event {
             definition_refs: Vec::new(),
@@ -2605,6 +2693,7 @@ mod tests {
             properties: Vec::new(),
             io: None,
             definitions: vec![EventDefinition::Timer {
+                base: None,
                 id: None,
                 kind: Some(TimerKind::Duration),
                 expression: Some(expression.clone()),
@@ -2617,7 +2706,11 @@ mod tests {
         if let Some(NodeDetails::Event { definitions, .. }) = &mut app.bpmn_details
             && let EventDefinition::Timer { expression, .. } = &mut definitions[0]
         {
-            expression.as_mut().unwrap().set_text("PT5M".into());
+            expression
+                .as_mut()
+                .unwrap()
+                .set_text("PT5M".into())
+                .unwrap();
         }
         app.draft_dirty = true;
         assert!(app.commit_draft(), "{}", app.ctl.error);
@@ -2632,7 +2725,7 @@ mod tests {
             panic!("timer missing")
         };
         let mut expected = expression.clone();
-        expected.set_text("PT5M".into());
+        expected.set_text("PT5M".into()).unwrap();
         assert_eq!(updated.as_ref(), Some(&expected));
         app.history(Request::Undo);
         let Some(NodeDetails::Event { definitions, .. }) = &app.bpmn_details else {
@@ -2670,6 +2763,7 @@ mod tests {
             properties: Vec::new(),
             io: None,
             definitions: vec![EventDefinition::Timer {
+                base: None,
                 id: None,
                 kind: Some(TimerKind::Duration),
                 expression: Some("PT5M".into()),
@@ -2684,11 +2778,11 @@ mod tests {
         assert_eq!(node.details, app.bpmn_details);
         app.history(Request::Undo);
         assert!(
-            matches!(&app.bpmn_details, Some(NodeDetails::Event { definitions, .. }) if matches!(&definitions[0], EventDefinition::Timer { expression, .. } if expression.as_ref().is_some_and(|value| value.text() == "PT1M")))
+            matches!(&app.bpmn_details, Some(NodeDetails::Event { definitions, .. }) if matches!(&definitions[0], EventDefinition::Timer { expression, .. } if expression.as_ref().is_some_and(|value| value.plain_text() == Some("PT1M"))))
         );
         app.history(Request::Redo);
         assert!(
-            matches!(&app.bpmn_details, Some(NodeDetails::Event { definitions, .. }) if matches!(&definitions[0], EventDefinition::Timer { expression, .. } if expression.as_ref().is_some_and(|value| value.text() == "PT5M")))
+            matches!(&app.bpmn_details, Some(NodeDetails::Event { definitions, .. }) if matches!(&definitions[0], EventDefinition::Timer { expression, .. } if expression.as_ref().is_some_and(|value| value.plain_text() == Some("PT5M"))))
         );
     }
 }
@@ -2696,20 +2790,32 @@ mod tests {
 #[path = "app_m2.rs"]
 mod m2;
 
+#[path = "app_base_metadata.rs"]
+mod base_metadata;
 #[path = "app_canvas.rs"]
 mod canvas;
 #[path = "app_catalog.rs"]
 mod catalog;
 #[path = "app_data.rs"]
 mod data;
+#[path = "app_definitions_extra.rs"]
+mod definitions_extra;
 #[path = "app_di.rs"]
 mod di;
+#[path = "app_di_style.rs"]
+mod di_style;
+#[path = "app_documentation.rs"]
+mod documentation;
 #[path = "app_event.rs"]
 mod event;
 #[path = "app_inspector.rs"]
 mod inspector;
+#[path = "app_mixed_body.rs"]
+mod mixed_body;
 #[path = "app_shell.rs"]
 mod shell;
+#[path = "app_xml.rs"]
+mod xml;
 
 #[path = "app_tree.rs"]
 mod tree;

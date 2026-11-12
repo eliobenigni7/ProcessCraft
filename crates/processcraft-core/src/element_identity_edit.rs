@@ -264,9 +264,23 @@ fn document_selectors(d: &mut BpmnDocument, visit: &mut impl FnMut(&mut ElementS
         visit(&mut diagram.plane);
         for shape in &mut diagram.shapes {
             visit(&mut shape.element);
+            if let Some(Label {
+                style_ref: Some(DiStyleRef::Local(reference)),
+                ..
+            }) = &mut shape.label
+            {
+                visit(reference);
+            }
         }
         for edge in &mut diagram.edges {
             visit(&mut edge.element);
+            if let Some(Label {
+                style_ref: Some(DiStyleRef::Local(reference)),
+                ..
+            }) = &mut edge.label
+            {
+                visit(reference);
+            }
             if let Some(value) = &mut edge.source_element {
                 visit(value);
             }
@@ -290,6 +304,13 @@ fn expression_id(
 ) {
     if let crate::bpmn_model::Expression::Structured(data) = expression {
         optional_identity(&mut data.id, visit);
+        if let crate::bpmn_model::ExpressionBody::Mixed { parts } = &mut data.text {
+            for part in parts {
+                if let crate::bpmn_model::ExpressionPart::Documentation { documentation } = part {
+                    optional_identity(&mut documentation.id, visit);
+                }
+            }
+        }
     }
 }
 fn metadata_ids(
@@ -370,6 +391,10 @@ fn scope_ids(
         use crate::bpmn_model::{LoopCharacteristics, NodeDetails};
         if let Some(characteristics) = &mut node.loop_characteristics {
             match characteristics {
+                LoopCharacteristics::Standard { id, .. }
+                | LoopCharacteristics::MultiInstance { id, .. } => optional_identity(id, visit),
+            }
+            match characteristics {
                 LoopCharacteristics::Standard { condition, .. } => {
                     if let Some(value) = condition {
                         expression_id(value, visit);
@@ -431,7 +456,7 @@ fn event_definition_ids(
 ) {
     use crate::bpmn_model::EventDefinition;
     match definition {
-        EventDefinition::Conditional { id, expression } => {
+        EventDefinition::Conditional { id, expression, .. } => {
             optional_identity(id, visit);
             expression_id(expression, visit);
         }
@@ -446,9 +471,9 @@ fn event_definition_ids(
         | EventDefinition::Error { id, .. }
         | EventDefinition::Escalation { id, .. }
         | EventDefinition::Link { id, .. }
-        | EventDefinition::Cancel { id }
+        | EventDefinition::Cancel { id, .. }
         | EventDefinition::Compensate { id, .. }
-        | EventDefinition::Terminate { id } => optional_identity(id, visit),
+        | EventDefinition::Terminate { id, .. } => optional_identity(id, visit),
     }
 }
 fn event_io_ids(io: &mut crate::bpmn_model::EventIo, visit: &mut impl FnMut(&mut ElementIdentity)) {
@@ -469,6 +494,28 @@ fn event_io_ids(io: &mut crate::bpmn_model::EventIo, visit: &mut impl FnMut(&mut
     }
 }
 fn document_ids(d: &mut BpmnDocument, visit: &mut impl FnMut(&mut ElementIdentity)) {
+    for extension in &mut d.extensions {
+        for documentation in &mut extension.documentation {
+            optional_identity(&mut documentation.id, visit);
+        }
+    }
+    for relationship in &mut d.relationships {
+        optional_identity(&mut relationship.id, visit);
+    }
+    crate::metadata_visit::visit_base_metadata_mut(d, |_, metadata| {
+        if let Some(metadata) = metadata {
+            for documentation in &mut metadata.documentation {
+                optional_identity(&mut documentation.id, visit);
+            }
+        }
+    });
+    crate::metadata_visit::visit_legacy_metadata_mut(d, |_, documentation, _| {
+        if let crate::bpmn_metadata::DocumentationSet::Structured(items) = documentation {
+            for item in items {
+                optional_identity(&mut item.id, visit);
+            }
+        }
+    });
     visit(&mut d.definitions_id);
     for definition in &mut d.root_event_definitions {
         event_definition_ids(definition, visit);
@@ -557,11 +604,20 @@ fn document_ids(d: &mut BpmnDocument, visit: &mut impl FnMut(&mut ElementIdentit
     for diagram in &mut d.diagrams {
         visit(&mut diagram.id);
         visit(&mut diagram.plane_id);
+        for style in &mut diagram.label_styles {
+            optional_identity(&mut style.id, visit);
+        }
         for shape in &mut diagram.shapes {
             visit(&mut shape.id);
+            if let Some(label) = &mut shape.label {
+                optional_identity(&mut label.id, visit);
+            }
         }
         for edge in &mut diagram.edges {
             visit(&mut edge.id);
+            if let Some(label) = &mut edge.label {
+                optional_identity(&mut label.id, visit);
+            }
         }
     }
 }
@@ -577,6 +633,8 @@ enum QNameKind {
     Escalation,
     Activity,
     EventDefinition,
+    DiLabelStyle,
+    RelationshipElement,
 }
 fn optional_qname(
     value: &mut Option<crate::bpmn_model::QNameRef>,
@@ -808,13 +866,47 @@ fn document_qnames(
     d: &mut BpmnDocument,
     visit: &mut impl FnMut(&mut crate::bpmn_model::QNameRef, QNameKind),
 ) {
+    for relationship in &mut d.relationships {
+        for reference in relationship
+            .sources
+            .iter_mut()
+            .chain(&mut relationship.targets)
+        {
+            visit(reference, QNameKind::RelationshipElement);
+        }
+    }
+    for diagram in &mut d.diagrams {
+        for shape in &mut diagram.shapes {
+            if let Some(Label {
+                style_ref: Some(DiStyleRef::Qualified(reference)),
+                ..
+            }) = &mut shape.label
+            {
+                visit(reference, QNameKind::DiLabelStyle);
+            }
+        }
+        for edge in &mut diagram.edges {
+            if let Some(Label {
+                style_ref: Some(DiStyleRef::Qualified(reference)),
+                ..
+            }) = &mut edge.label
+            {
+                visit(reference, QNameKind::DiLabelStyle);
+            }
+        }
+    }
     for definition in &mut d.root_event_definitions {
         event_definition_qnames(definition, visit);
     }
     for resource in &mut d.event_resources {
-        if let crate::bpmn_model::EventResource::Message { item_ref, .. } = resource {
-            optional_qname(item_ref, QNameKind::Item, visit);
-        }
+        use crate::bpmn_model::EventResource;
+        let reference = match resource {
+            EventResource::Message { item_ref, .. } => item_ref,
+            EventResource::Signal { structure_ref, .. }
+            | EventResource::Error { structure_ref, .. }
+            | EventResource::Escalation { structure_ref, .. } => structure_ref,
+        };
+        optional_qname(reference, QNameKind::Item, visit);
     }
     for interface in &mut d.catalog.interfaces {
         for operation in &mut interface.operations {
@@ -867,9 +959,9 @@ fn event_definition_identity(
         | EventDefinition::Escalation { id, .. }
         | EventDefinition::Conditional { id, .. }
         | EventDefinition::Link { id, .. }
-        | EventDefinition::Cancel { id }
+        | EventDefinition::Cancel { id, .. }
         | EventDefinition::Compensate { id, .. }
-        | EventDefinition::Terminate { id }
+        | EventDefinition::Terminate { id, .. }
         | EventDefinition::Timer { id, .. } => id.as_ref(),
     }
 }
@@ -887,7 +979,7 @@ pub(crate) fn set_xml_id(
         .iter_mut()
         .find(|d| d.id == document_id)
         .ok_or("document not found")?;
-    if !matches!(doc.capability, Capability::Editable) {
+    if !matches!(doc.capability, Capability::Editable) || doc.has_opaque_xml() {
         return Err("protected source prevents safe reference rewriting".into());
     }
     let doc = std::sync::Arc::make_mut(doc);
@@ -973,6 +1065,18 @@ pub(crate) fn set_xml_id(
         Some(QNameKind::EventDefinition)
     } else if crate::queries::find_node(doc, selected).is_some_and(|node| node.kind.is_activity()) {
         Some(QNameKind::Activity)
+    } else if doc
+        .diagrams
+        .iter()
+        .flat_map(|diagram| &diagram.label_styles)
+        .any(|style| {
+            style
+                .id
+                .as_ref()
+                .is_some_and(|id| id.selector() == *selected)
+        })
+    {
+        Some(QNameKind::DiLabelStyle)
     } else if doc.processes.iter().any(|v| v.id.selector() == *selected) {
         Some(QNameKind::Process)
     } else if doc
@@ -996,8 +1100,8 @@ pub(crate) fn set_xml_id(
     let mut qname_referenced = false;
     let mut has_qnames = false;
     document_qnames(doc, &mut |reference, kind| {
-        has_qnames |= Some(kind) == target_kind;
-        if Some(kind) == target_kind
+        has_qnames |= Some(kind) == target_kind || kind == QNameKind::RelationshipElement;
+        if (Some(kind) == target_kind || kind == QNameKind::RelationshipElement)
             && old_xml_id.as_ref() == Some(&reference.local)
             && namespace.as_deref() == Some(reference.namespace.as_str())
         {
@@ -1038,7 +1142,7 @@ pub(crate) fn set_xml_id(
         namespace.as_deref(),
     ) {
         document_qnames(doc, &mut |reference, kind| {
-            if Some(kind) == target_kind
+            if (Some(kind) == target_kind || kind == QNameKind::RelationshipElement)
                 && &reference.local == old
                 && reference.namespace == namespace
             {
@@ -1074,24 +1178,40 @@ pub(crate) fn promote_null_identity(
         .iter_mut()
         .find(|d| d.id == document_id)
         .ok_or("document not found")?;
-    if !matches!(doc.capability, Capability::Editable) {
+    if !matches!(doc.capability, Capability::Editable) || (xml_id.is_some() && doc.has_opaque_xml())
+    {
         return Err("protected source prevents identity promotion".into());
     }
-    let parent_path = model_path
-        .strip_suffix("/id")
-        .ok_or("identity path must end in /id")?;
+    let (parent_path, field) = ["child_lane_set_id", "lane_set_id", "id"]
+        .into_iter()
+        .find_map(|field| {
+            model_path
+                .strip_suffix(&format!("/{field}"))
+                .map(|parent| (parent, field))
+        })
+        .ok_or("identity path must identify an optional element or lane-set ID")?;
     let mut value = serde_json::to_value(doc.as_ref()).map_err(|e| e.to_string())?;
     let parent = value
         .pointer_mut(parent_path)
         .and_then(serde_json::Value::as_object_mut)
         .ok_or("identity parent not found")?;
-    if parent.get("id").is_some_and(|value| !value.is_null()) {
+    if field != "id" {
+        let base = if field == "lane_set_id" {
+            "lane_set_base"
+        } else {
+            "child_lane_set_base"
+        };
+        if !parent.get(base).is_some_and(|value| !value.is_null()) {
+            return Err("lane-set wrapper is not explicitly present".into());
+        }
+    }
+    if parent.get(field).is_some_and(|value| !value.is_null()) {
         return Err("identity is not null or absent".into());
     }
     let native_id = crate::ids::NativeElementId::new();
     let identity = ElementIdentity::Native { native_id, xml_id };
     parent.insert(
-        "id".into(),
+        field.into(),
         serde_json::to_value(identity).map_err(|e| e.to_string())?,
     );
     let mut candidate: BpmnDocument = serde_json::from_value(value.clone())

@@ -21,19 +21,21 @@ fn sample(tiled: bool) -> BpmnDocument {
     for (i, name) in labels.iter().enumerate() {
         let node: processcraft_core::ids::ElementIdentity = id(&format!("node{i}"));
         nodes.push(Node {
+            base_extras: None,
             item_aware: None,
             activity: None,
             io_specification: None,
             loop_characteristics: None,
             id: node.clone(),
             name: Some((*name).into()),
-            documentation: String::new(),
+            documentation: String::new().into(),
             kind: NodeKind::Task,
             details: None,
             owner: String::new(),
             contact: String::new(),
         });
         shapes.push(Shape {
+            label_visibility: None,
             is_horizontal: None,
             is_marker_visible: None,
             is_expanded: None,
@@ -54,20 +56,25 @@ fn sample(tiled: bool) -> BpmnDocument {
         });
     }
     d.processes.push(Process {
+        base_extras: None,
         is_executable: Some(false),
         io_specification: None,
         lane_set_id: None,
+        lane_set_base: None,
         groups: vec![],
         data_objects: vec![],
         data_associations: vec![],
         id: id("process"),
         name: Some(String::new()),
-        documentation: String::new(),
+        documentation: String::new().into(),
         nodes,
         lanes: vec![],
         flows: vec![],
     });
     d.diagrams.push(Diagram {
+        documentation: None,
+        resolution: None,
+        label_styles: vec![],
         name: None,
         id: id("diagram"),
         plane_id: id("plane"),

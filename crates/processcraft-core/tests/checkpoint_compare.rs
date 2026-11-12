@@ -14,6 +14,8 @@ fn comparison_keeps_native_element_identity_while_reporting_xml_id_changes() {
         },
     );
     document.definitions = Some(DefinitionsMetadata {
+        namespaces: vec![],
+        foreign_attributes: vec![],
         target_namespace: String::new(),
         imports: vec![],
         name: None,
@@ -56,6 +58,14 @@ fn comparison_keeps_native_element_identity_while_reporting_xml_id_changes() {
                     && difference.after == "AssignedDefinitions"
             })
     );
+    let before_query = project.content_identity().unwrap();
+    let expected = serde_json::to_value(&comparison).unwrap();
+    let fields = queries::checkpoint_fields(&project, checkpoint_id).unwrap();
+    assert!(fields.len() > 10);
+    for field in fields {
+        assert_eq!(expected.pointer(&field.path), Some(&field.value));
+    }
+    assert_eq!(project.content_identity().unwrap(), before_query);
     assert!(
         project.checkpoints[0].content.documents[0]
             .definitions_id
@@ -69,6 +79,8 @@ fn comparison_reports_definitions_values_without_inventing_semantic_elements() {
     let mut project = ProjectData::new("Metadata".into());
     let mut document = BpmnDocument::new("Model".into(), "Definitions".parse().unwrap());
     document.definitions = Some(DefinitionsMetadata {
+        namespaces: vec![],
+        foreign_attributes: vec![],
         imports: vec![],
         target_namespace: "urn:original".into(),
         name: None,
@@ -132,21 +144,24 @@ fn comparison_separates_rename_properties_geometry_and_frozen_context() {
     let mut project = ProjectData::new("Analysis".into());
     let mut document = BpmnDocument::new("Model".into(), "Definitions".parse().unwrap());
     document.processes.push(Process {
+        base_extras: None,
         is_executable: Some(false),
         io_specification: None,
         lane_set_id: None,
+        lane_set_base: None,
         groups: vec![],
         id: "Process".parse().unwrap(),
         name: Some("Process".into()),
-        documentation: String::new(),
+        documentation: String::new().into(),
         data_objects: vec![],
         data_associations: vec![],
         nodes: vec![Node {
+            base_extras: None,
             item_aware: None,
             activity: None,
             id: "Task".parse().unwrap(),
             name: Some("Before".into()),
-            documentation: String::new(),
+            documentation: String::new().into(),
             kind: NodeKind::Task,
             details: None,
             loop_characteristics: None,
@@ -158,11 +173,15 @@ fn comparison_separates_rename_properties_geometry_and_frozen_context() {
         flows: vec![],
     });
     document.diagrams.push(Diagram {
+        documentation: None,
+        resolution: None,
+        label_styles: vec![],
         name: None,
         id: "Diagram".parse().unwrap(),
         plane_id: "Plane".parse().unwrap(),
         plane: "Process".parse().unwrap(),
         shapes: vec![Shape {
+            label_visibility: None,
             is_horizontal: None,
             is_marker_visible: None,
             id: "Shape".parse().unwrap(),
@@ -246,4 +265,62 @@ fn comparison_separates_rename_properties_geometry_and_frozen_context() {
             .as_deref(),
         Some("Before")
     );
+}
+
+#[test]
+fn comparison_reports_unidentified_root_metadata_without_fabricating_elements() {
+    let mut project = ProjectData::new("Anonymous root metadata".into());
+    let mut document = BpmnDocument::new("Model".into(), "Definitions".parse().unwrap());
+    document.extensions.push(DefinitionsExtension {
+        documentation: vec![],
+        definition: None,
+        must_understand: None,
+    });
+    document.relationships.push(DefinitionsRelationship {
+        id: None,
+        base: None,
+        relationship_type: "trace".into(),
+        direction: None,
+        sources: vec![],
+        targets: vec![],
+    });
+    let document_id = document.id;
+    project.documents.push(Arc::new(document));
+    let checkpoint_id = CheckpointId::new();
+    project.checkpoints.push(Checkpoint {
+        id: checkpoint_id,
+        name: "Before".into(),
+        created_unix_ms: 1,
+        content: FrozenProject::capture(&project),
+    });
+    let document = Arc::make_mut(&mut project.documents[0]);
+    document.extensions[0].must_understand = Some(false);
+    document.relationships[0].relationship_type = "explain".into();
+    let before_query = project.content_identity().unwrap();
+    let comparison = queries::compare_checkpoint(&project, checkpoint_id).unwrap();
+    assert!(comparison.added_elements.is_empty());
+    assert!(comparison.removed_elements.is_empty());
+    assert_eq!(comparison.changed_document_properties, vec![document_id]);
+    let root = comparison
+        .changed_properties
+        .iter()
+        .find(|change| {
+            change.key.xml_id
+                == "Definitions"
+                    .parse::<processcraft_core::ids::ElementSelector>()
+                    .unwrap()
+        })
+        .unwrap();
+    assert!(
+        root.properties
+            .iter()
+            .any(|property| property.property == "content.extensions")
+    );
+    assert!(
+        root.properties
+            .iter()
+            .any(|property| property.property == "content.relationships")
+    );
+    assert_eq!(project.content_identity().unwrap(), before_query);
+    assert!(project.documents[0].relationships[0].id.is_none());
 }

@@ -186,6 +186,7 @@ impl ProcessCraft {
                 self.ctl.mutate(vec![Mutation::CreateCollaboration {
                     document_id: id,
                     collaboration: Collaboration {
+                        base: None,
                         name: None,
                         id: controller::id("Collaboration").into(),
                         participants: vec![],
@@ -355,6 +356,11 @@ impl ProcessCraft {
                     return;
                 };
                 let node = ConversationNode {
+                    base: collaboration
+                        .conversation_nodes
+                        .iter()
+                        .find(|node| node.id.selector() == node_id)
+                        .and_then(|node| node.base.clone()),
                     id: identity,
                     name: self
                         .collaboration
@@ -400,6 +406,7 @@ impl ProcessCraft {
                         document_id: id,
                         diagram_id: diagram.id.selector(),
                         shape: Shape {
+                            label_visibility: None,
                             is_horizontal: None,
                             is_marker_visible: None,
                             id: controller::id("ConversationShape").into(),
@@ -537,6 +544,7 @@ impl ProcessCraft {
             let mut mutations = vec![Mutation::CreateConversationLink {
                 document_id: id,
                 link: ConversationLink {
+                    base: None,
                     id: link_id.clone().into(),
                     name: Some(String::new()),
                     source: participant.clone(),
@@ -572,6 +580,7 @@ impl ProcessCraft {
                     document_id: id,
                     diagram_id: diagram.id.selector(),
                     edge: Edge {
+                        label_visibility: None,
                         source_element: None,
                         target_element: None,
                         id: controller::id("ConversationEdge").into(),
@@ -638,7 +647,7 @@ impl ProcessCraft {
                     let mutation = if self.collaboration.data_store {
                         Mutation::CreateDataStore {
                             document_id: doc.id,
-                            data_store: processcraft_core::bpmn_data::DataStore {
+                            data_store: processcraft_core::bpmn_data::DataStore { base: None,
                                 item_aware: None,
                                 id: Some(controller::id("DataStore").into()),
                                 name: Some(self.collaboration.data_name.clone()),
@@ -654,7 +663,7 @@ impl ProcessCraft {
                         Mutation::CreateDataObject {
                             document_id: doc.id,
                             scope_id: scope.id.selector(),
-                            data_object: processcraft_core::bpmn_data::DataObject {
+                            data_object: processcraft_core::bpmn_data::DataObject { base: None,
                                 item_aware: None,
                                 id: Some(controller::id("DataObject").into()),
                                 name: Some(self.collaboration.data_name.clone()),
@@ -755,11 +764,11 @@ impl ProcessCraft {
                     let mut mutations = vec![Mutation::CreateElement {
                         document_id: doc.id,
                         process_id: scope.id.selector(),
-                        element: Node {
+                        element: Node { base_extras: None,
                             item_aware: None,
                             id: node_id.clone().into(),
                             name: Some(self.collaboration.reference_name.clone()),
-                            documentation: String::new(),
+                            documentation: String::new().into(),
                             kind,
                             details: Some(details),
                             loop_characteristics: None,
@@ -776,7 +785,7 @@ impl ProcessCraft {
                         mutations.push(Mutation::CreateShape {
                             document_id: doc.id,
                             diagram_id: diagram.id.selector(),
-                            shape: Shape { is_horizontal: None, is_marker_visible: None,
+                            shape: Shape { label_visibility: None,  is_horizontal: None, is_marker_visible: None,
                                 id: controller::id("DataShape").into(),
                                 element: node_id.into(),
                                 is_expanded: None,
@@ -900,7 +909,7 @@ impl ProcessCraft {
                             io.output_sets.push(Default::default());
                         }
                         let port_id = controller::id("DataPort");
-                        let port = processcraft_core::bpmn_data::DataPort {
+                        let port = processcraft_core::bpmn_data::DataPort { base: None,
                             item_aware: None,
                             is_collection: None,
                             id: Some(port_id.clone().into()),
@@ -936,7 +945,7 @@ impl ProcessCraft {
                             mutations.push(Mutation::CreateDataAssociation {
                                 document_id: doc.id,
                                 scope_id: scope.id.selector(),
-                                association: processcraft_core::bpmn_data::DataAssociation {
+                                association: processcraft_core::bpmn_data::DataAssociation { base: None,
                                     transformation: None,
                                     assignments: Vec::new(),
                                     id: Some(assoc_id.clone().into()),
@@ -965,7 +974,7 @@ impl ProcessCraft {
                                 mutations.push(Mutation::CreateEdge {
                                     document_id: doc.id,
                                     diagram_id: diagram.id.selector(),
-                                    edge: Edge { source_element: None, target_element: None,
+                                    edge: Edge { label_visibility: None,  source_element: None, target_element: None,
                                         id: controller::id("DataAssociationEdge").into(),
                                         element: assoc_id.into(),
                                         waypoints,
@@ -1054,9 +1063,11 @@ impl ProcessCraft {
                         let value_id = controller::id("CategoryValue");
                         let group_id = controller::id("Group");
                         let category = processcraft_core::bpmn_model::Category {
+                            base: None,
                             id: category_id.into(),
                             name: Some(self.collaboration.category_name.clone()),
                             values: vec![processcraft_core::bpmn_model::CategoryValue {
+                                base: None,
                                 id: value_id.clone().into(),
                                 value: Some(self.collaboration.category_value.clone()),
                             }],
@@ -1070,6 +1081,7 @@ impl ProcessCraft {
                                 document_id: doc.id,
                                 scope_id: scope.id.selector(),
                                 group: processcraft_core::bpmn_model::Group {
+                                    base: None,
                                     id: group_id.clone().into(),
                                     category_value_ref: Some(value_id.into()),
                                 },
@@ -1083,6 +1095,7 @@ impl ProcessCraft {
                                 document_id: doc.id,
                                 diagram_id: diagram.id.selector(),
                                 shape: Shape {
+                                    label_visibility: None,
                                     is_horizontal: None,
                                     is_marker_visible: None,
                                     id: controller::id("GroupShape").into(),
@@ -1129,8 +1142,8 @@ impl ProcessCraft {
                     if ui.button("Create choreography and diagram").clicked() {
                         if self.collaboration.root_name.trim().is_empty() || self.collaboration.root_first.trim().is_empty() || self.collaboration.root_second.trim().is_empty() || self.collaboration.root_task.trim().is_empty() { self.ctl.error = "Enter a choreography, two participants, and a first task.".into(); return; }
                         let root = controller::id("Choreography"); let diagram = controller::id("ChoreographyDiagram"); let task = controller::id("ChoreographyTask"); let first = controller::id("Participant"); let second = controller::id("Participant");
-                        let choreography = processcraft_core::bpmn_collaboration::Choreography { id:root.clone().into(), name:Some(self.collaboration.root_name.clone()), participants:vec![Participant {id:first.clone().into(),name:Some(self.collaboration.root_first.clone()),process:None},Participant {id:second.clone().into(),name:Some(self.collaboration.root_second.clone()),process:None}],message_flows:vec![],activities:vec![processcraft_core::bpmn_collaboration::ChoreographyActivity{id:task.clone().into(),name:Some(self.collaboration.root_task.clone()),participant_refs:vec![first.clone().into(),second.into()],initiating_participant:first.into(),message_flow_refs:vec![]}],sequence_flows:vec![] };
-                        let diagram_value = Diagram { name:None, id:diagram.clone().into(),plane_id:controller::id("ChoreographyPlane").into(),plane:root.clone().into(),shapes:vec![Shape{ is_horizontal: None, is_marker_visible: None,id:controller::id("ChoreographyShape").into(),element:task.into(),is_expanded:None,bounds:Bounds{x:80.0,y:80.0,width:180.0,height:100.0},label:None,style:None}],edges:vec![] };
+                        let choreography = processcraft_core::bpmn_collaboration::Choreography { base: None,  id:root.clone().into(), name:Some(self.collaboration.root_name.clone()), participants:vec![Participant {base: None,id:first.clone().into(),name:Some(self.collaboration.root_first.clone()),process:None},Participant {base: None,id:second.clone().into(),name:Some(self.collaboration.root_second.clone()),process:None}],message_flows:vec![],activities:vec![processcraft_core::bpmn_collaboration::ChoreographyActivity{base: None,id:task.clone().into(),name:Some(self.collaboration.root_task.clone()),participant_refs:vec![first.clone().into(),second.into()],initiating_participant:first.into(),message_flow_refs:vec![]}],sequence_flows:vec![] };
+                        let diagram_value = Diagram { documentation: None, label_styles: Vec::new(), resolution: None,  name:None, id:diagram.clone().into(),plane_id:controller::id("ChoreographyPlane").into(),plane:root.clone().into(),shapes:vec![Shape{ label_visibility: None, is_horizontal: None, is_marker_visible: None,id:controller::id("ChoreographyShape").into(),element:task.into(),is_expanded:None,bounds:Bounds{x:80.0,y:80.0,width:180.0,height:100.0},label:None,style:None}],edges:vec![] };
                         if self.commit_draft() && self.ctl.mutate(vec![Mutation::CreateChoreography {document_id:doc.id,choreography},Mutation::CreateDiagram {document_id:doc.id,diagram:diagram_value}]) {
                             self.diagram_id = Some(diagram.into()); self.process_id = None;
                             self.collaboration.root_name.clear(); self.collaboration.root_first.clear(); self.collaboration.root_second.clear(); self.collaboration.root_task.clear(); self.collaboration.root_dirty = false;
@@ -1165,9 +1178,9 @@ impl ProcessCraft {
                     let (Some(first),Some(second)) = (self.collaboration.choreography_first.clone(),self.collaboration.choreography_second.clone()) else { self.ctl.error = "Select two participants.".into(); return; };
                     if first == second { self.ctl.error = "Select two different participants.".into(); return; }
                     let node_id = controller::id("ChoreographyTask");
-                    let mut mutations = vec![Mutation::CreateChoreographyActivity {document_id:doc.id,choreography_id:choreo.id.selector(),activity:processcraft_core::bpmn_collaboration::ChoreographyActivity {id:node_id.clone().into(),name:Some(self.collaboration.choreography_name.clone()),participant_refs:vec![first.clone(),second],initiating_participant:first,message_flow_refs:vec![]}}];
+                    let mut mutations = vec![Mutation::CreateChoreographyActivity { document_id:doc.id,choreography_id:choreo.id.selector(),activity:processcraft_core::bpmn_collaboration::ChoreographyActivity {base: None,id:node_id.clone().into(),name:Some(self.collaboration.choreography_name.clone()),participant_refs:vec![first.clone(),second],initiating_participant:first,message_flow_refs:vec![]}}];
                     if let Some(diagram) = doc.diagrams.iter().find(|d| self.diagram_id.as_ref().is_none_or(|id| &d.id == id) && d.plane == choreo.id) {
-                        mutations.push(Mutation::CreateShape {document_id:doc.id,diagram_id:diagram.id.selector(),shape:Shape{ is_horizontal: None, is_marker_visible: None,id:controller::id("ChoreographyShape").into(),element:node_id.into(),is_expanded:None,bounds:Bounds{x:self.camera.0+120.0,y:self.camera.1+80.0+choreo.activities.len() as f64*90.0,width:160.0,height:100.0},label:None,style:None}});
+                        mutations.push(Mutation::CreateShape { document_id:doc.id,diagram_id:diagram.id.selector(),shape:Shape{ label_visibility: None, is_horizontal: None, is_marker_visible: None,id:controller::id("ChoreographyShape").into(),element:node_id.into(),is_expanded:None,bounds:Bounds{x:self.camera.0+120.0,y:self.camera.1+80.0+choreo.activities.len() as f64*90.0,width:160.0,height:100.0},label:None,style:None}});
                     }
                     if self.commit_draft() && self.ctl.mutate(mutations) { self.collaboration.choreography_name.clear(); self.collaboration.choreography_first = None; self.collaboration.choreography_second = None; self.collaboration.choreography_dirty = false; }
                 }

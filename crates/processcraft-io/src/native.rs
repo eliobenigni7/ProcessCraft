@@ -35,6 +35,7 @@ const EMPTY_ACTIVITY_BINDING_CAPABILITY: &str = "bpmn-empty-namespace-activity-b
 const EXPANDED_DATA_CAPABILITY: &str = "bpmn-expanded-data";
 const NATIVE_IDENTITY_CAPABILITY: &str = "bpmn-native-element-identity";
 const EXPANDED_EVENTS_DI_CAPABILITY: &str = "bpmn-expanded-events-di";
+const COMMON_METADATA_CAPABILITY: &str = "bpmn-common-metadata-v1";
 
 fn has_native_identity_features(
     documents: &[Arc<BpmnDocument>],
@@ -344,6 +345,19 @@ pub fn write_bytes(project: &ProjectData) -> Result<Vec<u8>, NativeError> {
     {
         required_capabilities.push(EXPANDED_EVENTS_DI_CAPABILITY.into());
     }
+    if project
+        .documents
+        .iter()
+        .any(|d| d.has_common_metadata_features())
+        || project.checkpoints.iter().any(|c| {
+            c.content
+                .documents
+                .iter()
+                .any(|d| d.has_common_metadata_features())
+        })
+    {
+        required_capabilities.push(COMMON_METADATA_CAPABILITY.into());
+    }
     let manifest = Manifest {
         format: "processcraft".into(),
         schema: 3,
@@ -540,6 +554,7 @@ fn load_with_limits(
                 && cap != EXPANDED_DATA_CAPABILITY
                 && cap != NATIVE_IDENTITY_CAPABILITY
                 && cap != EXPANDED_EVENTS_DI_CAPABILITY
+                && cap != COMMON_METADATA_CAPABILITY
         })
         || (manifest.schema < 3 && !manifest.required_capabilities.is_empty())
         || (manifest.schema == 3
@@ -714,6 +729,20 @@ fn load_with_limits(
         return Err(err(
             "expanded events and diagram metadata require capability",
         ));
+    }
+    if (dto
+        .documents
+        .iter()
+        .any(|d| d.has_common_metadata_features())
+        || frozen
+            .iter()
+            .any(|(_, c)| c.documents.iter().any(|d| d.has_common_metadata_features())))
+        && !manifest
+            .required_capabilities
+            .iter()
+            .any(|cap| cap == COMMON_METADATA_CAPABILITY)
+    {
+        return Err(err("common metadata requires capability"));
     }
     for resources in std::iter::once(&dto.resources).chain(frozen.iter().map(|(_, c)| &c.resources))
     {
@@ -910,10 +939,11 @@ mod limit_tests {
         };
         let id = |s: &str| s.parse().unwrap();
         let node = |name: &str, kind, details| Node {
+            base_extras: None,
             item_aware: None,
             id: id(name),
             name: Some(String::new()),
-            documentation: String::new(),
+            documentation: String::new().into(),
             kind,
             details,
             loop_characteristics: None,
@@ -925,15 +955,17 @@ mod limit_tests {
         let document = || {
             let mut d = BpmnDocument::new("document".into(), id("defs"));
             d.processes.push(Process {
+                base_extras: None,
                 is_executable: Some(false),
                 io_specification: None,
                 lane_set_id: None,
+                lane_set_base: None,
                 groups: vec![],
                 data_objects: vec![],
                 data_associations: vec![],
                 id: id("process"),
                 name: Some(String::new()),
-                documentation: String::new(),
+                documentation: String::new().into(),
                 nodes: vec![node("task", NodeKind::Task, None)],
                 lanes: vec![],
                 flows: vec![],
@@ -941,12 +973,14 @@ mod limit_tests {
             d
         };
         let port = |id_value| DataPort {
+            base: None,
             id: id_value,
             name: Some(String::new()),
             item_aware: None,
             is_collection: None,
         };
         let association = || DataAssociation {
+            base: None,
             id: Some(id("association")),
             owner: "task".parse().unwrap(),
             kind: DataAssociationKind::Input,
@@ -957,6 +991,7 @@ mod limit_tests {
         };
         let formal = || {
             Expression::Structured(ExpressionData {
+                foreign_attributes: vec![],
                 id: Some(id("expression")),
                 kind: ExpressionKind::Formal {
                     explicit_type: false,
@@ -973,6 +1008,7 @@ mod limit_tests {
         assert!(d.has_expanded_data());
         let mut d = document();
         d.processes[0].data_objects.push(DataObject {
+            base: None,
             id: None,
             name: Some(String::new()),
             is_collection: None,
@@ -986,6 +1022,7 @@ mod limit_tests {
         assert!(d.has_expanded_data());
         let mut d = document();
         d.processes[0].nodes[0].io_specification = Some(IoSpecification {
+            base: None,
             inputs: vec![port(None)],
             ..Default::default()
         });
@@ -1013,6 +1050,7 @@ mod limit_tests {
         let mut d = document();
         let mut a = association();
         a.assignments.push(DataAssignment {
+            base: None,
             id: None,
             from: formal(),
             to: Expression::Legacy("target".into()),
@@ -1022,6 +1060,7 @@ mod limit_tests {
         let mut d = document();
         let mut inner = node("inner", NodeKind::Task, None);
         inner.io_specification = Some(IoSpecification {
+            base: None,
             outputs: vec![port(None)],
             ..Default::default()
         });
@@ -1045,10 +1084,11 @@ mod limit_tests {
             model::{FlowContainer, Node, NodeKind, Process},
         };
         let node = |id: &str, kind, details| Node {
+            base_extras: None,
             item_aware: None,
             id: id.parse().unwrap(),
             name: Some(String::new()),
-            documentation: String::new(),
+            documentation: String::new().into(),
             kind,
             details: Some(details),
             loop_characteristics: None,
@@ -1059,13 +1099,18 @@ mod limit_tests {
         };
         for event in [
             EventDefinition::Link {
+                base: None,
                 id: None,
                 name: "link".into(),
                 sources: vec![],
                 target: None,
             },
-            EventDefinition::Cancel { id: None },
+            EventDefinition::Cancel {
+                id: None,
+                base: None,
+            },
             EventDefinition::Compensate {
+                base: None,
                 id: None,
                 wait_for_completion: None,
                 activity_ref: None,
@@ -1097,12 +1142,14 @@ mod limit_tests {
             );
             let mut document = BpmnDocument::new("document".into(), "defs".parse().unwrap());
             document.processes.push(Process {
+                base_extras: None,
                 is_executable: Some(false),
                 io_specification: None,
                 id: "process".parse().unwrap(),
                 name: Some(String::new()),
-                documentation: String::new(),
+                documentation: String::new().into(),
                 lane_set_id: None,
+                lane_set_base: None,
                 groups: vec![],
                 data_objects: vec![],
                 data_associations: vec![],
@@ -1122,15 +1169,18 @@ mod limit_tests {
         };
         let definitions = [
             EventDefinition::Message {
+                base: None,
                 id: None,
                 message_ref: None,
                 operation_ref: Some(EventReference::Local("operation".parse().unwrap())),
             },
             EventDefinition::Error {
+                base: None,
                 id: None,
                 error_ref: None,
             },
             EventDefinition::Escalation {
+                base: None,
                 id: None,
                 escalation_ref: None,
             },
@@ -1138,19 +1188,22 @@ mod limit_tests {
         for definition in definitions {
             let mut d = BpmnDocument::new("doc".into(), "defs".parse().unwrap());
             d.processes.push(Process {
+                base_extras: None,
                 id: "process".parse().unwrap(),
                 name: Some("process".into()),
-                documentation: String::new(),
+                documentation: String::new().into(),
                 is_executable: Some(false),
                 io_specification: None,
                 lane_set_id: None,
+                lane_set_base: None,
                 groups: vec![],
                 data_objects: vec![],
                 data_associations: vec![],
                 nodes: vec![Node {
+                    base_extras: None,
                     id: "start".parse().unwrap(),
                     name: Some("start".into()),
-                    documentation: String::new(),
+                    documentation: String::new().into(),
                     kind: NodeKind::StartEvent,
                     details: Some(NodeDetails::Event {
                         definitions: vec![definition],

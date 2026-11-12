@@ -13,16 +13,19 @@ fn sample() -> ProjectData {
     let mut p = ProjectData::new("Project".into());
     let mut d = BpmnDocument::new("Document".into(), id("defs"));
     d.processes.push(Process {
+        base_extras: None,
         is_executable: Some(false),
         io_specification: None,
+        lane_set_base: None,
         lane_set_id: None,
         groups: vec![],
         data_objects: vec![],
         data_associations: vec![],
         id: id("process"),
         name: Some(String::new()),
-        documentation: String::new(),
+        documentation: String::new().into(),
         nodes: vec![Node {
+            base_extras: None,
             item_aware: None,
             activity: None,
             io_specification: None,
@@ -30,7 +33,7 @@ fn sample() -> ProjectData {
             details: None,
             id: id("task"),
             name: Some("Task".into()),
-            documentation: String::new(),
+            documentation: String::new().into(),
             kind: NodeKind::Task,
             owner: String::new(),
             contact: String::new(),
@@ -67,6 +70,8 @@ fn lane_membership_is_not_a_duplicate_node() {
     std::sync::Arc::make_mut(&mut p.documents[0]).processes[0]
         .lanes
         .push(Lane {
+            base: None,
+            child_lane_set_base: None,
             child_lane_set_id: None,
             id: id("lane"),
             name: Some(String::new()),
@@ -79,6 +84,7 @@ fn lane_membership_is_not_a_duplicate_node() {
 fn multiple_diagrams_share_semantics() {
     let mut p = sample();
     let shape = Shape {
+        label_visibility: None,
         is_horizontal: None,
         is_marker_visible: None,
         is_expanded: None,
@@ -96,6 +102,9 @@ fn multiple_diagrams_share_semantics() {
     std::sync::Arc::make_mut(&mut p.documents[0])
         .diagrams
         .push(Diagram {
+            documentation: None,
+            resolution: None,
+            label_styles: vec![],
             name: None,
             id: id("diagram"),
             plane_id: id("diagram_plane"),
@@ -108,6 +117,9 @@ fn multiple_diagrams_share_semantics() {
     std::sync::Arc::make_mut(&mut p.documents[0])
         .diagrams
         .push(Diagram {
+            documentation: None,
+            resolution: None,
+            label_styles: vec![],
             name: None,
             id: id("diagram2"),
             plane_id: id("diagram2_plane"),
@@ -123,6 +135,8 @@ fn invalid_reference_is_rejected() {
     std::sync::Arc::make_mut(&mut p.documents[0]).processes[0]
         .lanes
         .push(Lane {
+            base: None,
+            child_lane_set_base: None,
             child_lane_set_id: None,
             id: id("lane"),
             name: Some(String::new()),
@@ -150,6 +164,7 @@ fn invalid_ids_cannot_be_deserialized() {
 fn geometry_must_be_finite_and_negative_zero_is_canonical() {
     let mut p = sample();
     let shape = Shape {
+        label_visibility: None,
         is_horizontal: None,
         is_marker_visible: None,
         is_expanded: None,
@@ -167,6 +182,9 @@ fn geometry_must_be_finite_and_negative_zero_is_canonical() {
     std::sync::Arc::make_mut(&mut p.documents[0])
         .diagrams
         .push(Diagram {
+            documentation: None,
+            resolution: None,
+            label_styles: vec![],
             name: None,
             id: id("d"),
             plane_id: id("d_plane"),
@@ -190,13 +208,14 @@ fn incomplete_process_and_cycles_in_sequence_are_valid() {
     std::sync::Arc::make_mut(&mut p.documents[0]).processes[0]
         .flows
         .push(Flow {
+            base_extras: None,
             association_direction: None,
             id: id("loop"),
             kind: FlowKind::Sequence,
             source: id("task"),
             target: id("task"),
             name: Some(String::new()),
-            documentation: String::new(),
+            documentation: String::new().into(),
             condition: None,
         });
     assert!(p.validate().is_ok());
@@ -228,13 +247,14 @@ fn endpoint_plane_and_resource_boundaries() {
     std::sync::Arc::make_mut(&mut p.documents[0]).processes[0]
         .flows
         .push(Flow {
+            base_extras: None,
             association_direction: None,
             id: id("flow"),
             kind: FlowKind::Sequence,
             source: id("task"),
             target: id("task"),
             name: Some(String::new()),
-            documentation: String::new(),
+            documentation: String::new().into(),
             condition: None,
         });
     assert!(p.validate().is_err());
@@ -248,6 +268,9 @@ fn endpoint_plane_and_resource_boundaries() {
     std::sync::Arc::make_mut(&mut p.documents[0])
         .diagrams
         .push(Diagram {
+            documentation: None,
+            resolution: None,
+            label_styles: vec![],
             name: None,
             id: id("diagram"),
             plane_id: id("diagram_plane"),
@@ -303,11 +326,15 @@ fn identity_changes_for_persistent_categories() {
     std::sync::Arc::make_mut(&mut p.documents[0])
         .diagrams
         .push(Diagram {
+            documentation: None,
+            resolution: None,
+            label_styles: vec![],
             name: None,
             id: id("diagram"),
             plane_id: id("diagram_plane"),
             plane: id("process"),
             shapes: vec![Shape {
+                label_visibility: None,
                 is_horizontal: None,
                 is_marker_visible: None,
                 is_expanded: None,
@@ -320,12 +347,14 @@ fn identity_changes_for_persistent_categories() {
                     height: 4.,
                 },
                 label: Some(Label {
-                    bounds: Bounds {
+                    id: None,
+                    style_ref: None,
+                    bounds: Some(Bounds {
                         x: 1.,
                         y: 2.,
                         width: 3.,
                         height: 4.,
-                    },
+                    }),
                     style: None,
                 }),
                 style: Some(Style {
@@ -381,6 +410,8 @@ fn identity_changes_for_persistent_categories() {
                 .as_mut()
                 .unwrap()
                 .bounds
+                .as_mut()
+                .unwrap()
                 .x += 1.
         },
         |p| {
@@ -410,6 +441,9 @@ fn plane_identity_is_unique_and_persistent() {
     std::sync::Arc::make_mut(&mut p.documents[0])
         .diagrams
         .push(Diagram {
+            documentation: None,
+            resolution: None,
+            label_styles: vec![],
             name: None,
             id: id("diagram"),
             plane_id: id("plane"),
@@ -447,6 +481,7 @@ fn collaboration_and_diagram_names_preserve_omission_and_empty_values() {
     let mut project = sample();
     let doc = std::sync::Arc::make_mut(&mut project.documents[0]);
     doc.collaboration = Some(Collaboration {
+        base: None,
         name: None,
         id: id("collaboration"),
         participants: vec![],
@@ -455,6 +490,9 @@ fn collaboration_and_diagram_names_preserve_omission_and_empty_values() {
         conversation_links: vec![],
     });
     doc.diagrams.push(Diagram {
+        documentation: None,
+        resolution: None,
+        label_styles: vec![],
         name: None,
         id: id("diagram"),
         plane_id: id("plane"),

@@ -148,6 +148,17 @@ enum ExportKind {
 #[derive(Deserialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
 enum Query {
+    Model {
+        document_id: processcraft_core::ids::DocumentId,
+        offset: usize,
+        limit: usize,
+    },
+    CheckpointFields {
+        #[serde(rename = "checkpointId")]
+        checkpoint_id: processcraft_core::ids::CheckpointId,
+        offset: usize,
+        limit: usize,
+    },
     Events {
         document_id: processcraft_core::ids::DocumentId,
         offset: usize,
@@ -317,13 +328,33 @@ impl ServerHandler for Server {
                 let snapshot = state.session.snapshot();
                 let catalog_query = matches!(
                     &query,
-                    Query::Catalog { .. }
+                    Query::Model { .. }
+                        | Query::CheckpointFields { .. }
+                        | Query::Catalog { .. }
                         | Query::Data { .. }
                         | Query::Identities { .. }
                         | Query::Events { .. }
                         | Query::Diagrams { .. }
                 );
                 let (items, offset, limit) = match query {
+                    Query::Model { document_id, offset, limit } => {
+                        let page = processcraft_core::queries::document_fields_page(&snapshot.project, document_id, offset, limit)
+                            .map_err(|e| ErrorData::invalid_params(e.to_string(), None))?
+                            .ok_or_else(|| ErrorData::invalid_params("document not found", None))?;
+                        let mut result = json!(page);
+                        result["generation"] = json!(snapshot.generation);
+                        result["contentId"] = json!(snapshot.content_id);
+                        return Ok(CallToolResult::structured(result).into());
+                    },
+                    Query::CheckpointFields { checkpoint_id, offset, limit } => {
+                        let page = processcraft_core::queries::checkpoint_fields_page(&snapshot.project, checkpoint_id, offset, limit)
+                            .map_err(|e| ErrorData::invalid_params(e.to_string(), None))?
+                            .ok_or_else(|| ErrorData::invalid_params("checkpoint not found", None))?;
+                        let mut result = json!(page);
+                        result["generation"] = json!(snapshot.generation);
+                        result["contentId"] = json!(snapshot.content_id);
+                        return Ok(CallToolResult::structured(result).into());
+                    },
                     Query::Events { document_id, offset, limit } => (
                         processcraft_core::queries::event_fields(&snapshot.project, document_id)
                             .ok_or_else(|| ErrorData::invalid_params("document not found", None))?
@@ -394,22 +425,10 @@ impl ServerHandler for Server {
                             .ok_or_else(|| ErrorData::invalid_params("process not found", None))?
                             .into_iter().map(|row| json!({"key":row.key,"name":row.name,"lane":row.lane,"role":row.role,"systems":row.systems,"documents":row.documents,"outgoing":row.outgoing.into_iter().map(|f| json!({"id":f.id,"target":f.target,"condition":f.condition})).collect::<Vec<_>>() })).collect(), offset, limit),
                 };
-                if !(1..=100).contains(&limit) {
-                    return Err(ErrorData::invalid_params("limit must be 1..100", None));
-                }
                 let total = items.len();
-                let mut page = Vec::new();
-                let mut bytes = 0usize;
-                for item in items.into_iter().skip(offset).take(limit) {
-                    let size = serde_json::to_vec(&item).map_or(3 * 1024 * 1024 + 1, |v| v.len());
-                    if bytes.saturating_add(size) > 3 * 1024 * 1024 {
-                        break;
-                    }
-                    bytes += size;
-                    page.push(item);
-                }
-                let next = offset.saturating_add(page.len());
-                let mut result = json!({"total":total,"items":page,"nextOffset":if next < total { Some(next) } else { None }});
+                let mut result =
+                    crate::run::bounded_page(items.into_iter().skip(offset), total, offset, limit)
+                        .map_err(|error| ErrorData::invalid_params(error.message, None))?;
                 if catalog_query {
                     result["generation"] = json!(snapshot.generation);
                     result["contentId"] = json!(snapshot.content_id);

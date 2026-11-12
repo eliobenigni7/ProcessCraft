@@ -825,8 +825,7 @@ pub fn prepare_move(
             && nested_translated.contains(source)
             && nested_translated.contains(target)
         {
-            if let Some(label) = &edge.label {
-                let mut bounds = label.bounds.clone();
+            if let Some(mut bounds) = edge.label.as_ref().and_then(|label| label.bounds.clone()) {
                 bounds.x += dx;
                 bounds.y += dy;
                 if !valid_bounds(&bounds) {

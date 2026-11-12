@@ -8,6 +8,7 @@ where
 }
 fn node(name: &str, kind: NodeKind, label: &str) -> Node {
     Node {
+        base_extras: None,
         item_aware: None,
         activity: None,
         io_specification: None,
@@ -15,7 +16,7 @@ fn node(name: &str, kind: NodeKind, label: &str) -> Node {
         details: None,
         id: id(name),
         name: Some(label.into()),
-        documentation: String::new(),
+        documentation: String::new().into(),
         kind,
         owner: String::new(),
         contact: String::new(),
@@ -26,15 +27,17 @@ fn incomplete_process_is_valid_but_diagnostics_are_anchored() {
     let mut p = ProjectData::new("p".into());
     let mut d = BpmnDocument::new("d".into(), id("defs"));
     d.processes.push(Process {
+        base_extras: None,
         is_executable: Some(false),
         io_specification: None,
+        lane_set_base: None,
         lane_set_id: None,
         groups: vec![],
         data_objects: vec![],
         data_associations: vec![],
         id: id("process"),
         name: Some("p".into()),
-        documentation: String::new(),
+        documentation: String::new().into(),
         nodes: vec![node("gateway", NodeKind::ExclusiveGateway, "")],
         lanes: vec![],
         flows: vec![],
@@ -61,25 +64,28 @@ fn complete_connected_process_has_no_incomplete_warnings() {
     let mut p = ProjectData::new("p".into());
     let mut d = BpmnDocument::new("d".into(), id("defs"));
     let f = |name: &str, source: &str, target: &str| Flow {
+        base_extras: None,
         association_direction: None,
         id: id(name),
         kind: FlowKind::Sequence,
         source: id(source),
         target: id(target),
         name: Some(String::new()),
-        documentation: String::new(),
+        documentation: String::new().into(),
         condition: None,
     };
     d.processes.push(Process {
+        base_extras: None,
         is_executable: Some(false),
         io_specification: None,
+        lane_set_base: None,
         lane_set_id: None,
         groups: vec![],
         data_objects: vec![],
         data_associations: vec![],
         id: id("process"),
         name: Some("p".into()),
-        documentation: String::new(),
+        documentation: String::new().into(),
         nodes: vec![
             node("start", NodeKind::StartEvent, "Start"),
             node("gateway", NodeKind::Task, "Review"),
@@ -107,6 +113,7 @@ fn nested_gateway_diagnostics_are_advisory_and_anchored() {
     let mut subprocess = node("sub", NodeKind::SubProcess, "Subprocess");
     subprocess.details = Some(NodeDetails::SubProcess {
         content: Box::new(FlowContainer {
+            lane_set_base: None,
             lane_set_id: None,
             groups: vec![],
             data_objects: vec![],
@@ -114,28 +121,31 @@ fn nested_gateway_diagnostics_are_advisory_and_anchored() {
             nodes: vec![gateway, node("nested_task", NodeKind::Task, "Task")],
             lanes: vec![],
             flows: vec![Flow {
+                base_extras: None,
                 association_direction: None,
                 id: id("default_flow"),
                 kind: FlowKind::Sequence,
                 source: id("nested_gateway"),
                 target: id("nested_task"),
                 name: Some(String::new()),
-                documentation: String::new(),
+                documentation: String::new().into(),
                 condition: Some("true".into()),
             }],
         }),
     });
     let mut doc = BpmnDocument::new("d".into(), id("defs"));
     doc.processes.push(Process {
+        base_extras: None,
         is_executable: Some(false),
         io_specification: None,
+        lane_set_base: None,
         lane_set_id: None,
         groups: vec![],
         data_objects: vec![],
         data_associations: vec![],
         id: id("process"),
         name: Some("p".into()),
-        documentation: String::new(),
+        documentation: String::new().into(),
         nodes: vec![subprocess],
         lanes: vec![],
         flows: vec![],
@@ -159,26 +169,29 @@ fn activity_conditions_are_allowed_but_event_gateway_conditions_are_diagnosed() 
     // BPMN 2.0.2 §8.4.13 permits conditions on Activity flows (with another
     // outgoing flow); §10.6.6 prohibits them on Event-Based Gateway flows.
     let flow = |name: &str, source: &str, target: &str, condition: Option<&str>| Flow {
+        base_extras: None,
         association_direction: None,
         id: id(name),
         kind: FlowKind::Sequence,
         source: id(source),
         target: id(target),
         name: Some(String::new()),
-        documentation: String::new(),
+        documentation: String::new().into(),
         condition: condition.map(Into::into),
     };
     let mut doc = BpmnDocument::new("d".into(), id("defs"));
     doc.processes.push(Process {
+        base_extras: None,
         is_executable: Some(false),
         io_specification: None,
+        lane_set_base: None,
         lane_set_id: None,
         groups: vec![],
         data_objects: vec![],
         data_associations: vec![],
         id: id("process"),
         name: Some("p".into()),
-        documentation: String::new(),
+        documentation: String::new().into(),
         nodes: vec![
             node("task", NodeKind::Task, "Task"),
             node("gateway", NodeKind::EventBasedGateway, "Events"),
@@ -222,15 +235,17 @@ fn diagnostics_anchor_anonymous_native_elements_without_xml_fallback() {
     };
     let selector = anonymous.id.selector();
     doc.processes.push(Process {
+        base_extras: None,
         is_executable: Some(false),
         io_specification: None,
+        lane_set_base: None,
         lane_set_id: None,
         groups: vec![],
         data_objects: vec![],
         data_associations: vec![],
         id: id("process"),
         name: None,
-        documentation: String::new(),
+        documentation: String::new().into(),
         nodes: vec![anonymous],
         lanes: vec![],
         flows: vec![],
@@ -254,6 +269,7 @@ fn incomplete_event_metadata_is_advisory_and_anchored() {
     start.details = Some(NodeDetails::Event {
         definitions: vec![EventDefinition::Timer {
             id: None,
+            base: None,
             kind: None,
             expression: None,
         }],
@@ -265,6 +281,7 @@ fn incomplete_event_metadata_is_advisory_and_anchored() {
         properties: vec![],
         io: Some(EventIo::Catch {
             outputs: vec![processcraft_core::bpmn_data::DataPort {
+                base: None,
                 id: Some(id("port")),
                 name: None,
                 item_aware: None,
@@ -289,15 +306,17 @@ fn incomplete_event_metadata_is_advisory_and_anchored() {
     });
     let mut doc = BpmnDocument::new("d".into(), id("defs"));
     doc.processes.push(Process {
+        base_extras: None,
         is_executable: Some(false),
         io_specification: None,
+        lane_set_base: None,
         lane_set_id: None,
         groups: vec![],
         data_objects: vec![],
         data_associations: vec![],
         id: id("process"),
         name: None,
-        documentation: String::new(),
+        documentation: String::new().into(),
         nodes: vec![start, external],
         lanes: vec![],
         flows: vec![],
@@ -345,19 +364,22 @@ fn referenced_event_subprocess_error_interrupting_advisory_uses_root_definition(
     });
     let mut doc = BpmnDocument::new("d".into(), id("defs"));
     doc.root_event_definitions.push(EventDefinition::Error {
+        base: None,
         id: Some(id("error_definition")),
         error_ref: None,
     });
     doc.processes.push(Process {
+        base_extras: None,
         is_executable: Some(false),
         io_specification: None,
+        lane_set_base: None,
         lane_set_id: None,
         groups: vec![],
         data_objects: vec![],
         data_associations: vec![],
         id: id("process"),
         name: None,
-        documentation: String::new(),
+        documentation: String::new().into(),
         nodes: vec![subprocess],
         lanes: vec![],
         flows: vec![],
@@ -376,4 +398,95 @@ fn referenced_event_subprocess_error_interrupting_advisory_uses_root_definition(
             .iter()
             .any(|d| d.code == "startInterruptingIgnored" && d.element_id == Some(id("start")))
     );
+}
+
+#[test]
+fn mixed_expression_is_not_misclassified_as_empty_plain_text() {
+    use processcraft_core::bpmn_model::{
+        EventDefinition, Expression, ExpressionBody, ExpressionData, ExpressionKind,
+        ExpressionPart, NodeDetails, TimerKind,
+    };
+    let mut project = ProjectData::new("p".into());
+    let mut doc = BpmnDocument::new("d".into(), id("defs"));
+    let mut timer = node("timer", NodeKind::StartEvent, "Timer");
+    timer.details = Some(NodeDetails::Event {
+        definitions: vec![EventDefinition::Timer {
+            id: None,
+            base: None,
+            kind: Some(TimerKind::Duration),
+            expression: Some(Expression::Structured(ExpressionData {
+                id: None,
+                kind: ExpressionKind::Base {
+                    explicit_type: false,
+                },
+                text: ExpressionBody::Mixed {
+                    parts: vec![ExpressionPart::Comment {
+                        text: "metadata".into(),
+                    }],
+                },
+                namespaces: vec![],
+                foreign_attributes: vec![],
+            })),
+        }],
+        definition_refs: vec![],
+        attached_to: None,
+        cancel_activity: None,
+        parallel_multiple: None,
+        is_interrupting: None,
+        properties: vec![],
+        io: None,
+    });
+    doc.processes.push(Process {
+        is_executable: Some(false),
+        io_specification: None,
+        lane_set_base: None,
+        lane_set_id: None,
+        groups: vec![],
+        data_objects: vec![],
+        data_associations: vec![],
+        id: id("process"),
+        name: None,
+        documentation: String::new().into(),
+        base_extras: None,
+        nodes: vec![timer],
+        lanes: vec![],
+        flows: vec![],
+    });
+    project.documents.push(Arc::new(doc));
+    assert!(
+        !project
+            .diagnostics()
+            .iter()
+            .any(|d| d.code == "emptyExpression")
+    );
+}
+
+#[test]
+fn required_extensions_and_incomplete_relationships_are_advisory() {
+    use processcraft_core::model::{DefinitionsExtension, DefinitionsRelationship};
+    let mut doc = BpmnDocument::new("d".into(), id("defs"));
+    doc.extensions.push(DefinitionsExtension {
+        documentation: vec![],
+        definition: None,
+        must_understand: Some(true),
+    });
+    doc.relationships.push(DefinitionsRelationship {
+        id: Some(id("relation")),
+        base: None,
+        relationship_type: "trace".into(),
+        direction: None,
+        sources: vec![],
+        targets: vec![],
+    });
+    let mut project = ProjectData::new("p".into());
+    project.documents.push(Arc::new(doc));
+    let diagnostics = project.diagnostics();
+    for (code, anchor) in [
+        ("requiredExtensionUnverified", "defs"),
+        ("incompleteRelationship", "relation"),
+    ] {
+        let d = diagnostics.iter().find(|d| d.code == code).unwrap();
+        assert_eq!(d.element_id, Some(id(anchor)));
+        assert_eq!(d.severity, DiagnosticSeverity::Warning);
+    }
 }

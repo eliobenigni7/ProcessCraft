@@ -71,7 +71,7 @@ fn geometry(d: &Diagram) -> LayoutGeometry {
         .map(|s| ShapeGeometry {
             id: s.id.selector(),
             bounds: s.bounds.clone(),
-            label_bounds: s.label.as_ref().map(|l| l.bounds.clone()),
+            label_bounds: s.label.as_ref().and_then(|l| l.bounds.clone()),
         })
         .collect();
     let mut edges: Vec<_> = d
@@ -80,7 +80,7 @@ fn geometry(d: &Diagram) -> LayoutGeometry {
         .map(|e| EdgeGeometry {
             id: e.id.selector(),
             waypoints: e.waypoints.clone(),
-            label_bounds: e.label.as_ref().map(|l| l.bounds.clone()),
+            label_bounds: e.label.as_ref().and_then(|l| l.bounds.clone()),
         })
         .collect();
     shapes.sort_by(|a, b| a.id.cmp(&b.id));

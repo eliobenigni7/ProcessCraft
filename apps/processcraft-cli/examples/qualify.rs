@@ -47,6 +47,7 @@ fn fixture(docs: usize, nodes: usize, active: usize, resource: usize) -> Project
         for i in 0..count {
             let key = format!("node_{i}");
             ns.push(Node {
+                base_extras: None,
                 item_aware: None,
                 activity: None,
                 io_specification: None,
@@ -54,13 +55,14 @@ fn fixture(docs: usize, nodes: usize, active: usize, resource: usize) -> Project
                 details: None,
                 id: id(&key),
                 name: Some(format!("Task {i}")),
-                documentation: String::new(),
+                documentation: String::new().into(),
                 kind: NodeKind::Task,
                 owner: String::new(),
                 contact: String::new(),
             });
             if j == 0 && i < active {
                 shapes.push(Shape {
+                    label_visibility: None,
                     is_horizontal: None,
                     is_marker_visible: None,
                     is_expanded: None,
@@ -78,20 +80,25 @@ fn fixture(docs: usize, nodes: usize, active: usize, resource: usize) -> Project
             }
         }
         d.processes.push(Process {
+            base_extras: None,
             is_executable: Some(false),
             io_specification: None,
             lane_set_id: None,
+            lane_set_base: None,
             groups: vec![],
             data_objects: vec![],
             data_associations: vec![],
             id: id("process"),
             name: Some("Process".into()),
-            documentation: String::new(),
+            documentation: String::new().into(),
             nodes: ns,
             lanes: vec![],
             flows: vec![],
         });
         d.diagrams.push(Diagram {
+            documentation: None,
+            resolution: None,
+            label_styles: vec![],
             name: None,
             id: id("diagram"),
             plane_id: id("plane"),

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:v="urn:vendor" xmlns:t="urn:common" targetNamespace="urn:common" id="definitions">
+  <process id="process" v:flag="v:value">
+    <documentation id="documentation" textFormat="text/plain">before<v:detail xmlns:v="urn:shadow" ref="v:item">inside</v:detail>after<!--note--><?inspect harmless?></documentation>
+    <documentation/>
+    <extensionElements><v:settings v:ref="t:task"><v:nested xmlns:t="urn:shadow" value="t:item"/></v:settings></extensionElements>
+    <scriptTask id="task"><script>pre<v:code expression="v:item"/>post</script></scriptTask>
+    <task id="next"/>
+    <sequenceFlow id="flow" sourceRef="task" targetRef="next"><conditionExpression xsi:type="tFormalExpression">before<documentation textFormat="text/plain">condition</documentation>after</conditionExpression></sequenceFlow>
+    <textAnnotation id="note"><text>pre<v:note/>post</text></textAnnotation>
+  </process>
+</definitions>

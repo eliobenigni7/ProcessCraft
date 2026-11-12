@@ -68,6 +68,8 @@ fn definitions_metadata_uses_discovered_mcp_command_and_exact_history() {
         json!({"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"inspect","arguments":{}}}),
     );
     let metadata = DefinitionsMetadata {
+        namespaces: vec![],
+        foreign_attributes: vec![],
         imports: vec![processcraft_core::model::DefinitionsImport {
             namespace: "urn:external".into(),
             location: "file:///not-accessed.wsdl".into(),
@@ -421,4 +423,93 @@ fn definitions_metadata_uses_discovered_mcp_command_and_exact_history() {
         unchanged["result"]["structuredContent"]["contentId"],
         extended["contentId"]
     );
+    let checkpoint = "22222222-2222-4222-8222-222222222222";
+    let captured = call(
+        json!({"jsonrpc":"2.0","id":401,"method":"tools/call","params":{"name":"apply","arguments":{
+            "sessionId":session,"requestId":"before-common-metadata","expectedGeneration":16,
+            "request":{"type":"batch","mutations":[{"type":"createCheckpoint","id":checkpoint,"name":"Before documentation","created_unix_ms":1}]}
+        }}}),
+    );
+    let captured = captured["result"]["structuredContent"].clone();
+    assert_eq!(captured["ok"], true, "{captured}");
+    let documentation = json!([{"id":"StartDocumentation","text_format":"text/plain","content":{
+        "namespaces":[],"nodes":[{"type":"text","text":"before"},{"type":"comment","text":"inert"},
+            {"type":"processingInstruction","target":"inspect","data":"never executed"},{"type":"text","text":"after"}]
+    }}]);
+    let common = call(
+        json!({"jsonrpc":"2.0","id":402,"method":"tools/call","params":{"name":"apply","arguments":{
+            "sessionId":session,"requestId":"common-metadata","expectedGeneration":17,
+            "request":{"type":"batch","mutations":[{"type":"replaceDocumentation",
+                "document_id":"11111111-1111-4111-8111-111111111111","element_id":"start","documentation":documentation}]}
+        }}}),
+    );
+    let common = common["result"]["structuredContent"].clone();
+    assert_eq!(common["ok"], true, "{common}");
+    let mut model_rows = vec![];
+    for (kind, extra) in [
+        (
+            "model",
+            json!({"document_id":"11111111-1111-4111-8111-111111111111"}),
+        ),
+        ("checkpointFields", json!({"checkpointId":checkpoint})),
+    ] {
+        let mut offset = 0;
+        let mut rows = vec![];
+        loop {
+            let mut arguments = extra.clone();
+            arguments["kind"] = json!(kind);
+            arguments["offset"] = json!(offset);
+            arguments["limit"] = json!(100);
+            let response = call(
+                json!({"jsonrpc":"2.0","id":500+offset,"method":"tools/call","params":{"name":"query","arguments":arguments}}),
+            );
+            let page = &response["result"]["structuredContent"];
+            assert_eq!(page["generation"], 18, "{response}");
+            assert_eq!(page["contentId"], common["contentId"]);
+            rows.extend(page["items"].as_array().unwrap().iter().cloned());
+            if let Some(next) = page["nextOffset"].as_u64() {
+                assert!(next as usize > offset);
+                offset = next as usize;
+            } else {
+                assert_eq!(page["total"].as_u64().unwrap() as usize, rows.len());
+                break;
+            }
+        }
+        assert!(!rows.is_empty());
+        if kind == "model" {
+            model_rows = rows;
+        }
+    }
+    for (path, value) in [
+        (
+            "/processes/0/nodes/0/documentation/0/id",
+            json!("StartDocumentation"),
+        ),
+        (
+            "/processes/0/nodes/0/documentation/0/content/nodes/2/data",
+            json!("never executed"),
+        ),
+    ] {
+        assert!(
+            model_rows
+                .iter()
+                .any(|row| row["path"] == path && row["value"] == value),
+            "{model_rows:?}"
+        );
+    }
+    for (index, kind, expected) in [(700, "undo", &captured), (701, "redo", &common)] {
+        let response = call(
+            json!({"jsonrpc":"2.0","id":index,"method":"tools/call","params":{"name":"apply","arguments":{
+                "sessionId":session,"requestId":format!("common-{kind}"),"expectedGeneration":index-682,"request":{"type":kind}
+            }}}),
+        );
+        assert_eq!(
+            response["result"]["structuredContent"]["ok"], true,
+            "{response}"
+        );
+        assert_eq!(
+            response["result"]["structuredContent"]["contentId"],
+            expected["contentId"]
+        );
+    }
 }

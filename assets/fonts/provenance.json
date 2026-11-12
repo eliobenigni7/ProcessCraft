@@ -19,5 +19,26 @@
     "sha256": "2c76254f6fc379fddfce0a7e84fb5385bb135d3e399294f6eeb6680d0365b74b",
     "source": "https://raw.githubusercontent.com/notofonts/noto-cjk/f8d157532fbfaeda587e826d4cd5b21a49186f7c/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf",
     "revision": "f8d157532fbfaeda587e826d4cd5b21a49186f7c"
+  },
+  {
+    "path": "assets/fonts/NotoSans-Bold.ttf",
+    "license": "OFL-1.1",
+    "sha256": "c976e4b1b99edc88775377fcc21692ca4bfa46b6d6ca6522bfda505b28ff9d6a",
+    "source": "https://raw.githubusercontent.com/notofonts/noto-fonts/ffebf8c1ee449e544955a7e813c54f9b73848eac/hinted/ttf/NotoSans/NotoSans-Bold.ttf",
+    "revision": "ffebf8c1ee449e544955a7e813c54f9b73848eac"
+  },
+  {
+    "path": "assets/fonts/NotoSans-Italic.ttf",
+    "license": "OFL-1.1",
+    "sha256": "36cff144df01309dab648bea71baff9bb074026914afe63aeacc8bc90b67a28b",
+    "source": "https://raw.githubusercontent.com/notofonts/noto-fonts/ffebf8c1ee449e544955a7e813c54f9b73848eac/hinted/ttf/NotoSans/NotoSans-Italic.ttf",
+    "revision": "ffebf8c1ee449e544955a7e813c54f9b73848eac"
+  },
+  {
+    "path": "assets/fonts/NotoSans-BoldItalic.ttf",
+    "license": "OFL-1.1",
+    "sha256": "6edf4227ef0fa846aca70e86a307804ca4401741830f5b3af0f2554abe2b8466",
+    "source": "https://raw.githubusercontent.com/notofonts/noto-fonts/ffebf8c1ee449e544955a7e813c54f9b73848eac/hinted/ttf/NotoSans/NotoSans-BoldItalic.ttf",
+    "revision": "ffebf8c1ee449e544955a7e813c54f9b73848eac"
   }
 ]

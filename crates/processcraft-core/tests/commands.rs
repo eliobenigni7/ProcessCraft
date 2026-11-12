@@ -48,6 +48,8 @@ fn definitions_metadata_is_undoable_and_validated_atomically() {
     fixture(&mut s);
     let before = s.snapshot().content_id;
     let metadata = DefinitionsMetadata {
+        namespaces: vec![],
+        foreign_attributes: vec![],
         target_namespace: GENERATED_TARGET_NAMESPACE.into(),
         name: Some("Definitions".into()),
         expression_language: None,
@@ -179,6 +181,8 @@ fn definitions_import_changes_are_undoable() {
     let mut s = project();
     fixture(&mut s);
     let mut metadata = DefinitionsMetadata {
+        namespaces: vec![],
+        foreign_attributes: vec![],
         target_namespace: "urn:example".into(),
         name: None,
         expression_language: None,
@@ -228,6 +232,7 @@ fn supporting_catalog_validates_references_and_undoes_atomically() {
     Arc::make_mut(&mut project.documents[0])
         .event_resources
         .push(EventResource::Message {
+            base: None,
             id: id("message1"),
             name: None,
             item_ref: None,
@@ -239,16 +244,19 @@ fn supporting_catalog_validates_references_and_undoes_atomically() {
     };
     let catalog = SupportingCatalog {
         item_definitions: vec![ItemDefinition {
+            base: None,
             id: Some(id("item1")),
             structure_ref: None,
             is_collection: None,
             item_kind: None,
         }],
         interfaces: vec![Interface {
+            base: None,
             id: Some(id("interface1")),
             name: String::new(),
             implementation_ref: None,
             operations: vec![Operation {
+                base: None,
                 id: Some(id("operation1")),
                 name: "op".into(),
                 implementation_ref: None,
@@ -258,9 +266,11 @@ fn supporting_catalog_validates_references_and_undoes_atomically() {
             }],
         }],
         resources: vec![BpmnResource {
+            base: None,
             id: Some(id("resource1")),
             name: "r".into(),
             parameters: vec![ResourceParameter {
+                base: None,
                 id: Some(id("parameter1")),
                 name: None,
                 type_ref: Some(q("item1")),
@@ -341,12 +351,14 @@ fn expanded_data_preserves_omissions_and_validates_transformation() {
     let mut s = project();
     fixture(&mut s);
     let object = DataObject {
+        base: None,
         id: None,
         name: None,
         is_collection: None,
         item_aware: Some(ItemAwareMetadata {
             item_subject_ref: None,
             data_state: Some(DataState {
+                base: None,
                 id: Some(id("state1")),
                 name: None,
             }),
@@ -390,6 +402,7 @@ fn expanded_data_preserves_omissions_and_validates_transformation() {
     apply(&mut s, Request::Redo).unwrap();
     assert_eq!(s.snapshot().content_id, after);
     let formal = Expression::Structured(ExpressionData {
+        foreign_attributes: vec![],
         id: None,
         kind: ExpressionKind::Formal {
             explicit_type: false,
@@ -403,8 +416,10 @@ fn expanded_data_preserves_omissions_and_validates_transformation() {
         )],
     });
     let io = IoSpecification {
+        base: None,
         id: None,
         inputs: vec![DataPort {
+            base: None,
             id: Some(id("port1")),
             name: None,
             item_aware: None,
@@ -415,6 +430,7 @@ fn expanded_data_preserves_omissions_and_validates_transformation() {
         output_sets: vec![],
     };
     let association = DataAssociation {
+        base: None,
         id: None,
         owner: id("review"),
         kind: DataAssociationKind::Input,
@@ -453,6 +469,7 @@ fn activity_bindings_validate_new_local_refs_and_preserve_legacy() {
     let mut p = (*s.snapshot().project).clone();
     let d = Arc::make_mut(&mut p.documents[0]);
     d.event_resources.push(EventResource::Message {
+        base: None,
         id: id("message1"),
         name: None,
         item_ref: None,
@@ -462,10 +479,12 @@ fn activity_bindings_validate_new_local_refs_and_preserve_legacy() {
         local: id(local),
     };
     d.catalog.interfaces.push(Interface {
+        base: None,
         id: Some(id("interface1")),
         name: "i".into(),
         implementation_ref: None,
         operations: vec![Operation {
+            base: None,
             id: Some(id("operation1")),
             name: "o".into(),
             implementation_ref: None,
@@ -475,10 +494,11 @@ fn activity_bindings_validate_new_local_refs_and_preserve_legacy() {
         }],
     });
     let node = Node {
+        base_extras: None,
         item_aware: None,
         id: id("send"),
         name: Some(String::new()),
-        documentation: String::new(),
+        documentation: String::new().into(),
         kind: NodeKind::SendTask,
         details: None,
         loop_characteristics: None,
@@ -640,6 +660,7 @@ fn structured_expression_preserves_identity_and_rejects_duplicate_ids() {
     let legacy: Expression = serde_json::from_str("\"amount > 10\"").unwrap();
     assert_eq!(serde_json::to_string(&legacy).unwrap(), "\"amount > 10\"");
     let structured = Expression::Structured(ExpressionData {
+        foreign_attributes: vec![],
         id: Some(id("expr1")),
         kind: ExpressionKind::Formal {
             explicit_type: true,
@@ -696,11 +717,12 @@ fn expression_profile_preserves_empty_base_and_rejects_unserializable_context() 
     let mut s = project();
     fixture(&mut s);
     let base = Expression::Structured(ExpressionData {
+        foreign_attributes: vec![],
         id: None,
         kind: ExpressionKind::Base {
             explicit_type: false,
         },
-        text: String::new(),
+        text: String::new().into(),
         namespaces: vec![(
             "bpmn".into(),
             "http://www.omg.org/spec/BPMN/20100524/MODEL".into(),
@@ -743,6 +765,7 @@ fn expression_profile_preserves_empty_base_and_rejects_unserializable_context() 
         .is_err()
     );
     let bad = Expression::Structured(ExpressionData {
+        foreign_attributes: vec![],
         id: None,
         kind: ExpressionKind::Base {
             explicit_type: false,
@@ -769,10 +792,11 @@ fn link_and_compensation_events_validate_atomically() {
     let mut s = project();
     fixture(&mut s);
     let node = |name: &str, kind, definition| Node {
+        base_extras: None,
         item_aware: None,
         id: id(name),
         name: Some(String::new()),
-        documentation: String::new(),
+        documentation: String::new().into(),
         kind,
         details: Some(NodeDetails::Event {
             definitions: vec![definition],
@@ -794,6 +818,7 @@ fn link_and_compensation_events_validate_atomically() {
         "link_throw",
         NodeKind::IntermediateThrowEvent,
         EventDefinition::Link {
+            base: None,
             id: Some(id("throw_def")),
             name: "jump".into(),
             sources: vec![],
@@ -806,6 +831,7 @@ fn link_and_compensation_events_validate_atomically() {
         "link_catch",
         NodeKind::IntermediateCatchEvent,
         EventDefinition::Link {
+            base: None,
             id: Some(id("catch_def")),
             name: "jump".into(),
             sources: vec![processcraft_core::bpmn_model::EventReference::Local(id(
@@ -818,6 +844,7 @@ fn link_and_compensation_events_validate_atomically() {
         "compensate",
         NodeKind::IntermediateThrowEvent,
         EventDefinition::Compensate {
+            base: None,
             id: None,
             wait_for_completion: None,
             activity_ref: Some(processcraft_core::bpmn_model::EventReference::Local(id(
@@ -839,7 +866,10 @@ fn link_and_compensation_events_validate_atomically() {
     let bad = node(
         "bad_cancel",
         NodeKind::EndEvent,
-        EventDefinition::Cancel { id: None },
+        EventDefinition::Cancel {
+            id: None,
+            base: None,
+        },
     );
     assert!(apply(&mut s, batch(vec![create(bad)])).is_err());
     assert_eq!(s.snapshot().content_id, before);
@@ -854,6 +884,8 @@ fn definitions_namespace_change_rejects_existing_qualified_references() {
     let mut s = project();
     fixture(&mut s);
     let metadata = DefinitionsMetadata {
+        namespaces: vec![],
+        foreign_attributes: vec![],
         target_namespace: GENERATED_TARGET_NAMESPACE.into(),
         name: None,
         expression_language: None,
@@ -863,10 +895,11 @@ fn definitions_namespace_change_rejects_existing_qualified_references() {
         imports: vec![],
     };
     let node = Node {
+        base_extras: None,
         item_aware: None,
         id: id("call"),
         name: Some(String::new()),
-        documentation: String::new(),
+        documentation: String::new().into(),
         kind: NodeKind::CallActivity,
         details: Some(NodeDetails::CallActivity {
             called_element: QNameRef {
@@ -923,6 +956,8 @@ fn definitions_metadata_refuses_protected_and_unresolved_legacy_documents() {
         Arc::from(&b"xml"[..]),
     ));
     let metadata = DefinitionsMetadata {
+        namespaces: vec![],
+        foreign_attributes: vec![],
         target_namespace: "urn:example".into(),
         name: None,
         expression_language: None,
@@ -991,13 +1026,14 @@ fn failed_batch_preserves_state_and_history() {
         document_id: docid(),
         process_id: Some(id("procurement")),
         flow: Flow {
+            base_extras: None,
             association_direction: None,
             id: id("bad"),
             kind: FlowKind::Sequence,
             source: id("review"),
             target: id("missing"),
             name: Some(String::new()),
-            documentation: String::new(),
+            documentation: String::new().into(),
             condition: None,
         },
     };
@@ -1146,15 +1182,17 @@ fn retained_extensions_allow_labels_but_reject_structural_changes() {
         extensions: vec![],
     };
     d.processes.push(Process {
+        base_extras: None,
         is_executable: Some(false),
         io_specification: None,
         lane_set_id: None,
+        lane_set_base: None,
         groups: vec![],
         data_objects: vec![],
         data_associations: vec![],
         id: id("p"),
         name: Some("before".into()),
-        documentation: String::new(),
+        documentation: String::new().into(),
         nodes: vec![],
         lanes: vec![],
         flows: vec![],
@@ -1351,6 +1389,20 @@ fn flow_condition_changes_identity_and_protected_document_rejects_it() {
 fn descriptors_match_protocol_tags() {
     let descriptors = processcraft_core::commands::command_descriptors();
     let expected = [
+        "setExpression",
+        "setDefinitionsExtensions",
+        "setDefinitionsRelationships",
+        "setDiagramMetadata",
+        "setDiagramLabelStyles",
+        "setShapeLabel",
+        "setEdgeLabel",
+        "setDocumentationEntry",
+        "setBaseMetadata",
+        "setBaseExtras",
+        "replaceFlowCondition",
+        "setScriptBody",
+        "setAnnotationBody",
+        "replaceDocumentation",
         "setEventResources",
         "setRootEventDefinitions",
         "setShapeDiAttributes",
@@ -1530,7 +1582,7 @@ fn identity_edit_rewrites_only_typed_local_references() {
     use processcraft_core::{
         bpmn_catalog::ItemDefinition,
         bpmn_data::{DataStore, ItemAwareMetadata},
-        bpmn_model::QNameRef,
+        bpmn_model::{EventResource, QNameRef},
     };
     let mut original = project();
     fixture(&mut original);
@@ -1541,12 +1593,14 @@ fn identity_edit_rewrites_only_typed_local_references() {
         local: id("item"),
     };
     doc.catalog.item_definitions.push(ItemDefinition {
+        base: None,
         id: Some(id("item")),
         structure_ref: Some(reference.clone()),
         is_collection: None,
         item_kind: None,
     });
     doc.data_stores.push(DataStore {
+        base: None,
         id: Some(id("store")),
         name: Some("Store".into()),
         capacity: None,
@@ -1555,6 +1609,12 @@ fn identity_edit_rewrites_only_typed_local_references() {
             item_subject_ref: Some(reference.clone()),
             data_state: None,
         }),
+    });
+    doc.event_resources.push(EventResource::Signal {
+        base: None,
+        id: id("signal"),
+        name: None,
+        structure_ref: Some(reference.clone()),
     });
     let mut s = Session::new(p).unwrap();
     let before = s.snapshot().content_id;
@@ -1581,6 +1641,9 @@ fn identity_edit_rewrites_only_typed_local_references() {
     .unwrap();
     let snap = s.snapshot();
     let doc = &snap.project.documents[0];
+    assert!(
+        matches!(&doc.event_resources[0], EventResource::Signal { structure_ref: Some(q), .. } if q.local == id::<processcraft_core::ids::XmlId>("item_new"))
+    );
     assert_eq!(
         doc.catalog.item_definitions[0].structure_ref,
         Some(reference)
@@ -1608,6 +1671,7 @@ fn promotion_requires_generation_and_targets_only_optional_identity() {
         .catalog
         .item_definitions
         .push(ItemDefinition {
+            base: None,
             id: None,
             structure_ref: None,
             is_collection: None,
@@ -1652,9 +1716,10 @@ fn annotation_text_edit_migrates_legacy_body_and_undo_restores_it() {
     Arc::make_mut(&mut p.documents[0]).processes[0]
         .nodes
         .push(Node {
+            base_extras: None,
             id: id("annotation"),
             name: Some("old body".into()),
-            documentation: String::new(),
+            documentation: String::new().into(),
             kind: NodeKind::TextAnnotation,
             details: Some(NodeDetails::TextAnnotation {
                 text_format: Some("text/plain".into()),
@@ -1683,7 +1748,7 @@ fn annotation_text_edit_migrates_legacy_body_and_undo_restores_it() {
         .unwrap();
     assert_eq!(node.name, None);
     assert!(
-        matches!(&node.details, Some(NodeDetails::TextAnnotation { text_format: Some(format), text: Some(text) }) if format == "text/plain" && text == "new body")
+        matches!(&node.details, Some(NodeDetails::TextAnnotation { text_format: Some(format), text: Some(text) }) if format == "text/plain" && text.plain_text() == Some("new body"))
     );
     apply(&mut s, Request::Undo).unwrap();
     assert_eq!(s.snapshot().content_id, before);
@@ -1704,6 +1769,7 @@ fn reusable_event_catalog_edits_are_atomic_and_undoable() {
     fixture(&mut s);
     let before = s.snapshot().content_id;
     let root = EventDefinition::Signal {
+        base: None,
         id: Some(id("root_signal")),
         signal_ref: None,
     };
@@ -1783,6 +1849,7 @@ fn root_event_rename_remaps_local_refs_without_touching_external_qnames() {
             Mutation::SetRootEventDefinitions {
                 document_id: docid(),
                 definitions: vec![EventDefinition::Signal {
+                    base: None,
                     id: Some(id("root_signal")),
                     signal_ref: None,
                 }],
@@ -1899,6 +1966,7 @@ fn event_resource_catalog_rejects_dangling_local_reference() {
     fixture(&mut s);
     let details = NodeDetails::Event {
         definitions: vec![EventDefinition::Signal {
+            base: None,
             id: None,
             signal_ref: Some(EventReference::Local(id("signal"))),
         }],
@@ -1916,6 +1984,7 @@ fn event_resource_catalog_rejects_dangling_local_reference() {
             Mutation::SetEventResources {
                 document_id: docid(),
                 resources: vec![EventResource::Signal {
+                    base: None,
                     id: id("signal"),
                     name: None,
                     structure_ref: None,
@@ -2005,6 +2074,7 @@ fn deleting_event_cleans_navigation_from_owned_property() {
         parallel_multiple: None,
         is_interrupting: None,
         properties: vec![EventProperty {
+            base: None,
             id: Some(id("property")),
             name: Some("property".into()),
             item_aware: None,
@@ -2075,6 +2145,7 @@ fn deleting_event_cascades_its_data_association_and_undo_restores_it() {
         properties: vec![],
         io: Some(EventIo::Catch {
             outputs: vec![DataPort {
+                base: None,
                 id: Some(id("event_output")),
                 name: Some("output".into()),
                 item_aware: None,
@@ -2084,12 +2155,14 @@ fn deleting_event_cascades_its_data_association_and_undo_restores_it() {
         }),
     });
     process.data_objects.push(DataObject {
+        base: None,
         id: Some(id("object")),
         name: Some("object".into()),
         is_collection: None,
         item_aware: None,
     });
     process.data_associations.push(DataAssociation {
+        base: None,
         id: Some(id("association")),
         owner: id("start"),
         kind: DataAssociationKind::Output,
@@ -2147,4 +2220,966 @@ fn deleting_event_cascades_its_data_association_and_undo_restores_it() {
     assert_eq!(snapshot.project.comments.len(), 1);
     apply(&mut session, Request::Undo).unwrap();
     assert_eq!(session.snapshot().content_id, before);
+}
+
+#[test]
+fn structured_documentation_requires_explicit_edits_and_preserves_history() {
+    use processcraft_core::{
+        bpmn_metadata::{Documentation, DocumentationSet},
+        bpmn_xml::MixedXml,
+    };
+    let mut s = project();
+    fixture(&mut s);
+    let before = s.snapshot().content_id;
+    let first = Documentation {
+        id: Some(id("doc_a")),
+        text_format: None,
+        content: MixedXml::Text("first".into()),
+    };
+    let second = Documentation {
+        id: Some(id("doc_b")),
+        text_format: Some("text/plain".into()),
+        content: MixedXml::Text("second".into()),
+    };
+    apply(
+        &mut s,
+        batch(vec![Mutation::ReplaceDocumentation {
+            document_id: docid(),
+            element_id: id("review"),
+            documentation: DocumentationSet::Structured(vec![first.clone(), second.clone()]),
+        }]),
+    )
+    .unwrap();
+    let structured = s.snapshot().content_id;
+    assert!(
+        apply(
+            &mut s,
+            batch(vec![Mutation::Documentation {
+                document_id: docid(),
+                element_id: id("review"),
+                documentation: "flatten".into()
+            }])
+        )
+        .is_err()
+    );
+    assert_eq!(s.snapshot().content_id, structured);
+    let mut changed = first;
+    changed.content = MixedXml::Text("updated".into());
+    apply(
+        &mut s,
+        batch(vec![Mutation::SetDocumentationEntry {
+            document_id: docid(),
+            documentation_id: id("doc_a"),
+            documentation: changed.clone(),
+        }]),
+    )
+    .unwrap();
+    let snap = s.snapshot();
+    let node =
+        processcraft_core::queries::find_node(&snap.project.documents[0], &id("review")).unwrap();
+    assert_eq!(
+        node.documentation,
+        DocumentationSet::Structured(vec![changed, second])
+    );
+    apply(&mut s, Request::Undo).unwrap();
+    assert_eq!(s.snapshot().content_id, structured);
+    apply(&mut s, Request::Undo).unwrap();
+    assert_eq!(s.snapshot().content_id, before);
+}
+
+#[test]
+fn opaque_metadata_blocks_identity_and_structural_edits_without_partial_changes() {
+    use processcraft_core::{
+        bpmn_metadata::BaseExtras,
+        bpmn_xml::{NamespaceBinding, XmlAttribute},
+    };
+    let mut s = project();
+    fixture(&mut s);
+    let extras = BaseExtras {
+        namespaces: vec![NamespaceBinding {
+            prefix: "v".into(),
+            uri: "urn:vendor".into(),
+        }],
+        foreign_attributes: vec![XmlAttribute {
+            namespace: "urn:vendor".into(),
+            local: "reference".parse().unwrap(),
+            prefix: Some("v".parse().unwrap()),
+            value: "review".into(),
+        }],
+        extension_elements: None,
+    };
+    apply(
+        &mut s,
+        batch(vec![Mutation::SetBaseExtras {
+            document_id: docid(),
+            element_id: id("review"),
+            extras: Some(extras.clone()),
+        }]),
+    )
+    .unwrap();
+    let before = s.snapshot().content_id;
+    assert!(
+        apply(
+            &mut s,
+            batch(vec![Mutation::SetElementXmlId {
+                document_id: docid(),
+                element_id: id("review"),
+                xml_id: Some(id("renamed"))
+            }])
+        )
+        .is_err()
+    );
+    assert!(
+        apply(
+            &mut s,
+            batch(vec![Mutation::Delete {
+                document_id: docid(),
+                element_id: id("review")
+            }])
+        )
+        .is_err()
+    );
+    assert_eq!(s.snapshot().content_id, before);
+    apply(
+        &mut s,
+        batch(vec![Mutation::Rename {
+            document_id: docid(),
+            element_id: id("review"),
+            name: Some("Label only".into()),
+        }]),
+    )
+    .unwrap();
+    apply(
+        &mut s,
+        batch(vec![Mutation::SetShapeDiAttributes {
+            document_id: docid(),
+            diagram_id: id("procurement_diagram"),
+            shape_id: id("pc_shape_review"),
+            is_horizontal: Some(false),
+            is_marker_visible: None,
+        }]),
+    )
+    .unwrap();
+    let snap = s.snapshot();
+    let node =
+        processcraft_core::queries::find_node(&snap.project.documents[0], &id("review")).unwrap();
+    assert_eq!(node.base_extras, Some(extras));
+}
+
+#[test]
+fn explicit_anonymous_lane_set_can_be_promoted_with_generation_guard() {
+    use processcraft_core::bpmn_metadata::BaseMetadata;
+    let mut original = project();
+    fixture(&mut original);
+    let mut p = (*original.snapshot().project).clone();
+    let process = &mut Arc::make_mut(&mut p.documents[0]).processes[0];
+    process.lane_set_id = None;
+    process.lane_set_base = Some(BaseMetadata::default());
+    let mut s = Session::new(p).unwrap();
+    let before = s.snapshot().content_id;
+    let mutation = || Mutation::PromoteElementIdentity {
+        document_id: docid(),
+        model_path: "/processes/0/lane_set_id".into(),
+        xml_id: None,
+    };
+    assert!(apply(&mut s, batch(vec![mutation()])).is_err());
+    let mut envelope = env(&s);
+    envelope.expected_generation = Some(s.snapshot().generation);
+    let result = s.apply(envelope, batch(vec![mutation()])).unwrap();
+    assert_eq!(
+        s.snapshot().project.documents[0].processes[0]
+            .lane_set_id
+            .as_ref()
+            .unwrap()
+            .selector(),
+        result.promoted_identities[0].selector
+    );
+    apply(&mut s, Request::Undo).unwrap();
+    assert_eq!(s.snapshot().content_id, before);
+}
+
+#[test]
+fn explicit_anonymous_child_lane_set_can_be_promoted() {
+    use processcraft_core::bpmn_metadata::BaseMetadata;
+    let mut original = project();
+    fixture(&mut original);
+    let mut p = (*original.snapshot().project).clone();
+    let process = &mut Arc::make_mut(&mut p.documents[0]).processes[0];
+    process.lanes[0].child_lane_set_id = None;
+    process.lanes[0].child_lane_set_base = Some(BaseMetadata::default());
+    let mut s = Session::new(p).unwrap();
+    let mut envelope = env(&s);
+    envelope.expected_generation = Some(s.snapshot().generation);
+    let result = s
+        .apply(
+            envelope,
+            batch(vec![Mutation::PromoteElementIdentity {
+                document_id: docid(),
+                model_path: "/processes/0/lanes/0/child_lane_set_id".into(),
+                xml_id: None,
+            }]),
+        )
+        .unwrap();
+    assert_eq!(
+        s.snapshot().project.documents[0].processes[0].lanes[0]
+            .child_lane_set_id
+            .as_ref()
+            .unwrap()
+            .selector(),
+        result.promoted_identities[0].selector
+    );
+}
+
+#[test]
+fn mixed_script_survives_unrelated_edits_and_rejects_plain_replacement() {
+    use processcraft_core::{
+        bpmn_activity::ActivityProperties,
+        bpmn_xml::{MixedXml, NamespaceBinding, XmlContent, XmlNode},
+    };
+    let mut original = project();
+    fixture(&mut original);
+    let mut p = (*original.snapshot().project).clone();
+    let node = Arc::make_mut(&mut p.documents[0]).processes[0]
+        .nodes
+        .iter_mut()
+        .find(|node| node.id == id::<processcraft_core::ids::ElementIdentity>("review"))
+        .unwrap();
+    node.kind = NodeKind::ScriptTask;
+    let body = MixedXml::Structured(XmlContent {
+        namespaces: vec![NamespaceBinding {
+            prefix: String::new(),
+            uri: String::new(),
+        }],
+        nodes: vec![
+            XmlNode::Text {
+                text: "before".into(),
+            },
+            XmlNode::ProcessingInstruction {
+                target: "vendor".into(),
+                data: Some("inert".into()),
+            },
+            XmlNode::Text {
+                text: "after".into(),
+            },
+        ],
+    });
+    node.activity = Some(ActivityProperties {
+        script: Some(body.clone()),
+        ..Default::default()
+    });
+    let mut s = Session::new(p).unwrap();
+    apply(
+        &mut s,
+        batch(vec![Mutation::Rename {
+            document_id: docid(),
+            element_id: id("review"),
+            name: Some("New label".into()),
+        }]),
+    )
+    .unwrap();
+    let before = s.snapshot().content_id;
+    assert!(
+        apply(
+            &mut s,
+            batch(vec![Mutation::SetScriptBody {
+                document_id: docid(),
+                element_id: id("review"),
+                body: Some(MixedXml::Text("flattened".into()))
+            }])
+        )
+        .is_err()
+    );
+    assert_eq!(s.snapshot().content_id, before);
+    let snap = s.snapshot();
+    let node =
+        processcraft_core::queries::find_node(&snap.project.documents[0], &id("review")).unwrap();
+    assert_eq!(node.activity.as_ref().unwrap().script, Some(body));
+}
+
+#[test]
+fn base_metadata_edit_preserves_other_fields_and_document_id() {
+    use processcraft_core::{
+        bpmn_metadata::{BaseMetadata, Documentation},
+        bpmn_xml::MixedXml,
+    };
+    let mut s = project();
+    fixture(&mut s);
+    let docs = Documentation {
+        id: Some(id("lane_doc")),
+        text_format: None,
+        content: MixedXml::Text("original".into()),
+    };
+    apply(
+        &mut s,
+        batch(vec![Mutation::SetBaseMetadata {
+            document_id: docid(),
+            element_id: id("lane_request"),
+            metadata: Some(BaseMetadata {
+                documentation: vec![docs.clone()],
+                ..Default::default()
+            }),
+        }]),
+    )
+    .unwrap();
+    let before = s.snapshot().content_id;
+    let mut changed = docs.clone();
+    changed.content = MixedXml::Text("updated".into());
+    apply(
+        &mut s,
+        batch(vec![Mutation::SetDocumentationEntry {
+            document_id: docid(),
+            documentation_id: id("lane_doc"),
+            documentation: changed.clone(),
+        }]),
+    )
+    .unwrap();
+    let snap = s.snapshot();
+    let lane = snap.project.documents[0].processes[0]
+        .lanes
+        .iter()
+        .find(|lane| lane.id == id::<processcraft_core::ids::ElementIdentity>("lane_request"))
+        .unwrap();
+    assert_eq!(lane.base.as_ref().unwrap().documentation, vec![changed]);
+    apply(&mut s, Request::Undo).unwrap();
+    assert_eq!(s.snapshot().content_id, before);
+}
+
+#[test]
+fn anonymous_mixed_documentation_can_gain_only_internal_identity() {
+    use processcraft_core::{
+        bpmn_metadata::{Documentation, DocumentationSet},
+        bpmn_xml::{MixedXml, NamespaceBinding, XmlContent, XmlNode},
+    };
+    let mut original = project();
+    fixture(&mut original);
+    let mut p = (*original.snapshot().project).clone();
+    Arc::make_mut(&mut p.documents[0]).processes[0].documentation =
+        DocumentationSet::Structured(vec![Documentation {
+            id: None,
+            text_format: None,
+            content: MixedXml::Structured(XmlContent {
+                namespaces: vec![NamespaceBinding {
+                    prefix: String::new(),
+                    uri: String::new(),
+                }],
+                nodes: vec![
+                    XmlNode::Text {
+                        text: "before".into(),
+                    },
+                    XmlNode::ProcessingInstruction {
+                        target: "vendor".into(),
+                        data: Some("opaque".into()),
+                    },
+                    XmlNode::Text {
+                        text: "after".into(),
+                    },
+                ],
+            }),
+        }]);
+    let mut s = Session::new(p).unwrap();
+    let mut envelope = env(&s);
+    envelope.expected_generation = Some(0);
+    let result = s
+        .apply(
+            envelope,
+            batch(vec![Mutation::PromoteElementIdentity {
+                document_id: docid(),
+                model_path: "/processes/0/documentation/0/id".into(),
+                xml_id: None,
+            }]),
+        )
+        .unwrap();
+    assert_eq!(result.promoted_identities.len(), 1);
+    let before = s.snapshot().content_id;
+    assert!(
+        apply(
+            &mut s,
+            batch(vec![Mutation::SetElementXmlId {
+                document_id: docid(),
+                element_id: result.promoted_identities[0].selector.clone(),
+                xml_id: Some(id("new_id"))
+            }])
+        )
+        .is_err()
+    );
+    assert_eq!(s.snapshot().content_id, before);
+    let snap = s.snapshot();
+    let DocumentationSet::Structured(docs) = &snap.project.documents[0].processes[0].documentation
+    else {
+        panic!("missing structured documentation")
+    };
+    let mut edited = docs[0].clone();
+    edited.text_format = Some("text/plain".into());
+    apply(
+        &mut s,
+        batch(vec![Mutation::SetDocumentationEntry {
+            document_id: docid(),
+            documentation_id: result.promoted_identities[0].selector.clone(),
+            documentation: edited.clone(),
+        }]),
+    )
+    .unwrap();
+    let snap = s.snapshot();
+    assert_eq!(
+        snap.project.documents[0].processes[0].documentation,
+        DocumentationSet::Structured(vec![edited])
+    );
+    apply(&mut s, Request::Undo).unwrap();
+    assert_eq!(s.snapshot().content_id, before);
+}
+
+#[test]
+fn definitions_relationship_id_rewrite_preserves_extension_definition_qname() {
+    use processcraft_core::{
+        bpmn_metadata::Documentation, bpmn_model::QNameRef, bpmn_xml::MixedXml,
+    };
+    let mut s = project();
+    fixture(&mut s);
+    let reference = QNameRef {
+        namespace: GENERATED_TARGET_NAMESPACE.into(),
+        local: id("procurement"),
+    };
+    let extension = DefinitionsExtension {
+        documentation: vec![Documentation {
+            id: Some(id("extension_doc")),
+            text_format: None,
+            content: MixedXml::Text("help".into()),
+        }],
+        definition: Some(reference.clone()),
+        must_understand: Some(false),
+    };
+    let relationship = DefinitionsRelationship {
+        id: Some(id("relationship")),
+        base: None,
+        relationship_type: "trace".into(),
+        direction: None,
+        sources: vec![reference.clone()],
+        targets: vec![QNameRef {
+            namespace: "urn:external".into(),
+            local: id("procurement"),
+        }],
+    };
+    apply(
+        &mut s,
+        batch(vec![
+            Mutation::SetDefinitionsExtensions {
+                document_id: docid(),
+                extensions: vec![extension],
+            },
+            Mutation::SetDefinitionsRelationships {
+                document_id: docid(),
+                relationships: vec![relationship],
+            },
+        ]),
+    )
+    .unwrap();
+    let before = s.snapshot().content_id;
+    apply(
+        &mut s,
+        batch(vec![Mutation::SetElementXmlId {
+            document_id: docid(),
+            element_id: id("procurement"),
+            xml_id: Some(id("renamed_process")),
+        }]),
+    )
+    .unwrap();
+    let snap = s.snapshot();
+    let doc = &snap.project.documents[0];
+    assert_eq!(doc.extensions[0].definition.as_ref(), Some(&reference));
+    assert_eq!(
+        doc.relationships[0].sources[0].local,
+        id::<processcraft_core::ids::XmlId>("renamed_process")
+    );
+    assert_eq!(
+        doc.relationships[0].targets[0].local,
+        id::<processcraft_core::ids::XmlId>("procurement")
+    );
+    apply(&mut s, Request::Undo).unwrap();
+    assert_eq!(s.snapshot().content_id, before);
+}
+
+#[test]
+fn documentation_id_rename_and_collision_are_atomic() {
+    use processcraft_core::{
+        bpmn_metadata::{Documentation, DocumentationSet},
+        bpmn_xml::MixedXml,
+    };
+    let mut s = project();
+    fixture(&mut s);
+    apply(
+        &mut s,
+        batch(vec![Mutation::ReplaceDocumentation {
+            document_id: docid(),
+            element_id: id("review"),
+            documentation: DocumentationSet::Structured(vec![Documentation {
+                id: Some(id("doc_id")),
+                text_format: None,
+                content: MixedXml::Text("safe".into()),
+            }]),
+        }]),
+    )
+    .unwrap();
+    let before = s.snapshot().content_id;
+    assert!(
+        apply(
+            &mut s,
+            batch(vec![Mutation::SetElementXmlId {
+                document_id: docid(),
+                element_id: id("doc_id"),
+                xml_id: Some(id("review"))
+            }])
+        )
+        .is_err()
+    );
+    assert_eq!(s.snapshot().content_id, before);
+    let change = apply(
+        &mut s,
+        batch(vec![Mutation::SetElementXmlId {
+            document_id: docid(),
+            element_id: id("doc_id"),
+            xml_id: Some(id("doc_new")),
+        }]),
+    )
+    .unwrap();
+    let snap = s.snapshot();
+    let node =
+        processcraft_core::queries::find_node(&snap.project.documents[0], &id("review")).unwrap();
+    let DocumentationSet::Structured(docs) = &node.documentation else {
+        panic!("missing docs")
+    };
+    assert_eq!(
+        docs[0].id.as_ref().unwrap().selector(),
+        change.selector_mappings[0].to
+    );
+    assert_eq!(docs[0].id.as_ref().unwrap().xml_id(), Some(&id("doc_new")));
+    apply(&mut s, Request::Undo).unwrap();
+    assert_eq!(s.snapshot().content_id, before);
+}
+
+#[test]
+fn deleting_node_removes_navigation_from_its_documentation() {
+    use processcraft_core::{
+        bpmn_metadata::{Documentation, DocumentationSet},
+        bpmn_xml::MixedXml,
+    };
+    let mut original = project();
+    fixture(&mut original);
+    let mut p = (*original.snapshot().project).clone();
+    let doc = Arc::make_mut(&mut p.documents[0]);
+    doc.processes[0]
+        .nodes
+        .iter_mut()
+        .find(|node| node.id == id::<processcraft_core::ids::ElementIdentity>("start"))
+        .unwrap()
+        .documentation = DocumentationSet::Structured(vec![Documentation {
+        id: Some(id("owned_doc")),
+        text_format: None,
+        content: MixedXml::Text("context".into()),
+    }]);
+    doc.processes[0].flows.retain(|flow| {
+        flow.source != id::<processcraft_core::ids::ElementSelector>("start")
+            && flow.target != id::<processcraft_core::ids::ElementSelector>("start")
+    });
+    for diagram in &mut doc.diagrams {
+        diagram.shapes.retain(|shape| {
+            shape.element != id::<processcraft_core::ids::ElementSelector>("start")
+        });
+        diagram.edges.retain(|edge| {
+            edge.element != id::<processcraft_core::ids::ElementSelector>("flow_start_review")
+        });
+    }
+    p.links.push(NavigationLink {
+        source: ElementKey {
+            document_id: docid(),
+            xml_id: id("owned_doc"),
+        },
+        target: docid(),
+        label: "doc".into(),
+    });
+    let mut s = Session::new(p).unwrap();
+    let before = s.snapshot().content_id;
+    apply(
+        &mut s,
+        batch(vec![Mutation::Delete {
+            document_id: docid(),
+            element_id: id("start"),
+        }]),
+    )
+    .unwrap();
+    assert!(s.snapshot().project.links.is_empty());
+    apply(&mut s, Request::Undo).unwrap();
+    assert_eq!(s.snapshot().content_id, before);
+}
+
+#[test]
+fn removing_documentation_referenced_by_local_relationship_is_atomic() {
+    use processcraft_core::{
+        bpmn_metadata::Documentation, bpmn_model::QNameRef, bpmn_xml::MixedXml,
+    };
+    let mut s = project();
+    fixture(&mut s);
+    let q = |local: &str| QNameRef {
+        namespace: GENERATED_TARGET_NAMESPACE.into(),
+        local: id(local),
+    };
+    apply(
+        &mut s,
+        batch(vec![
+            Mutation::SetDefinitionsExtensions {
+                document_id: docid(),
+                extensions: vec![DefinitionsExtension {
+                    documentation: vec![Documentation {
+                        id: Some(id("extension_doc")),
+                        text_format: None,
+                        content: MixedXml::Text("help".into()),
+                    }],
+                    definition: None,
+                    must_understand: None,
+                }],
+            },
+            Mutation::SetDefinitionsRelationships {
+                document_id: docid(),
+                relationships: vec![DefinitionsRelationship {
+                    id: Some(id("relation")),
+                    base: None,
+                    relationship_type: "trace".into(),
+                    direction: None,
+                    sources: vec![q("extension_doc")],
+                    targets: vec![q("review")],
+                }],
+            },
+        ]),
+    )
+    .unwrap();
+    let before = s.snapshot().content_id;
+    assert!(
+        apply(
+            &mut s,
+            batch(vec![Mutation::SetDefinitionsExtensions {
+                document_id: docid(),
+                extensions: vec![]
+            }])
+        )
+        .is_err()
+    );
+    assert_eq!(s.snapshot().content_id, before);
+    let replacement = Documentation {
+        id: Some(processcraft_core::ids::ElementIdentity::Native {
+            native_id: processcraft_core::ids::NativeElementId::new(),
+            xml_id: Some(id("extension_doc")),
+        }),
+        text_format: None,
+        content: MixedXml::Text("different element".into()),
+    };
+    assert!(
+        apply(
+            &mut s,
+            batch(vec![Mutation::SetDefinitionsExtensions {
+                document_id: docid(),
+                extensions: vec![DefinitionsExtension {
+                    documentation: vec![replacement],
+                    definition: None,
+                    must_understand: None
+                }]
+            }])
+        )
+        .is_err()
+    );
+    assert_eq!(s.snapshot().content_id, before);
+}
+
+#[test]
+fn new_local_relationship_reference_must_resolve_but_legacy_and_external_survive() {
+    use processcraft_core::bpmn_model::QNameRef;
+    let mut original = project();
+    fixture(&mut original);
+    let mut p = (*original.snapshot().project).clone();
+    let local = QNameRef {
+        namespace: GENERATED_TARGET_NAMESPACE.into(),
+        local: id("missing"),
+    };
+    let external = QNameRef {
+        namespace: "urn:external".into(),
+        local: id("external"),
+    };
+    let relationship = DefinitionsRelationship {
+        id: Some(id("legacy_relation")),
+        base: None,
+        relationship_type: "trace".into(),
+        direction: None,
+        sources: vec![local.clone()],
+        targets: vec![external.clone()],
+    };
+    Arc::make_mut(&mut p.documents[0])
+        .relationships
+        .push(relationship.clone());
+    let mut s = Session::new(p).unwrap();
+    let before = s.snapshot().content_id;
+    let mut new = relationship.clone();
+    new.sources.push(QNameRef {
+        namespace: GENERATED_TARGET_NAMESPACE.into(),
+        local: id("another_missing"),
+    });
+    assert!(
+        apply(
+            &mut s,
+            batch(vec![Mutation::SetDefinitionsRelationships {
+                document_id: docid(),
+                relationships: vec![new]
+            }])
+        )
+        .is_err()
+    );
+    assert_eq!(s.snapshot().content_id, before);
+    let mut preserved = relationship;
+    preserved.relationship_type = "updated".into();
+    apply(
+        &mut s,
+        batch(vec![Mutation::SetDefinitionsRelationships {
+            document_id: docid(),
+            relationships: vec![preserved],
+        }]),
+    )
+    .unwrap();
+}
+
+#[test]
+fn text_and_comment_only_documentation_allows_safe_identity_edit() {
+    use processcraft_core::{
+        bpmn_metadata::{Documentation, DocumentationSet},
+        bpmn_xml::{MixedXml, NamespaceBinding, XmlContent, XmlNode},
+    };
+    let mut original = project();
+    fixture(&mut original);
+    let mut p = (*original.snapshot().project).clone();
+    Arc::make_mut(&mut p.documents[0]).processes[0].documentation =
+        DocumentationSet::Structured(vec![Documentation {
+            id: None,
+            text_format: None,
+            content: MixedXml::Structured(XmlContent {
+                namespaces: vec![NamespaceBinding {
+                    prefix: String::new(),
+                    uri: String::new(),
+                }],
+                nodes: vec![
+                    XmlNode::Text {
+                        text: "before".into(),
+                    },
+                    XmlNode::Comment {
+                        text: "comment".into(),
+                    },
+                    XmlNode::Text {
+                        text: "after".into(),
+                    },
+                ],
+            }),
+        }]);
+    let mut s = Session::new(p).unwrap();
+    let before = s.snapshot().content_id;
+    apply(
+        &mut s,
+        batch(vec![Mutation::SetElementXmlId {
+            document_id: docid(),
+            element_id: id("review"),
+            xml_id: Some(id("renamed")),
+        }]),
+    )
+    .unwrap();
+    apply(&mut s, Request::Undo).unwrap();
+    assert_eq!(s.snapshot().content_id, before);
+}
+
+#[test]
+fn explicit_expression_edit_preserves_id_and_undo() {
+    use processcraft_core::bpmn_model::{
+        Expression, ExpressionBody, ExpressionData, ExpressionKind,
+    };
+    let mut s = project();
+    fixture(&mut s);
+    let value = Expression::Structured(ExpressionData {
+        id: Some(id("expression")),
+        kind: ExpressionKind::Base {
+            explicit_type: false,
+        },
+        text: ExpressionBody::Text("first".into()),
+        namespaces: vec![(
+            "bpmn".into(),
+            "http://www.omg.org/spec/BPMN/20100524/MODEL".into(),
+        )],
+        foreign_attributes: vec![],
+    });
+    apply(
+        &mut s,
+        batch(vec![Mutation::SetFlowCondition {
+            document_id: docid(),
+            flow_id: id("flow_approved"),
+            condition: Some(value.clone()),
+        }]),
+    )
+    .unwrap();
+    let before = s.snapshot().content_id;
+    let mut edited = value;
+    if let Expression::Structured(data) = &mut edited {
+        data.text = ExpressionBody::Text("second".into());
+    }
+    apply(
+        &mut s,
+        batch(vec![Mutation::SetExpression {
+            document_id: docid(),
+            expression_id: id("expression"),
+            expression: edited,
+        }]),
+    )
+    .unwrap();
+    apply(&mut s, Request::Undo).unwrap();
+    assert_eq!(s.snapshot().content_id, before);
+}
+
+#[test]
+fn whole_value_mutations_cannot_change_existing_native_xml_id() {
+    use processcraft_core::{
+        bpmn_model::EventDefinition,
+        ids::{ElementIdentity, NativeElementId},
+    };
+    let mut s = project();
+    fixture(&mut s);
+    let native_id = NativeElementId::new();
+    let root = |xml: &str| EventDefinition::Signal {
+        id: Some(ElementIdentity::Native {
+            native_id,
+            xml_id: Some(id(xml)),
+        }),
+        base: None,
+        signal_ref: None,
+    };
+    apply(
+        &mut s,
+        batch(vec![Mutation::SetRootEventDefinitions {
+            document_id: docid(),
+            definitions: vec![root("original")],
+        }]),
+    )
+    .unwrap();
+    let before = s.snapshot().content_id;
+    assert!(
+        apply(
+            &mut s,
+            batch(vec![Mutation::SetRootEventDefinitions {
+                document_id: docid(),
+                definitions: vec![root("changed")]
+            }])
+        )
+        .is_err()
+    );
+    assert_eq!(s.snapshot().content_id, before);
+    apply(
+        &mut s,
+        batch(vec![Mutation::SetElementXmlId {
+            document_id: docid(),
+            element_id: processcraft_core::ids::ElementSelector::Native { native_id },
+            xml_id: Some(id("changed")),
+        }]),
+    )
+    .unwrap();
+}
+
+#[test]
+fn event_resource_replacement_preserves_previously_resolved_activity_message() {
+    use processcraft_core::{
+        bpmn_activity::ActivityProperties,
+        bpmn_model::{EventResource, QNameRef},
+    };
+    let mut original = project();
+    fixture(&mut original);
+    let mut p = (*original.snapshot().project).clone();
+    let doc = Arc::make_mut(&mut p.documents[0]);
+    doc.event_resources.push(EventResource::Message {
+        id: id("message"),
+        base: None,
+        name: None,
+        item_ref: None,
+    });
+    let node = doc.processes[0]
+        .nodes
+        .iter_mut()
+        .find(|node| node.id == id::<processcraft_core::ids::ElementIdentity>("review"))
+        .unwrap();
+    node.kind = NodeKind::SendTask;
+    node.activity = Some(ActivityProperties {
+        message_ref: Some(QNameRef {
+            namespace: GENERATED_TARGET_NAMESPACE.into(),
+            local: id("message"),
+        }),
+        ..Default::default()
+    });
+    let mut s = Session::new(p).unwrap();
+    let before = s.snapshot().content_id;
+    assert!(
+        apply(
+            &mut s,
+            batch(vec![Mutation::SetEventResources {
+                document_id: docid(),
+                resources: vec![]
+            }])
+        )
+        .is_err()
+    );
+    assert_eq!(s.snapshot().content_id, before);
+}
+
+#[test]
+fn diagram_label_style_identity_rename_updates_local_reference_and_undo() {
+    let mut s = project();
+    fixture(&mut s);
+    apply(
+        &mut s,
+        batch(vec![
+            Mutation::SetDiagramLabelStyles {
+                document_id: docid(),
+                diagram_id: id("procurement_diagram"),
+                label_styles: vec![LabelStyle {
+                    id: Some(id("label_style")),
+                    font: Some(DiFont {
+                        name: Some("Sans".into()),
+                        ..Default::default()
+                    }),
+                }],
+            },
+            Mutation::SetShapeLabel {
+                document_id: docid(),
+                diagram_id: id("procurement_diagram"),
+                shape_id: id("pc_shape_start"),
+                label: Some(Label {
+                    id: Some(id("label")),
+                    bounds: None,
+                    style: None,
+                    style_ref: Some(DiStyleRef::Local(id("label_style"))),
+                }),
+                label_visibility: Some(DiLabelVisibility::Explicit),
+            },
+        ]),
+    )
+    .unwrap();
+    let before = s.snapshot().content_id;
+    let changed = apply(
+        &mut s,
+        batch(vec![Mutation::SetElementXmlId {
+            document_id: docid(),
+            element_id: id("label_style"),
+            xml_id: Some(id("new_style")),
+        }]),
+    )
+    .unwrap();
+    let snap = s.snapshot();
+    let diagram = &snap.project.documents[0].diagrams[0];
+    let shape = diagram
+        .shapes
+        .iter()
+        .find(|shape| shape.id == id::<processcraft_core::ids::ElementIdentity>("pc_shape_start"))
+        .unwrap();
+    assert!(
+        matches!(&shape.label.as_ref().unwrap().style_ref, Some(DiStyleRef::Local(selector)) if selector == &changed.selector_mappings[0].to)
+    );
+    apply(&mut s, Request::Undo).unwrap();
+    assert_eq!(s.snapshot().content_id, before);
 }

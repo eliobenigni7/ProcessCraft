@@ -139,6 +139,29 @@ impl ProjectData {
                     message: message.into(),
                 })
             };
+            if doc
+                .extensions
+                .iter()
+                .any(|extension| extension.must_understand == Some(true))
+            {
+                emit(
+                    doc.definitions_id.selector(),
+                    "requiredExtensionUnverified",
+                    "A required extension's semantics are not verified; BPMN 2.0.2 §8.3.3, Table 8.7.",
+                );
+            }
+            for relationship in &doc.relationships {
+                if relationship.sources.is_empty() || relationship.targets.is_empty() {
+                    emit(
+                        relationship
+                            .id
+                            .as_ref()
+                            .map_or_else(|| doc.definitions_id.selector(), |id| id.selector()),
+                        "incompleteRelationship",
+                        "Relationship needs at least one source and target (editing advisory); BPMN 2.0.2 §8.3.4, Table 8.15.",
+                    );
+                }
+            }
             if !matches!(doc.capability, Capability::Editable) {
                 emit(
                     doc.definitions_id.selector(),
@@ -149,7 +172,7 @@ impl ProjectData {
             for expression in doc
                 .expressions()
                 .into_iter()
-                .filter(|e| e.trim().is_empty())
+                .filter(|e| e.plain_text().is_some_and(|text| text.trim().is_empty()))
                 .take(10_000)
             {
                 let id = match expression {
@@ -413,6 +436,7 @@ impl ProjectData {
                                 name,
                                 sources,
                                 target,
+                                ..
                             } = definition
                             {
                                 if id.is_none()

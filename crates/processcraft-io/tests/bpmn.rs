@@ -545,3 +545,62 @@ fn namespace_names_reject_whitespace_and_escaped_reserved_bindings() {
             )
     );
 }
+
+#[test]
+fn mixed_xml_payload_does_not_create_model_references_or_di_geometry() {
+    for body in [
+        "<b:documentation>before<b:sequenceFlow id='sample' sourceRef='Missing' targetRef='Elsewhere'/>after</b:documentation>",
+        "<b:scriptTask id='script'><b:script><b:sequenceFlow id='sample' sourceRef='Missing' targetRef='Elsewhere'/></b:script></b:scriptTask>",
+        "<b:textAnnotation id='note'><b:text><b:sequenceFlow id='sample' sourceRef='Missing' targetRef='Elsewhere'/></b:text></b:textAnnotation>",
+        "<b:extensionElements><v:sample xmlns:v='urn:vendor'><b:sequenceFlow id='sample' sourceRef='Missing' targetRef='Elsewhere'/></v:sample></b:extensionElements>",
+        "<b:documentation><dc:Bounds xmlns:dc='http://www.omg.org/spec/DD/20100524/DC' x='sample' y='sample'/></b:documentation>",
+    ] {
+        let bytes = wrap(body);
+        let parsed = import_bpmn(&bytes).unwrap();
+        assert_eq!(parsed.export_source(), bytes);
+        assert!(
+            !parsed
+                .report()
+                .qname_values
+                .iter()
+                .any(|name| name.local_name == "Missing")
+        );
+    }
+    // Recognized standard XML IDs still participate in duplicate checks, even
+    // in lax payloads. This change only avoids interpreting them as model owners.
+    let duplicate =
+        wrap("<b:task id='sample'/><b:documentation><b:task id='sample'/></b:documentation>");
+    assert_eq!(
+        import_bpmn(&duplicate).unwrap_err().kind,
+        ImportErrorKind::Id
+    );
+    let actual_model_flow =
+        wrap("<b:sequenceFlow id='flow' sourceRef='Missing' targetRef='Elsewhere'/>");
+    assert_eq!(
+        import_bpmn(&actual_model_flow).unwrap_err().kind,
+        ImportErrorKind::Reference
+    );
+}
+
+#[test]
+fn processing_instruction_targets_require_namespace_conformant_xml_names() {
+    for target in ["inspect", "xml-stylesheet"] {
+        let bytes = wrap(&format!(
+            "<b:documentation><?{target} inert?></b:documentation>"
+        ));
+        assert_eq!(import_bpmn(&bytes).unwrap().export_source(), bytes);
+    }
+    for target in [
+        "XML",
+        "xMl",
+        "1invalid",
+        "vendor:inspect",
+        ":inspect",
+        "a:b:c",
+    ] {
+        let bytes = wrap(&format!(
+            "<b:documentation><?{target} inert?></b:documentation>"
+        ));
+        assert_eq!(import_bpmn(&bytes).unwrap_err().kind, ImportErrorKind::Xml);
+    }
+}

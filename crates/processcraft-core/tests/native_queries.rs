@@ -15,14 +15,16 @@ fn anonymous_native_elements_remain_queryable_without_promoting_or_naming_them()
     let process_selector = process.selector();
     let lane_selector = lane.selector();
     document.processes.push(Process {
+        base_extras: None,
         is_executable: Some(false),
         id: process,
         name: None,
-        documentation: String::new(),
+        documentation: String::new().into(),
         nodes: vec![Node {
+            base_extras: None,
             id: task,
             name: None,
-            documentation: String::new(),
+            documentation: String::new().into(),
             kind: NodeKind::Task,
             details: None,
             loop_characteristics: None,
@@ -33,11 +35,13 @@ fn anonymous_native_elements_remain_queryable_without_promoting_or_naming_them()
             contact: String::new(),
         }],
         lanes: vec![Lane {
+            base: None,
             id: lane,
             name: Some(String::new()),
             parent: None,
             members: vec![task_selector.clone()],
             child_lane_set_id: None,
+            child_lane_set_base: None,
         }],
         flows: vec![],
         groups: vec![],
@@ -45,6 +49,7 @@ fn anonymous_native_elements_remain_queryable_without_promoting_or_naming_them()
         data_associations: vec![],
         io_specification: None,
         lane_set_id: None,
+        lane_set_base: None,
     });
     let document_id = document.id;
     let mut project = ProjectData::new("Queries".into());

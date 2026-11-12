@@ -8,18 +8,150 @@ pub(super) enum DiDraft {
         marker: Option<bool>,
         horizontal_allowed: bool,
         marker_allowed: bool,
+        label: LabelDraft,
     },
     Edge {
         diagram: ElementSelector,
         edge: ElementSelector,
         source: Option<ElementSelector>,
         target: Option<ElementSelector>,
+        label: LabelDraft,
     },
 }
+
+pub(super) struct LabelDraft {
+    value: Option<processcraft_core::model::Label>,
+    explicit: bool,
+    kind: u8,
+    qualified: Option<super::catalog::QNameDraft>,
+}
+impl LabelDraft {
+    fn new(
+        value: Option<processcraft_core::model::Label>,
+        visibility: Option<processcraft_core::model::DiLabelVisibility>,
+    ) -> Self {
+        use processcraft_core::model::DiStyleRef;
+        let qualified = value.as_ref().and_then(|l| match &l.style_ref {
+            Some(DiStyleRef::Qualified(q)) => Some(super::catalog::QNameDraft::from(q)),
+            _ => None,
+        });
+        let kind = match value.as_ref().and_then(|label| label.style_ref.as_ref()) {
+            None => 0,
+            Some(DiStyleRef::Local(_)) => 1,
+            Some(DiStyleRef::Qualified(_)) => 2,
+        };
+        Self {
+            value,
+            explicit: visibility.is_some(),
+            kind,
+            qualified,
+        }
+    }
+    fn ui(&mut self, ui: &mut egui::Ui, diagram: &Diagram) -> Result<(), String> {
+        use processcraft_core::model::{DiStyleRef, Label};
+        ui.separator();
+        ui.strong("Diagram label");
+        ui.checkbox(&mut self.explicit, "Use explicit label visibility");
+        let mut present = self.value.is_some();
+        ui.checkbox(&mut present, "Label present");
+        if !present {
+            self.value = None;
+            return Ok(());
+        }
+        let label = self.value.get_or_insert(Label {
+            id: None,
+            bounds: None,
+            style: None,
+            style_ref: None,
+        });
+        let mut bounds = label.bounds.is_some();
+        ui.checkbox(&mut bounds, "Label bounds present");
+        if bounds {
+            let bounds = label.bounds.get_or_insert(Bounds {
+                x: 0.,
+                y: 0.,
+                width: 100.,
+                height: 30.,
+            });
+            for (name, value) in [
+                ("X", &mut bounds.x),
+                ("Y", &mut bounds.y),
+                ("Width", &mut bounds.width),
+                ("Height", &mut bounds.height),
+            ] {
+                ui.horizontal(|ui| {
+                    ui.label(name);
+                    ui.add(egui::DragValue::new(value));
+                });
+            }
+        } else {
+            label.bounds = None;
+        }
+        let mut kind = self.kind;
+        egui::ComboBox::from_label("Label style")
+            .selected_text(match kind {
+                1 => "Diagram style",
+                2 => "Qualified reference",
+                _ => "Unspecified",
+            })
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut kind, 0, "Unspecified");
+                ui.selectable_value(&mut kind, 1, "Diagram style");
+                ui.selectable_value(&mut kind, 2, "Qualified reference");
+            });
+        self.kind = kind;
+        match kind {
+            0 => label.style_ref = None,
+            1 => {
+                let mut selected = match &label.style_ref {
+                    Some(DiStyleRef::Local(v)) => Some(v.clone()),
+                    _ => None,
+                };
+                egui::ComboBox::from_label("Style")
+                    .selected_text(
+                        selected
+                            .as_ref()
+                            .and_then(|id| {
+                                diagram
+                                    .label_styles
+                                    .iter()
+                                    .position(|s| s.id.as_ref().is_some_and(|i| i == id))
+                            })
+                            .map_or("Choose a style".to_owned(), |i| format!("Style {}", i + 1)),
+                    )
+                    .show_ui(ui, |ui| {
+                        for (i, style) in diagram.label_styles.iter().enumerate() {
+                            if let Some(id) = &style.id {
+                                ui.selectable_value(
+                                    &mut selected,
+                                    Some(id.selector()),
+                                    format!("Style {}", i + 1),
+                                );
+                            }
+                        }
+                    });
+                label.style_ref = Some(DiStyleRef::Local(
+                    selected.ok_or("Choose a diagram style.")?,
+                ));
+            }
+            _ => {
+                self.qualified.get_or_insert_with(Default::default);
+                super::catalog::optional_qname(ui, "Style reference", &mut self.qualified);
+                label.style_ref =
+                    super::catalog::q_build(&self.qualified)?.map(DiStyleRef::Qualified);
+            }
+        }
+        Ok(())
+    }
+    fn visibility(&self) -> Option<processcraft_core::model::DiLabelVisibility> {
+        self.explicit
+            .then_some(processcraft_core::model::DiLabelVisibility::Explicit)
+    }
+}
+
 fn representation_label(
     document: &BpmnDocument,
     element: &ElementSelector,
-    identity: &processcraft_core::ids::ElementIdentity,
     kind: &str,
     index: usize,
 ) -> String {
@@ -29,10 +161,6 @@ fn representation_label(
     {
         label.push_str(" · ");
         label.push_str(name);
-    }
-    if let Some(id) = identity.xml_id() {
-        label.push_str(" · ");
-        label.push_str(&id.to_string());
     }
     label
 }
@@ -86,15 +214,13 @@ impl ProcessCraft {
                                 && self.xml_id_draft.is_none(),
                             egui::Button::new(format!(
                                 "Edit {}",
-                                representation_label(
-                                    document,
-                                    &shape.element,
-                                    &shape.id,
-                                    "shape",
-                                    index
-                                )
+                                representation_label(document, &shape.element, "shape", index)
                             )),
                         )
+                        .on_hover_text(shape.id.xml_id().map_or_else(
+                            || "XML ID not assigned".to_owned(),
+                            |id| format!("XML ID: {id}"),
+                        ))
                         .clicked()
                         && self.commit_draft()
                     {
@@ -115,6 +241,7 @@ impl ProcessCraft {
                             marker: shape.is_marker_visible,
                             horizontal_allowed,
                             marker_allowed,
+                            label: LabelDraft::new(shape.label.clone(), shape.label_visibility),
                         });
                     }
                 }
@@ -134,15 +261,13 @@ impl ProcessCraft {
                                 && self.xml_id_draft.is_none(),
                             egui::Button::new(format!(
                                 "Edit {}",
-                                representation_label(
-                                    document,
-                                    &edge.element,
-                                    &edge.id,
-                                    "edge",
-                                    index
-                                )
+                                representation_label(document, &edge.element, "edge", index)
                             )),
                         )
+                        .on_hover_text(edge.id.xml_id().map_or_else(
+                            || "XML ID not assigned".to_owned(),
+                            |id| format!("XML ID: {id}"),
+                        ))
                         .clicked()
                         && self.commit_draft()
                     {
@@ -151,6 +276,7 @@ impl ProcessCraft {
                             edge: edge.id.selector(),
                             source: edge.source_element.clone(),
                             target: edge.target_element.clone(),
+                            label: LabelDraft::new(edge.label.clone(), edge.label_visibility),
                         });
                     }
                 }
@@ -160,14 +286,16 @@ impl ProcessCraft {
         let draft = self.di_draft.as_mut().unwrap();
         ui.strong("Diagram representation");
         let mut change = None;
+        let mut label_change = None;
         match draft {
             DiDraft::Shape {
-                diagram,
+                diagram: diagram_id,
                 shape,
                 horizontal,
                 marker,
                 horizontal_allowed,
                 marker_allowed,
+                label,
             } => {
                 optional_flag(
                     ui,
@@ -182,10 +310,27 @@ impl ProcessCraft {
                 if !*marker_allowed && marker.is_some() {
                     ui.label("Imported marker visibility retained for this shape.");
                 }
-                if ui.button("Apply diagram properties").clicked() {
+                let label_error = label.ui(ui, diagram).err();
+                if let Some(error) = &label_error {
+                    ui.label(error);
+                }
+                if ui
+                    .add_enabled(
+                        label_error.is_none(),
+                        egui::Button::new("Apply diagram properties"),
+                    )
+                    .clicked()
+                {
+                    label_change = Some(Mutation::SetShapeLabel {
+                        document_id: document.id,
+                        diagram_id: diagram_id.clone(),
+                        shape_id: shape.clone(),
+                        label: label.value.clone(),
+                        label_visibility: label.visibility(),
+                    });
                     change = Some(Mutation::SetShapeDiAttributes {
                         document_id: document.id,
-                        diagram_id: diagram.clone(),
+                        diagram_id: diagram_id.clone(),
                         shape_id: shape.clone(),
                         is_horizontal: *horizontal,
                         is_marker_visible: *marker,
@@ -197,6 +342,7 @@ impl ProcessCraft {
                 edge,
                 source,
                 target,
+                label,
             } => {
                 let candidates = diagram
                     .shapes
@@ -205,19 +351,13 @@ impl ProcessCraft {
                     .map(|(index, shape)| {
                         (
                             shape.id.selector(),
-                            representation_label(
-                                document,
-                                &shape.element,
-                                &shape.id,
-                                "Shape",
-                                index,
-                            ),
+                            representation_label(document, &shape.element, "Shape", index),
                         )
                     })
                     .chain(diagram.edges.iter().enumerate().map(|(index, edge)| {
                         (
                             edge.id.selector(),
-                            representation_label(document, &edge.element, &edge.id, "Edge", index),
+                            representation_label(document, &edge.element, "Edge", index),
                         )
                     }))
                     .collect::<Vec<_>>();
@@ -245,7 +385,24 @@ impl ProcessCraft {
                             }
                         });
                 }
-                if ui.button("Apply diagram properties").clicked() {
+                let label_error = label.ui(ui, diagram).err();
+                if let Some(error) = &label_error {
+                    ui.label(error);
+                }
+                if ui
+                    .add_enabled(
+                        label_error.is_none(),
+                        egui::Button::new("Apply diagram properties"),
+                    )
+                    .clicked()
+                {
+                    label_change = Some(Mutation::SetEdgeLabel {
+                        document_id: document.id,
+                        diagram_id: diagram_id.clone(),
+                        edge_id: edge.clone(),
+                        label: label.value.clone(),
+                        label_visibility: label.visibility(),
+                    });
                     change = Some(Mutation::SetEdgeDiEndpoints {
                         document_id: document.id,
                         diagram_id: diagram_id.clone(),
@@ -257,7 +414,10 @@ impl ProcessCraft {
             }
         }
         if let Some(change) = change
-            && self.ctl.mutate(vec![change])
+            && self.ctl.mutate(vec![
+                change,
+                label_change.expect("label change accompanies diagram change"),
+            ])
         {
             self.di_draft = None;
         }
@@ -286,6 +446,7 @@ mod tests {
             marker: Some(false),
             horizontal_allowed: false,
             marker_allowed: true,
+            label: LabelDraft::new(None, None),
         });
         assert!(!app.commit_draft());
         app.select(None);

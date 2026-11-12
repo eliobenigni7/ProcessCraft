@@ -16,9 +16,10 @@ fn selector(s: &str) -> ElementSelector {
 }
 fn event(id: &str, kind: NodeKind, details: NodeDetails) -> Node {
     Node {
+        base_extras: None,
         id: ident(id),
         name: None,
-        documentation: String::new(),
+        documentation: String::new().into(),
         kind,
         details: Some(details),
         item_aware: None,
@@ -32,6 +33,7 @@ fn event(id: &str, kind: NodeKind, details: NodeDetails) -> Node {
 fn fixture() -> ProjectData {
     let mut d = BpmnDocument::new("events".into(), ident("defs"));
     d.root_event_definitions.push(EventDefinition::Timer {
+        base: None,
         id: Some(ident("timer")),
         kind: None,
         expression: None,
@@ -41,6 +43,7 @@ fn fixture() -> ProjectData {
         NodeKind::StartEvent,
         NodeDetails::Event {
             definitions: vec![EventDefinition::Signal {
+                base: None,
                 id: None,
                 signal_ref: None,
             }],
@@ -50,18 +53,21 @@ fn fixture() -> ProjectData {
             attached_to: None,
             cancel_activity: None,
             properties: vec![EventProperty {
+                base: None,
                 id: Some(ident("property")),
                 name: None,
                 item_aware: None,
             }],
             io: Some(EventIo::Catch {
                 outputs: vec![DataPort {
+                    base: None,
                     id: Some(ident("event_out")),
                     name: None,
                     item_aware: None,
                     is_collection: None,
                 }],
                 output_set: Some(IoSet {
+                    base: None,
                     id: None,
                     name: None,
                     data_refs: vec![selector("event_out")],
@@ -90,15 +96,18 @@ fn fixture() -> ProjectData {
         },
     );
     d.processes.push(Process {
+        base_extras: None,
+        lane_set_base: None,
         id: ident("process"),
         name: None,
-        documentation: String::new(),
+        documentation: String::new().into(),
         is_executable: None,
         io_specification: None,
         lane_set_id: None,
         groups: vec![],
         data_objects: vec![],
         data_associations: vec![DataAssociation {
+            base: None,
             id: Some(ident("data_assoc")),
             owner: selector("start"),
             kind: DataAssociationKind::Output,
@@ -155,6 +164,7 @@ fn missing_local_root_wrong_event_direction_and_duplicate_ids_are_rejected() {
     let mut duplicate = p;
     let d = Arc::make_mut(&mut duplicate.documents[0]);
     d.root_event_definitions.push(EventDefinition::Timer {
+        base: None,
         id: Some(ident("timer")),
         kind: None,
         expression: None,
@@ -166,6 +176,8 @@ fn qualified_root_reference_keeps_namespace_and_requires_local_kind() {
     let mut project = fixture();
     let d = Arc::make_mut(&mut project.documents[0]);
     d.definitions = Some(DefinitionsMetadata {
+        foreign_attributes: vec![],
+        namespaces: vec![],
         target_namespace: "urn:example".into(),
         name: None,
         expression_language: None,
@@ -206,6 +218,8 @@ fn repeated_root_uses_are_rejected_without_namespace_aliasing() {
     let mut p = fixture();
     let d = Arc::make_mut(&mut p.documents[0]);
     d.definitions = Some(DefinitionsMetadata {
+        foreign_attributes: vec![],
+        namespaces: vec![],
         target_namespace: "urn:example".into(),
         name: None,
         expression_language: None,
@@ -258,6 +272,7 @@ fn error_start_is_valid_only_in_event_subprocess_context() {
         NodeKind::StartEvent,
         NodeDetails::Event {
             definitions: vec![EventDefinition::Error {
+                base: None,
                 id: None,
                 error_ref: None,
             }],
@@ -271,12 +286,14 @@ fn error_start_is_valid_only_in_event_subprocess_context() {
         },
     );
     doc.processes[0].nodes.push(Node {
+        base_extras: None,
         id: ident("event_sub"),
         name: None,
-        documentation: String::new(),
+        documentation: String::new().into(),
         kind: NodeKind::SubProcess,
         details: Some(NodeDetails::SubProcess {
             content: Box::new(FlowContainer {
+                lane_set_base: None,
                 lane_set_id: None,
                 groups: vec![],
                 data_objects: vec![],
@@ -327,16 +344,18 @@ fn di_endpoints_resolve_representation_ids_within_the_same_diagram() {
     let mut p = fixture();
     let d = Arc::make_mut(&mut p.documents[0]);
     d.processes[0].flows.push(Flow {
+        base_extras: None,
         id: ident("flow"),
         kind: FlowKind::Sequence,
         source: selector("start"),
         target: selector("throw"),
         name: None,
-        documentation: String::new(),
+        documentation: String::new().into(),
         condition: None,
         association_direction: None,
     });
     let shape = |id: &str, element: &str| Shape {
+        label_visibility: None,
         id: ident(id),
         element: selector(element),
         is_expanded: None,
@@ -352,12 +371,16 @@ fn di_endpoints_resolve_representation_ids_within_the_same_diagram() {
         style: None,
     };
     d.diagrams.push(Diagram {
+        documentation: None,
+        label_styles: vec![],
+        resolution: None,
         id: ident("diagram"),
         name: None,
         plane_id: ident("plane"),
         plane: selector("process"),
         shapes: vec![shape("shape_start", "start"), shape("shape_throw", "throw")],
         edges: vec![Edge {
+            label_visibility: None,
             id: ident("edge"),
             element: selector("flow"),
             source_element: Some(selector("shape_start")),
@@ -375,6 +398,9 @@ fn di_endpoints_resolve_representation_ids_within_the_same_diagram() {
     let mut cross = p;
     let d = Arc::make_mut(&mut cross.documents[0]);
     d.diagrams.push(Diagram {
+        documentation: None,
+        label_styles: vec![],
+        resolution: None,
         id: ident("other_diagram"),
         name: None,
         plane_id: ident("other_plane"),
@@ -390,9 +416,10 @@ fn annotation_association_may_target_sequence_flow_and_its_di_edge() {
     let mut p = fixture();
     let d = Arc::make_mut(&mut p.documents[0]);
     d.processes[0].nodes.push(Node {
+        base_extras: None,
         id: ident("note"),
         name: None,
-        documentation: String::new(),
+        documentation: String::new().into(),
         kind: NodeKind::TextAnnotation,
         details: Some(NodeDetails::TextAnnotation {
             text_format: None,
@@ -406,26 +433,29 @@ fn annotation_association_may_target_sequence_flow_and_its_di_edge() {
         contact: String::new(),
     });
     d.processes[0].flows.push(Flow {
+        base_extras: None,
         id: ident("sequence"),
         kind: FlowKind::Sequence,
         source: selector("start"),
         target: selector("throw"),
         name: None,
-        documentation: String::new(),
+        documentation: String::new().into(),
         condition: None,
         association_direction: None,
     });
     d.processes[0].flows.push(Flow {
+        base_extras: None,
         id: ident("association"),
         kind: FlowKind::Association,
         source: selector("note"),
         target: selector("sequence"),
         name: None,
-        documentation: String::new(),
+        documentation: String::new().into(),
         condition: None,
         association_direction: None,
     });
     let shape = |id: &str, element: &str| Shape {
+        label_visibility: None,
         id: ident(id),
         element: selector(element),
         is_expanded: None,
@@ -441,6 +471,7 @@ fn annotation_association_may_target_sequence_flow_and_its_di_edge() {
         style: None,
     };
     let edge = |id: &str, element: &str, source: &str, target: &str| Edge {
+        label_visibility: None,
         id: ident(id),
         element: selector(element),
         source_element: Some(selector(source)),
@@ -450,6 +481,9 @@ fn annotation_association_may_target_sequence_flow_and_its_di_edge() {
         style: None,
     };
     d.diagrams.push(Diagram {
+        documentation: None,
+        label_styles: vec![],
+        resolution: None,
         id: ident("diagram"),
         name: None,
         plane_id: ident("plane"),
@@ -482,9 +516,10 @@ fn annotation_association_may_target_sequence_flow_and_its_di_edge() {
     let mut cross_scope = p;
     let d = Arc::make_mut(&mut cross_scope.documents[0]);
     let task = |name: &str| Node {
+        base_extras: None,
         id: ident(name),
         name: None,
-        documentation: String::new(),
+        documentation: String::new().into(),
         kind: NodeKind::Task,
         details: None,
         item_aware: None,
@@ -495,9 +530,11 @@ fn annotation_association_may_target_sequence_flow_and_its_di_edge() {
         contact: String::new(),
     };
     d.processes.push(Process {
+        base_extras: None,
+        lane_set_base: None,
         id: ident("other_process"),
         name: None,
-        documentation: String::new(),
+        documentation: String::new().into(),
         is_executable: None,
         io_specification: None,
         lane_set_id: None,
@@ -507,12 +544,13 @@ fn annotation_association_may_target_sequence_flow_and_its_di_edge() {
         nodes: vec![task("other_a"), task("other_b")],
         lanes: vec![],
         flows: vec![Flow {
+            base_extras: None,
             id: ident("other_sequence"),
             kind: FlowKind::Sequence,
             source: selector("other_a"),
             target: selector("other_b"),
             name: None,
-            documentation: String::new(),
+            documentation: String::new().into(),
             condition: None,
             association_direction: None,
         }],

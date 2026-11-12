@@ -97,6 +97,18 @@ enum ExportKind {
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
 enum Query {
+    Model {
+        #[serde(alias = "documentId", alias = "docId")]
+        document_id: processcraft_core::ids::DocumentId,
+        offset: usize,
+        limit: usize,
+    },
+    CheckpointFields {
+        #[serde(rename = "checkpointId")]
+        checkpoint_id: processcraft_core::ids::CheckpointId,
+        offset: usize,
+        limit: usize,
+    },
     Events {
         #[serde(alias = "documentId", alias = "docId")]
         document_id: processcraft_core::ids::DocumentId,
@@ -516,8 +528,26 @@ impl Attachment {
                         | Query::Identities { .. }
                         | Query::Events { .. }
                         | Query::Diagrams { .. }
+                        | Query::Model { .. }
+                        | Query::CheckpointFields { .. }
                 );
                 let (items, offset, limit): (Vec<Value>, usize, usize) = match q {
+                    Query::Model { document_id, offset, limit } => {
+                        let page = match processcraft_core::queries::document_fields_page(&snapshot.project, document_id, offset, limit) {
+                            Ok(Some(page)) => page,
+                            Ok(None) => return json!({"ok":false,"error":"document not found"}),
+                            Err(error) => return json!({"ok":false,"error":error.to_string()}),
+                        };
+                        return json!({"total":page.total,"items":page.items,"nextOffset":page.next_offset,"generation":snapshot.generation,"contentId":snapshot.content_id});
+                    },
+                    Query::CheckpointFields { checkpoint_id, offset, limit } => {
+                        let page = match processcraft_core::queries::checkpoint_fields_page(&snapshot.project, checkpoint_id, offset, limit) {
+                            Ok(Some(page)) => page,
+                            Ok(None) => return json!({"ok":false,"error":"checkpoint not found"}),
+                            Err(error) => return json!({"ok":false,"error":error.to_string()}),
+                        };
+                        return json!({"total":page.total,"items":page.items,"nextOffset":page.next_offset,"generation":snapshot.generation,"contentId":snapshot.content_id});
+                    },
                     Query::Events { document_id, offset, limit } => {
                         let Some(rows) = processcraft_core::queries::event_fields(&snapshot.project, document_id) else { return json!({"ok":false,"error":"document not found"}); };
                         (rows.into_iter().map(|row| json!(row)).collect(), offset, limit)
@@ -617,6 +647,9 @@ impl Attachment {
                 for item in items.into_iter().skip(offset).take(limit) {
                     let size = serde_json::to_vec(&item).map_or(3 * 1024 * 1024 + 1, |v| v.len());
                     if bytes.saturating_add(size) > 3 * 1024 * 1024 {
+                        if page.is_empty() {
+                            return json!({"ok":false,"error":"item exceeds response limit"});
+                        }
                         break;
                     }
                     bytes += size;

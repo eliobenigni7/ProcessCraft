@@ -15,23 +15,26 @@ where
 fn fixture() -> BpmnDocument {
     let mut d = BpmnDocument::new("Example".into(), id("defs"));
     d.processes.push(Process {
+        base_extras: None,
         is_executable: Some(false),
         io_specification: None,
+        lane_set_base: None,
         lane_set_id: None,
         groups: vec![],
         data_objects: vec![],
         data_associations: vec![],
         id: id("p"),
         name: Some(String::new()),
-        documentation: String::new(),
+        documentation: String::new().into(),
         nodes: ["a", "b", "c", "d"]
             .iter()
             .map(|s| Node {
+                base_extras: None,
                 item_aware: None,
                 activity: None,
                 id: id(s),
                 name: Some(s.to_string()),
-                documentation: String::new(),
+                documentation: String::new().into(),
                 kind: NodeKind::Task,
                 details: None,
                 loop_characteristics: None,
@@ -44,6 +47,9 @@ fn fixture() -> BpmnDocument {
         flows: vec![],
     });
     d.diagrams.push(Diagram {
+        documentation: None,
+        resolution: None,
+        label_styles: vec![],
         name: None,
         id: id("diagram"),
         plane_id: id("plane"),
@@ -52,6 +58,7 @@ fn fixture() -> BpmnDocument {
             .iter()
             .enumerate()
             .map(|(i, s)| Shape {
+                label_visibility: None,
                 is_horizontal: None,
                 is_marker_visible: None,
                 is_expanded: None,
@@ -73,16 +80,18 @@ fn fixture() -> BpmnDocument {
 }
 fn flow(d: &mut BpmnDocument, name: &str, a: &str, b: &str) {
     d.processes[0].flows.push(Flow {
+        base_extras: None,
         association_direction: None,
         id: id(name),
         kind: FlowKind::Sequence,
         source: id(a),
         target: id(b),
         name: Some(String::new()),
-        documentation: String::new(),
+        documentation: String::new().into(),
         condition: None,
     });
     d.diagrams[0].edges.push(Edge {
+        label_visibility: None,
         source_element: None,
         target_element: None,
         id: id(&format!("di_{name}")),
@@ -250,6 +259,8 @@ fn lane_membership_and_unlaned_nodes_use_separate_bands() {
     use processcraft_core::model::Lane;
     let mut d = fixture();
     d.processes[0].lanes.push(Lane {
+        base: None,
+        child_lane_set_base: None,
         child_lane_set_id: None,
         id: id("lane"),
         name: Some("Lane".into()),
@@ -257,6 +268,7 @@ fn lane_membership_and_unlaned_nodes_use_separate_bands() {
         members: vec![id("a"), id("b")],
     });
     d.diagrams[0].shapes.push(Shape {
+        label_visibility: None,
         is_horizontal: None,
         is_marker_visible: None,
         is_expanded: None,
@@ -322,21 +334,25 @@ fn external_labels_keep_sizes_and_styles() {
         font: None,
     });
     d.diagrams[0].shapes[0].label = Some(Label {
-        bounds: Bounds {
+        id: None,
+        style_ref: None,
+        bounds: Some(Bounds {
             x: 0.0,
             y: -30.0,
             width: 60.0,
             height: 20.0,
-        },
+        }),
         style: style.clone(),
     });
     d.diagrams[0].edges[0].label = Some(Label {
-        bounds: Bounds {
+        id: None,
+        style_ref: None,
+        bounds: Some(Bounds {
             x: 150.0,
             y: 0.0,
             width: 60.0,
             height: 20.0,
-        },
+        }),
         style,
     });
     let p = layout(&d);
@@ -372,11 +388,12 @@ fn maximum_shape_count_is_bounded_and_above_limits_refused() {
     for i in 4..400 {
         let node_id: ElementIdentity = id(&format!("node_{i}"));
         d.processes[0].nodes.push(Node {
+            base_extras: None,
             item_aware: None,
             activity: None,
             id: node_id.clone(),
             name: Some(String::new()),
-            documentation: String::new(),
+            documentation: String::new().into(),
             kind: NodeKind::Task,
             details: None,
             loop_characteristics: None,
@@ -385,6 +402,7 @@ fn maximum_shape_count_is_bounded_and_above_limits_refused() {
             contact: String::new(),
         });
         d.diagrams[0].shapes.push(Shape {
+            label_visibility: None,
             is_horizontal: None,
             is_marker_visible: None,
             is_expanded: None,
@@ -436,6 +454,8 @@ fn one_pool_contains_lanes_and_unlaned_band() {
     use processcraft_core::model::{Collaboration, Lane, Participant};
     let mut d = fixture();
     d.processes[0].lanes.push(Lane {
+        base: None,
+        child_lane_set_base: None,
         child_lane_set_id: None,
         id: id("lane"),
         name: Some(String::new()),
@@ -443,11 +463,13 @@ fn one_pool_contains_lanes_and_unlaned_band() {
         members: vec![id("a")],
     });
     d.collaboration = Some(Collaboration {
+        base: None,
         name: None,
         id: id("collab"),
         conversation_nodes: vec![],
         conversation_links: vec![],
         participants: vec![Participant {
+            base: None,
             id: id("pool"),
             name: Some(String::new()),
             process: Some(id("p")),
@@ -456,6 +478,7 @@ fn one_pool_contains_lanes_and_unlaned_band() {
     });
     for (shape, element) in [("lane_di", "lane"), ("pool_di", "pool")] {
         d.diagrams[0].shapes.push(Shape {
+            label_visibility: None,
             is_horizontal: None,
             is_marker_visible: None,
             is_expanded: None,
@@ -501,12 +524,14 @@ fn impossible_long_labels_are_refused_without_changes() {
     let mut d = fixture();
     for shape in &mut d.diagrams[0].shapes {
         shape.label = Some(Label {
-            bounds: Bounds {
+            id: None,
+            style_ref: None,
+            bounds: Some(Bounds {
                 x: 0.0,
                 y: 0.0,
                 width: 10000.0,
                 height: 10000.0,
-            },
+            }),
             style: None,
         });
     }
@@ -643,4 +668,80 @@ fn layout_uses_native_selectors_without_inventing_xml_ids() {
     assert!(doc.diagrams[0].id.xml_id().is_none());
     assert!(doc.diagrams[0].shapes[0].id.xml_id().is_none());
     validate_proposal(&doc, &proposal).unwrap();
+}
+
+#[test]
+fn layout_keeps_explicit_label_without_inventing_bounds() {
+    use processcraft_core::model::Label;
+    let mut doc = fixture();
+    flow(&mut doc, "ab", "a", "b");
+    doc.diagrams[0].shapes[0].label = Some(Label {
+        id: None,
+        bounds: None,
+        style: None,
+        style_ref: None,
+    });
+    let proposal = layout(&doc);
+    let shape_id = doc.diagrams[0].shapes[0].id.selector();
+    assert!(
+        proposal
+            .original
+            .shapes
+            .iter()
+            .find(|s| s.id == shape_id)
+            .unwrap()
+            .label_bounds
+            .is_none()
+    );
+    assert!(
+        proposal
+            .proposed
+            .shapes
+            .iter()
+            .find(|s| s.id == shape_id)
+            .unwrap()
+            .label_bounds
+            .is_none()
+    );
+    validate_proposal(&doc, &proposal).unwrap();
+    assert!(doc.diagrams[0].shapes[0].label.is_some());
+    assert!(
+        doc.diagrams[0].shapes[0]
+            .label
+            .as_ref()
+            .unwrap()
+            .bounds
+            .is_none()
+    );
+    use processcraft_core::commands::{Envelope, Mutation, Request, Session};
+    let mut project = processcraft_core::model::ProjectData::new("Project".into());
+    project.documents.push(std::sync::Arc::new(doc));
+    let mut session = Session::new(project).unwrap();
+    let snapshot = session.snapshot();
+    let proposal = propose_layout(
+        &snapshot.project.documents[0],
+        &id("diagram"),
+        &session.id(),
+        snapshot.generation,
+        &AtomicBool::new(false),
+    )
+    .unwrap();
+    session
+        .apply(
+            Envelope {
+                request_id: uuid::Uuid::new_v4().to_string(),
+                session_id: session.id(),
+                expected_generation: Some(snapshot.generation),
+            },
+            Request::Batch {
+                mutations: vec![Mutation::ApplyLayout { proposal }],
+            },
+        )
+        .unwrap();
+    let after = session.snapshot();
+    let label = after.project.documents[0].diagrams[0].shapes[0]
+        .label
+        .as_ref()
+        .unwrap();
+    assert!(label.bounds.is_none());
 }

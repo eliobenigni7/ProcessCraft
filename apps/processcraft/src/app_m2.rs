@@ -708,7 +708,12 @@ impl ProcessCraft {
                             },
                         );
                         match &flow.condition {
-                            Some(c) if !c.is_empty() => format!("{target} ({})", c.text()),
+                            Some(c) if c.plain_text().is_none_or(|text| !text.is_empty()) => {
+                                format!(
+                                    "{target} ({})",
+                                    c.plain_text().unwrap_or("Structured expression")
+                                )
+                            }
                             _ => target.to_owned(),
                         }
                     })
@@ -846,10 +851,10 @@ impl ProcessCraft {
                                 let lane: ElementSelector = lane_id.clone().into();
                                 let lane_bounds = Bounds { x: self.camera.0 + 30.0, y: self.camera.1 + 80.0 + p.lanes.len() as f64 * 160.0, width: 600.0, height: 150.0 };
                                 let Some((bounds, moves)) = self.role_assignment_bounds(d, &element, &lane_bounds) else { return };
-                                let mut mutations = vec![Mutation::CreateLane { document_id: d.id, process_id: p.id.selector(), lane: Lane {
+                                let mut mutations = vec![Mutation::CreateLane {  document_id: d.id, process_id: p.id.selector(), lane: Lane { base: None, child_lane_set_base: None,
     child_lane_set_id: None, id: lane_id.into(), name: Some(role.name.clone()), parent: None, members: vec![] } }, Mutation::SetDictionaryLinks { source: processcraft_core::ids::ElementKey { document_id: d.id, xml_id: lane.clone() }, kind: DictionaryKind::Role, targets: vec![DictionaryTarget::Entry(role.id)] }];
                                 if let Some(diagram) = d.diagrams.iter().find(|diagram| self.diagram_id.as_ref().is_none_or(|id| &diagram.id == id)) {
-                                    mutations.push(Mutation::CreateShape { document_id: d.id, diagram_id: diagram.id.selector(), shape: Shape { is_horizontal: None, is_marker_visible: None,
+                                    mutations.push(Mutation::CreateShape {  document_id: d.id, diagram_id: diagram.id.selector(), shape: Shape { label_visibility: None, is_horizontal: None, is_marker_visible: None,
     is_expanded: None, id: controller::id("LaneShape").into(), element: lane.clone(), bounds: lane_bounds, label: None, style: None } });
                                 }
                                 mutations.extend(moves);
@@ -939,6 +944,7 @@ impl ProcessCraft {
             process_id: p.id.selector(),
             flow_id,
             node: Node {
+                base_extras: None,
                 item_aware: None,
                 activity: None,
                 io_specification: None,
@@ -946,23 +952,25 @@ impl ProcessCraft {
                 details: None,
                 id: node_id.clone().into(),
                 name: Some("Task".into()),
-                documentation: String::new(),
+                documentation: String::new().into(),
                 kind: NodeKind::Task,
                 owner: String::new(),
                 contact: String::new(),
             },
             new_flow: Flow {
+                base_extras: None,
                 association_direction: None,
                 id: new_flow_id.clone().into(),
                 kind: FlowKind::Sequence,
                 source: node_id.clone().into(),
                 target: flow.target.clone(),
                 name: Some(String::new()),
-                documentation: String::new(),
+                documentation: String::new().into(),
                 condition: None,
             },
             diagram_id: diagram.id.selector(),
             shape: Shape {
+                label_visibility: None,
                 is_horizontal: None,
                 is_marker_visible: None,
                 is_expanded: None,
@@ -979,6 +987,7 @@ impl ProcessCraft {
             },
             old_waypoints: vec![a.clone(), enter],
             new_edge: Edge {
+                label_visibility: None,
                 source_element: None,
                 target_element: None,
                 id: controller::id("Edge").into(),
@@ -1291,6 +1300,7 @@ mod tests {
         let lane = controller::id("Lane");
         for id in [&node, &target] {
             p.nodes.push(Node {
+                base_extras: None,
                 item_aware: None,
                 activity: None,
                 io_specification: None,
@@ -1298,13 +1308,15 @@ mod tests {
                 details: None,
                 id: id.clone().into(),
                 name: Some("Task".into()),
-                documentation: String::new(),
+                documentation: String::new().into(),
                 kind: NodeKind::Task,
                 owner: String::new(),
                 contact: String::new(),
             });
         }
         p.lanes.push(Lane {
+            child_lane_set_base: None,
+            base: None,
             child_lane_set_id: None,
             id: lane.clone().into(),
             name: Some("Role".into()),
@@ -1312,18 +1324,20 @@ mod tests {
             members: vec![],
         });
         p.flows.push(Flow {
+            base_extras: None,
             association_direction: None,
             id: flow.clone().into(),
             kind: FlowKind::Sequence,
             source: node.clone().into(),
             target: target.clone().into(),
             name: Some(String::new()),
-            documentation: String::new(),
+            documentation: String::new().into(),
             condition: None,
         });
         let diagram = &mut d.diagrams[0];
         for (id, x) in [(&node, 0.0), (&target, 300.0)] {
             diagram.shapes.push(Shape {
+                label_visibility: None,
                 is_horizontal: None,
                 is_marker_visible: None,
                 is_expanded: None,
@@ -1340,6 +1354,7 @@ mod tests {
             });
         }
         diagram.edges.push(Edge {
+            label_visibility: None,
             source_element: None,
             target_element: None,
             id: controller::id("Edge").into(),

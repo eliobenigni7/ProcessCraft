@@ -108,6 +108,7 @@ fn session_fixture() -> (
     };
     session.apply(env(&session), fixture).unwrap();
     let shape = |id: &str, element: &str, x| Shape {
+        label_visibility: None,
         is_horizontal: None,
         is_marker_visible: None,
         is_expanded: None,
@@ -119,6 +120,9 @@ fn session_fixture() -> (
     };
     let diagram = Diagram {
         name: None,
+        documentation: None,
+        resolution: None,
+        label_styles: vec![],
         id: "diagram".parse().unwrap(),
         plane_id: "plane".parse().unwrap(),
         plane: "procurement".parse().unwrap(),
@@ -130,6 +134,7 @@ fn session_fixture() -> (
             id: "edge".parse().unwrap(),
             element: "flow_start_review".parse().unwrap(),
             source_element: None,
+            label_visibility: None,
             target_element: None,
             waypoints: vec![p(10.0, 5.0), p(20.0, 5.0), p(20.0, 8.0), p(30.0, 8.0)],
             label: None,
@@ -332,6 +337,7 @@ fn nested_session() -> processcraft_core::commands::Session {
     parent.details = Some(NodeDetails::SubProcess {
         content: Box::new(FlowContainer {
             lane_set_id: None,
+            lane_set_base: None,
             groups: vec![],
             nodes: std::mem::take(&mut process.nodes),
             lanes: std::mem::take(&mut process.lanes),
@@ -349,6 +355,7 @@ fn nested_session() -> processcraft_core::commands::Session {
     diagram.shapes.push(Shape {
         id: "sub_di".parse().unwrap(),
         element: "subprocess".parse().unwrap(),
+        label_visibility: None,
         is_horizontal: None,
         is_marker_visible: None,
         is_expanded: Some(true),
@@ -357,7 +364,9 @@ fn nested_session() -> processcraft_core::commands::Session {
         style: None,
     });
     diagram.edges[0].label = Some(Label {
-        bounds: rect(14.0, 12.0, 20.0, 8.0),
+        id: None,
+        style_ref: None,
+        bounds: Some(rect(14.0, 12.0, 20.0, 8.0)),
         style: Some(Style {
             fill: None,
             stroke: None,
@@ -401,7 +410,13 @@ fn nested_parent_move_translates_children_internal_route_and_label_in_one_undo()
         vec![(110.0, 55.0), (120.0, 55.0), (120.0, 58.0), (130.0, 58.0)]
     );
     let label = diagram.edges[0].label.as_ref().unwrap();
-    assert_eq!((label.bounds.x, label.bounds.y), (114.0, 62.0));
+    assert_eq!(
+        (
+            label.bounds.as_ref().unwrap().x,
+            label.bounds.as_ref().unwrap().y
+        ),
+        (114.0, 62.0)
+    );
     assert_eq!(
         label.style.as_ref().unwrap().font.as_deref(),
         Some("#123456")
@@ -555,6 +570,7 @@ fn data_geometry_session() -> processcraft_core::commands::Session {
     let doc = std::sync::Arc::make_mut(&mut project.documents[0]);
     let process = &mut doc.processes[0];
     process.data_objects.push(DataObject {
+        base: None,
         id: Some("data_object".parse().unwrap()),
         name: Some("Order".into()),
         is_collection: None,
@@ -564,7 +580,8 @@ fn data_geometry_session() -> processcraft_core::commands::Session {
         item_aware: None,
         id: "data_ref".parse().unwrap(),
         name: Some("Order".into()),
-        documentation: String::new(),
+        documentation: String::new().into(),
+        base_extras: None,
         kind: NodeKind::DataObjectReference,
         details: Some(NodeDetails::DataObjectReference {
             data_object_ref: Some("data_object".parse().unwrap()),
@@ -581,14 +598,17 @@ fn data_geometry_session() -> processcraft_core::commands::Session {
         .find(|n| n.id.to_string() == "review")
         .unwrap()
         .io_specification = Some(IoSpecification {
+        base: None,
         id: None,
         inputs: vec![DataPort {
+            base: None,
             id: Some("input_port".parse().unwrap()),
             name: Some(String::new()),
             item_aware: None,
             is_collection: None,
         }],
         outputs: vec![DataPort {
+            base: None,
             id: Some("output_port".parse().unwrap()),
             name: Some(String::new()),
             item_aware: None,
@@ -618,6 +638,7 @@ fn data_geometry_session() -> processcraft_core::commands::Session {
         ),
     ] {
         process.data_associations.push(DataAssociation {
+            base: None,
             id: Some(id.parse().unwrap()),
             transformation: None,
             assignments: vec![],
@@ -635,6 +656,7 @@ fn data_geometry_session() -> processcraft_core::commands::Session {
     diagram.shapes.push(Shape {
         id: "shape_data".parse().unwrap(),
         element: "data_ref".parse().unwrap(),
+        label_visibility: None,
         is_horizontal: None,
         is_marker_visible: None,
         is_expanded: None,
@@ -658,10 +680,13 @@ fn data_geometry_session() -> processcraft_core::commands::Session {
             id: id.parse().unwrap(),
             element: element.parse().unwrap(),
             source_element: None,
+            label_visibility: None,
             target_element: None,
             waypoints: points,
             label: Some(Label {
-                bounds: rect(45.0, 10.0, 8.0, 4.0),
+                id: None,
+                style_ref: None,
+                bounds: Some(rect(45.0, 10.0, 8.0, 4.0)),
                 style: None,
             }),
             style: None,
@@ -713,15 +738,18 @@ fn conversation_geometry_session() -> processcraft_core::commands::Session {
     let mut project = (*source.snapshot().project).clone();
     let doc = std::sync::Arc::make_mut(&mut project.documents[0]);
     doc.collaboration = Some(Collaboration {
+        base: None,
         name: None,
         id: "collaboration".parse().unwrap(),
         participants: vec![Participant {
+            base: None,
             id: "buyer".parse().unwrap(),
             name: Some("Buyer".into()),
             process: None,
         }],
         flows: vec![],
         conversation_nodes: vec![ConversationNode {
+            base: None,
             id: "conversation".parse().unwrap(),
             name: Some("Order".into()),
             kind: ConversationKind::Conversation,
@@ -729,6 +757,7 @@ fn conversation_geometry_session() -> processcraft_core::commands::Session {
             parent: None,
         }],
         conversation_links: vec![ConversationLink {
+            base: None,
             id: "link".parse().unwrap(),
             name: Some(String::new()),
             source: "buyer".parse().unwrap(),
@@ -738,6 +767,7 @@ fn conversation_geometry_session() -> processcraft_core::commands::Session {
     let shape = |id: &str, element: &str, x| Shape {
         id: id.parse().unwrap(),
         element: element.parse().unwrap(),
+        label_visibility: None,
         is_horizontal: None,
         is_marker_visible: None,
         is_expanded: None,
@@ -747,6 +777,9 @@ fn conversation_geometry_session() -> processcraft_core::commands::Session {
     };
     doc.diagrams.push(Diagram {
         name: None,
+        documentation: None,
+        resolution: None,
+        label_styles: vec![],
         id: "conversation_diagram".parse().unwrap(),
         plane_id: "conversation_plane".parse().unwrap(),
         plane: "collaboration".parse().unwrap(),
@@ -758,10 +791,13 @@ fn conversation_geometry_session() -> processcraft_core::commands::Session {
             id: "link_edge".parse().unwrap(),
             element: "link".parse().unwrap(),
             source_element: None,
+            label_visibility: None,
             target_element: None,
             waypoints: vec![p(10.0, 5.0), p(20.0, 5.0), p(20.0, 8.0), p(30.0, 8.0)],
             label: Some(Label {
-                bounds: rect(15.0, 10.0, 8.0, 4.0),
+                id: None,
+                style_ref: None,
+                bounds: Some(rect(15.0, 10.0, 8.0, 4.0)),
                 style: None,
             }),
             style: None,
@@ -874,6 +910,7 @@ fn moving_activity_translates_visible_port_and_repairs_association() {
     diagram.shapes.push(Shape {
         id: "input_shape".parse().unwrap(),
         element: "input_port".parse().unwrap(),
+        label_visibility: None,
         is_horizontal: None,
         is_marker_visible: None,
         is_expanded: None,
@@ -943,6 +980,7 @@ fn global_data_store_association_moves_and_restores_route() {
     let mut project = (*initial.snapshot().project).clone();
     let doc = std::sync::Arc::make_mut(&mut project.documents[0]);
     doc.data_stores.push(DataStore {
+        base: None,
         id: Some("global_store".parse().unwrap()),
         name: Some("Archive".into()),
         capacity: None,
@@ -1232,7 +1270,8 @@ fn association_edge_attachment_follows_rerouted_sequence_with_undo() {
         source: "note".parse().unwrap(),
         target: "review".parse().unwrap(),
         name: None,
-        documentation: String::new(),
+        documentation: String::new().into(),
+        base_extras: None,
         condition: None,
         association_direction: None,
     });
@@ -1245,6 +1284,7 @@ fn association_edge_attachment_follows_rerouted_sequence_with_undo() {
         id: "note_shape".parse().unwrap(),
         element: "note".parse().unwrap(),
         is_expanded: None,
+        label_visibility: None,
         is_horizontal: None,
         is_marker_visible: None,
         bounds: rect(10.0, 40.0, 20.0, 10.0),
@@ -1255,10 +1295,13 @@ fn association_edge_attachment_follows_rerouted_sequence_with_undo() {
         id: "association_edge".parse().unwrap(),
         element: "association".parse().unwrap(),
         source_element: Some("note_shape".parse().unwrap()),
+        label_visibility: None,
         target_element: Some("edge".parse().unwrap()),
         waypoints: vec![p(20.0, 40.0), p(20.0, 5.0)],
         label: Some(Label {
-            bounds: rect(22.0, 20.0, 10.0, 5.0),
+            id: None,
+            style_ref: None,
+            bounds: Some(rect(22.0, 20.0, 10.0, 5.0)),
             style: None,
         }),
         style: None,
@@ -1334,7 +1377,7 @@ fn association_edge_attachment_follows_rerouted_sequence_with_undo() {
         assert_ne!(attachment, Some(&(20.0, 5.0)));
         assert_eq!(
             link.label.as_ref().unwrap().bounds,
-            rect(22.0, 20.0, 10.0, 5.0)
+            Some(rect(22.0, 20.0, 10.0, 5.0))
         );
         apply_session(&mut session, Request::Undo);
         assert_eq!(session.snapshot().content_id, before.content_id);
@@ -1368,7 +1411,8 @@ fn nested_move_translates_edge_attachment_and_label_as_one_gesture() {
         source: "note".parse().unwrap(),
         target: "review".parse().unwrap(),
         name: None,
-        documentation: String::new(),
+        documentation: String::new().into(),
+        base_extras: None,
         condition: None,
         association_direction: None,
     });
@@ -1381,6 +1425,7 @@ fn nested_move_translates_edge_attachment_and_label_as_one_gesture() {
         id: "note_shape".parse().unwrap(),
         element: "note".parse().unwrap(),
         is_expanded: None,
+        label_visibility: None,
         is_horizontal: None,
         is_marker_visible: None,
         bounds: rect(10.0, 20.0, 20.0, 10.0),
@@ -1391,10 +1436,13 @@ fn nested_move_translates_edge_attachment_and_label_as_one_gesture() {
         id: "association_edge".parse().unwrap(),
         element: "association".parse().unwrap(),
         source_element: Some("note_shape".parse().unwrap()),
+        label_visibility: None,
         target_element: Some("edge".parse().unwrap()),
         waypoints: vec![p(20.0, 20.0), p(20.0, 5.0)],
         label: Some(Label {
-            bounds: rect(22.0, 10.0, 10.0, 5.0),
+            id: None,
+            style_ref: None,
+            bounds: Some(rect(22.0, 10.0, 10.0, 5.0)),
             style: None,
         }),
         style: None,
@@ -1431,8 +1479,56 @@ fn nested_move_translates_edge_attachment_and_label_as_one_gesture() {
     );
     assert_eq!(
         association.label.as_ref().unwrap().bounds,
-        rect(122.0, 60.0, 10.0, 5.0)
+        Some(rect(122.0, 60.0, 10.0, 5.0))
     );
+    apply_session(&mut session, Request::Undo);
+    assert_eq!(session.snapshot().content_id, before.content_id);
+    apply_session(&mut session, Request::Redo);
+    assert_eq!(session.snapshot().content_id, after.content_id);
+}
+
+#[test]
+fn nested_move_keeps_unbounded_label_unmaterialized_and_undoable() {
+    use processcraft_core::{
+        commands::{Request, Session, ShapeBounds},
+        model::DiLabelVisibility,
+    };
+    let initial = nested_session();
+    let mut project = (*initial.snapshot().project).clone();
+    let doc = std::sync::Arc::make_mut(&mut project.documents[0]);
+    let diagram = doc
+        .diagrams
+        .iter_mut()
+        .find(|d| d.id.to_string() == "diagram")
+        .unwrap();
+    diagram.edges[0].label_visibility = Some(DiLabelVisibility::Explicit);
+    let label = diagram.edges[0].label.as_mut().unwrap();
+    label.id = Some("edge_label".parse().unwrap());
+    label.bounds = None;
+    project.validate().unwrap();
+    let mut session = Session::new(project).unwrap();
+    let before = session.snapshot();
+    let diagram_id: processcraft_core::ids::ElementSelector = "diagram".parse().unwrap();
+    let prepared = prepare_move(
+        &before.project.documents[0],
+        &diagram_id,
+        vec![ShapeBounds {
+            diagram_id: diagram_id.clone(),
+            shape_id: "sub_di".parse().unwrap(),
+            bounds: rect(90.0, 40.0, 80.0, 50.0),
+        }],
+    )
+    .unwrap();
+    apply_session(&mut session, prepared.request);
+    let after = session.snapshot();
+    let diagram = after.project.documents[0]
+        .diagrams
+        .iter()
+        .find(|d| d.id == diagram_id)
+        .unwrap();
+    let label = diagram.edges[0].label.as_ref().unwrap();
+    assert!(label.bounds.is_none());
+    assert_eq!(label.id.as_ref().unwrap().to_string(), "edge_label");
     apply_session(&mut session, Request::Undo);
     assert_eq!(session.snapshot().content_id, before.content_id);
     apply_session(&mut session, Request::Redo);

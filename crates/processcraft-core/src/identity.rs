@@ -27,8 +27,10 @@ fn bounds(b: &Bounds) -> Result<(), String> {
     }
 }
 fn label(l: &Option<Label>) -> Result<(), String> {
-    if let Some(l) = l {
-        bounds(&l.bounds)?;
+    if let Some(l) = l
+        && let Some(b) = &l.bounds
+    {
+        bounds(b)?;
     }
     Ok(())
 }
@@ -136,11 +138,18 @@ fn validate_event_payload(
             if kind.is_some() != expression.is_some() {
                 return fail("Incomplete timer choice");
             }
-            if expression.as_ref().is_some_and(|e| e.len() > 16_384) {
+            if expression
+                .as_ref()
+                .is_some_and(|e| e.plain_text().is_some_and(|s| s.len() > 16_384))
+            {
                 return fail("Invalid timer expression");
             }
         }
-        E::Conditional { expression, .. } => short(expression.text())?,
+        E::Conditional { expression, .. } => {
+            if let Some(text) = expression.plain_text() {
+                short(text)?;
+            }
+        }
         E::Link {
             name,
             sources,
@@ -518,6 +527,25 @@ pub(crate) fn semantic_ids(d: &BpmnDocument) -> HashSet<crate::ids::ElementSelec
 
 fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<usize, String> {
     short(&d.name)?;
+    let mut metadata_error = Ok(());
+    crate::metadata_read::visit_base_metadata(d, |_, value| {
+        if let Some(value) = value {
+            metadata_error = metadata_error
+                .clone()
+                .and_then(|_| crate::bpmn_metadata::validate_base(value));
+        }
+    });
+    crate::metadata_read::visit_legacy_metadata(d, |_, docs, extras| {
+        metadata_error = metadata_error
+            .clone()
+            .and_then(|_| crate::bpmn_metadata::validate_set(docs));
+        if let Some(extras) = extras {
+            metadata_error = metadata_error
+                .clone()
+                .and_then(|_| crate::bpmn_metadata::validate_extras(extras));
+        }
+    });
+    metadata_error?;
     let mut native_ids = HashSet::new();
     let mut xml_ids = HashSet::new();
     for identity in d.element_identities() {
@@ -534,6 +562,12 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
     }
     if let Some(metadata) = &d.definitions {
         definitions_text(&metadata.target_namespace)?;
+        if !metadata.namespaces.is_empty() || !metadata.foreign_attributes.is_empty() {
+            crate::bpmn_xml::validate_foreign_attributes(
+                &metadata.foreign_attributes,
+                &metadata.namespaces,
+            )?;
+        }
         if metadata.imports.len() > 256 {
             return fail("Definitions import limit exceeded");
         }
@@ -575,6 +609,32 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
     };
     let local =
         |name: &crate::bpmn_model::QNameRef| local_namespace == Some(name.namespace.as_str());
+    if d.extensions.len() > 256 || d.relationships.len() > 256 {
+        return fail("Definitions declaration limit exceeded");
+    }
+    for extension in &d.extensions {
+        if extension.documentation.len() > 256 {
+            return fail("Extension documentation limit exceeded");
+        }
+        for doc in &extension.documentation {
+            crate::bpmn_metadata::validate_documentation(doc)?;
+        }
+        if let Some(reference) = &extension.definition {
+            check_qname(reference)?;
+        }
+    }
+    for relationship in &d.relationships {
+        if let Some(id) = &relationship.id {
+            add(&mut ids, id)?;
+        }
+        definitions_text(&relationship.relationship_type)?;
+        if relationship.sources.len() > 256 || relationship.targets.len() > 256 {
+            return fail("Relationship reference limit exceeded");
+        }
+        for reference in relationship.sources.iter().chain(&relationship.targets) {
+            check_qname(reference)?;
+        }
+    }
     let catalog = &d.catalog;
     if catalog.item_definitions.len() > 256
         || catalog.interfaces.len() > 256
@@ -826,7 +886,12 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             if let Some(id) = &data.id {
                 add(&mut ids, id)?;
             }
-            definitions_text(&data.text)?;
+            if let Some(text) = match &data.text {
+                crate::bpmn_model::ExpressionBody::Text(s) => Some(s.as_str()),
+                _ => None,
+            } {
+                definitions_text(text)?;
+            }
             if data.namespaces.len() > 256 {
                 return fail("Expression namespace limit exceeded");
             }
@@ -1186,7 +1251,8 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                         return fail("event gateway attributes on wrong gateway kind");
                     }
                     if let Some(condition) = activation_condition
-                        && (!matches!(n.kind, NodeKind::ComplexGateway) || condition.len() > 16_384)
+                        && (!matches!(n.kind, NodeKind::ComplexGateway)
+                            || condition.plain_text().is_some_and(|s| s.len() > 16_384))
                     {
                         return fail("invalid gateway activation condition");
                     }
@@ -1202,7 +1268,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                         short(format)?;
                     }
                     if let Some(text) = text {
-                        definitions_text(text)?;
+                        crate::bpmn_xml::validate_mixed(text)?;
                     }
                 }
                 (_, Some(crate::bpmn_model::NodeDetails::TextAnnotation { .. })) => {
@@ -1386,12 +1452,25 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                     &activity.transaction_method,
                     &activity.implementation,
                     &activity.script_format,
-                    &activity.script,
                 ] {
                     check_text(value)?;
                 }
-                if let Some(value) = &activity.completion_condition {
-                    short(value.text())?;
+                if let Some(script) = &activity.script {
+                    match script {
+                        crate::bpmn_xml::MixedXml::Text(text) => {
+                            if text.len() > 16_384 {
+                                return fail("activity property too long");
+                            }
+                        }
+                        crate::bpmn_xml::MixedXml::Structured(_) => {
+                            crate::bpmn_xml::validate_mixed(script)?
+                        }
+                    }
+                }
+                if let Some(value) = &activity.completion_condition
+                    && let Some(text) = value.plain_text()
+                {
+                    short(text)?;
                 }
                 for name in [&activity.message_ref, &activity.operation_ref]
                     .into_iter()
@@ -1417,7 +1496,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                     LoopCharacteristics::Standard {
                         condition, maximum, ..
                     } => {
-                        check(condition.as_deref())?;
+                        check(condition.as_ref().and_then(|e| e.plain_text()))?;
                         check(maximum.as_deref())?;
                         if let Some(value) = maximum {
                             let trimmed = value.trim();
@@ -1432,8 +1511,8 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                         completion_condition,
                         ..
                     } => {
-                        check(cardinality.as_deref())?;
-                        check(completion_condition.as_deref())?;
+                        check(cardinality.as_ref().and_then(|e| e.plain_text()))?;
+                        check(completion_condition.as_ref().and_then(|e| e.plain_text()))?;
                     }
                 }
             }
@@ -1631,7 +1710,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                                 add(&mut ids, id)?;
                             }
                         }
-                        EventDefinition::Conditional { id, expression } => {
+                        EventDefinition::Conditional { id, expression, .. } => {
                             if !matches!(
                                 n.kind,
                                 NodeKind::StartEvent
@@ -1643,7 +1722,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                             if owned && let Some(id) = id {
                                 add(&mut ids, id)?;
                             }
-                            if expression.len() > 16_384 {
+                            if expression.plain_text().is_some_and(|s| s.len() > 16_384) {
                                 return fail("invalid conditional expression");
                             }
                         }
@@ -1652,6 +1731,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                             name,
                             sources,
                             target,
+                            ..
                         } => {
                             if !matches!(
                                 n.kind,
@@ -1695,7 +1775,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                                 }
                             }
                         }
-                        EventDefinition::Cancel { id } => {
+                        EventDefinition::Cancel { id, .. } => {
                             if owned && let Some(id) = id {
                                 add(&mut ids, id)?;
                             }
@@ -1752,7 +1832,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                                 return fail("Invalid compensation activity reference");
                             }
                         }
-                        EventDefinition::Terminate { id }
+                        EventDefinition::Terminate { id, .. }
                             if matches!(n.kind, NodeKind::EndEvent) =>
                         {
                             if owned && let Some(id) = id {
@@ -2159,6 +2239,35 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             definitions_text(name)?;
         }
         add(&mut ids, &diagram.plane_id)?;
+        for style in &diagram.label_styles {
+            if let Some(id) = &style.id {
+                add(&mut ids, id)?;
+            }
+        }
+        let check_label = |label: &Option<Label>| -> Result<(), String> {
+            if let Some(label) = label
+                && let Some(crate::model::DiStyleRef::Local(target)) = &label.style_ref
+                && !diagram
+                    .label_styles
+                    .iter()
+                    .any(|style| style.id.as_ref().is_some_and(|id| id == target))
+            {
+                return fail("Label style reference is outside its diagram");
+            }
+            if let Some(label) = label
+                && let Some(crate::model::DiStyleRef::Qualified(target)) = &label.style_ref
+            {
+                check_qname(target)?;
+                if local(target)
+                    && !diagram.label_styles.iter().any(|style| {
+                        style.id.as_ref().and_then(|id| id.xml_id()) == Some(&target.local)
+                    })
+                {
+                    return fail("Label style reference is outside its diagram");
+                }
+            }
+            Ok(())
+        };
         if !scopes.iter().any(|p| p.id == diagram.plane)
             && !d.choreographies.iter().any(|c| c.id == diagram.plane)
             && !d
@@ -2206,6 +2315,10 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             }
             bounds(&s.bounds)?;
             label(&s.label)?;
+            check_label(&s.label)?;
+            if let Some(id) = s.label.as_ref().and_then(|l| l.id.as_ref()) {
+                add(&mut ids, id)?;
+            }
         }
         let representations: HashSet<_> = diagram
             .shapes
@@ -2242,6 +2355,10 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                 }
             }
             label(&e.label)?;
+            check_label(&e.label)?;
+            if let Some(id) = e.label.as_ref().and_then(|l| l.id.as_ref()) {
+                add(&mut ids, id)?;
+            }
         }
     }
     if let Capability::RetainedExtensions { extensions, .. } = &d.capability {

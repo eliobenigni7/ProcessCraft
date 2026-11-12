@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:tns="urn:definitions" xmlns:v="urn:vendor" targetNamespace="urn:definitions" id="definitions" v:flag="v:value">
+  <extension mustUnderstand="false" definition="v:definition"/>
+  <process id="process"><task id="task"/></process>
+  <relationship id="relationship" type="relates" direction="Both"><source>tns:process</source><target>tns:task</target></relationship>
+</definitions>

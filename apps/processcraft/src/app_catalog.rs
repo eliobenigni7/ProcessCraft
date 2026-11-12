@@ -19,7 +19,7 @@ impl From<&QNameRef> for QNameDraft {
     }
 }
 impl QNameDraft {
-    fn build(&self) -> Result<QNameRef, String> {
+    pub(super) fn build(&self) -> Result<QNameRef, String> {
         Ok(QNameRef {
             namespace: self.namespace.clone(),
             local: self
@@ -76,6 +76,7 @@ pub(super) fn q_build(q: &Option<QNameDraft>) -> Result<Option<QNameRef>, String
 }
 #[derive(Clone, Default)]
 struct ItemDraft {
+    base: Option<processcraft_core::bpmn_metadata::BaseMetadata>,
     id: IdentityDraft,
     structure_ref: Option<QNameDraft>,
     is_collection: Option<bool>,
@@ -83,6 +84,7 @@ struct ItemDraft {
 }
 #[derive(Clone, Default)]
 struct OperationDraft {
+    base: Option<processcraft_core::bpmn_metadata::BaseMetadata>,
     id: IdentityDraft,
     name: String,
     implementation_ref: Option<QNameDraft>,
@@ -92,6 +94,7 @@ struct OperationDraft {
 }
 #[derive(Clone, Default)]
 struct InterfaceDraft {
+    base: Option<processcraft_core::bpmn_metadata::BaseMetadata>,
     id: IdentityDraft,
     name: String,
     implementation_ref: Option<QNameDraft>,
@@ -99,6 +102,7 @@ struct InterfaceDraft {
 }
 #[derive(Clone, Default)]
 struct ParameterDraft {
+    base: Option<processcraft_core::bpmn_metadata::BaseMetadata>,
     id: IdentityDraft,
     name: Option<String>,
     type_ref: Option<QNameDraft>,
@@ -106,6 +110,7 @@ struct ParameterDraft {
 }
 #[derive(Clone, Default)]
 struct ResourceDraft {
+    base: Option<processcraft_core::bpmn_metadata::BaseMetadata>,
     id: IdentityDraft,
     name: String,
     parameters: Vec<ParameterDraft>,
@@ -123,6 +128,7 @@ impl CatalogDraft {
                 .item_definitions
                 .iter()
                 .map(|x| ItemDraft {
+                    base: x.base.clone(),
                     id: id_string(&x.id),
                     structure_ref: x.structure_ref.as_ref().map(QNameDraft::from),
                     is_collection: x.is_collection,
@@ -133,6 +139,7 @@ impl CatalogDraft {
                 .interfaces
                 .iter()
                 .map(|x| InterfaceDraft {
+                    base: x.base.clone(),
                     id: id_string(&x.id),
                     name: x.name.clone(),
                     implementation_ref: x.implementation_ref.as_ref().map(QNameDraft::from),
@@ -140,6 +147,7 @@ impl CatalogDraft {
                         .operations
                         .iter()
                         .map(|o| OperationDraft {
+                            base: o.base.clone(),
                             id: id_string(&o.id),
                             name: o.name.clone(),
                             implementation_ref: o.implementation_ref.as_ref().map(QNameDraft::from),
@@ -154,12 +162,14 @@ impl CatalogDraft {
                 .resources
                 .iter()
                 .map(|x| ResourceDraft {
+                    base: x.base.clone(),
                     id: id_string(&x.id),
                     name: x.name.clone(),
                     parameters: x
                         .parameters
                         .iter()
                         .map(|p| ParameterDraft {
+                            base: p.base.clone(),
                             id: id_string(&p.id),
                             name: p.name.clone(),
                             type_ref: p.type_ref.as_ref().map(QNameDraft::from),
@@ -178,6 +188,7 @@ impl CatalogDraft {
                 .iter()
                 .map(|x| {
                     Ok(ItemDefinition {
+                        base: x.base.clone(),
                         id: id_build(&x.id)?,
                         structure_ref: q_build(&x.structure_ref)?,
                         is_collection: x.is_collection,
@@ -190,6 +201,7 @@ impl CatalogDraft {
                 .iter()
                 .map(|x| {
                     Ok(Interface {
+                        base: x.base.clone(),
                         id: id_build(&x.id)?,
                         name: x.name.clone(),
                         implementation_ref: q_build(&x.implementation_ref)?,
@@ -198,6 +210,7 @@ impl CatalogDraft {
                             .iter()
                             .map(|o| {
                                 Ok(Operation {
+                                    base: o.base.clone(),
                                     id: id_build(&o.id)?,
                                     name: o.name.clone(),
                                     implementation_ref: q_build(&o.implementation_ref)?,
@@ -219,6 +232,7 @@ impl CatalogDraft {
                 .iter()
                 .map(|x| {
                     Ok(BpmnResource {
+                        base: x.base.clone(),
                         id: id_build(&x.id)?,
                         name: x.name.clone(),
                         parameters: x
@@ -226,6 +240,7 @@ impl CatalogDraft {
                             .iter()
                             .map(|p| {
                                 Ok(ResourceParameter {
+                                    base: p.base.clone(),
                                     id: id_build(&p.id)?,
                                     name: p.name.clone(),
                                     type_ref: q_build(&p.type_ref)?,
@@ -545,6 +560,7 @@ mod tests {
     fn catalog_draft_round_trips_and_keeps_invalid_reference() {
         let catalog = SupportingCatalog {
             item_definitions: vec![ItemDefinition {
+                base: Some(processcraft_core::bpmn_metadata::BaseMetadata::default()),
                 id: Some("Item".parse().unwrap()),
                 structure_ref: Some(QNameRef {
                     namespace: "urn:types".into(),
@@ -554,10 +570,12 @@ mod tests {
                 item_kind: Some(ItemKind::Information),
             }],
             interfaces: vec![Interface {
+                base: None,
                 id: None,
                 name: "Service".into(),
                 implementation_ref: None,
                 operations: vec![Operation {
+                    base: Some(processcraft_core::bpmn_metadata::BaseMetadata::default()),
                     id: None,
                     name: "Submit".into(),
                     implementation_ref: None,
@@ -570,9 +588,11 @@ mod tests {
                 }],
             }],
             resources: vec![BpmnResource {
+                base: None,
                 id: None,
                 name: "Reviewer".into(),
                 parameters: vec![ResourceParameter {
+                    base: None,
                     id: None,
                     name: Some(String::new()),
                     type_ref: None,

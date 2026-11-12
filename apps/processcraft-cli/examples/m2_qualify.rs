@@ -50,6 +50,7 @@ fn fixture(docs: usize, nodes: usize, active: usize, resource: usize) -> Project
         for i in 0..count {
             let key = format!("node_{i}");
             ns.push(Node {
+                base_extras: None,
                 item_aware: None,
                 activity: None,
                 io_specification: None,
@@ -57,13 +58,14 @@ fn fixture(docs: usize, nodes: usize, active: usize, resource: usize) -> Project
                 details: None,
                 id: id(&key),
                 name: Some(format!("Task {i}")),
-                documentation: String::new(),
+                documentation: String::new().into(),
                 kind: NodeKind::Task,
                 owner: String::new(),
                 contact: String::new(),
             });
             if j == 0 && i < active {
                 shapes.push(Shape {
+                    label_visibility: None,
                     is_horizontal: None,
                     is_marker_visible: None,
                     is_expanded: None,
@@ -81,20 +83,25 @@ fn fixture(docs: usize, nodes: usize, active: usize, resource: usize) -> Project
             }
         }
         d.processes.push(Process {
+            base_extras: None,
             is_executable: Some(false),
             io_specification: None,
             lane_set_id: None,
+            lane_set_base: None,
             groups: vec![],
             data_objects: vec![],
             data_associations: vec![],
             id: id("process"),
             name: Some("Process".into()),
-            documentation: String::new(),
+            documentation: String::new().into(),
             nodes: ns,
             lanes: vec![],
             flows: vec![],
         });
         d.diagrams.push(Diagram {
+            documentation: None,
+            resolution: None,
+            label_styles: vec![],
             name: None,
             id: id("diagram"),
             plane_id: id("plane"),
@@ -128,7 +135,9 @@ fn fixture(docs: usize, nodes: usize, active: usize, resource: usize) -> Project
             for lane in 0..5 {
                 let lane_id: processcraft_core::ids::ElementIdentity = id(&format!("lane_{lane}"));
                 process.lanes.push(Lane {
+                    base: None,
                     child_lane_set_id: None,
+                    child_lane_set_base: None,
                     id: lane_id.clone(),
                     name: Some(format!("Lane {lane}")),
                     parent: None,
@@ -162,6 +171,7 @@ fn fixture(docs: usize, nodes: usize, active: usize, resource: usize) -> Project
                 }
                 if i + 1 < process.nodes.len() {
                     process.flows.push(Flow {
+                        base_extras: None,
                         association_direction: None,
                         id: id(&format!("flow_{i}")),
                         kind: FlowKind::Sequence,
@@ -301,7 +311,11 @@ fn run() -> Result<(), Box<dyn Error>> {
         || rows[0].role.is_none()
         || rows[0].systems.len() != 1
         || rows[0].documents.len() != 1
-        || rows[0].outgoing[0].condition.as_deref() != Some("amount > 0")
+        || rows[0].outgoing[0]
+            .condition
+            .as_ref()
+            .and_then(|expression| expression.plain_text())
+            != Some("amount > 0")
     {
         return Err("activity table content mismatch".into());
     }

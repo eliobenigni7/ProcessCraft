@@ -19,9 +19,10 @@ fn native_graph_identity_is_stable_and_duplicate_xml_ids_are_rejected() {
     let b = native();
     let flow_id = native();
     let node = |id| Node {
+        base_extras: None,
         id,
         name: None,
-        documentation: String::new(),
+        documentation: String::new().into(),
         kind: NodeKind::Task,
         details: None,
         loop_characteristics: None,
@@ -33,10 +34,12 @@ fn native_graph_identity_is_stable_and_duplicate_xml_ids_are_rejected() {
     };
     let mut document = BpmnDocument::new("doc".into(), native());
     document.processes.push(Process {
+        base_extras: None,
+        lane_set_base: None,
         is_executable: Some(false),
         id: process_id.clone(),
         name: None,
-        documentation: String::new(),
+        documentation: String::new().into(),
         io_specification: None,
         lane_set_id: None,
         groups: vec![],
@@ -45,12 +48,13 @@ fn native_graph_identity_is_stable_and_duplicate_xml_ids_are_rejected() {
         nodes: vec![node(a.clone()), node(b.clone())],
         lanes: vec![],
         flows: vec![Flow {
+            base_extras: None,
             id: flow_id,
             source: a.selector(),
             target: b.selector(),
             name: None,
             kind: FlowKind::Sequence,
-            documentation: String::new(),
+            documentation: String::new().into(),
             condition: None,
             association_direction: None,
         }],
@@ -61,11 +65,15 @@ fn native_graph_identity_is_stable_and_duplicate_xml_ids_are_rejected() {
     executable.is_executable = None;
     assert!(serde_json::to_value(&executable).unwrap()["is_executable"].is_null());
     document.diagrams.push(Diagram {
+        documentation: None,
+        label_styles: vec![],
+        resolution: None,
         name: None,
         id: native(),
         plane_id: native(),
         plane: process_id.selector(),
         shapes: vec![Shape {
+            label_visibility: None,
             is_horizontal: None,
             is_marker_visible: None,
             id: native(),
@@ -110,6 +118,8 @@ fn native_graph_identity_is_stable_and_duplicate_xml_ids_are_rejected() {
 fn empty_definitions_namespace_is_valid_model_data() {
     let mut doc = BpmnDocument::new("doc".into(), xid("defs").into());
     doc.definitions = Some(DefinitionsMetadata {
+        foreign_attributes: vec![],
+        namespaces: vec![],
         target_namespace: String::new(),
         name: None,
         expression_language: None,
@@ -127,6 +137,7 @@ fn empty_definitions_namespace_is_valid_model_data() {
 fn new_diagram_and_collaboration_names_require_native_capability() {
     let mut doc = BpmnDocument::new("doc".into(), xid("defs").into());
     doc.collaboration = Some(Collaboration {
+        base: None,
         id: xid("collab").into(),
         name: None,
         participants: vec![],
@@ -135,6 +146,9 @@ fn new_diagram_and_collaboration_names_require_native_capability() {
         conversation_links: vec![],
     });
     doc.diagrams.push(Diagram {
+        documentation: None,
+        label_styles: vec![],
+        resolution: None,
         id: xid("diagram").into(),
         name: None,
         plane_id: xid("plane").into(),

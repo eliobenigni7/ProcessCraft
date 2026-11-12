@@ -64,6 +64,60 @@ fn model_fields(value: serde_json::Value) -> Vec<ModelField> {
     result
 }
 
+/// Complete modeled document content as scalar JSON Pointer fields. Ordered XML,
+/// optional metadata and native identities are observed without normalization.
+/// Preserved source bytes are not interpreted or executed.
+pub fn document_fields(project: &ProjectData, document_id: DocumentId) -> Option<Vec<ModelField>> {
+    let document = project
+        .documents
+        .iter()
+        .find(|document| document.id == document_id)?;
+    Some(model_fields(serde_json::to_value(document).ok()?))
+}
+
+/// Detailed checkpoint changes can be paged without bundling a large comparison
+/// into a single response item. Paths refer to the comparison JSON document.
+pub fn checkpoint_fields(
+    project: &ProjectData,
+    checkpoint_id: CheckpointId,
+) -> Option<Vec<ModelField>> {
+    Some(model_fields(
+        serde_json::to_value(compare_checkpoint(project, checkpoint_id)?).ok()?,
+    ))
+}
+
+/// Bounded response memory: serializes the document into the requested scalar
+/// page directly, without allocating a full JSON document or all field rows.
+pub fn document_fields_page(
+    project: &ProjectData,
+    document_id: DocumentId,
+    offset: usize,
+    limit: usize,
+) -> Result<Option<crate::field_projection::FieldPage>, crate::field_projection::ProjectionError> {
+    let Some(document) = project
+        .documents
+        .iter()
+        .find(|document| document.id == document_id)
+    else {
+        return Ok(None);
+    };
+    crate::field_projection::project_fields_page(document, offset, limit).map(Some)
+}
+
+/// Projects comparison detail directly into a bounded page. Computing the
+/// comparison still uses the existing bounded model/checkpoint comparison path.
+pub fn checkpoint_fields_page(
+    project: &ProjectData,
+    checkpoint_id: CheckpointId,
+    offset: usize,
+    limit: usize,
+) -> Result<Option<crate::field_projection::FieldPage>, crate::field_projection::ProjectionError> {
+    let Some(comparison) = compare_checkpoint(project, checkpoint_id) else {
+        return Ok(None);
+    };
+    crate::field_projection::project_fields_page(&comparison, offset, limit).map(Some)
+}
+
 pub fn supporting_catalog_fields(
     project: &ProjectData,
     document_id: DocumentId,
@@ -566,6 +620,8 @@ pub fn compare_checkpoint(project: &ProjectData, id: CheckpointId) -> Option<Che
             || serde_json::to_value(&before.definitions_id).ok()
                 != serde_json::to_value(&document.definitions_id).ok()
             || before.definitions != document.definitions
+            || before.extensions != document.extensions
+            || before.relationships != document.relationships
         {
             changed_document_properties.push(document.id);
         }
@@ -799,7 +855,11 @@ fn semantic_properties(
     let mut result = std::collections::BTreeMap::new();
     result.insert(
         document.definitions_id.selector(),
-        serde_json::json!({ "id": document.definitions_id, "definitions": document.definitions }),
+        serde_json::json!({
+            "id": document.definitions_id,
+            "definitions": document.definitions,
+            "content": shallow(&value, true),
+        }),
     );
     let mut pending = vec![&value];
     while let Some(value) = pending.pop() {

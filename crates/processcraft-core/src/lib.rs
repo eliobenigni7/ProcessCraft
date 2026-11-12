@@ -1,7 +1,10 @@
 //! Toolkit-independent process identities and persistent model.
 mod element_identity_edit;
+pub mod field_projection;
 mod identity;
 pub mod ids;
+pub mod metadata_read;
+pub mod metadata_visit;
 pub mod model;
 pub mod queries;
 pub use ids::{DictionaryEntryId, DocumentId, InvalidId, ProjectId};
@@ -16,7 +19,9 @@ pub use validation::{Diagnostic, DiagnosticSeverity};
 pub mod layout;
 
 pub mod bpmn_catalog;
+pub mod bpmn_metadata;
 pub mod bpmn_model;
+pub mod bpmn_xml;
 
 pub mod bpmn_scope;
 

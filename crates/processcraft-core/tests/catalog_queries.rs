@@ -39,3 +39,63 @@ fn catalog_query_preserves_scalar_values_and_empty_containers_with_json_pointers
             .is_none()
     );
 }
+
+#[test]
+fn complete_model_projection_retains_ordered_mixed_xml_and_never_promotes_ids() {
+    let mut project = ProjectData::new("Ordered metadata query".into());
+    let mut document = BpmnDocument::new("Model".into(), "Definitions".parse().unwrap());
+    document.processes.push(
+        serde_json::from_value(serde_json::json!({
+            "id":"Process","name":null,"documentation":[{"id":null,"text_format":"text/plain",
+                "content":{"namespaces":[],"nodes":[
+                    {"type":"text","text":"before"},
+                    {"type":"comment","text":"comment"},
+                    {"type":"processingInstruction","target":"inspect","data":"inert"},
+                    {"type":"text","text":"after"}
+                ]}}],
+            "nodes":[],"lanes":[],"flows":[]
+        }))
+        .unwrap(),
+    );
+    let id = document.id;
+    let expected = serde_json::to_value(&document).unwrap();
+    project.documents.push(Arc::new(document));
+    project.validate().unwrap();
+    let before = project.content_identity().unwrap();
+    let fields = queries::document_fields(&project, id).unwrap();
+    for field in &fields {
+        assert_eq!(expected.pointer(&field.path), Some(&field.value));
+    }
+    for (path, expected) in [
+        ("/processes/0/documentation/0/id", serde_json::Value::Null),
+        (
+            "/processes/0/documentation/0/content/nodes/0/text",
+            serde_json::json!("before"),
+        ),
+        (
+            "/processes/0/documentation/0/content/nodes/1/type",
+            serde_json::json!("comment"),
+        ),
+        (
+            "/processes/0/documentation/0/content/nodes/2/target",
+            serde_json::json!("inspect"),
+        ),
+        (
+            "/processes/0/documentation/0/content/nodes/3/text",
+            serde_json::json!("after"),
+        ),
+    ] {
+        assert!(
+            fields
+                .iter()
+                .any(|field| field.path == path && field.value == expected)
+        );
+    }
+    assert_eq!(project.content_identity().unwrap(), before);
+    assert!(
+        project.documents[0].processes[0]
+            .documentation
+            .plain_text()
+            .is_none()
+    );
+}

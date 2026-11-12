@@ -171,6 +171,10 @@ pub struct BpmnDocument {
     pub definitions_id: crate::ids::ElementIdentity,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub definitions: Option<DefinitionsMetadata>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub extensions: Vec<DefinitionsExtension>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub relationships: Vec<DefinitionsRelationship>,
     #[serde(
         default,
         skip_serializing_if = "crate::bpmn_catalog::SupportingCatalog::is_empty"
@@ -212,6 +216,28 @@ impl BpmnDocument {
             }
         }
         let mut out = vec![&self.definitions_id];
+        for extension in &self.extensions {
+            for documentation in &extension.documentation {
+                out.extend(documentation.id.iter());
+            }
+        }
+        for relationship in &self.relationships {
+            out.extend(relationship.id.iter());
+        }
+        crate::metadata_read::visit_base_metadata(self, |_, base| {
+            if let Some(base) = base {
+                for doc in &base.documentation {
+                    out.extend(doc.id.iter());
+                }
+            }
+        });
+        crate::metadata_read::visit_legacy_metadata(self, |_, docs, _| {
+            if let crate::bpmn_metadata::DocumentationSet::Structured(docs) = docs {
+                for doc in docs {
+                    out.extend(doc.id.iter());
+                }
+            }
+        });
         for category in &self.categories {
             out.push(&category.id);
             for value in &category.values {
@@ -257,6 +283,15 @@ impl BpmnDocument {
         for expression in self.expressions() {
             if let Expression::Structured(data) = expression {
                 out.extend(data.id.iter());
+                if let crate::bpmn_model::ExpressionBody::Mixed { parts } = &data.text {
+                    for part in parts {
+                        if let crate::bpmn_model::ExpressionPart::Documentation { documentation } =
+                            part
+                        {
+                            out.extend(documentation.id.iter());
+                        }
+                    }
+                }
             }
         }
         let mut pending = Vec::new();
@@ -304,6 +339,9 @@ impl BpmnDocument {
             }
             for node in nodes {
                 out.push(&node.id);
+                if let Some(loop_characteristics) = &node.loop_characteristics {
+                    out.extend(loop_characteristics.id());
+                }
                 if let Some(io) = &node.io_specification {
                     io_ids(io, &mut out);
                 }
@@ -367,9 +405,9 @@ impl BpmnDocument {
                                 | EventDefinition::Escalation { id, .. }
                                 | EventDefinition::Conditional { id, .. }
                                 | EventDefinition::Link { id, .. }
-                                | EventDefinition::Cancel { id }
+                                | EventDefinition::Cancel { id, .. }
                                 | EventDefinition::Compensate { id, .. }
-                                | EventDefinition::Terminate { id }
+                                | EventDefinition::Terminate { id, .. }
                                 | EventDefinition::Timer { id, .. } => id,
                             };
                             out.extend(id.iter());
@@ -413,11 +451,20 @@ impl BpmnDocument {
         for diagram in &self.diagrams {
             out.push(&diagram.id);
             out.push(&diagram.plane_id);
+            for style in &diagram.label_styles {
+                out.extend(style.id.iter());
+            }
             for shape in &diagram.shapes {
                 out.push(&shape.id);
+                if let Some(label) = &shape.label {
+                    out.extend(label.id.iter());
+                }
             }
             for edge in &diagram.edges {
                 out.push(&edge.id);
+                if let Some(label) = &edge.label {
+                    out.extend(label.id.iter());
+                }
             }
         }
         out
@@ -596,9 +643,17 @@ impl BpmnDocument {
         }
         if self.diagrams.iter().any(|d| {
             d.plane.is_native()
-                || d.shapes.iter().any(|s| s.element.is_native())
+                || d.shapes.iter().any(|s| {
+                    s.element.is_native()
+                        || s.label.as_ref().is_some_and(
+                            |l| matches!(&l.style_ref, Some(DiStyleRef::Local(r)) if r.is_native()),
+                        )
+                })
                 || d.edges.iter().any(|e| {
                     e.element.is_native()
+                        || e.label.as_ref().is_some_and(
+                            |l| matches!(&l.style_ref, Some(DiStyleRef::Local(r)) if r.is_native()),
+                        )
                         || e.source_element.as_ref().is_some_and(|r| r.is_native())
                         || e.target_element.as_ref().is_some_and(|r| r.is_native())
                 })
@@ -689,6 +744,8 @@ impl BpmnDocument {
             folder: None,
             definitions_id,
             definitions: None,
+            extensions: vec![],
+            relationships: vec![],
             catalog: crate::bpmn_catalog::SupportingCatalog::default(),
             categories: vec![],
             event_resources: vec![],
@@ -996,6 +1053,36 @@ pub struct DefinitionsMetadata {
     pub exporter_version: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub imports: Vec<DefinitionsImport>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub namespaces: Vec<crate::bpmn_xml::NamespaceBinding>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub foreign_attributes: Vec<crate::bpmn_xml::XmlAttribute>,
+}
+/// An extension declaration on definitions; it is not a BPMN BaseElement.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct DefinitionsExtension {
+    pub documentation: Vec<crate::bpmn_metadata::Documentation>,
+    pub definition: Option<crate::bpmn_model::QNameRef>,
+    pub must_understand: Option<bool>,
+}
+/// An inert relationship between QName-addressed model elements.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct DefinitionsRelationship {
+    pub id: Option<crate::ids::ElementIdentity>,
+    pub base: Option<crate::bpmn_metadata::BaseMetadata>,
+    pub relationship_type: String,
+    pub direction: Option<RelationshipDirection>,
+    pub sources: Vec<crate::bpmn_model::QNameRef>,
+    pub targets: Vec<crate::bpmn_model::QNameRef>,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub enum RelationshipDirection {
+    None,
+    Forward,
+    Backward,
+    Both,
 }
 /// A BPMN import declaration; its location is model data and is never fetched.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
@@ -1048,6 +1135,8 @@ pub struct Process {
     pub io_specification: Option<crate::bpmn_data::IoSpecification>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lane_set_id: Option<crate::ids::ElementIdentity>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lane_set_base: Option<crate::bpmn_metadata::BaseMetadata>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub groups: Vec<crate::bpmn_model::Group>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -1056,7 +1145,9 @@ pub struct Process {
     pub data_associations: Vec<crate::bpmn_data::DataAssociation>,
     pub id: crate::ids::ElementIdentity,
     pub name: Option<String>,
-    pub documentation: String,
+    pub documentation: crate::bpmn_metadata::DocumentationSet,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_extras: Option<crate::bpmn_metadata::BaseExtras>,
     pub nodes: Vec<Node>,
     pub lanes: Vec<Lane>,
     pub flows: Vec<Flow>,
@@ -1067,6 +1158,8 @@ pub struct Process {
 pub struct FlowContainer {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lane_set_id: Option<crate::ids::ElementIdentity>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lane_set_base: Option<crate::bpmn_metadata::BaseMetadata>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub groups: Vec<crate::bpmn_model::Group>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -1084,7 +1177,9 @@ pub struct Node {
     pub item_aware: Option<crate::bpmn_data::ItemAwareMetadata>,
     pub id: crate::ids::ElementIdentity,
     pub name: Option<String>,
-    pub documentation: String,
+    pub documentation: crate::bpmn_metadata::DocumentationSet,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_extras: Option<crate::bpmn_metadata::BaseExtras>,
     pub kind: NodeKind,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub details: Option<crate::bpmn_model::NodeDetails>,
@@ -1149,7 +1244,12 @@ impl NodeKind {
 #[serde(deny_unknown_fields)]
 pub struct Lane {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base: Option<crate::bpmn_metadata::BaseMetadata>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub child_lane_set_id: Option<crate::ids::ElementIdentity>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub child_lane_set_base: Option<crate::bpmn_metadata::BaseMetadata>,
     pub id: crate::ids::ElementIdentity,
     pub name: Option<String>,
     pub parent: Option<crate::ids::ElementSelector>,
@@ -1158,6 +1258,9 @@ pub struct Lane {
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Collaboration {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base: Option<crate::bpmn_metadata::BaseMetadata>,
+
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     pub id: crate::ids::ElementIdentity,
@@ -1171,6 +1274,9 @@ pub struct Collaboration {
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Participant {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base: Option<crate::bpmn_metadata::BaseMetadata>,
+
     pub id: crate::ids::ElementIdentity,
     pub name: Option<String>,
     pub process: Option<crate::ids::ElementSelector>,
@@ -1185,7 +1291,9 @@ pub struct Flow {
     pub source: crate::ids::ElementSelector,
     pub target: crate::ids::ElementSelector,
     pub name: Option<String>,
-    pub documentation: String,
+    pub documentation: crate::bpmn_metadata::DocumentationSet,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_extras: Option<crate::bpmn_metadata::BaseExtras>,
     pub condition: Option<crate::bpmn_model::Expression>,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
@@ -1200,6 +1308,12 @@ pub enum FlowKind {
 pub struct Diagram {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub documentation: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolution: Option<f64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub label_styles: Vec<LabelStyle>,
     pub id: crate::ids::ElementIdentity,
     pub plane_id: crate::ids::ElementIdentity,
     pub plane: crate::ids::ElementSelector,
@@ -1230,8 +1344,38 @@ pub struct Style {
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Label {
-    pub bounds: Bounds,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<crate::ids::ElementIdentity>,
+    pub bounds: Option<Bounds>,
     pub style: Option<Style>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub style_ref: Option<DiStyleRef>,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub enum DiLabelVisibility {
+    Explicit,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(untagged, deny_unknown_fields)]
+pub enum DiStyleRef {
+    Local(crate::ids::ElementSelector),
+    Qualified(crate::bpmn_model::QNameRef),
+}
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct LabelStyle {
+    pub id: Option<crate::ids::ElementIdentity>,
+    pub font: Option<DiFont>,
+}
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct DiFont {
+    pub name: Option<String>,
+    pub size: Option<f64>,
+    pub is_bold: Option<bool>,
+    pub is_italic: Option<bool>,
+    pub is_underline: Option<bool>,
+    pub is_strike_through: Option<bool>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -1246,6 +1390,8 @@ pub struct Shape {
     pub is_marker_visible: Option<bool>,
     pub bounds: Bounds,
     pub label: Option<Label>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label_visibility: Option<DiLabelVisibility>,
     pub style: Option<Style>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
@@ -1259,6 +1405,8 @@ pub struct Edge {
     pub target_element: Option<crate::ids::ElementSelector>,
     pub waypoints: Vec<Point>,
     pub label: Option<Label>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label_visibility: Option<DiLabelVisibility>,
     pub style: Option<Style>,
 }
 

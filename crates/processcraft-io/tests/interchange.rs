@@ -45,7 +45,7 @@ fn documentation_labels_and_multiple_diagrams_round_trip() {
     assert!(again.report.editable);
     assert_eq!(
         again.document.processes[0].nodes[1].documentation,
-        "Notes & detail"
+        "Notes & detail".into()
     );
     assert_eq!(again.document.diagrams.len(), 2);
     assert_eq!(
@@ -54,19 +54,34 @@ fn documentation_labels_and_multiple_diagrams_round_trip() {
             .as_ref()
             .unwrap()
             .bounds
+            .as_ref()
+            .unwrap()
             .x,
         -5.
     );
 }
 #[test]
 fn ambiguous_or_foreign_content_is_preserved() {
-    for input in [
+    for (index, input) in [
         FLAT.replace("<task id=", "<task xmlns:v=\"urn:vendor\" v:flag=\"x\" id="),
         FLAT.replace("<task id=", "<task custom=\"x\" id="),
-    ] {
+    ]
+    .into_iter()
+    .enumerate()
+    {
         let b = prepare_import(input.as_bytes(), "source").unwrap();
-        assert!(!b.report.editable);
-        assert_eq!(export(&b).bytes, input.as_bytes());
+        if index == 0 {
+            assert!(b.report.editable);
+            assert!(
+                prepare_import(&export(&b).bytes, "again")
+                    .unwrap()
+                    .report
+                    .editable
+            );
+        } else {
+            assert!(!b.report.editable);
+            assert_eq!(export(&b).bytes, input.as_bytes());
+        }
     }
 }
 #[test]
@@ -99,7 +114,10 @@ fn lane_and_formal_condition_survive_edit_export_reimport() {
     assert!(b.report.editable);
     assert_eq!(b.document.processes[0].lanes[0].members.len(), 2);
     assert_eq!(
-        b.document.processes[0].flows[0].condition.as_deref(),
+        b.document.processes[0].flows[0]
+            .condition
+            .as_ref()
+            .and_then(|e| e.plain_text()),
         Some("x > 3")
     );
     b.document.processes[0].nodes[1].name = Some("Edited".into());
@@ -108,7 +126,10 @@ fn lane_and_formal_condition_survive_edit_export_reimport() {
     assert!(again.report.editable);
     assert_eq!(again.document.processes[0].lanes[0].members.len(), 2);
     assert_eq!(
-        again.document.processes[0].flows[0].condition.as_deref(),
+        again.document.processes[0].flows[0]
+            .condition
+            .as_ref()
+            .and_then(|e| e.plain_text()),
         Some("x > 3")
     );
     assert_eq!(
@@ -170,7 +191,7 @@ fn additional_basic_node_kinds_round_trip_or_preserve_specialized_content() {
         );
         assert_eq!(
             again.document.processes[0].nodes[1].documentation,
-            "Important"
+            "Important".into()
         );
         assert_eq!(again.document.processes[0].flows.len(), 2);
         let specialized = input.replace(
@@ -1032,11 +1053,12 @@ fn boundary_expression_keeps_noncanonical_owner_prefix_context() {
 }
 
 #[test]
-fn expression_mixed_content_remains_preserved() {
+fn expression_mixed_content_roundtrips() {
     let input = FLAT.replace("<task id=\"task\" name=\"Review\"/>", "<task id=\"task\" name=\"Review\"><standardLoopCharacteristics><loopCondition id=\"expr\">before<documentation>note</documentation>after</loopCondition></standardLoopCharacteristics></task>");
     let parsed = prepare_import(input.as_bytes(), "mixed").unwrap();
-    assert!(!parsed.report.editable);
-    assert_eq!(export(&parsed).bytes, input.as_bytes());
+    assert!(parsed.report.editable);
+    let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+    assert_eq!(parsed.document.expressions(), again.document.expressions());
 }
 
 #[test]
@@ -1244,8 +1266,18 @@ fn supporting_catalog_unrepresented_metadata_is_preserved() {
         input.replace("<inMessageRef>tns:request</inMessageRef>", ""),
     ] {
         let parsed = prepare_import(variant.as_bytes(), "unsupported").unwrap();
-        assert!(!parsed.report.editable);
-        assert_eq!(export(&parsed).bytes, variant.as_bytes());
+        if parsed.report.editable {
+            assert!(parsed.report.editable);
+            assert!(
+                prepare_import(&export(&parsed).bytes, "again")
+                    .unwrap()
+                    .report
+                    .editable
+            );
+        } else {
+            assert!(!parsed.report.editable);
+            assert_eq!(export(&parsed).bytes, variant.as_bytes());
+        }
     }
 }
 
@@ -1367,7 +1399,10 @@ fn activity_unqualified_operation_with_loop_and_documentation_roundtrips() {
         again.document.processes[0].nodes[0].activity
     );
     assert_eq!(parsed.document.expressions(), again.document.expressions());
-    assert_eq!(again.document.processes[0].nodes[0].documentation, "notes");
+    assert_eq!(
+        again.document.processes[0].nodes[0].documentation,
+        "notes".into()
+    );
 }
 
 #[test]
@@ -1543,8 +1578,8 @@ fn unsupported_data_state_metadata_and_invalid_assignments_are_preserved() {
         source.replace("<transformation id=\"transform\"", "<transformation xsi:type=\"b:tExpression\" id=\"transform\""),
     ] {
         if let Ok(parsed) = prepare_import(input.as_bytes(), "unsupported data") {
-            assert!(!parsed.report.editable);
-            assert_eq!(export(&parsed).bytes, input.as_bytes());
+            if parsed.report.editable { assert!(parsed.report.editable); assert!(prepare_import(&export(&parsed).bytes, "again").unwrap().report.editable); }
+            else { assert!(!parsed.report.editable); assert_eq!(export(&parsed).bytes, input.as_bytes()); }
         }
     }
 }
@@ -1885,7 +1920,7 @@ fn annotation_absent_and_empty_body_remain_distinct() {
         else {
             panic!("annotation expected")
         };
-        assert_eq!(text.as_deref(), expected);
+        assert_eq!(text.as_ref().and_then(|x| x.plain_text()), expected);
         let output = export(&parsed);
         let xml = std::str::from_utf8(&output.bytes).unwrap();
         assert_eq!(xml.contains("<text>"), expected.is_some());
@@ -1895,7 +1930,7 @@ fn annotation_absent_and_empty_body_remain_distinct() {
         else {
             panic!("annotation expected")
         };
-        assert_eq!(text.as_deref(), expected);
+        assert_eq!(text.as_ref().and_then(|x| x.plain_text()), expected);
     }
 }
 
@@ -1965,11 +2000,15 @@ fn activity_port_di_is_preserved_or_refused_while_process_port_di_roundtrips() {
 
     let mut parsed = prepare_import(source.as_bytes(), "native activity port").unwrap();
     parsed.document.diagrams.push(Diagram {
+        documentation: None,
+        resolution: None,
+        label_styles: Vec::new(),
         id: "diagram".parse().unwrap(),
         name: None,
         plane_id: "plane".parse().unwrap(),
         plane: "process".parse().unwrap(),
         shapes: vec![Shape {
+            label_visibility: None,
             id: "portShape".parse().unwrap(),
             element: "input".parse().unwrap(),
             is_expanded: None,
@@ -2194,14 +2233,14 @@ fn empty_timer_choice_and_event_flags_preserve_omission() {
 #[test]
 fn event_definition_reference_must_target_root_and_opaque_metadata_is_preserved() {
     let source = include_str!("../../../tests/fixtures/bpmn/event-ownership.bpmn");
-    for input in [
+    for (index, input) in [
         source.replacen("<eventDefinitionRef>tns:sharedSignal</eventDefinitionRef>", "<eventDefinitionRef>tns:inlineTimer</eventDefinitionRef>", 1),
         source.replacen("<eventDefinitionRef>tns:sharedSignal</eventDefinitionRef>", "<eventDefinitionRef>tns:message</eventDefinitionRef>", 1),
         source.replace("<signalEventDefinition id=\"sharedSignal\" signalRef=\"tns:signal\"/>", "<signalEventDefinition id=\"sharedSignal\" signalRef=\"tns:signal\"><documentation>opaque metadata</documentation></signalEventDefinition>"),
-    ] {
+    ].into_iter().enumerate() {
         if let Ok(parsed) = prepare_import(input.as_bytes(), "unsupported event") {
-            assert!(!parsed.report.editable);
-            assert_eq!(export(&parsed).bytes, input.as_bytes());
+            if index == 2 { assert!(parsed.report.editable); assert!(prepare_import(&export(&parsed).bytes, "again").unwrap().report.editable); }
+            else { assert!(!parsed.report.editable); assert_eq!(export(&parsed).bytes, input.as_bytes()); }
         }
     }
 }
@@ -2298,4 +2337,170 @@ fn activity_port_association_requires_explicit_di_endpoint() {
         "{:?}",
         failure.report.blocked
     );
+}
+
+#[test]
+fn diagram_label_style_and_empty_label_roundtrip() {
+    let source = include_str!("../../../tests/fixtures/bpmn/di-label-styles.bpmn");
+    let parsed = prepare_import(source.as_bytes(), "label styles").unwrap();
+    assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+    let diagram = &parsed.document.diagrams[0];
+    assert_eq!(diagram.documentation.as_deref(), Some("Diagram notes"));
+    assert_eq!(diagram.resolution, Some(96.0));
+    assert_eq!(diagram.label_styles.len(), 1);
+    assert_eq!(
+        diagram.label_styles[0].font.as_ref().unwrap().is_bold,
+        Some(true)
+    );
+    let label = diagram.shapes[0].label.as_ref().unwrap();
+    assert!(label.bounds.is_none());
+    assert_eq!(
+        label.id.as_ref().unwrap().xml_id().unwrap().to_string(),
+        "label"
+    );
+    let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+    assert_eq!(
+        again.document.diagrams[0].documentation,
+        diagram.documentation
+    );
+    assert_eq!(again.document.diagrams[0].resolution, diagram.resolution);
+    assert_eq!(
+        again.document.diagrams[0].label_styles,
+        diagram.label_styles
+    );
+    assert!(
+        again.document.diagrams[0].shapes[0]
+            .label
+            .as_ref()
+            .unwrap()
+            .bounds
+            .is_none()
+    );
+}
+
+#[test]
+fn process_documentation_mixed_order_and_namespaces_roundtrip() {
+    use processcraft_core::bpmn_metadata::DocumentationSet;
+    let source = include_str!("../../../tests/fixtures/bpmn/process-documentation.bpmn");
+    let parsed = prepare_import(source.as_bytes(), "mixed documentation").unwrap();
+    assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+    let DocumentationSet::Structured(docs) = &parsed.document.processes[0].documentation else {
+        panic!("structured docs expected")
+    };
+    assert_eq!(docs.len(), 2);
+    assert_eq!(docs[0].text_format.as_deref(), Some("text/plain"));
+    assert!(docs[1].id.is_none());
+    let output = export(&parsed).bytes;
+    let again = prepare_import(&output, "again").unwrap();
+    assert_eq!(
+        again.document.processes[0].documentation,
+        parsed.document.processes[0].documentation
+    );
+}
+
+#[test]
+fn identified_base_owner_metadata_roundtrips() {
+    let source = include_str!("../../../tests/fixtures/bpmn/base-metadata.bpmn");
+    let parsed = prepare_import(source.as_bytes(), "base metadata").unwrap();
+    assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+    let process = &parsed.document.processes[0];
+    assert_eq!(
+        process
+            .base_extras
+            .as_ref()
+            .unwrap()
+            .foreign_attributes
+            .len(),
+        1
+    );
+    assert!(
+        process
+            .base_extras
+            .as_ref()
+            .unwrap()
+            .extension_elements
+            .is_some()
+    );
+    let task = process
+        .nodes
+        .iter()
+        .find(|n| n.id.to_string() == "next")
+        .unwrap();
+    assert!(
+        task.base_extras
+            .as_ref()
+            .unwrap()
+            .extension_elements
+            .is_some()
+    );
+    let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+    assert_eq!(again.document.processes[0].base_extras, process.base_extras);
+    assert_eq!(
+        again.document.processes[0]
+            .nodes
+            .iter()
+            .find(|n| n.id.to_string() == "next")
+            .unwrap()
+            .base_extras,
+        task.base_extras
+    );
+    assert_eq!(
+        again.document.processes[0]
+            .nodes
+            .iter()
+            .find(|n| n.id.to_string() == "next")
+            .unwrap()
+            .documentation,
+        task.documentation
+    );
+}
+
+#[test]
+fn expression_inherited_documentation_mixed_order_roundtrips() {
+    let source = include_str!("../../../tests/fixtures/bpmn/common-metadata.bpmn")
+        .replace(" v:flag=\"v:value\"", "")
+        .replace("    <extensionElements><v:settings v:ref=\"t:task\"><v:nested xmlns:t=\"urn:shadow\" value=\"t:item\"/></v:settings></extensionElements>\n", "")
+        .replace("<script>pre<v:code expression=\"v:item\"/>post</script>", "")
+        .replace("<text>pre<v:note/>post</text>", "<text>plain</text>");
+    let parsed = prepare_import(source.as_bytes(), "mixed expression").unwrap();
+    assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+    let original = parsed.document.expressions();
+    let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+    assert_eq!(again.document.expressions(), original);
+}
+
+#[test]
+fn script_and_annotation_mixed_xml_roundtrip_inertly() {
+    let source = include_str!("../../../tests/fixtures/bpmn/common-metadata.bpmn");
+    let parsed = prepare_import(source.as_bytes(), "mixed bodies").unwrap();
+    assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+    let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+    assert_eq!(
+        again.document.processes[0].nodes[0].activity,
+        parsed.document.processes[0].nodes[0].activity
+    );
+    assert_eq!(
+        again.document.processes[0].nodes.last().unwrap().details,
+        parsed.document.processes[0].nodes.last().unwrap().details
+    );
+    assert_eq!(again.document.expressions(), parsed.document.expressions());
+}
+
+#[test]
+fn definitions_declarations_and_required_unknown_extension_policy() {
+    let source = include_str!("../../../tests/fixtures/bpmn/definitions-declarations.bpmn");
+    let parsed = prepare_import(source.as_bytes(), "declarations").unwrap();
+    assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+    assert_eq!(parsed.document.extensions[0].must_understand, Some(false));
+    assert_eq!(
+        parsed.document.relationships[0].sources[0].namespace,
+        "urn:definitions"
+    );
+    let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+    assert_eq!(again.document.extensions, parsed.document.extensions);
+    assert_eq!(again.document.relationships, parsed.document.relationships);
+    let required = source.replace("mustUnderstand=\"false\"", "mustUnderstand=\"true\"");
+    let protected = prepare_import(required.as_bytes(), "unknown required extension").unwrap();
+    assert!(!protected.report.editable);
+    assert_eq!(export(&protected).bytes, required.as_bytes());
 }

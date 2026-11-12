@@ -21,6 +21,79 @@ pub struct Envelope {
 #[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
 #[allow(clippy::large_enum_variant)]
 pub enum Mutation {
+    SetExpression {
+        document_id: DocumentId,
+        expression_id: ElementSelector,
+        expression: crate::bpmn_model::Expression,
+    },
+    SetDefinitionsExtensions {
+        document_id: DocumentId,
+        extensions: Vec<DefinitionsExtension>,
+    },
+    SetDefinitionsRelationships {
+        document_id: DocumentId,
+        relationships: Vec<DefinitionsRelationship>,
+    },
+    SetDiagramMetadata {
+        document_id: DocumentId,
+        diagram_id: ElementSelector,
+        documentation: Option<String>,
+        resolution: Option<f64>,
+    },
+    SetDiagramLabelStyles {
+        document_id: DocumentId,
+        diagram_id: ElementSelector,
+        label_styles: Vec<LabelStyle>,
+    },
+    SetShapeLabel {
+        document_id: DocumentId,
+        diagram_id: ElementSelector,
+        shape_id: ElementSelector,
+        label: Option<Label>,
+        label_visibility: Option<DiLabelVisibility>,
+    },
+    SetEdgeLabel {
+        document_id: DocumentId,
+        diagram_id: ElementSelector,
+        edge_id: ElementSelector,
+        label: Option<Label>,
+        label_visibility: Option<DiLabelVisibility>,
+    },
+    SetDocumentationEntry {
+        document_id: DocumentId,
+        documentation_id: ElementSelector,
+        documentation: crate::bpmn_metadata::Documentation,
+    },
+    SetBaseMetadata {
+        document_id: DocumentId,
+        element_id: ElementSelector,
+        metadata: Option<crate::bpmn_metadata::BaseMetadata>,
+    },
+    SetBaseExtras {
+        document_id: DocumentId,
+        element_id: ElementSelector,
+        extras: Option<crate::bpmn_metadata::BaseExtras>,
+    },
+    ReplaceDocumentation {
+        document_id: DocumentId,
+        element_id: ElementSelector,
+        documentation: crate::bpmn_metadata::DocumentationSet,
+    },
+    SetAnnotationBody {
+        document_id: DocumentId,
+        element_id: ElementSelector,
+        body: Option<crate::bpmn_xml::MixedXml>,
+    },
+    SetScriptBody {
+        document_id: DocumentId,
+        element_id: ElementSelector,
+        body: Option<crate::bpmn_xml::MixedXml>,
+    },
+    ReplaceFlowCondition {
+        document_id: DocumentId,
+        flow_id: ElementSelector,
+        condition: Option<crate::bpmn_model::Expression>,
+    },
     SetEventResources {
         document_id: DocumentId,
         resources: Vec<crate::bpmn_model::EventResource>,
@@ -659,9 +732,14 @@ impl Session {
                                 selector,
                             });
                         }
-                        other => mutate(&mut candidate, other)?,
+                        other => {
+                            let previous = native_xml_ids(&candidate);
+                            mutate(&mut candidate, other)?;
+                            reject_implicit_native_xml_id_changes(&previous, &candidate)?;
+                        }
                     }
                 }
+                reject_newly_dangling_relationships(&self.project, &candidate)?;
                 let id = candidate
                     .content_identity()
                     .map_err(CommandError::InvalidParams)?;
@@ -756,6 +834,102 @@ impl Session {
         })
     }
 }
+type NativeXmlIds =
+    std::collections::HashMap<(DocumentId, crate::ids::NativeElementId), Option<XmlId>>;
+fn native_xml_ids(project: &ProjectData) -> NativeXmlIds {
+    project
+        .documents
+        .iter()
+        .flat_map(|document| {
+            document
+                .element_identities()
+                .into_iter()
+                .filter_map(|id| match id {
+                    crate::ids::ElementIdentity::Native { native_id, xml_id } => {
+                        Some(((document.id, *native_id), xml_id.clone()))
+                    }
+                    _ => None,
+                })
+        })
+        .collect()
+}
+fn reject_implicit_native_xml_id_changes(
+    before: &NativeXmlIds,
+    after: &ProjectData,
+) -> Result<(), CommandError> {
+    for new_doc in &after.documents {
+        if new_doc.element_identities().into_iter().any(|id| match id {
+            crate::ids::ElementIdentity::Native { native_id, xml_id } => before
+                .get(&(new_doc.id, *native_id))
+                .is_some_and(|previous| previous != xml_id),
+            _ => false,
+        }) {
+            return Err(invalid(
+                "changing an existing native element XML ID requires SetElementXmlId",
+            ));
+        }
+    }
+    Ok(())
+}
+fn reject_newly_dangling_relationships(
+    old: &ProjectData,
+    candidate: &ProjectData,
+) -> Result<(), CommandError> {
+    for after in &candidate.documents {
+        let Some(before) = old.documents.iter().find(|doc| doc.id == after.id) else {
+            continue;
+        };
+        let namespace = before
+            .definitions
+            .as_ref()
+            .map(|d| d.target_namespace.as_str())
+            .or_else(|| {
+                before
+                    .provenance
+                    .is_none()
+                    .then_some(GENERATED_TARGET_NAMESPACE)
+            });
+        let after_namespace = after
+            .definitions
+            .as_ref()
+            .map(|d| d.target_namespace.as_str())
+            .or_else(|| {
+                after
+                    .provenance
+                    .is_none()
+                    .then_some(GENERATED_TARGET_NAMESPACE)
+            });
+        if namespace.is_none() || namespace != after_namespace {
+            continue;
+        }
+        let old_ids: std::collections::HashMap<_, _> = before
+            .element_identities()
+            .into_iter()
+            .filter_map(|id| id.xml_id().map(|xml| (xml, id.selector())))
+            .collect();
+        let new_ids: std::collections::HashMap<_, _> = after
+            .element_identities()
+            .into_iter()
+            .filter_map(|id| id.xml_id().map(|xml| (xml, id.selector())))
+            .collect();
+        if after
+            .relationships
+            .iter()
+            .flat_map(|relationship| relationship.sources.iter().chain(&relationship.targets))
+            .any(|reference| {
+                Some(reference.namespace.as_str()) == namespace
+                    && old_ids
+                        .get(&reference.local)
+                        .is_some_and(|old| new_ids.get(&reference.local) != Some(old))
+            })
+        {
+            return Err(invalid(
+                "change would leave a local relationship reference dangling or retargeted",
+            ));
+        }
+    }
+    Ok(())
+}
 pub(crate) fn selection_exists(p: &ProjectData, key: &ElementKey) -> bool {
     p.documents
         .iter()
@@ -763,14 +937,58 @@ pub(crate) fn selection_exists(p: &ProjectData, key: &ElementKey) -> bool {
         .is_some_and(|d| crate::identity::semantic_ids(d).contains(&key.xml_id))
 }
 fn move_shape(s: &mut Shape, bounds: Bounds) {
-    if let Some(label) = &mut s.label {
-        label.bounds.x += bounds.x - s.bounds.x;
-        label.bounds.y += bounds.y - s.bounds.y;
+    if let Some(label) = &mut s.label
+        && let Some(label_bounds) = &mut label.bounds
+    {
+        label_bounds.x += bounds.x - s.bounds.x;
+        label_bounds.y += bounds.y - s.bounds.y;
     }
     s.bounds = bounds;
 }
 fn invalid(s: &str) -> CommandError {
     CommandError::InvalidParams(s.into())
+}
+fn documentation_is_structured(d: &BpmnDocument, id: &ElementSelector) -> bool {
+    use crate::bpmn_metadata::DocumentationSet;
+    d.processes
+        .iter()
+        .any(|p| p.id == *id && matches!(p.documentation, DocumentationSet::Structured(_)))
+        || crate::queries::scopes(d).iter().any(|scope| {
+            scope
+                .nodes
+                .iter()
+                .any(|n| n.id == *id && matches!(n.documentation, DocumentationSet::Structured(_)))
+                || scope.flows.iter().any(|f| {
+                    f.id == *id && matches!(f.documentation, DocumentationSet::Structured(_))
+                })
+        })
+        || d.collaboration.as_ref().is_some_and(|c| {
+            c.flows
+                .iter()
+                .any(|f| f.id == *id && matches!(f.documentation, DocumentationSet::Structured(_)))
+        })
+}
+fn replace_nested_documentation(
+    nodes: &mut [Node],
+    id: &ElementSelector,
+    documentation: &crate::bpmn_metadata::DocumentationSet,
+) -> bool {
+    for node in nodes {
+        if node.id == *id {
+            node.documentation = documentation.clone();
+            return true;
+        }
+        if let Some(crate::bpmn_model::NodeDetails::SubProcess { content }) = &mut node.details {
+            if let Some(flow) = content.flows.iter_mut().find(|flow| flow.id == *id) {
+                flow.documentation = documentation.clone();
+                return true;
+            }
+            if replace_nested_documentation(&mut content.nodes, id, documentation) {
+                return true;
+            }
+        }
+    }
+    false
 }
 fn has_qualified_references(nodes: &[Node]) -> bool {
     nodes.iter().any(|node| {
@@ -806,6 +1024,18 @@ fn local_operation_exists(
                 o.id.as_ref()
                     .is_some_and(|id| id.xml_id() == Some(&reference.local))
             })
+}
+fn local_message_exists(
+    d: &BpmnDocument,
+    reference: &crate::bpmn_model::QNameRef,
+    resources: &[crate::bpmn_model::EventResource],
+) -> bool {
+    let namespace = d
+        .definitions
+        .as_ref()
+        .map(|m| m.target_namespace.as_str())
+        .or_else(|| d.provenance.is_none().then_some(GENERATED_TARGET_NAMESPACE));
+    namespace != Some(reference.namespace.as_str()) || resources.iter().any(|resource| matches!(resource, crate::bpmn_model::EventResource::Message { id, .. } if id.xml_id() == Some(&reference.local)))
 }
 fn check_activity_references(
     d: &BpmnDocument,
@@ -858,6 +1088,9 @@ fn doc(
             return Err(CommandError::CapabilityDenied);
         }
         _ => {}
+    }
+    if structural && d.has_opaque_xml() {
+        return Err(invalid("opaque XML prevents safe structural edits"));
     }
     Ok(Arc::make_mut(d))
 }
@@ -999,32 +1232,50 @@ fn collect_association_ids(
     association: &crate::bpmn_data::DataAssociation,
     ids: &mut std::collections::HashSet<ElementSelector>,
 ) {
+    collect_base_documentation_ids(association.base.as_ref(), ids);
     if let Some(id) = &association.id {
         ids.insert(id.selector());
     }
-    let mut expression = |expression: &crate::bpmn_model::Expression| {
-        if let crate::bpmn_model::Expression::Structured(data) = expression
-            && let Some(id) = &data.id
-        {
-            ids.insert(id.selector());
-        }
-    };
     if let Some(value) = &association.transformation {
-        expression(value);
+        collect_expression_ids(value, ids);
     }
     for assignment in &association.assignments {
+        collect_base_documentation_ids(assignment.base.as_ref(), ids);
         if let Some(id) = &assignment.id {
             ids.insert(id.selector());
         }
-        if let crate::bpmn_model::Expression::Structured(data) = &assignment.from
-            && let Some(id) = &data.id
-        {
+        collect_expression_ids(&assignment.from, ids);
+        collect_expression_ids(&assignment.to, ids);
+    }
+}
+fn collect_expression_ids(
+    expression: &crate::bpmn_model::Expression,
+    ids: &mut std::collections::HashSet<ElementSelector>,
+) {
+    if let crate::bpmn_model::Expression::Structured(data) = expression {
+        if let Some(id) = &data.id {
             ids.insert(id.selector());
         }
-        if let crate::bpmn_model::Expression::Structured(data) = &assignment.to
-            && let Some(id) = &data.id
-        {
-            ids.insert(id.selector());
+        if let crate::bpmn_model::ExpressionBody::Mixed { parts } = &data.text {
+            for part in parts {
+                if let crate::bpmn_model::ExpressionPart::Documentation { documentation } = part
+                    && let Some(id) = &documentation.id
+                {
+                    ids.insert(id.selector());
+                }
+            }
+        }
+    }
+}
+fn collect_base_documentation_ids(
+    base: Option<&crate::bpmn_metadata::BaseMetadata>,
+    ids: &mut std::collections::HashSet<ElementSelector>,
+) {
+    if let Some(base) = base {
+        for documentation in &base.documentation {
+            if let Some(id) = &documentation.id {
+                ids.insert(id.selector());
+            }
         }
     }
 }
@@ -1034,6 +1285,13 @@ fn collect_node_ids(
     depth: usize,
 ) {
     ids.insert(node.id.selector());
+    if let crate::bpmn_metadata::DocumentationSet::Structured(items) = &node.documentation {
+        for item in items {
+            if let Some(id) = &item.id {
+                ids.insert(id.selector());
+            }
+        }
+    }
     let mut collect_meta = |metadata: &Option<crate::bpmn_data::ItemAwareMetadata>| {
         if let Some(id) = metadata
             .as_ref()
@@ -1044,8 +1302,46 @@ fn collect_node_ids(
         }
     };
     collect_meta(&node.item_aware);
+    if let Some(value) = &node.activity
+        && let Some(expression) = &value.completion_condition
+    {
+        collect_expression_ids(expression, ids);
+    }
+    if let Some(characteristics) = &node.loop_characteristics {
+        if let Some(id) = characteristics.id() {
+            ids.insert(id.selector());
+        }
+        collect_base_documentation_ids(characteristics.base(), ids);
+        match characteristics {
+            crate::bpmn_model::LoopCharacteristics::Standard { condition, .. } => {
+                if let Some(expression) = condition {
+                    collect_expression_ids(expression, ids);
+                }
+            }
+            crate::bpmn_model::LoopCharacteristics::MultiInstance {
+                cardinality,
+                completion_condition,
+                ..
+            } => {
+                if let Some(expression) = cardinality {
+                    collect_expression_ids(expression, ids);
+                }
+                if let Some(expression) = completion_condition {
+                    collect_expression_ids(expression, ids);
+                }
+            }
+        }
+    }
+    if let Some(crate::bpmn_model::NodeDetails::Gateway {
+        activation_condition: Some(expression),
+        ..
+    }) = &node.details
+    {
+        collect_expression_ids(expression, ids);
+    }
     if let Some(crate::bpmn_model::NodeDetails::Event { properties, .. }) = &node.details {
         for property in properties {
+            collect_base_documentation_ids(property.base.as_ref(), ids);
             if let Some(id) = &property.id {
                 ids.insert(id.selector());
             }
@@ -1060,6 +1356,7 @@ fn collect_node_ids(
         }
     }
     if let Some(io) = &node.io_specification {
+        collect_base_documentation_ids(io.base.as_ref(), ids);
         if let Some(id) = &io.id {
             ids.insert(id.selector());
         }
@@ -1069,6 +1366,12 @@ fn collect_node_ids(
                 .chain(&io.outputs)
                 .filter_map(|p| p.id.as_ref().map(|id| id.selector())),
         );
+        for port in io.inputs.iter().chain(&io.outputs) {
+            collect_base_documentation_ids(port.base.as_ref(), ids);
+        }
+        for set in io.input_sets.iter().chain(&io.output_sets) {
+            collect_base_documentation_ids(set.base.as_ref(), ids);
+        }
         ids.extend(
             io.input_sets
                 .iter()
@@ -1088,6 +1391,7 @@ fn collect_node_ids(
     }) = &node.details
     {
         for definition in definitions {
+            collect_base_documentation_ids(definition.base(), ids);
             if let Some(id) = definition.id() {
                 ids.insert(id.selector());
             }
@@ -1098,10 +1402,8 @@ fn collect_node_ids(
                 crate::bpmn_model::EventDefinition::Timer { expression, .. } => expression.as_ref(),
                 _ => None,
             };
-            if let Some(crate::bpmn_model::Expression::Structured(data)) = expression
-                && let Some(id) = &data.id
-            {
-                ids.insert(id.selector());
+            if let Some(expression) = expression {
+                collect_expression_ids(expression, ids);
             }
         }
         if let Some(io) = io {
@@ -1113,6 +1415,7 @@ fn collect_node_ids(
                 crate::bpmn_model::EventIo::Throw { inputs, input_set } => (inputs, input_set),
             };
             for port in ports {
+                collect_base_documentation_ids(port.base.as_ref(), ids);
                 if let Some(id) = &port.id {
                     ids.insert(id.selector());
                 }
@@ -1128,6 +1431,9 @@ fn collect_node_ids(
             if let Some(id) = set.as_ref().and_then(|s| s.id.as_ref()) {
                 ids.insert(id.selector());
             }
+            if let Some(set) = set {
+                collect_base_documentation_ids(set.base.as_ref(), ids);
+            }
         }
     }
     if depth >= 32 {
@@ -1140,6 +1446,29 @@ fn collect_node_ids(
         ids.extend(content.lanes.iter().map(|l| l.id.selector()));
         ids.extend(content.flows.iter().map(|f| f.id.selector()));
         ids.extend(content.groups.iter().map(|g| g.id.selector()));
+        collect_base_documentation_ids(content.lane_set_base.as_ref(), ids);
+        for lane in &content.lanes {
+            collect_base_documentation_ids(lane.base.as_ref(), ids);
+            collect_base_documentation_ids(lane.child_lane_set_base.as_ref(), ids);
+        }
+        for group in &content.groups {
+            collect_base_documentation_ids(group.base.as_ref(), ids);
+        }
+        for object in &content.data_objects {
+            collect_base_documentation_ids(object.base.as_ref(), ids);
+        }
+        for flow in &content.flows {
+            if let Some(expression) = &flow.condition {
+                collect_expression_ids(expression, ids);
+            }
+            if let crate::bpmn_metadata::DocumentationSet::Structured(items) = &flow.documentation {
+                for item in items {
+                    if let Some(id) = &item.id {
+                        ids.insert(id.selector());
+                    }
+                }
+            }
+        }
         if let Some(id) = &content.lane_set_id {
             ids.insert(id.selector());
         }
@@ -1189,11 +1518,28 @@ fn delete_nested(
         return true;
     }
     if let Some(index) = lanes.iter().position(|l| &l.id == id) {
+        collect_base_documentation_ids(lanes[index].base.as_ref(), removed);
+        collect_base_documentation_ids(lanes[index].child_lane_set_base.as_ref(), removed);
+        if let Some(child) = &lanes[index].child_lane_set_id {
+            removed.insert(child.selector());
+        }
         lanes.remove(index);
         removed.insert(id.clone());
         return true;
     }
     if let Some(index) = flows.iter().position(|f| &f.id == id) {
+        if let Some(expression) = &flows[index].condition {
+            collect_expression_ids(expression, removed);
+        }
+        if let crate::bpmn_metadata::DocumentationSet::Structured(items) =
+            &flows[index].documentation
+        {
+            for item in items {
+                if let Some(id) = &item.id {
+                    removed.insert(id.selector());
+                }
+            }
+        }
         flows.remove(index);
         removed.insert(id.clone());
         return true;
@@ -1306,11 +1652,357 @@ fn diagram<'a>(
 }
 fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
     match m {
+        Mutation::SetExpression {
+            document_id,
+            expression_id,
+            expression,
+        } => {
+            let d = doc(p, document_id, false)?;
+            if !matches!(d.capability, Capability::Editable) {
+                return Err(CommandError::CapabilityDenied);
+            }
+            let opaque = d.has_opaque_xml();
+            let mut found = 0;
+            let mut changed_identity = false;
+            let mut changed_opaque = false;
+            crate::metadata_visit::visit_expressions_mut(d, |existing| {
+                if let crate::bpmn_model::Expression::Structured(data) = existing
+                    && data
+                        .id
+                        .as_ref()
+                        .is_some_and(|id| id.selector() == expression_id)
+                {
+                    found += 1;
+                    let new = match &expression {
+                        crate::bpmn_model::Expression::Structured(value) => value,
+                        _ => {
+                            changed_identity = true;
+                            return;
+                        }
+                    };
+                    if serde_json::to_value(&data.id).ok() != serde_json::to_value(&new.id).ok() {
+                        changed_identity = true;
+                    } else if opaque
+                        && (data.text != new.text
+                            || data.namespaces != new.namespaces
+                            || data.foreign_attributes != new.foreign_attributes)
+                    {
+                        changed_opaque = true;
+                    } else {
+                        *existing = expression.clone();
+                    }
+                }
+            });
+            if found != 1 || changed_identity {
+                return Err(invalid("expression not found or identity changed"));
+            }
+            if changed_opaque {
+                return Err(invalid("opaque XML prevents replacing expression content"));
+            }
+        }
+        Mutation::SetDefinitionsExtensions {
+            document_id,
+            extensions,
+        } => {
+            doc(p, document_id, true)?.extensions = extensions;
+        }
+        Mutation::SetDefinitionsRelationships {
+            document_id,
+            relationships,
+        } => {
+            let document = doc(p, document_id, true)?;
+            let namespace = document
+                .definitions
+                .as_ref()
+                .map(|d| d.target_namespace.as_str())
+                .or_else(|| {
+                    document
+                        .provenance
+                        .is_none()
+                        .then_some(GENERATED_TARGET_NAMESPACE)
+                });
+            if let Some(namespace) = namespace {
+                let ids: std::collections::HashSet<_> = document
+                    .element_identities()
+                    .into_iter()
+                    .filter_map(|id| id.xml_id())
+                    .collect();
+                let previous: std::collections::HashSet<_> = document
+                    .relationships
+                    .iter()
+                    .flat_map(|r| r.sources.iter().chain(&r.targets))
+                    .filter(|reference| {
+                        reference.namespace == namespace && !ids.contains(&reference.local)
+                    })
+                    .collect();
+                if relationships
+                    .iter()
+                    .flat_map(|r| r.sources.iter().chain(&r.targets))
+                    .any(|reference| {
+                        reference.namespace == namespace
+                            && !ids.contains(&reference.local)
+                            && !previous.contains(reference)
+                    })
+                {
+                    return Err(invalid("new local relationship reference does not resolve"));
+                }
+            } else if relationships
+                .iter()
+                .flat_map(|r| r.sources.iter().chain(&r.targets))
+                .any(|reference| {
+                    !document
+                        .relationships
+                        .iter()
+                        .flat_map(|r| r.sources.iter().chain(&r.targets))
+                        .any(|old| old == reference)
+                })
+            {
+                return Err(invalid(
+                    "cannot determine namespace for new relationship references",
+                ));
+            }
+            document.relationships = relationships;
+        }
+        Mutation::SetDiagramMetadata {
+            document_id,
+            diagram_id,
+            documentation,
+            resolution,
+        } => {
+            let diagram = diagram(doc(p, document_id, false)?, &diagram_id)?;
+            diagram.documentation = documentation;
+            diagram.resolution = resolution;
+        }
+        Mutation::SetDiagramLabelStyles {
+            document_id,
+            diagram_id,
+            label_styles,
+        } => {
+            diagram(doc(p, document_id, true)?, &diagram_id)?.label_styles = label_styles;
+        }
+        Mutation::SetShapeLabel {
+            document_id,
+            diagram_id,
+            shape_id,
+            label,
+            label_visibility,
+        } => {
+            let shape = diagram(doc(p, document_id, true)?, &diagram_id)?
+                .shapes
+                .iter_mut()
+                .find(|shape| shape.id == shape_id)
+                .ok_or_else(|| invalid("shape not found"))?;
+            shape.label = label;
+            shape.label_visibility = label_visibility;
+        }
+        Mutation::SetEdgeLabel {
+            document_id,
+            diagram_id,
+            edge_id,
+            label,
+            label_visibility,
+        } => {
+            let edge = diagram(doc(p, document_id, true)?, &diagram_id)?
+                .edges
+                .iter_mut()
+                .find(|edge| edge.id == edge_id)
+                .ok_or_else(|| invalid("edge not found"))?;
+            edge.label = label;
+            edge.label_visibility = label_visibility;
+        }
+        Mutation::SetDocumentationEntry {
+            document_id,
+            documentation_id,
+            documentation,
+        } => {
+            let d = doc(p, document_id, false)?;
+            let opaque = d.has_opaque_xml();
+            let mut found = 0;
+            let mut invalid_id = false;
+            let mut unsafe_content_change = false;
+            let mut update = |item: &mut crate::bpmn_metadata::Documentation| {
+                if item
+                    .id
+                    .as_ref()
+                    .is_some_and(|id| id.selector() == documentation_id)
+                {
+                    found += 1;
+                    if serde_json::to_value(&item.id).ok()
+                        != serde_json::to_value(&documentation.id).ok()
+                    {
+                        invalid_id = true;
+                    } else if opaque && item.content != documentation.content {
+                        unsafe_content_change = true;
+                    } else {
+                        *item = documentation.clone();
+                    }
+                }
+            };
+            for extension in &mut d.extensions {
+                for item in &mut extension.documentation {
+                    update(item);
+                }
+            }
+            crate::metadata_visit::visit_base_metadata_mut(d, |_, metadata| {
+                if let Some(metadata) = metadata {
+                    for item in &mut metadata.documentation {
+                        update(item);
+                    }
+                }
+            });
+            crate::metadata_visit::visit_legacy_metadata_mut(d, |_, documentation, _| {
+                if let crate::bpmn_metadata::DocumentationSet::Structured(items) = documentation {
+                    for item in items {
+                        update(item);
+                    }
+                }
+            });
+            crate::metadata_visit::visit_expressions_mut(d, |expression| {
+                if let crate::bpmn_model::Expression::Structured(data) = expression
+                    && let crate::bpmn_model::ExpressionBody::Mixed { parts } = &mut data.text
+                {
+                    for part in parts {
+                        if let crate::bpmn_model::ExpressionPart::Documentation { documentation } =
+                            part
+                        {
+                            update(documentation);
+                        }
+                    }
+                }
+            });
+            if found != 1 || invalid_id {
+                return Err(invalid("documentation not found or identity changed"));
+            }
+            if unsafe_content_change {
+                return Err(invalid(
+                    "opaque XML prevents replacing documentation content",
+                ));
+            }
+        }
+        Mutation::SetBaseMetadata {
+            document_id,
+            element_id,
+            metadata,
+        } => {
+            let d = doc(p, document_id, true)?;
+            let mut found = false;
+            crate::metadata_visit::visit_base_metadata_mut(d, |id, slot| {
+                if id.is_some_and(|id| id.selector() == element_id) {
+                    *slot = metadata.clone();
+                    found = true;
+                }
+            });
+            if !found {
+                return Err(invalid("element does not support common base metadata"));
+            }
+        }
+        Mutation::SetBaseExtras {
+            document_id,
+            element_id,
+            extras,
+        } => {
+            let d = doc(p, document_id, true)?;
+            let mut found = false;
+            crate::metadata_visit::visit_legacy_metadata_mut(d, |id, _, slot| {
+                if id.selector() == element_id {
+                    *slot = extras.clone();
+                    found = true;
+                }
+            });
+            if !found {
+                return Err(invalid("element does not support base extras"));
+            }
+        }
+        Mutation::SetScriptBody {
+            document_id,
+            element_id,
+            body,
+        } => {
+            let node = node_mut(doc(p, document_id, true)?, &element_id)?;
+            if node.kind != NodeKind::ScriptTask {
+                return Err(invalid("element is not a script task"));
+            }
+            node.activity.get_or_insert_with(Default::default).script = body;
+        }
+        Mutation::SetAnnotationBody {
+            document_id,
+            element_id,
+            body,
+        } => {
+            let node = node_mut(doc(p, document_id, true)?, &element_id)?;
+            if node.kind != NodeKind::TextAnnotation {
+                return Err(invalid("element is not a text annotation"));
+            }
+            match &mut node.details {
+                Some(crate::bpmn_model::NodeDetails::TextAnnotation { text, .. }) => {
+                    if text.is_none() {
+                        node.name = None;
+                    }
+                    *text = body;
+                }
+                None => {
+                    node.name = None;
+                    node.details = Some(crate::bpmn_model::NodeDetails::TextAnnotation {
+                        text_format: None,
+                        text: body,
+                    });
+                }
+                _ => return Err(invalid("invalid text annotation details")),
+            }
+        }
+        Mutation::ReplaceDocumentation {
+            document_id,
+            element_id,
+            documentation,
+        } => {
+            let d = doc(p, document_id, true)?;
+            let mut found = false;
+            for process in &mut d.processes {
+                if process.id == element_id {
+                    process.documentation = documentation.clone();
+                    found = true;
+                }
+                found |=
+                    replace_nested_documentation(&mut process.nodes, &element_id, &documentation);
+                if let Some(flow) = process.flows.iter_mut().find(|flow| flow.id == element_id) {
+                    flow.documentation = documentation.clone();
+                    found = true;
+                }
+            }
+            if let Some(collaboration) = &mut d.collaboration
+                && let Some(flow) = collaboration
+                    .flows
+                    .iter_mut()
+                    .find(|flow| flow.id == element_id)
+            {
+                flow.documentation = documentation;
+                found = true;
+            }
+            if !found {
+                return Err(invalid("element has no legacy documentation field"));
+            }
+        }
         Mutation::SetEventResources {
             document_id,
             resources,
         } => {
-            doc(p, document_id, true)?.event_resources = resources;
+            let document = doc(p, document_id, true)?;
+            for scope in crate::queries::scopes(document) {
+                for node in scope.nodes {
+                    if let Some(reference) = node
+                        .activity
+                        .as_ref()
+                        .and_then(|activity| activity.message_ref.as_ref())
+                        && local_message_exists(document, reference, &document.event_resources)
+                        && !local_message_exists(document, reference, &resources)
+                    {
+                        return Err(invalid(
+                            "Event resource change would remove a referenced local message",
+                        ));
+                    }
+                }
+            }
+            document.event_resources = resources;
         }
         Mutation::SetRootEventDefinitions {
             document_id,
@@ -1325,7 +2017,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             is_horizontal,
             is_marker_visible,
         } => {
-            let shape = diagram(doc(p, document_id, true)?, &diagram_id)?
+            let shape = diagram(doc(p, document_id, false)?, &diagram_id)?
                 .shapes
                 .iter_mut()
                 .find(|shape| shape.id == shape_id)
@@ -1340,7 +2032,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             source_element,
             target_element,
         } => {
-            let edge = diagram(doc(p, document_id, true)?, &diagram_id)?
+            let edge = diagram(doc(p, document_id, false)?, &diagram_id)?
                 .edges
                 .iter_mut()
                 .find(|edge| edge.id == edge_id)
@@ -1369,16 +2061,23 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             }
             match &mut node.details {
                 Some(crate::bpmn_model::NodeDetails::TextAnnotation { text: value, .. }) => {
+                    if value.as_ref().is_some_and(|value| {
+                        matches!(value, crate::bpmn_xml::MixedXml::Structured(_))
+                    }) {
+                        return Err(invalid(
+                            "structured annotation requires an explicit mixed-content edit",
+                        ));
+                    }
                     if value.is_none() {
                         node.name = None;
                     }
-                    *value = text
+                    *value = text.map(Into::into)
                 }
                 None => {
                     node.name = None;
                     node.details = Some(crate::bpmn_model::NodeDetails::TextAnnotation {
                         text_format: None,
-                        text,
+                        text: text.map(Into::into),
                     })
                 }
                 _ => return Err(invalid("invalid text annotation details")),
@@ -1466,6 +2165,16 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             activity,
         } => {
             let d = doc(p, document_id, true)?;
+            let old_script = crate::queries::find_node(d, &element_id)
+                .and_then(|n| n.activity.as_ref())
+                .and_then(|a| a.script.as_ref());
+            if old_script.is_some_and(|s| matches!(s, crate::bpmn_xml::MixedXml::Structured(_)))
+                && old_script != activity.as_ref().and_then(|a| a.script.as_ref())
+            {
+                return Err(invalid(
+                    "structured script requires an explicit mixed-content edit",
+                ));
+            }
             if let Some(activity) = &activity {
                 let previous =
                     crate::queries::find_node(d, &element_id).and_then(|n| n.activity.as_ref());
@@ -1592,7 +2301,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             };
             label
                 .ok_or_else(|| invalid("representation label not found"))?
-                .bounds = bounds;
+                .bounds = Some(bounds);
         }
         Mutation::SetNodeIoSpecification {
             document_id,
@@ -1866,6 +2575,18 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
         } => {
             let document = doc(p, document_id, true)?;
             let node = node_mut(document, &element_id)?;
+            if matches!(
+                &node.details,
+                Some(crate::bpmn_model::NodeDetails::TextAnnotation {
+                    text: Some(crate::bpmn_xml::MixedXml::Structured(_)),
+                    ..
+                })
+            ) && node.details != details
+            {
+                return Err(invalid(
+                    "structured annotation requires an explicit mixed-content edit",
+                ));
+            }
             node.details = details;
         }
         Mutation::CreateCheckpoint {
@@ -1936,7 +2657,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                     .ok_or_else(|| invalid("shape not found"))?;
                 shape.bounds = geometry.bounds;
                 if let (Some(label), Some(bounds)) = (&mut shape.label, geometry.label_bounds) {
-                    label.bounds = bounds;
+                    label.bounds = Some(bounds);
                 }
             }
             for geometry in proposal.proposed.edges {
@@ -1947,7 +2668,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                     .ok_or_else(|| invalid("edge not found"))?;
                 edge.waypoints = geometry.waypoints;
                 if let (Some(label), Some(bounds)) = (&mut edge.label, geometry.label_bounds) {
-                    label.bounds = bounds;
+                    label.bounds = Some(bounds);
                 }
             }
         }
@@ -2171,6 +2892,25 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             if f.kind != FlowKind::Sequence {
                 return Err(invalid("condition requires sequence flow"));
             }
+            if f.condition
+                .as_ref()
+                .is_some_and(|value| value.plain_text().is_none())
+                && f.condition != condition
+            {
+                return Err(invalid("mixed expression requires an explicit replacement"));
+            }
+            f.condition = condition;
+        }
+        Mutation::ReplaceFlowCondition {
+            document_id,
+            flow_id,
+            condition,
+        } => {
+            let d = doc(p, document_id, true)?;
+            let f = flow_mut(d, &flow_id)?;
+            if f.kind != FlowKind::Sequence {
+                return Err(invalid("condition requires sequence flow"));
+            }
             f.condition = condition;
         }
         Mutation::SetNodeOwnerContact {
@@ -2311,6 +3051,10 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                 && (d.catalog.has_qname_refs()
                     || d.has_data_qname_refs()
                     || d.has_event_qname_refs()
+                    || d.extensions.iter().any(|e| e.definition.is_some())
+                    || d.relationships
+                        .iter()
+                        .any(|r| !r.sources.is_empty() || !r.targets.is_empty())
                     || d.processes
                         .iter()
                         .any(|p| has_qualified_references(&p.nodes))
@@ -2406,22 +3150,27 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             documentation,
         } => {
             let d = doc(p, document_id, false)?;
+            if documentation_is_structured(d, &element_id) {
+                return Err(invalid(
+                    "structured documentation requires an explicit documentation edit",
+                ));
+            }
             let mut found = false;
             for pr in &mut d.processes {
                 if pr.id == element_id {
-                    pr.documentation = documentation.clone();
+                    pr.documentation = documentation.clone().into();
                     found = true;
                 }
                 found |= edit_nested(&mut pr.nodes, &element_id, Some(&documentation), true, 0);
                 for n in &mut pr.nodes {
                     if n.id == element_id {
-                        n.documentation = documentation.clone();
+                        n.documentation = documentation.clone().into();
                         found = true;
                     }
                 }
                 for f in &mut pr.flows {
                     if f.id == element_id {
-                        f.documentation = documentation.clone();
+                        f.documentation = documentation.clone().into();
                         found = true;
                     }
                 }
@@ -2429,7 +3178,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             if let Some(c) = &mut d.collaboration {
                 for f in &mut c.flows {
                     if f.id == element_id {
-                        f.documentation = documentation.clone();
+                        f.documentation = documentation.clone().into();
                         found = true;
                     }
                 }
@@ -2575,6 +3324,20 @@ pub struct CommandParam {
 }
 macro_rules! descriptor { ($id:literal,$label:literal $(,$name:literal:$ty:literal)* $(,)?) => { CommandDescriptor { id: $id, serde_tag: $id, label: $label, params: &[$(CommandParam {name:$name,value_type:$ty,required:true}),*] } }; }
 static COMMAND_DESCRIPTORS: &[CommandDescriptor] = &[
+    descriptor!("setExpression", "Set structured expression", "document_id":"DocumentId", "expression_id":"ElementSelector", "expression":"Expression"),
+    descriptor!("setDefinitionsExtensions", "Set definitions extensions", "document_id":"DocumentId", "extensions":"DefinitionsExtension[]"),
+    descriptor!("setDefinitionsRelationships", "Set definitions relationships", "document_id":"DocumentId", "relationships":"DefinitionsRelationship[]"),
+    descriptor!("setDiagramMetadata", "Set diagram metadata", "document_id":"DocumentId", "diagram_id":"ElementSelector", "documentation":"String|null", "resolution":"number|null"),
+    descriptor!("setDiagramLabelStyles", "Set diagram label styles", "document_id":"DocumentId", "diagram_id":"ElementSelector", "label_styles":"LabelStyle[]"),
+    descriptor!("setShapeLabel", "Set shape label", "document_id":"DocumentId", "diagram_id":"ElementSelector", "shape_id":"ElementSelector", "label":"Label|null", "label_visibility":"DiLabelVisibility|null"),
+    descriptor!("setEdgeLabel", "Set edge label", "document_id":"DocumentId", "diagram_id":"ElementSelector", "edge_id":"ElementSelector", "label":"Label|null", "label_visibility":"DiLabelVisibility|null"),
+    descriptor!("setDocumentationEntry", "Set documentation entry", "document_id":"DocumentId", "documentation_id":"ElementSelector", "documentation":"Documentation"),
+    descriptor!("setBaseMetadata", "Set common base metadata", "document_id":"DocumentId", "element_id":"ElementSelector", "metadata":"BaseMetadata|null"),
+    descriptor!("setBaseExtras", "Set common base extras", "document_id":"DocumentId", "element_id":"ElementSelector", "extras":"BaseExtras|null"),
+    descriptor!("replaceFlowCondition", "Replace flow expression", "document_id":"DocumentId", "flow_id":"ElementSelector", "condition":"Expression|null"),
+    descriptor!("setScriptBody", "Set script mixed content", "document_id":"DocumentId", "element_id":"ElementSelector", "body":"MixedXml|null"),
+    descriptor!("setAnnotationBody", "Set annotation mixed content", "document_id":"DocumentId", "element_id":"ElementSelector", "body":"MixedXml|null"),
+    descriptor!("replaceDocumentation", "Replace ordered documentation", "document_id":"DocumentId", "element_id":"ElementSelector", "documentation":"DocumentationSet"),
     descriptor!("setEventResources", "Set event resources", "document_id":"DocumentId", "resources":"EventResource[]"),
     descriptor!("setRootEventDefinitions", "Set reusable event definitions", "document_id":"DocumentId", "definitions":"EventDefinition[]"),
     descriptor!("setShapeDiAttributes", "Set shape diagram attributes", "document_id":"DocumentId", "diagram_id":"ElementSelector", "shape_id":"ElementSelector", "is_horizontal":"bool|null", "is_marker_visible":"bool|null"),
@@ -2688,6 +3451,7 @@ mod shape_label_tests {
     #[test]
     fn moving_shape_translates_label_without_resizing_it() {
         let mut shape = Shape {
+            label_visibility: None,
             is_horizontal: None,
             is_marker_visible: None,
             is_expanded: None,
@@ -2700,12 +3464,14 @@ mod shape_label_tests {
                 height: 40.0,
             },
             label: Some(Label {
-                bounds: Bounds {
+                id: None,
+                style_ref: None,
+                bounds: Some(Bounds {
                     x: 0.0,
                     y: 65.0,
                     width: 80.0,
                     height: 30.0,
-                },
+                }),
                 style: None,
             }),
             style: None,
@@ -2719,7 +3485,7 @@ mod shape_label_tests {
                 height: 40.0,
             },
         );
-        let label = shape.label.unwrap().bounds;
+        let label = shape.label.unwrap().bounds.unwrap();
         assert_eq!(
             (label.x, label.y, label.width, label.height),
             (15.0, 57.0, 80.0, 30.0)

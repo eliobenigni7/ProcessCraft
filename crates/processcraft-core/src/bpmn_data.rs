@@ -5,6 +5,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DataStore {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base: Option<crate::bpmn_metadata::BaseMetadata>,
+
     pub id: Option<crate::ids::ElementIdentity>,
     pub name: Option<String>,
     pub capacity: Option<String>,
@@ -15,6 +18,9 @@ pub struct DataStore {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DataObject {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base: Option<crate::bpmn_metadata::BaseMetadata>,
+
     pub id: Option<crate::ids::ElementIdentity>,
     pub name: Option<String>,
     pub is_collection: Option<bool>,
@@ -30,6 +36,9 @@ pub struct ItemAwareMetadata {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DataState {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base: Option<crate::bpmn_metadata::BaseMetadata>,
+
     pub id: Option<crate::ids::ElementIdentity>,
     pub name: Option<String>,
 }
@@ -41,6 +50,9 @@ pub enum DataAssociationKind {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DataAssociation {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base: Option<crate::bpmn_metadata::BaseMetadata>,
+
     pub id: Option<crate::ids::ElementIdentity>,
     pub owner: crate::ids::ElementSelector,
     pub kind: DataAssociationKind,
@@ -54,6 +66,9 @@ pub struct DataAssociation {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DataAssignment {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base: Option<crate::bpmn_metadata::BaseMetadata>,
+
     pub id: Option<crate::ids::ElementIdentity>,
     pub from: Expression,
     pub to: Expression,
@@ -63,6 +78,9 @@ pub struct DataAssignment {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DataPort {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base: Option<crate::bpmn_metadata::BaseMetadata>,
+
     pub id: Option<crate::ids::ElementIdentity>,
     pub name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -81,6 +99,9 @@ pub enum DataStoreRef {
 #[serde(deny_unknown_fields)]
 pub struct IoSpecification {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base: Option<crate::bpmn_metadata::BaseMetadata>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<crate::ids::ElementIdentity>,
     pub inputs: Vec<DataPort>,
     pub outputs: Vec<DataPort>,
@@ -93,6 +114,9 @@ pub struct IoSpecification {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct IoSet {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base: Option<crate::bpmn_metadata::BaseMetadata>,
+
     pub id: Option<crate::ids::ElementIdentity>,
     pub name: Option<String>,
     pub data_refs: Vec<crate::ids::ElementSelector>,

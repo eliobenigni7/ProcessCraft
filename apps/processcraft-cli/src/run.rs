@@ -405,7 +405,7 @@ pub fn execute(command: Command) -> Result<(), Error> {
     }
 }
 
-fn bounded_page(
+pub(crate) fn bounded_page(
     items: impl Iterator<Item = Value>,
     total: usize,
     offset: usize,
@@ -416,9 +416,15 @@ fn bounded_page(
     }
     let mut page = Vec::new();
     let mut bytes = 0usize;
-    for item in items {
+    for item in items.take(limit) {
         let size = serde_json::to_vec(&item).map_err(|e| error(3, e))?.len();
         if bytes.saturating_add(size) > 3 * 1024 * 1024 {
+            if page.is_empty() {
+                return Err(error(
+                    3,
+                    "query item exceeds response limit; use a field projection query",
+                ));
+            }
             break;
         }
         bytes += size;
@@ -438,6 +444,32 @@ fn query_project(path: &Path, query: Query) -> Result<(), Error> {
     let loaded = native::load_bytes(&read(path)?).map_err(|e| error(3, e))?;
     let project = &loaded.project;
     let result = match query {
+        Query::Model {
+            document_id,
+            offset,
+            limit,
+        } => {
+            let id = document_id.parse().map_err(|e| error(2, e))?;
+            let rows = queries::document_fields_page(project, id, offset, limit)
+                .map_err(|e| error(3, e))?
+                .ok_or_else(|| error(3, "document not found"))?;
+            let mut page = json!(rows);
+            page["contentId"] = json!(project.content_identity().map_err(|e| error(3, e))?);
+            page
+        }
+        Query::CheckpointFields {
+            checkpoint_id,
+            offset,
+            limit,
+        } => {
+            let id = checkpoint_id.parse().map_err(|e| error(2, e))?;
+            let rows = queries::checkpoint_fields_page(project, id, offset, limit)
+                .map_err(|e| error(3, e))?
+                .ok_or_else(|| error(3, "checkpoint not found"))?;
+            let mut page = json!(rows);
+            page["contentId"] = json!(project.content_identity().map_err(|e| error(3, e))?);
+            page
+        }
         Query::Events {
             document_id,
             offset,
@@ -866,6 +898,41 @@ fn export_image_cli(
 mod tests {
     use super::*;
     use processcraft_io::{Operation, SaveReceipt};
+
+    #[test]
+    fn oversized_query_item_refuses_instead_of_returning_nonadvancing_page() {
+        let result = bounded_page(
+            std::iter::once(json!("x".repeat(3 * 1024 * 1024))),
+            1,
+            0,
+            100,
+        );
+        assert!(
+            result
+                .err()
+                .unwrap()
+                .message
+                .contains("exceeds response limit")
+        );
+    }
+
+    #[test]
+    fn byte_limited_page_advances_and_next_item_can_be_read() {
+        let items = vec![
+            json!("x".repeat(2 * 1024 * 1024)),
+            json!("y".repeat(2 * 1024 * 1024)),
+        ];
+        let first = bounded_page(items.clone().into_iter(), 2, 0, 100)
+            .ok()
+            .unwrap();
+        assert_eq!(first["items"].as_array().unwrap().len(), 1);
+        assert_eq!(first["nextOffset"], 1);
+        let second = bounded_page(items.into_iter().skip(1), 2, 1, 100)
+            .ok()
+            .unwrap();
+        assert_eq!(second["items"].as_array().unwrap().len(), 1);
+        assert!(second["nextOffset"].is_null());
+    }
 
     #[test]
     fn indeterminate_save_returns_machine_data_and_exit_one() {

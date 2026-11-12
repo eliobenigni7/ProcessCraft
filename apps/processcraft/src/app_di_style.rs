@@ -1,0 +1,167 @@
+use super::catalog::{optional_bool, optional_text};
+use super::*;
+use processcraft_core::model::{DiFont, Diagram, LabelStyle};
+pub(super) struct StyleDraft {
+    diagram: ElementSelector,
+    documentation: Option<String>,
+    resolution: Option<String>,
+    styles: Vec<StyleRow>,
+    error: String,
+}
+struct StyleRow {
+    value: LabelStyle,
+    size: Option<String>,
+}
+impl StyleDraft {
+    fn new(diagram: &Diagram) -> Self {
+        Self {
+            diagram: diagram.id.selector(),
+            documentation: diagram.documentation.clone(),
+            resolution: diagram.resolution.map(|v| v.to_string()),
+            styles: diagram
+                .label_styles
+                .iter()
+                .map(|s| StyleRow {
+                    value: s.clone(),
+                    size: s.font.as_ref().and_then(|f| f.size.map(|v| v.to_string())),
+                })
+                .collect(),
+            error: String::new(),
+        }
+    }
+    fn ui(&mut self, ui: &mut egui::Ui) {
+        optional_text(ui, "Diagram documentation", &mut self.documentation);
+        optional_text(ui, "Resolution", &mut self.resolution);
+        let mut remove = None;
+        let mut up = None;
+        for (i, row) in self.styles.iter_mut().enumerate() {
+            ui.push_id(i, |ui| {
+                ui.separator();
+                ui.strong(format!("Label style {}", i + 1));
+                let mut present = row.value.font.is_some();
+                ui.checkbox(&mut present, "Font present");
+                if present {
+                    let font = row.value.font.get_or_insert_with(DiFont::default);
+                    optional_text(ui, "Font name", &mut font.name);
+                    optional_text(ui, "Font size", &mut row.size);
+                    optional_bool(ui, "Bold", &mut font.is_bold);
+                    optional_bool(ui, "Italic", &mut font.is_italic);
+                    optional_bool(ui, "Underline", &mut font.is_underline);
+                    optional_bool(ui, "Strike through", &mut font.is_strike_through);
+                } else {
+                    row.value.font = None;
+                }
+                if ui
+                    .add_enabled(i > 0, egui::Button::new("Move style up"))
+                    .clicked()
+                {
+                    up = Some(i);
+                }
+                if ui.button("Remove style").clicked() {
+                    remove = Some(i);
+                }
+            });
+        }
+        if let Some(i) = remove {
+            self.styles.remove(i);
+        } else if let Some(i) = up {
+            self.styles.swap(i, i - 1);
+        }
+        if ui
+            .add_enabled(
+                self.styles.len() < 256,
+                egui::Button::new("Add label style"),
+            )
+            .clicked()
+        {
+            self.styles.push(StyleRow {
+                value: LabelStyle {
+                    id: None,
+                    font: None,
+                },
+                size: None,
+            });
+        }
+    }
+    fn changes(
+        &self,
+        document_id: processcraft_core::ids::DocumentId,
+    ) -> Result<Vec<Mutation>, String> {
+        fn number(value: &Option<String>, label: &str) -> Result<Option<f64>, String> {
+            value
+                .as_ref()
+                .map(|s| {
+                    s.parse::<f64>()
+                        .ok()
+                        .filter(|n| n.is_finite() && *n > 0.)
+                        .ok_or_else(|| format!("{label} must be a positive number."))
+                })
+                .transpose()
+        }
+        let mut styles = Vec::new();
+        for row in &self.styles {
+            let mut style = row.value.clone();
+            if let Some(font) = &mut style.font {
+                font.size = number(&row.size, "Font size")?;
+            }
+            styles.push(style);
+        }
+        Ok(vec![
+            Mutation::SetDiagramMetadata {
+                document_id,
+                diagram_id: self.diagram.clone(),
+                documentation: self.documentation.clone(),
+                resolution: number(&self.resolution, "Resolution")?,
+            },
+            Mutation::SetDiagramLabelStyles {
+                document_id,
+                diagram_id: self.diagram.clone(),
+                label_styles: styles,
+            },
+        ])
+    }
+}
+impl ProcessCraft {
+    pub(super) fn diagram_styles_ui(
+        &mut self,
+        ui: &mut egui::Ui,
+        diagram: &Diagram,
+        editable: bool,
+    ) {
+        if self.style_draft.is_none() {
+            if ui
+                .add_enabled(
+                    editable && !self.draft_dirty,
+                    egui::Button::new("Edit diagram fonts and details…"),
+                )
+                .clicked()
+                && self.commit_draft()
+            {
+                self.style_draft = Some(StyleDraft::new(diagram));
+            }
+            return;
+        }
+        let draft = self.style_draft.as_mut().unwrap();
+        if draft.diagram != diagram.id.selector() {
+            return;
+        }
+        draft.ui(ui);
+        if !draft.error.is_empty() {
+            ui.label(&draft.error);
+        }
+        if ui.button("Apply diagram fonts and details").clicked() {
+            let id = self.ctl.session.snapshot().project.documents[self.doc].id;
+            match draft.changes(id) {
+                Ok(changes) => {
+                    if self.ctl.mutate(changes) {
+                        self.style_draft = None;
+                    }
+                }
+                Err(error) => draft.error = error,
+            }
+        }
+        if ui.button("Cancel diagram fonts and details").clicked() {
+            self.style_draft = None;
+        }
+    }
+}

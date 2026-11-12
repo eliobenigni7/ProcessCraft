@@ -106,7 +106,7 @@ impl ProcessCraft {
                                             if let (Some(label), Some(bounds)) =
                                                 (&mut shape.label, &next.label_bounds)
                                             {
-                                                label.bounds = bounds.clone();
+                                                label.bounds = Some(bounds.clone());
                                             }
                                         }
                                     }
@@ -118,7 +118,7 @@ impl ProcessCraft {
                                             if let (Some(label), Some(bounds)) =
                                                 (&mut edge.label, &next.label_bounds)
                                             {
-                                                label.bounds = bounds.clone();
+                                                label.bounds = Some(bounds.clone());
                                             }
                                         }
                                     }
@@ -496,7 +496,7 @@ impl ProcessCraft {
                     } else if self.m3.reference_key == key && let Some(texture) = &self.m3.reference_image { ui.add(egui::Image::new(texture).max_width(ui.available_width()).maintain_aspect_ratio(true)); } else { ui.spinner(); ctx.request_repaint_after(std::time::Duration::from_millis(50)); }
                 }
                 ui.collapsing("Frozen element properties", |ui| {
-                    for (scope, node) in processcraft_core::queries::scopes(document).into_iter().flat_map(|scope| scope.nodes.iter().map(move |node| (scope.name, node))).skip(self.m3.reference_page*100).take(100) { ui.label(format!("{} / {} · {} · {}",scope,node_kind_label(node.kind),node.name.as_deref().unwrap_or(""),node.documentation)); }
+                    for (scope, node) in processcraft_core::queries::scopes(document).into_iter().flat_map(|scope| scope.nodes.iter().map(move |node| (scope.name, node))).skip(self.m3.reference_page*100).take(100) { ui.label(format!("{} / {} · {} · {}",scope,node_kind_label(node.kind),node.name.as_deref().unwrap_or(""),node.documentation.plain_text().unwrap_or("Structured documentation"))); }
                 });
             }
             ui.collapsing(format!("Frozen dictionary · {} entries",checkpoint.content.dictionary_entries.len()), |ui| { for entry in checkpoint.content.dictionary_entries.iter().skip(self.m3.reference_page*100).take(100) { ui.label(format!("{:?} · {} · {}",entry.kind,entry.name,entry.description)); } });

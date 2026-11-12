@@ -20,6 +20,7 @@ impl ProcessCraft {
         let p = self.theme.palette();
         let snap = self.ctl.session.snapshot();
         let wide = ui.available_width() >= 980.0;
+        let compact_height = ui.available_height() < 600.0;
         let toolbar_room = ui.available_width() >= 500.0;
         ui.spacing_mut().item_spacing.y = 3.0;
         let can_undo = snap.undo_count > 0 || self.has_drafts();
@@ -152,71 +153,73 @@ impl ProcessCraft {
                 });
             });
         });
-        ui.separator();
-        ui.horizontal(|ui| {
-            if widgets::icon_button(ui, Icon::FolderOpen, "Open…", false).clicked() {
-                self.new_or_open("open");
-            }
-            let save = if toolbar_room {
-                widgets::action_button(ui, Icon::Save, "Save")
-            } else {
-                widgets::icon_button(ui, Icon::Save, "Save", false)
-            };
-            if save.clicked() {
-                self.save(false);
-            }
-            if toolbar_room {
-                ui.separator();
-                if ui
-                    .add_enabled_ui(can_undo, |ui| {
-                        widgets::icon_button(ui, Icon::Undo, "Undo", false)
-                    })
-                    .inner
-                    .clicked()
-                {
-                    self.history(Request::Undo);
+        if !compact_height {
+            ui.separator();
+            ui.horizontal(|ui| {
+                if widgets::icon_button(ui, Icon::FolderOpen, "Open…", false).clicked() {
+                    self.new_or_open("open");
                 }
-                if ui
-                    .add_enabled_ui(can_redo, |ui| {
-                        widgets::icon_button(ui, Icon::Redo, "Redo", false)
-                    })
-                    .inner
-                    .clicked()
-                {
-                    self.history(Request::Redo);
+                let save = if toolbar_room {
+                    widgets::action_button(ui, Icon::Save, "Save")
+                } else {
+                    widgets::icon_button(ui, Icon::Save, "Save", false)
+                };
+                if save.clicked() {
+                    self.save(false);
                 }
-                ui.separator();
-                if widgets::icon_button(ui, Icon::PanelLeft, "Project panel", self.show_left)
-                    .clicked()
-                {
-                    if !wide {
-                        self.shell.project = !self.shell.project;
-                    } else {
-                        self.show_left = !self.show_left;
+                if toolbar_room {
+                    ui.separator();
+                    if ui
+                        .add_enabled_ui(can_undo, |ui| {
+                            widgets::icon_button(ui, Icon::Undo, "Undo", false)
+                        })
+                        .inner
+                        .clicked()
+                    {
+                        self.history(Request::Undo);
+                    }
+                    if ui
+                        .add_enabled_ui(can_redo, |ui| {
+                            widgets::icon_button(ui, Icon::Redo, "Redo", false)
+                        })
+                        .inner
+                        .clicked()
+                    {
+                        self.history(Request::Redo);
+                    }
+                    ui.separator();
+                    if widgets::icon_button(ui, Icon::PanelLeft, "Project panel", self.show_left)
+                        .clicked()
+                    {
+                        if !wide {
+                            self.shell.project = !self.shell.project;
+                        } else {
+                            self.show_left = !self.show_left;
+                        }
+                    }
+                    if widgets::icon_button(ui, Icon::PanelRight, "Properties", self.show_right)
+                        .clicked()
+                    {
+                        if !wide {
+                            self.shell.properties = !self.shell.properties;
+                        } else {
+                            self.show_right = !self.show_right;
+                        }
                     }
                 }
-                if widgets::icon_button(ui, Icon::PanelRight, "Properties", self.show_right)
-                    .clicked()
-                {
-                    if !wide {
-                        self.shell.properties = !self.shell.properties;
-                    } else {
-                        self.show_right = !self.show_right;
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.menu_button("Export", |ui| self.interchange_ui(ui, false));
+                    if ui.available_width() > 180.0
+                        && widgets::secondary_button(ui, "Validate model").clicked()
+                    {
+                        self.shell.problems = !self.shell.problems;
                     }
-                }
-            }
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.menu_button("Export", |ui| self.interchange_ui(ui, false));
-                if ui.available_width() > 180.0
-                    && widgets::secondary_button(ui, "Validate model").clicked()
-                {
-                    self.shell.problems = !self.shell.problems;
-                }
+                });
             });
-        });
-        ui.separator();
-        self.document_tabs_ui(ui);
-        ui.separator();
+            ui.separator();
+            self.document_tabs_ui(ui);
+            ui.separator();
+        }
         let body = ui.available_rect_before_wrap();
         let footer_height = 34.0;
         let content = Rect::from_min_max(
@@ -256,7 +259,11 @@ impl ProcessCraft {
         );
         self.shell_panel(ui, "content", central, p.base, |app, ui| {
             if app.view == 0 {
-                app.document_header(ui);
+                if compact_height {
+                    app.compact_document_header(ui);
+                } else {
+                    app.document_header(ui);
+                }
                 app.layout_bar(ui);
                 if app.shell.problems {
                     let max_height = (ui.available_height() * 0.28).clamp(60.0, 150.0);
@@ -719,6 +726,26 @@ impl ProcessCraft {
                 });
         });
     }
+    fn compact_document_header(&mut self, ui: &mut egui::Ui) {
+        let snapshot = self.ctl.session.snapshot();
+        ui.horizontal(|ui| {
+            if let Some(document) = snapshot.project.documents.get(self.doc) {
+                ui.add_sized(
+                    [ui.available_width().min(220.0), 24.0],
+                    egui::Label::new(egui::RichText::new(&document.name).strong()).truncate(),
+                )
+                .on_hover_text(&document.name);
+            }
+            ui.menu_button("View", |ui| {
+                if ui.button("Table").clicked() && self.prepare_navigation() {
+                    self.view = 3;
+                    ui.close();
+                }
+                ui.separator();
+                self.model_selectors(ui);
+            });
+        });
+    }
     fn document_header(&mut self, ui: &mut egui::Ui) {
         let snap = self.ctl.session.snapshot();
         let p = self.theme.palette();
@@ -1045,6 +1072,27 @@ fn palette_item(ui: &mut egui::Ui, kind: NodeKind, label: &str) -> egui::Respons
 mod tests {
     use super::*;
 
+    #[test]
+    fn short_viewport_keeps_canvas_usable_in_both_themes() {
+        let mut app = ProcessCraft::default();
+        let context = egui::Context::default();
+        for theme in [Theme::Light, Theme::Dark] {
+            app.theme = theme;
+            app.apply_theme(&context);
+            let mut output = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(780.0, 487.0))),
+                    ..Default::default()
+                },
+                |ui| app.workbench_ui(ui),
+            );
+            output.textures_delta.clear();
+            let size = context
+                .data(|data| data.get_temp::<Vec2>(egui::Id::unique("test_canvas_size")))
+                .expect("canvas rendered");
+            assert!(size.y >= 180.0, "canvas too short: {}", size.y);
+        }
+    }
     #[test]
     fn workbench_preserves_drafts_and_renders_both_layouts() {
         let mut app = ProcessCraft {

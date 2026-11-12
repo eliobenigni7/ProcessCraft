@@ -15,9 +15,47 @@ pub enum Expression {
 pub struct ExpressionData {
     pub id: Option<crate::ids::ElementIdentity>,
     pub kind: ExpressionKind,
-    pub text: String,
+    pub text: ExpressionBody,
     /// Effective namespace bindings; the empty prefix denotes the default namespace.
     pub namespaces: Vec<(String, String)>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub foreign_attributes: Vec<crate::bpmn_xml::XmlAttribute>,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(untagged, deny_unknown_fields)]
+pub enum ExpressionBody {
+    Text(String),
+    Mixed { parts: Vec<ExpressionPart> },
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
+pub enum ExpressionPart {
+    Text {
+        text: String,
+    },
+    Documentation {
+        documentation: crate::bpmn_metadata::Documentation,
+    },
+    ExtensionElements {
+        extension_elements: crate::bpmn_metadata::ExtensionElements,
+    },
+    Comment {
+        text: String,
+    },
+    ProcessingInstruction {
+        target: String,
+        data: Option<String>,
+    },
+}
+impl From<String> for ExpressionBody {
+    fn from(value: String) -> Self {
+        Self::Text(value)
+    }
+}
+impl From<&str> for ExpressionBody {
+    fn from(value: &str) -> Self {
+        Self::Text(value.into())
+    }
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
@@ -32,26 +70,31 @@ pub enum ExpressionKind {
     },
 }
 impl Expression {
-    pub fn text(&self) -> &str {
+    pub fn plain_text(&self) -> Option<&str> {
         match self {
-            Self::Legacy(s) => s,
-            Self::Structured(s) => &s.text,
+            Self::Legacy(s) => Some(s),
+            Self::Structured(ExpressionData {
+                text: ExpressionBody::Text(s),
+                ..
+            }) => Some(s),
+            Self::Structured(_) => None,
         }
     }
-    pub fn text_mut(&mut self) -> &mut String {
+    pub fn text_mut(&mut self) -> Option<&mut String> {
         match self {
-            Self::Legacy(s) => s,
-            Self::Structured(s) => &mut s.text,
+            Self::Legacy(s) => Some(s),
+            Self::Structured(ExpressionData {
+                text: ExpressionBody::Text(s),
+                ..
+            }) => Some(s),
+            Self::Structured(_) => None,
         }
     }
-    pub fn set_text(&mut self, text: String) {
-        *self.text_mut() = text;
-    }
-}
-impl std::ops::Deref for Expression {
-    type Target = str;
-    fn deref(&self) -> &str {
-        self.text()
+    pub fn set_text(&mut self, text: String) -> Result<(), &'static str> {
+        *self
+            .text_mut()
+            .ok_or("Cannot replace mixed expression with plain text")? = text;
+        Ok(())
     }
 }
 impl From<String> for Expression {
@@ -71,49 +114,97 @@ impl From<&str> for Expression {
 pub enum EventDefinition {
     Message {
         id: Option<crate::ids::ElementIdentity>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        base: Option<crate::bpmn_metadata::BaseMetadata>,
         message_ref: Option<EventReference>,
         operation_ref: Option<EventReference>,
     },
     Signal {
         id: Option<crate::ids::ElementIdentity>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        base: Option<crate::bpmn_metadata::BaseMetadata>,
         signal_ref: Option<EventReference>,
     },
     Error {
         id: Option<crate::ids::ElementIdentity>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        base: Option<crate::bpmn_metadata::BaseMetadata>,
         error_ref: Option<EventReference>,
     },
     Escalation {
         id: Option<crate::ids::ElementIdentity>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        base: Option<crate::bpmn_metadata::BaseMetadata>,
         escalation_ref: Option<EventReference>,
     },
     Conditional {
         id: Option<crate::ids::ElementIdentity>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        base: Option<crate::bpmn_metadata::BaseMetadata>,
         expression: Expression,
     },
     Link {
         id: Option<crate::ids::ElementIdentity>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        base: Option<crate::bpmn_metadata::BaseMetadata>,
         name: String,
         sources: Vec<EventReference>,
         target: Option<EventReference>,
     },
     Cancel {
         id: Option<crate::ids::ElementIdentity>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        base: Option<crate::bpmn_metadata::BaseMetadata>,
     },
     Compensate {
         id: Option<crate::ids::ElementIdentity>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        base: Option<crate::bpmn_metadata::BaseMetadata>,
         wait_for_completion: Option<bool>,
         activity_ref: Option<EventReference>,
     },
     Terminate {
         id: Option<crate::ids::ElementIdentity>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        base: Option<crate::bpmn_metadata::BaseMetadata>,
     },
     Timer {
         id: Option<crate::ids::ElementIdentity>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        base: Option<crate::bpmn_metadata::BaseMetadata>,
         kind: Option<TimerKind>,
         expression: Option<Expression>,
     },
 }
 impl EventDefinition {
+    pub fn base(&self) -> Option<&crate::bpmn_metadata::BaseMetadata> {
+        match self {
+            Self::Message { base, .. }
+            | Self::Signal { base, .. }
+            | Self::Error { base, .. }
+            | Self::Escalation { base, .. }
+            | Self::Conditional { base, .. }
+            | Self::Link { base, .. }
+            | Self::Cancel { base, .. }
+            | Self::Compensate { base, .. }
+            | Self::Terminate { base, .. }
+            | Self::Timer { base, .. } => base.as_ref(),
+        }
+    }
+    pub fn base_mut(&mut self) -> &mut Option<crate::bpmn_metadata::BaseMetadata> {
+        match self {
+            Self::Message { base, .. }
+            | Self::Signal { base, .. }
+            | Self::Error { base, .. }
+            | Self::Escalation { base, .. }
+            | Self::Conditional { base, .. }
+            | Self::Link { base, .. }
+            | Self::Cancel { base, .. }
+            | Self::Compensate { base, .. }
+            | Self::Terminate { base, .. }
+            | Self::Timer { base, .. } => base,
+        }
+    }
     pub fn id(&self) -> Option<&crate::ids::ElementIdentity> {
         match self {
             Self::Message { id, .. }
@@ -122,9 +213,9 @@ impl EventDefinition {
             | Self::Escalation { id, .. }
             | Self::Conditional { id, .. }
             | Self::Link { id, .. }
-            | Self::Cancel { id }
+            | Self::Cancel { id, .. }
             | Self::Compensate { id, .. }
-            | Self::Terminate { id }
+            | Self::Terminate { id, .. }
             | Self::Timer { id, .. } => id.as_ref(),
         }
     }
@@ -221,6 +312,9 @@ impl EventReference {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct EventProperty {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base: Option<crate::bpmn_metadata::BaseMetadata>,
+
     pub id: Option<crate::ids::ElementIdentity>,
     pub name: Option<String>,
     pub item_aware: Option<crate::bpmn_data::ItemAwareMetadata>,
@@ -250,7 +344,7 @@ pub enum NodeDetails {
     TextAnnotation {
         text_format: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        text: Option<String>,
+        text: Option<crate::bpmn_xml::MixedXml>,
     },
     Gateway {
         default_flow: Option<crate::ids::ElementSelector>,
@@ -298,18 +392,24 @@ pub enum NodeDetails {
 pub enum EventResource {
     Signal {
         id: crate::ids::ElementIdentity,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        base: Option<crate::bpmn_metadata::BaseMetadata>,
         name: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         structure_ref: Option<QNameRef>,
     },
     Message {
         id: crate::ids::ElementIdentity,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        base: Option<crate::bpmn_metadata::BaseMetadata>,
         name: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         item_ref: Option<QNameRef>,
     },
     Error {
         id: crate::ids::ElementIdentity,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        base: Option<crate::bpmn_metadata::BaseMetadata>,
         name: Option<String>,
         code: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -317,11 +417,31 @@ pub enum EventResource {
     },
     Escalation {
         id: crate::ids::ElementIdentity,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        base: Option<crate::bpmn_metadata::BaseMetadata>,
         name: Option<String>,
         code: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         structure_ref: Option<QNameRef>,
     },
+}
+impl EventResource {
+    pub fn base(&self) -> Option<&crate::bpmn_metadata::BaseMetadata> {
+        match self {
+            Self::Signal { base, .. }
+            | Self::Message { base, .. }
+            | Self::Error { base, .. }
+            | Self::Escalation { base, .. } => base.as_ref(),
+        }
+    }
+    pub fn base_mut(&mut self) -> &mut Option<crate::bpmn_metadata::BaseMetadata> {
+        match self {
+            Self::Signal { base, .. }
+            | Self::Message { base, .. }
+            | Self::Error { base, .. }
+            | Self::Escalation { base, .. } => base,
+        }
+    }
 }
 
 /// Expanded XML QName; prefix spelling is not semantic identity.
@@ -337,15 +457,40 @@ pub struct QNameRef {
 #[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
 pub enum LoopCharacteristics {
     Standard {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        id: Option<crate::ids::ElementIdentity>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        base: Option<crate::bpmn_metadata::BaseMetadata>,
         test_before: bool,
         condition: Option<Expression>,
         maximum: Option<String>,
     },
     MultiInstance {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        id: Option<crate::ids::ElementIdentity>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        base: Option<crate::bpmn_metadata::BaseMetadata>,
         is_sequential: bool,
         cardinality: Option<Expression>,
         completion_condition: Option<Expression>,
     },
+}
+impl LoopCharacteristics {
+    pub fn base(&self) -> Option<&crate::bpmn_metadata::BaseMetadata> {
+        match self {
+            Self::Standard { base, .. } | Self::MultiInstance { base, .. } => base.as_ref(),
+        }
+    }
+    pub fn base_mut(&mut self) -> &mut Option<crate::bpmn_metadata::BaseMetadata> {
+        match self {
+            Self::Standard { base, .. } | Self::MultiInstance { base, .. } => base,
+        }
+    }
+    pub fn id(&self) -> Option<&crate::ids::ElementIdentity> {
+        match self {
+            Self::Standard { id, .. } | Self::MultiInstance { id, .. } => id.as_ref(),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -371,6 +516,9 @@ pub enum AssociationDirection {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Category {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base: Option<crate::bpmn_metadata::BaseMetadata>,
+
     pub id: crate::ids::ElementIdentity,
     pub name: Option<String>,
     pub values: Vec<CategoryValue>,
@@ -378,12 +526,18 @@ pub struct Category {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CategoryValue {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base: Option<crate::bpmn_metadata::BaseMetadata>,
+
     pub id: crate::ids::ElementIdentity,
     pub value: Option<String>,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Group {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base: Option<crate::bpmn_metadata::BaseMetadata>,
+
     pub id: crate::ids::ElementIdentity,
     pub category_value_ref: Option<crate::ids::ElementSelector>,
 }

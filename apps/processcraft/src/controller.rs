@@ -18,6 +18,8 @@ pub fn id(prefix: &str) -> XmlId {
 pub fn blank_document() -> BpmnDocument {
     let mut d = BpmnDocument::new("Untitled process".into(), id("Definitions").into());
     let process = Process {
+        lane_set_base: None,
+        base_extras: None,
         is_executable: Some(false),
         io_specification: None,
         lane_set_id: None,
@@ -26,12 +28,15 @@ pub fn blank_document() -> BpmnDocument {
         data_associations: vec![],
         id: id("Process").into(),
         name: Some("Process".into()),
-        documentation: String::new(),
+        documentation: String::new().into(),
         nodes: vec![],
         lanes: vec![],
         flows: vec![],
     };
     d.diagrams.push(Diagram {
+        documentation: None,
+        label_styles: Vec::new(),
+        resolution: None,
         name: None,
         id: id("Diagram").into(),
         plane_id: id("Plane").into(),
@@ -476,6 +481,7 @@ mod lifecycle {
             Mutation::CreateCollaboration {
                 document_id: d.id,
                 collaboration: Collaboration {
+                    base: None,
                     name: None,
                     conversation_nodes: vec![],
                     conversation_links: vec![],
@@ -487,6 +493,7 @@ mod lifecycle {
             Mutation::CreateParticipant {
                 document_id: d.id,
                 participant: Participant {
+                    base: None,
                     id: participant.clone().into(),
                     name: Some("Pool".into()),
                     process: Some(p.id.selector()),
@@ -496,6 +503,7 @@ mod lifecycle {
                 document_id: d.id,
                 diagram_id: diagram.id.selector(),
                 shape: Shape {
+                    label_visibility: None,
                     is_horizontal: None,
                     is_marker_visible: None,
                     is_expanded: None,

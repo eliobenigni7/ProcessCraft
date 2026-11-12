@@ -111,6 +111,8 @@ fn xml(e: impl fmt::Display) -> ImportError {
 
 #[derive(Default)]
 struct Frame {
+    /// Descendants are XML payload, not declarations in the BPMN model.
+    opaque_children: bool,
     documentation: bool,
     label: bool,
     text_bytes: usize,
@@ -209,14 +211,24 @@ pub fn import_bpmn(bytes: &[u8]) -> Result<PreservedBpmn, ImportError> {
                     seen_root = true;
                 }
                 let standard = matches!(ns, Some(BPMN | BPMNDI | DC | DI));
+                let opaque = stack.last().is_some_and(|parent| parent.opaque_children);
+                let modeled = !opaque;
+
                 if !standard && report.foreign_element_names.insert(name.clone()) {
                     account(&mut metadata_bytes, &name)?;
                 }
-                if ns == Some(BPMNDI) && local == "BPMNDiagram" {
+                if modeled && ns == Some(BPMNDI) && local == "BPMNDiagram" {
                     report.diagram_count += 1;
                 }
                 let mut frame = Frame {
-                    idref_text: ns == Some(BPMN) && idref_text_reference(local),
+                    opaque_children: opaque
+                        || !standard
+                        || (ns == Some(BPMN)
+                            && matches!(
+                                local,
+                                "documentation" | "script" | "text" | "extensionElements"
+                            )),
+                    idref_text: modeled && ns == Some(BPMN) && idref_text_reference(local),
                     external_reference_allowed: matches!(
                         local,
                         "incoming"
@@ -229,12 +241,15 @@ pub fn import_bpmn(bytes: &[u8]) -> Result<PreservedBpmn, ImportError> {
                             | "eventDefinitionRef"
                             | "operationRef"
                     ),
-                    link_definition: ns == Some(BPMN) && local == "linkEventDefinition",
-                    operation: ns == Some(BPMN) && local == "operation",
-                    message_definition: ns == Some(BPMN) && local == "messageEventDefinition",
-                    documentation: ns == Some(BPMN) && local == "documentation",
-                    label: ns == Some(BPMN) && local == "text",
-                    reference_text: (ns == Some(BPMN)
+                    link_definition: modeled && ns == Some(BPMN) && local == "linkEventDefinition",
+                    operation: modeled && ns == Some(BPMN) && local == "operation",
+                    message_definition: modeled
+                        && ns == Some(BPMN)
+                        && local == "messageEventDefinition",
+                    documentation: modeled && ns == Some(BPMN) && local == "documentation",
+                    label: modeled && ns == Some(BPMN) && local == "text",
+                    reference_text: (modeled
+                        && ns == Some(BPMN)
                         && (matches!(local, "incoming" | "outgoing" | "eventDefinitionRef")
                             || idref_text_reference(local)
                             || (matches!(local, "source" | "target")
@@ -312,7 +327,7 @@ pub fn import_bpmn(bytes: &[u8]) -> Result<PreservedBpmn, ImportError> {
                                 "individual label exceeds 16 KiB",
                             ));
                         }
-                        if known_reference(ns, local, key) {
+                        if modeled && known_reference(ns, local, key) {
                             let idref = idref_reference(ns, local, key);
                             let resolved = resolve_reference(&reader, &value, idref)?;
                             push_reference(
@@ -323,7 +338,8 @@ pub fn import_bpmn(bytes: &[u8]) -> Result<PreservedBpmn, ImportError> {
                             )?;
                             report.qname_values.insert(resolved);
                         }
-                        if matches!(ns, Some(DC | DI))
+                        if modeled
+                            && matches!(ns, Some(DC | DI))
                             && matches!(key, "x" | "y" | "width" | "height")
                         {
                             attrs.insert(key.to_owned(), value.to_string());
@@ -332,6 +348,7 @@ pub fn import_bpmn(bytes: &[u8]) -> Result<PreservedBpmn, ImportError> {
                     if (attr_name.namespace_uri.as_deref() == Some(XSI)
                         && attr_name.local_name == "type")
                         || (attr_name.namespace_uri.is_none()
+                            && modeled
                             && metadata_qname(ns, local, &attr_name.local_name))
                     {
                         let resolved = resolve_value(&reader, &value)?;
@@ -340,7 +357,9 @@ pub fn import_bpmn(bytes: &[u8]) -> Result<PreservedBpmn, ImportError> {
                         }
                     }
                 }
-                geometry(ns, local, &attrs)?;
+                if modeled {
+                    geometry(ns, local, &attrs)?;
+                }
                 // Keep the frame, including empty tags expanded by quick-xml.
                 frame.text_bytes = 0;
                 stack.push(frame);
@@ -396,7 +415,15 @@ pub fn import_bpmn(bytes: &[u8]) -> Result<PreservedBpmn, ImportError> {
                 };
                 add_text(&mut stack, &text)?;
             }
-            Event::PI(_) | Event::Comment(_) => {
+            Event::PI(instruction) => {
+                processcraft_core::bpmn_xml::validate_processing_instruction(
+                    instruction.target(),
+                    None,
+                )
+                .map_err(xml)?;
+                preceding_content = true;
+            }
+            Event::Comment(_) => {
                 preceding_content = true;
             }
             Event::Eof => break,

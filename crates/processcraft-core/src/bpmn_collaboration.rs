@@ -11,6 +11,9 @@ pub enum ConversationKind {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ConversationNode {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base: Option<crate::bpmn_metadata::BaseMetadata>,
+
     pub id: crate::ids::ElementIdentity,
     pub name: Option<String>,
     pub kind: ConversationKind,
@@ -22,6 +25,9 @@ pub struct ConversationNode {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ConversationLink {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base: Option<crate::bpmn_metadata::BaseMetadata>,
+
     pub id: crate::ids::ElementIdentity,
     pub name: Option<String>,
     pub source: crate::ids::ElementSelector,
@@ -32,6 +38,9 @@ pub struct ConversationLink {
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Choreography {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base: Option<crate::bpmn_metadata::BaseMetadata>,
+
     pub id: crate::ids::ElementIdentity,
     pub name: Option<String>,
     pub participants: Vec<crate::model::Participant>,
@@ -43,6 +52,9 @@ pub struct Choreography {
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ChoreographyActivity {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base: Option<crate::bpmn_metadata::BaseMetadata>,
+
     pub id: crate::ids::ElementIdentity,
     pub name: Option<String>,
     pub participant_refs: Vec<crate::ids::ElementSelector>,

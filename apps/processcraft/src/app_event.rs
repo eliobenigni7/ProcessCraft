@@ -177,40 +177,54 @@ fn definition_kind(value: &D) -> &'static str {
 fn new_definition(kind: &str) -> D {
     match kind {
         "Message" => D::Message {
+            base: None,
             id: None,
             message_ref: None,
             operation_ref: None,
         },
         "Signal" => D::Signal {
+            base: None,
             id: None,
             signal_ref: None,
         },
         "Error" => D::Error {
+            base: None,
             id: None,
             error_ref: None,
         },
         "Escalation" => D::Escalation {
+            base: None,
             id: None,
             escalation_ref: None,
         },
         "Conditional" => D::Conditional {
+            base: None,
             id: None,
             expression: String::new().into(),
         },
         "Link" => D::Link {
+            base: None,
             id: None,
             name: String::new(),
             sources: Vec::new(),
             target: None,
         },
-        "Cancel" => D::Cancel { id: None },
+        "Cancel" => D::Cancel {
+            base: None,
+            id: None,
+        },
         "Compensate" => D::Compensate {
+            base: None,
             id: None,
             wait_for_completion: None,
             activity_ref: None,
         },
-        "Terminate" => D::Terminate { id: None },
+        "Terminate" => D::Terminate {
+            base: None,
+            id: None,
+        },
         _ => D::Timer {
+            base: None,
             id: None,
             kind: None,
             expression: None,
@@ -219,6 +233,7 @@ fn new_definition(kind: &str) -> D {
 }
 #[derive(Clone)]
 struct PropertyDraft {
+    base: Option<processcraft_core::bpmn_metadata::BaseMetadata>,
     id: super::catalog::IdentityDraft,
     name: Option<String>,
     item: Option<super::data::ItemDraft>,
@@ -226,6 +241,7 @@ struct PropertyDraft {
 impl PropertyDraft {
     fn new(value: &processcraft_core::bpmn_model::EventProperty) -> Self {
         Self {
+            base: value.base.clone(),
             id: super::catalog::id_string(&value.id),
             name: value.name.clone(),
             item: value
@@ -236,6 +252,7 @@ impl PropertyDraft {
     }
     fn build(&self) -> Result<processcraft_core::bpmn_model::EventProperty, String> {
         Ok(processcraft_core::bpmn_model::EventProperty {
+            base: self.base.clone(),
             id: super::catalog::id_build(&self.id)?,
             name: self.name.clone(),
             item_aware: super::data::build_item(&self.item)?,
@@ -483,9 +500,9 @@ fn definition_id(value: &D) -> Option<&processcraft_core::ids::ElementIdentity> 
         | D::Escalation { id, .. }
         | D::Conditional { id, .. }
         | D::Link { id, .. }
-        | D::Cancel { id }
+        | D::Cancel { id, .. }
         | D::Compensate { id, .. }
-        | D::Terminate { id }
+        | D::Terminate { id, .. }
         | D::Timer { id, .. } => id.as_ref(),
     }
 }
@@ -753,23 +770,27 @@ fn new_resource(kind: &str) -> processcraft_core::bpmn_model::EventResource {
     let id = processcraft_core::ids::ElementIdentity::anonymous();
     match kind {
         "Signal" => E::Signal {
+            base: None,
             id,
             name: None,
             structure_ref: None,
         },
         "Error" => E::Error {
+            base: None,
             id,
             name: None,
             code: None,
             structure_ref: None,
         },
         "Escalation" => E::Escalation {
+            base: None,
             id,
             name: None,
             code: None,
             structure_ref: None,
         },
         _ => E::Message {
+            base: None,
             id,
             name: None,
             item_ref: None,
@@ -886,6 +907,7 @@ fn event_io_ui(ui: &mut egui::Ui, io: &mut Option<EventIoDraft>, catch: bool) {
         .clicked()
     {
         let value = processcraft_core::bpmn_data::DataPort {
+            base: None,
             id: Some(processcraft_core::ids::ElementIdentity::anonymous()),
             name: None,
             is_collection: None,
@@ -1143,6 +1165,7 @@ impl ProcessCraft {
                 .clicked()
             {
                 draft.properties.push(PropertyDraft {
+                    base: None,
                     id: Default::default(),
                     name: None,
                     item: None,
@@ -1327,11 +1350,13 @@ mod tests {
         let anonymous = ElementIdentity::anonymous();
         let mut document = crate::controller::blank_document();
         document.root_event_definitions.push(D::Timer {
+            base: None,
             id: Some(with_id.clone()),
             kind: None,
             expression: None,
         });
         document.root_event_definitions.push(D::Timer {
+            base: None,
             id: Some(anonymous.clone()),
             kind: None,
             expression: None,
@@ -1384,6 +1409,7 @@ mod tests {
             .unwrap();
         let mut draft = EventDraft::new(selected.clone(), node.details.as_ref().unwrap()).unwrap();
         draft.definitions.push(DefinitionDraft::new(&D::Signal {
+            base: None,
             id: None,
             signal_ref: None,
         }));
@@ -1405,6 +1431,7 @@ mod tests {
     fn event_draft_preserves_multiple_definitions_references_and_io() {
         let root_id = processcraft_core::ids::ElementIdentity::anonymous();
         let root = D::Timer {
+            base: None,
             id: Some(root_id.clone()),
             kind: None,
             expression: None,
@@ -1422,6 +1449,7 @@ mod tests {
             .unwrap();
         let mut draft = EventDraft::new(selected.clone(), node.details.as_ref().unwrap()).unwrap();
         draft.definitions.push(DefinitionDraft::new(&D::Signal {
+            base: None,
             id: None,
             signal_ref: None,
         }));
@@ -1433,12 +1461,14 @@ mod tests {
             local: "Shared".into(),
         }));
         draft.properties.push(PropertyDraft::new(&EventProperty {
+            base: None,
             id: None,
             name: Some(String::new()),
             item_aware: None,
         }));
         draft.io = Some(EventIoDraft::new(&EventIo::Catch {
             outputs: vec![processcraft_core::bpmn_data::DataPort {
+                base: None,
                 id: Some(processcraft_core::ids::ElementIdentity::anonymous()),
                 name: None,
                 item_aware: None,

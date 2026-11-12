@@ -16,6 +16,7 @@ pub(super) struct ItemDraft {
 }
 #[derive(Clone, Default)]
 struct StateDraft {
+    base: Option<processcraft_core::bpmn_metadata::BaseMetadata>,
     id: IdentityDraft,
     name: Option<String>,
 }
@@ -24,6 +25,7 @@ impl ItemDraft {
         Self {
             subject: item.item_subject_ref.as_ref().map(QNameDraft::from),
             state: item.data_state.as_ref().map(|state| StateDraft {
+                base: state.base.clone(),
                 id: id_string(&state.id),
                 name: state.name.clone(),
             }),
@@ -37,6 +39,7 @@ impl ItemDraft {
                 .as_ref()
                 .map(|state| {
                     Ok::<DataState, String>(DataState {
+                        base: state.base.clone(),
                         id: id_build(&state.id)?,
                         name: state.name.clone(),
                     })
@@ -81,6 +84,7 @@ struct ObjectDraft {
 }
 #[derive(Clone)]
 struct AssignmentDraft {
+    base: Option<processcraft_core::bpmn_metadata::BaseMetadata>,
     id: IdentityDraft,
     from: processcraft_core::bpmn_model::Expression,
     to: processcraft_core::bpmn_model::Expression,
@@ -425,6 +429,7 @@ impl DataDraft {
                         .assignments
                         .iter()
                         .map(|a| AssignmentDraft {
+                            base: a.base.clone(),
                             id: id_string(&a.id),
                             from: a.from.clone(),
                             to: a.to.clone(),
@@ -584,6 +589,7 @@ impl DataDraft {
                     .iter()
                     .map(|a| {
                         Ok(DataAssignment {
+                            base: a.base.clone(),
                             id: id_build(&a.id)?,
                             from: a.from.clone(),
                             to: a.to.clone(),
@@ -627,6 +633,7 @@ impl DataDraft {
             {
                 self.stores.push(StoreDraft {
                     value: DataStore {
+                        base: None,
                         id: None,
                         name: None,
                         capacity: None,
@@ -662,6 +669,7 @@ impl DataDraft {
             {
                 self.objects.push(ObjectDraft {
                     value: DataObject {
+                        base: None,
                         id: None,
                         name: None,
                         is_collection: None,
@@ -789,6 +797,7 @@ impl DataDraft {
                                 let id = crate::controller::id("DataPort");
                                 ports.push(PortDraft {
                                     value: processcraft_core::bpmn_data::DataPort {
+                                        base: None,
                                         id: Some(id.clone().into()),
                                         name: None,
                                         item_aware: None,
@@ -1035,6 +1044,7 @@ impl DataDraft {
                         .clicked()
                     {
                         draft.assignments.push(AssignmentDraft {
+                            base: None,
                             id: IdentityDraft::default(),
                             from: String::new().into(),
                             to: String::new().into(),
@@ -1134,6 +1144,7 @@ impl DataDraft {
                 .clicked()
             {
                 let value = DataAssociation {
+                    base: None,
                     id: None,
                     owner: self.new_owner.clone().expect("selected"),
                     kind: if self.new_input {
@@ -1214,6 +1225,7 @@ impl ProcessCraft {
                             {
                                 let diagram = diagram.expect("enabled only with matching diagram");
                                 let shape = Shape {
+                                    label_visibility: None,
                                     is_horizontal: None,
                                     is_marker_visible: None,
                                     id: crate::controller::id("DataPortShape").into(),
@@ -1275,6 +1287,7 @@ impl ProcessCraft {
                             {
                                 let diagram = diagram.expect("enabled only with matching diagram");
                                 let shape = Shape {
+                                    label_visibility: None,
                                     is_horizontal: None,
                                     is_marker_visible: None,
                                     id: crate::controller::id("DataStoreShape").into(),
@@ -1441,15 +1454,17 @@ mod tests {
         let root_object: XmlId = "RootObject".parse().unwrap();
         let sibling_object: XmlId = "SiblingObject".parse().unwrap();
         document.processes[0].data_objects.push(DataObject {
+            base: None,
             id: Some(root_object.clone().into()),
             name: None,
             is_collection: None,
             item_aware: None,
         });
         let make_subprocess = |id: &str, objects: Vec<DataObject>| Node {
+            base_extras: None,
             id: id.parse().unwrap(),
             name: None,
-            documentation: String::new(),
+            documentation: String::new().into(),
             kind: NodeKind::SubProcess,
             item_aware: None,
             details: Some(NodeDetails::SubProcess {
@@ -1470,6 +1485,7 @@ mod tests {
         document.processes[0].nodes.push(make_subprocess(
             "Sibling",
             vec![DataObject {
+                base: None,
                 id: Some(sibling_object.clone().into()),
                 name: None,
                 is_collection: None,
@@ -1511,6 +1527,7 @@ mod tests {
         if let NodeDetails::Event { io, .. } = &mut details {
             *io = Some(EventIo::Catch {
                 outputs: vec![DataPort {
+                    base: None,
                     id: Some(port_id.clone()),
                     name: None,
                     item_aware: None,
@@ -1529,6 +1546,7 @@ mod tests {
                 Mutation::SetDataStores {
                     document_id,
                     data_stores: vec![DataStore {
+                        base: None,
                         id: Some(store_id.clone()),
                         name: None,
                         capacity: None,
@@ -1555,6 +1573,7 @@ mod tests {
                     && outputs.contains(&port_id.selector()))
         );
         let value = DataAssociation {
+            base: None,
             id: None,
             owner: selected,
             kind: DataAssociationKind::Output,
@@ -1598,6 +1617,7 @@ mod tests {
         let mut project = crate::controller::blank_project();
         let document = std::sync::Arc::make_mut(&mut project.documents[0]);
         document.data_stores.push(DataStore {
+            base: None,
             id: None,
             name: None,
             capacity: None,
@@ -1605,14 +1625,17 @@ mod tests {
             item_aware: None,
         });
         document.processes[0].data_objects.push(DataObject {
+            base: None,
             id: None,
             name: Some(String::new()),
             is_collection: Some(false),
             item_aware: None,
         });
         document.processes[0].io_specification = Some(IoSpecification {
+            base: None,
             id: None,
             inputs: vec![DataPort {
+                base: None,
                 id: None,
                 name: None,
                 item_aware: None,
@@ -1637,6 +1660,7 @@ mod tests {
         draft.objects[0].item = Some(ItemDraft {
             subject: None,
             state: Some(StateDraft {
+                base: None,
                 id: IdentityDraft {
                     value: Some("invalid id".into()),
                     ..Default::default()
@@ -1704,6 +1728,7 @@ mod tests {
         let mut draft = DataDraft::new(document, scope);
         draft.objects.push(ObjectDraft {
             value: DataObject {
+                base: None,
                 id: None,
                 name: None,
                 is_collection: None,

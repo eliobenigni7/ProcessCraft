@@ -106,6 +106,7 @@ fn expanded_data_capability_covers_live_and_checkpoint_documents() {
     let mut p = project();
     let mut doc = BpmnDocument::new("document".into(), "defs".parse().unwrap());
     doc.data_stores.push(DataStore {
+        base: None,
         id: Some("store".parse().unwrap()),
         name: Some("Store".into()),
         capacity: None,
@@ -142,6 +143,7 @@ fn expanded_data_capability_covers_live_and_checkpoint_documents() {
             local: "Item".parse().unwrap(),
         }),
         data_state: Some(DataState {
+            base: None,
             id: Some("state".parse().unwrap()),
             name: Some("Ready".into()),
         }),
@@ -259,20 +261,23 @@ fn historical_unresolved_activity_bindings_round_trip_without_new_capabilities()
         })
     };
     doc.processes.push(Process {
+        base_extras: None,
         is_executable: Some(false),
         io_specification: None,
         id: "process".parse().unwrap(),
         name: Some(String::new()),
-        documentation: String::new(),
+        documentation: String::new().into(),
         lane_set_id: None,
+        lane_set_base: None,
         groups: vec![],
         data_objects: vec![],
         data_associations: vec![],
         nodes: vec![Node {
+            base_extras: None,
             item_aware: None,
             id: "task".parse().unwrap(),
             name: Some(String::new()),
-            documentation: String::new(),
+            documentation: String::new().into(),
             kind: NodeKind::SendTask,
             details: None,
             loop_characteristics: None,
@@ -408,16 +413,19 @@ fn supporting_catalog_capability_covers_live_and_checkpoint_documents() {
     let mut p = project();
     let mut doc = BpmnDocument::new("document".into(), "defs".parse().unwrap());
     doc.catalog.item_definitions.push(ItemDefinition {
+        base: None,
         id: Some("item".parse().unwrap()),
         structure_ref: Some(reference("Type")),
         is_collection: Some(true),
         item_kind: Some(ItemKind::Information),
     });
     doc.catalog.interfaces.push(Interface {
+        base: None,
         id: Some("interface".parse().unwrap()),
         name: "Service".into(),
         implementation_ref: Some(reference("Service")),
         operations: vec![Operation {
+            base: None,
             id: Some("operation".parse().unwrap()),
             name: "Execute".into(),
             implementation_ref: None,
@@ -427,9 +435,11 @@ fn supporting_catalog_capability_covers_live_and_checkpoint_documents() {
         }],
     });
     doc.catalog.resources.push(BpmnResource {
+        base: None,
         id: Some("resource".parse().unwrap()),
         name: "Team".into(),
         parameters: vec![ResourceParameter {
+            base: None,
             id: Some("parameter".parse().unwrap()),
             name: Some("Role".into()),
             type_ref: Some(reference("Role")),
@@ -505,6 +515,8 @@ fn definitions_metadata_requires_capability_in_live_and_checkpoint_documents() {
     let mut p = project();
     let mut doc = BpmnDocument::new("document".into(), "defs".parse().unwrap());
     doc.definitions = Some(DefinitionsMetadata {
+        namespaces: vec![],
+        foreign_attributes: vec![],
         target_namespace: "urn:example".into(),
         name: Some("Definitions".into()),
         expression_language: Some("urn:expressions".into()),
@@ -596,10 +608,11 @@ fn structured_expression_capability_covers_live_and_checkpoint_documents() {
     };
     let mut p = project();
     let node = |id: &str| Node {
+        base_extras: None,
         item_aware: None,
         id: id.parse().unwrap(),
         name: Some(String::new()),
-        documentation: String::new(),
+        documentation: String::new().into(),
         kind: NodeKind::Task,
         details: None,
         loop_characteristics: None,
@@ -610,24 +623,27 @@ fn structured_expression_capability_covers_live_and_checkpoint_documents() {
     };
     let mut doc = BpmnDocument::new("document".into(), "defs".parse().unwrap());
     doc.processes.push(Process {
+        base_extras: None,
         is_executable: Some(false),
         io_specification: None,
         id: "process".parse().unwrap(),
         name: Some(String::new()),
-        documentation: String::new(),
+        documentation: String::new().into(),
         lane_set_id: None,
+        lane_set_base: None,
         groups: vec![],
         data_objects: vec![],
         data_associations: vec![],
         nodes: vec![node("a"), node("b")],
         lanes: vec![],
         flows: vec![Flow {
+            base_extras: None,
             id: "flow".parse().unwrap(),
             kind: FlowKind::Sequence,
             source: "a".parse().unwrap(),
             target: "b".parse().unwrap(),
             name: Some(String::new()),
-            documentation: String::new(),
+            documentation: String::new().into(),
             association_direction: None,
             condition: Some(Expression::Legacy("x".into())),
         }],
@@ -663,6 +679,7 @@ fn structured_expression_capability_covers_live_and_checkpoint_documents() {
         "x"
     );
     let expression = Expression::Structured(ExpressionData {
+        foreign_attributes: vec![],
         id: Some("expr".parse().unwrap()),
         kind: ExpressionKind::Base {
             explicit_type: true,
@@ -754,6 +771,7 @@ fn compensation_event_capability_covers_live_and_checkpoint_documents() {
     let mut doc = BpmnDocument::new("document".into(), "defs".parse().unwrap());
     let details = NodeDetails::Event {
         definitions: vec![EventDefinition::Compensate {
+            base: None,
             id: None,
             wait_for_completion: None,
             activity_ref: None,
@@ -767,20 +785,23 @@ fn compensation_event_capability_covers_live_and_checkpoint_documents() {
         io: None,
     };
     doc.processes.push(Process {
+        base_extras: None,
         is_executable: Some(false),
         io_specification: None,
         id: "process".parse().unwrap(),
         name: Some(String::new()),
-        documentation: String::new(),
+        documentation: String::new().into(),
         lane_set_id: None,
+        lane_set_base: None,
         groups: vec![],
         data_objects: vec![],
         data_associations: vec![],
         nodes: vec![Node {
+            base_extras: None,
             item_aware: None,
             id: "event".parse().unwrap(),
             name: Some(String::new()),
-            documentation: String::new(),
+            documentation: String::new().into(),
             kind: NodeKind::IntermediateThrowEvent,
             details: Some(details.clone()),
             loop_characteristics: None,
@@ -1041,18 +1062,22 @@ fn schema_two_round_trips_dictionary_entries() {
     });
     let mut doc = BpmnDocument::new("document".into(), "defs".parse().unwrap());
     doc.processes.push(Process {
+        base_extras: None,
         is_executable: Some(false),
         io_specification: None,
         lane_set_id: None,
+        lane_set_base: None,
         groups: vec![],
         data_objects: vec![],
         data_associations: vec![],
         id: "process".parse().unwrap(),
         name: Some(String::new()),
-        documentation: String::new(),
+        documentation: String::new().into(),
         nodes: vec![],
         lanes: vec![Lane {
+            base: None,
             child_lane_set_id: None,
+            child_lane_set_base: None,
             id: "lane".parse().unwrap(),
             name: Some(String::new()),
             parent: None,
@@ -1329,17 +1354,20 @@ fn identity_capability_covers_independent_new_fields() {
     let mut base = ProjectData::new("features".into());
     let mut doc = BpmnDocument::new("doc".into(), "defs".parse().unwrap());
     doc.event_resources.push(EventResource::Message {
+        base: None,
         id: "message".parse().unwrap(),
         name: None,
         item_ref: None,
     });
     doc.processes.push(Process {
+        base_extras: None,
         id: "process".parse().unwrap(),
         name: Some("Process".into()),
-        documentation: String::new(),
+        documentation: String::new().into(),
         is_executable: Some(false),
         io_specification: None,
         lane_set_id: None,
+        lane_set_base: None,
         groups: vec![],
         data_objects: vec![],
         data_associations: vec![],
@@ -1367,9 +1395,10 @@ fn identity_capability_covers_independent_new_fields() {
             2 => Arc::make_mut(&mut p.documents[0]).processes[0]
                 .nodes
                 .push(Node {
+                    base_extras: None,
                     id: "annotation".parse().unwrap(),
                     name: Some(String::new()),
-                    documentation: String::new(),
+                    documentation: String::new().into(),
                     kind: NodeKind::TextAnnotation,
                     details: Some(NodeDetails::TextAnnotation {
                         text_format: None,
@@ -1395,6 +1424,7 @@ fn identity_capability_covers_independent_new_fields() {
             }),
             4 => {
                 Arc::make_mut(&mut p.documents[0]).collaboration = Some(Collaboration {
+                    base: None,
                     id: "collaboration".parse().unwrap(),
                     name: Some(String::new()),
                     participants: vec![],
@@ -1404,6 +1434,9 @@ fn identity_capability_covers_independent_new_fields() {
                 })
             }
             _ => Arc::make_mut(&mut p.documents[0]).diagrams.push(Diagram {
+                documentation: None,
+                resolution: None,
+                label_styles: vec![],
                 id: "diagram".parse().unwrap(),
                 name: Some(String::new()),
                 plane_id: "plane".parse().unwrap(),
@@ -1479,24 +1512,28 @@ fn expanded_events_and_di_capability_round_trips_live_and_checkpoint() {
     let mut project = ProjectData::new("event capability".into());
     let mut doc = BpmnDocument::new("doc".into(), "defs".parse().unwrap());
     doc.root_event_definitions.push(EventDefinition::Timer {
+        base: None,
         id: Some("timer".parse().unwrap()),
         kind: None,
         expression: None,
     });
     doc.processes.push(Process {
+        base_extras: None,
         id: "process".parse().unwrap(),
         name: Some("Process".into()),
-        documentation: String::new(),
+        documentation: String::new().into(),
         is_executable: Some(false),
         io_specification: None,
         lane_set_id: None,
+        lane_set_base: None,
         groups: vec![],
         data_objects: vec![],
         data_associations: vec![],
         nodes: vec![Node {
+            base_extras: None,
             id: "event".parse().unwrap(),
             name: Some("Start".into()),
-            documentation: String::new(),
+            documentation: String::new().into(),
             kind: NodeKind::StartEvent,
             item_aware: None,
             loop_characteristics: None,
@@ -1519,11 +1556,15 @@ fn expanded_events_and_di_capability_round_trips_live_and_checkpoint() {
         flows: vec![],
     });
     doc.diagrams.push(Diagram {
+        documentation: None,
+        resolution: None,
+        label_styles: vec![],
         id: "diagram".parse().unwrap(),
         name: None,
         plane_id: "plane".parse().unwrap(),
         plane: "process".parse().unwrap(),
         shapes: vec![Shape {
+            label_visibility: None,
             id: "shape".parse().unwrap(),
             element: "event".parse().unwrap(),
             is_expanded: None,
@@ -1650,12 +1691,14 @@ fn expanded_events_and_di_capability_detects_independent_features() {
         {
             match case {
                 0 => doc.root_event_definitions.push(EventDefinition::Timer {
+                    base: None,
                     id: None,
                     kind: None,
                     expression: None,
                 }),
                 1 => definition_refs.push(EventReference::Qualified(q())),
                 2 => properties.push(EventProperty {
+                    base: None,
                     id: None,
                     name: Some("state".into()),
                     item_aware: Some(ItemAwareMetadata {
@@ -1666,6 +1709,7 @@ fn expanded_events_and_di_capability_detects_independent_features() {
                 3 => {
                     *io = Some(EventIo::Catch {
                         outputs: vec![DataPort {
+                            base: None,
                             id: None,
                             name: Some("output".into()),
                             item_aware: None,
@@ -1675,6 +1719,7 @@ fn expanded_events_and_di_capability_detects_independent_features() {
                     })
                 }
                 _ => doc.event_resources.push(EventResource::Message {
+                    base: None,
                     id: "message".parse().unwrap(),
                     name: None,
                     item_ref: Some(q()),
@@ -1682,19 +1727,22 @@ fn expanded_events_and_di_capability_detects_independent_features() {
             }
         }
         doc.processes.push(Process {
+            base_extras: None,
             id: "process".parse().unwrap(),
             name: Some("Process".into()),
-            documentation: String::new(),
+            documentation: String::new().into(),
             is_executable: Some(false),
             io_specification: None,
             lane_set_id: None,
+            lane_set_base: None,
             groups: vec![],
             data_objects: vec![],
             data_associations: vec![],
             nodes: vec![Node {
+                base_extras: None,
                 id: "start".parse().unwrap(),
                 name: Some("Start".into()),
-                documentation: String::new(),
+                documentation: String::new().into(),
                 kind: NodeKind::StartEvent,
                 details: Some(details),
                 item_aware: None,
@@ -1757,19 +1805,22 @@ fn legacy_timer_choice_and_local_reference_keep_old_json_shape() {
     let mut p = ProjectData::new("legacy timer".into());
     let mut doc = BpmnDocument::new("doc".into(), "defs".parse().unwrap());
     doc.processes.push(Process {
+        base_extras: None,
         id: "process".parse().unwrap(),
         name: Some("process".into()),
-        documentation: String::new(),
+        documentation: String::new().into(),
         is_executable: Some(false),
         io_specification: None,
         lane_set_id: None,
+        lane_set_base: None,
         groups: vec![],
         data_objects: vec![],
         data_associations: vec![],
         nodes: vec![Node {
+            base_extras: None,
             id: "start".parse().unwrap(),
             name: Some("start".into()),
-            documentation: String::new(),
+            documentation: String::new().into(),
             kind: NodeKind::StartEvent,
             item_aware: None,
             loop_characteristics: None,
@@ -1779,6 +1830,7 @@ fn legacy_timer_choice_and_local_reference_keep_old_json_shape() {
             contact: String::new(),
             details: Some(NodeDetails::Event {
                 definitions: vec![EventDefinition::Timer {
+                    base: None,
                     id: None,
                     kind: Some(TimerKind::Duration),
                     expression: Some(Expression::Legacy("PT1H".into())),
@@ -1833,4 +1885,322 @@ fn legacy_timer_choice_and_local_reference_keep_old_json_shape() {
             .unwrap(),
         p.content_identity().unwrap()
     );
+}
+
+#[test]
+fn common_metadata_capability_round_trips_live_and_frozen() {
+    use processcraft_core::{
+        bpmn_metadata::{Documentation, DocumentationSet},
+        bpmn_xml::{MixedXml, NamespaceBinding, XmlContent, XmlNode},
+        model::FrozenProject,
+    };
+    let bytes =
+        include_bytes!("../../../tests/fixtures/native/identity-baseline-2f0f770.processcraft");
+    let original = load_bytes(bytes).unwrap().project;
+    let mut project = original.clone();
+    let docs = DocumentationSet::Structured(vec![Documentation {
+        id: Some("documentation".parse().unwrap()),
+        text_format: Some("text/plain".into()),
+        content: MixedXml::Structured(XmlContent {
+            namespaces: vec![NamespaceBinding {
+                prefix: String::new(),
+                uri: String::new(),
+            }],
+            nodes: vec![
+                XmlNode::Text {
+                    text: "before".into(),
+                },
+                XmlNode::Comment {
+                    text: "note".into(),
+                },
+                XmlNode::Text {
+                    text: "after".into(),
+                },
+            ],
+        }),
+    }]);
+    Arc::make_mut(&mut project.documents[0]).processes[0].documentation = docs.clone();
+    let live = write_bytes(&project).unwrap();
+    let mut archived = entries(&live);
+    let manifest: serde_json::Value = serde_json::from_slice(
+        &archived
+            .iter()
+            .find(|(name, _)| name == "manifest.json")
+            .unwrap()
+            .1,
+    )
+    .unwrap();
+    assert!(
+        manifest["required_capabilities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|value| value == "bpmn-common-metadata-v1")
+    );
+    let loaded = load_bytes(&live).unwrap().project;
+    assert_eq!(loaded.documents[0].processes[0].documentation, docs);
+    assert_eq!(
+        loaded.content_identity().unwrap(),
+        project.content_identity().unwrap()
+    );
+    let mut tampered = archived.clone();
+    edit_json(&mut tampered, "project.json", |value| {
+        value["documents"][0]["processes"][0]["documentation"][0]["content"]["nodes"][0]["text"] =
+            "tampered".into();
+    });
+    assert!(load_bytes(&archive(&tampered)).is_err());
+    edit_json(&mut archived, "manifest.json", |value| {
+        let capabilities = value["required_capabilities"].as_array_mut().unwrap();
+        capabilities.retain(|value| value != "bpmn-common-metadata-v1");
+    });
+    assert!(
+        load_bytes(&archive(&archived))
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("common metadata requires capability")
+    );
+    project.checkpoints[0].content = FrozenProject::capture(&project);
+    project.documents = original.documents;
+    let frozen = write_bytes(&project).unwrap();
+    let mut archived = entries(&frozen);
+    assert_eq!(
+        load_bytes(&frozen)
+            .unwrap()
+            .project
+            .content_identity()
+            .unwrap(),
+        project.content_identity().unwrap()
+    );
+    edit_json(&mut archived, "manifest.json", |value| {
+        let capabilities = value["required_capabilities"].as_array_mut().unwrap();
+        capabilities.retain(|value| value != "bpmn-common-metadata-v1");
+    });
+    assert!(
+        load_bytes(&archive(&archived))
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("common metadata requires capability")
+    );
+}
+
+#[test]
+fn common_metadata_capability_covers_independent_definitions_and_di_features() {
+    use processcraft_core::{
+        bpmn_metadata::Documentation,
+        bpmn_model::QNameRef,
+        bpmn_xml::MixedXml,
+        model::{DefinitionsExtension, DefinitionsRelationship, DiFont, LabelStyle},
+    };
+    let baseline =
+        include_bytes!("../../../tests/fixtures/native/identity-baseline-2f0f770.processcraft");
+    let original = load_bytes(baseline).unwrap().project;
+    for case in 0..3 {
+        let mut project = original.clone();
+        let doc = Arc::make_mut(&mut project.documents[0]);
+        match case {
+            0 => doc.extensions.push(DefinitionsExtension {
+                documentation: vec![Documentation {
+                    id: None,
+                    text_format: None,
+                    content: MixedXml::Text("help".into()),
+                }],
+                definition: None,
+                must_understand: Some(false),
+            }),
+            1 => doc.relationships.push(DefinitionsRelationship {
+                id: None,
+                base: None,
+                relationship_type: "trace".into(),
+                direction: None,
+                sources: vec![QNameRef {
+                    namespace: "urn:external".into(),
+                    local: "source".parse().unwrap(),
+                }],
+                targets: vec![QNameRef {
+                    namespace: "urn:external".into(),
+                    local: "target".parse().unwrap(),
+                }],
+            }),
+            _ => doc.diagrams[0].label_styles.push(LabelStyle {
+                id: None,
+                font: Some(DiFont {
+                    name: Some("Sans".into()),
+                    ..Default::default()
+                }),
+            }),
+        }
+        let bytes = write_bytes(&project).unwrap();
+        let mut archived = entries(&bytes);
+        let manifest: serde_json::Value = serde_json::from_slice(
+            &archived
+                .iter()
+                .find(|(name, _)| name == "manifest.json")
+                .unwrap()
+                .1,
+        )
+        .unwrap();
+        assert!(
+            manifest["required_capabilities"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|value| value == "bpmn-common-metadata-v1"),
+            "case {case}"
+        );
+        assert_eq!(
+            load_bytes(&bytes)
+                .unwrap()
+                .project
+                .content_identity()
+                .unwrap(),
+            project.content_identity().unwrap()
+        );
+        edit_json(&mut archived, "manifest.json", |value| {
+            value["required_capabilities"]
+                .as_array_mut()
+                .unwrap()
+                .retain(|v| v != "bpmn-common-metadata-v1")
+        });
+        assert!(
+            load_bytes(&archive(&archived))
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("common metadata requires capability"),
+            "case {case}"
+        );
+        project.checkpoints[0].content = processcraft_core::model::FrozenProject::capture(&project);
+        project.documents = original.documents.clone();
+        let bytes = write_bytes(&project).unwrap();
+        let mut archived = entries(&bytes);
+        assert_eq!(
+            load_bytes(&bytes)
+                .unwrap()
+                .project
+                .content_identity()
+                .unwrap(),
+            project.content_identity().unwrap()
+        );
+        edit_json(&mut archived, "manifest.json", |value| {
+            value["required_capabilities"]
+                .as_array_mut()
+                .unwrap()
+                .retain(|v| v != "bpmn-common-metadata-v1")
+        });
+        assert!(
+            load_bytes(&archive(&archived))
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("common metadata requires capability"),
+            "checkpoint case {case}"
+        );
+    }
+}
+
+#[test]
+fn common_capability_covers_independent_nested_and_script_payloads() {
+    use processcraft_core::{
+        bpmn_activity::ActivityProperties,
+        bpmn_metadata::BaseExtras,
+        bpmn_xml::{MixedXml, NamespaceBinding, XmlContent, XmlNode},
+        model::NodeKind,
+    };
+    let baseline =
+        include_bytes!("../../../tests/fixtures/native/identity-baseline-2f0f770.processcraft");
+    let original = load_bytes(baseline).unwrap().project;
+    for case in 0..2 {
+        let mut project = original.clone();
+        let node = &mut Arc::make_mut(&mut project.documents[0]).processes[0].nodes[0];
+        if case == 0 {
+            node.base_extras = Some(BaseExtras::default());
+        } else {
+            node.kind = NodeKind::ScriptTask;
+            node.activity = Some(ActivityProperties {
+                script: Some(MixedXml::Structured(XmlContent {
+                    namespaces: vec![NamespaceBinding {
+                        prefix: String::new(),
+                        uri: String::new(),
+                    }],
+                    nodes: vec![
+                        XmlNode::Text {
+                            text: "before".into(),
+                        },
+                        XmlNode::Comment {
+                            text: "inert".into(),
+                        },
+                        XmlNode::Text {
+                            text: "after".into(),
+                        },
+                    ],
+                })),
+                ..Default::default()
+            });
+        }
+        let bytes = write_bytes(&project).unwrap();
+        let mut archived = entries(&bytes);
+        let manifest: serde_json::Value = serde_json::from_slice(
+            &archived
+                .iter()
+                .find(|(name, _)| name == "manifest.json")
+                .unwrap()
+                .1,
+        )
+        .unwrap();
+        assert!(
+            manifest["required_capabilities"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|value| value == "bpmn-common-metadata-v1")
+        );
+        assert_eq!(
+            load_bytes(&bytes)
+                .unwrap()
+                .project
+                .content_identity()
+                .unwrap(),
+            project.content_identity().unwrap()
+        );
+        edit_json(&mut archived, "manifest.json", |value| {
+            value["required_capabilities"]
+                .as_array_mut()
+                .unwrap()
+                .retain(|v| v != "bpmn-common-metadata-v1")
+        });
+        assert!(
+            load_bytes(&archive(&archived))
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("common metadata requires capability")
+        );
+        project.checkpoints[0].content = processcraft_core::model::FrozenProject::capture(&project);
+        project.documents = original.documents.clone();
+        let bytes = write_bytes(&project).unwrap();
+        let mut archived = entries(&bytes);
+        assert_eq!(
+            load_bytes(&bytes)
+                .unwrap()
+                .project
+                .content_identity()
+                .unwrap(),
+            project.content_identity().unwrap()
+        );
+        edit_json(&mut archived, "manifest.json", |value| {
+            value["required_capabilities"]
+                .as_array_mut()
+                .unwrap()
+                .retain(|v| v != "bpmn-common-metadata-v1")
+        });
+        assert!(
+            load_bytes(&archive(&archived))
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("common metadata requires capability")
+        );
+    }
 }

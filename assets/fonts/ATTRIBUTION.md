@@ -49,3 +49,7 @@ Version 2.004;hotconv 1.0.118;makeotfexe 2.5.65603
 http://scripts.sil.org/OFL
 
 © 2014-2021 Adobe (http://www.adobe.com/).
+
+## Noto Sans Bold, Italic and Bold Italic
+
+Copyright 2015-2021 Google LLC. Monotype Design Team, Monotype Imaging Inc. Original unmodified font files, licensed under SIL Open Font License 1.1; see OFL-NotoSans.txt and provenance.json.

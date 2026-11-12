@@ -1,5 +1,5 @@
 use crate::RenderError;
-use cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping, Wrap, fontdb};
+use cosmic_text::{Align, Attrs, Buffer, Family, FontSystem, Metrics, Shaping, Wrap, fontdb};
 use skrifa::{
     FontRef, GlyphId, MetadataProvider,
     instance::{LocationRef, Size},
@@ -8,7 +8,10 @@ use skrifa::{
 use tiny_skia::{Path, PathBuilder};
 
 const FAMILIES: [&str; 3] = ["Noto Sans", "Noto Sans Arabic", "Noto Sans CJK SC"];
-const FONTS: [&[u8]; 3] = [
+const FONTS: [&[u8]; 6] = [
+    include_bytes!("../../../assets/fonts/NotoSans-Bold.ttf"),
+    include_bytes!("../../../assets/fonts/NotoSans-Italic.ttf"),
+    include_bytes!("../../../assets/fonts/NotoSans-BoldItalic.ttf"),
     include_bytes!("../../../assets/fonts/NotoSans-Regular.ttf"),
     include_bytes!("../../../assets/fonts/NotoSansArabic-Regular.ttf"),
     include_bytes!("../../../assets/fonts/NotoSansCJKsc-Regular.otf"),
@@ -34,6 +37,9 @@ pub struct TextRequest<'a> {
     pub font_size: f32,
     pub width: f32,
     pub family: &'a str,
+    pub center: bool,
+    pub bold: bool,
+    pub italic: bool,
 }
 impl<'a> TextRequest<'a> {
     pub fn new(text: &'a str, font_size: f32, width: f32) -> Self {
@@ -42,6 +48,9 @@ impl<'a> TextRequest<'a> {
             font_size,
             width,
             family: FAMILIES[0],
+            center: false,
+            bold: false,
+            italic: false,
         }
     }
 }
@@ -51,6 +60,7 @@ pub struct Glyph {
     pub font: String,
     pub glyph_id: u16,
     pub source_line: usize,
+    pub visual_line: usize,
     /// UTF-8 byte offsets within the original `source_line`, not the full layout text.
     pub cluster: std::ops::Range<usize>,
     pub x: f32,
@@ -157,10 +167,26 @@ impl TextEngine {
         buffer.set_size(Some(request.width), None);
         buffer.set_text(
             request.text,
-            &Attrs::new().family(Family::Name(family)),
+            &Attrs::new()
+                .family(Family::Name(family))
+                .weight(if request.bold {
+                    cosmic_text::Weight::BOLD
+                } else {
+                    cosmic_text::Weight::NORMAL
+                })
+                .style(if request.italic {
+                    cosmic_text::Style::Italic
+                } else {
+                    cosmic_text::Style::Normal
+                }),
             Shaping::Advanced,
             None,
         );
+        if request.center {
+            for line in &mut buffer.lines {
+                line.set_align(Some(Align::Center));
+            }
+        }
         buffer.shape_until_scroll(&mut self.fonts, false);
         let mut glyphs = Vec::new();
         let mut line_count = 0;
@@ -182,6 +208,16 @@ impl TextEngine {
                     .face(g.font_id)
                     .ok_or(RenderError("Bundled face missing"))?;
                 let name = face.families[0].0.clone();
+                if (request.bold && face.weight.0 < 600)
+                    || (request.italic && face.style == fontdb::Style::Normal)
+                {
+                    let message = format!(
+                        "Requested font style is unavailable for {name}; using closest bundled face"
+                    );
+                    if !diagnostics.contains(&message) {
+                        diagnostics.push(message);
+                    }
+                }
                 let index = face.index;
                 if name != family {
                     let message = format!("Fallback font: {family} -> {name}");
@@ -233,6 +269,7 @@ impl TextEngine {
                     font: name,
                     glyph_id: g.glyph_id,
                     source_line: run.line_i,
+                    visual_line: line_count - 1,
                     cluster: g.start..g.end,
                     x,
                     baseline,

@@ -39,6 +39,9 @@ pub enum ItemKind {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ItemDefinition {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base: Option<crate::bpmn_metadata::BaseMetadata>,
+
     pub id: Option<crate::ids::ElementIdentity>,
     pub structure_ref: Option<QNameRef>,
     pub is_collection: Option<bool>,
@@ -47,6 +50,9 @@ pub struct ItemDefinition {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Interface {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base: Option<crate::bpmn_metadata::BaseMetadata>,
+
     pub id: Option<crate::ids::ElementIdentity>,
     pub name: String,
     pub implementation_ref: Option<QNameRef>,
@@ -55,6 +61,9 @@ pub struct Interface {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Operation {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base: Option<crate::bpmn_metadata::BaseMetadata>,
+
     pub id: Option<crate::ids::ElementIdentity>,
     pub name: String,
     pub implementation_ref: Option<QNameRef>,
@@ -65,6 +74,9 @@ pub struct Operation {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct BpmnResource {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base: Option<crate::bpmn_metadata::BaseMetadata>,
+
     pub id: Option<crate::ids::ElementIdentity>,
     pub name: String,
     pub parameters: Vec<ResourceParameter>,
@@ -72,6 +84,9 @@ pub struct BpmnResource {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ResourceParameter {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base: Option<crate::bpmn_metadata::BaseMetadata>,
+
     pub id: Option<crate::ids::ElementIdentity>,
     pub name: Option<String>,
     pub type_ref: Option<QNameRef>,

@@ -8,12 +8,14 @@ fn document() -> BpmnDocument {
         is_executable: Some(false),
         io_specification: None,
         lane_set_id: None,
+        lane_set_base: None,
         groups: vec![],
         data_objects: vec![],
         data_associations: vec![],
         id: "p".parse().unwrap(),
         name: Some(String::new()),
-        documentation: String::new(),
+        documentation: String::new().into(),
+        base_extras: None,
         nodes: vec![Node {
             item_aware: None,
             activity: None,
@@ -22,7 +24,8 @@ fn document() -> BpmnDocument {
             details: None,
             id: "n".parse().unwrap(),
             name: Some("A & B".into()),
-            documentation: String::new(),
+            documentation: String::new().into(),
+            base_extras: None,
             kind: NodeKind::Task,
             owner: String::new(),
             contact: String::new(),
@@ -32,10 +35,14 @@ fn document() -> BpmnDocument {
     });
     d.diagrams.push(Diagram {
         name: None,
+        documentation: None,
+        resolution: None,
+        label_styles: vec![],
         id: "d".parse().unwrap(),
         plane_id: "plane".parse().unwrap(),
         plane: "p".parse().unwrap(),
         shapes: vec![Shape {
+            label_visibility: None,
             is_horizontal: None,
             is_marker_visible: None,
             is_expanded: None,
@@ -201,4 +208,55 @@ fn preflight_returns_acknowledgeable_diagnostics() {
     )
     .unwrap();
     assert!(diagnostics.iter().any(|d| d.contains("clipped")));
+}
+
+#[test]
+fn styled_label_uses_same_scene_in_svg_png_and_pdf() {
+    use processcraft_core::model::{DiFont, DiLabelVisibility, DiStyleRef, Label, LabelStyle};
+    let mut d = document();
+    d.diagrams[0].label_styles.push(LabelStyle {
+        id: Some("style".parse().unwrap()),
+        font: Some(DiFont {
+            name: Some("Noto Sans".into()),
+            size: Some(16.0),
+            is_bold: Some(true),
+            is_italic: Some(true),
+            is_underline: Some(true),
+            is_strike_through: Some(false),
+        }),
+    });
+    d.diagrams[0].shapes[0].label_visibility = Some(DiLabelVisibility::Explicit);
+    d.diagrams[0].shapes[0].label = Some(Label {
+        id: Some("label".parse().unwrap()),
+        bounds: None,
+        style_ref: Some(DiStyleRef::Local("style".parse().unwrap())),
+        style: None,
+    });
+    let diagram = "d".parse().unwrap();
+    let export = |format| {
+        export_diagram(
+            &d,
+            &diagram,
+            ExportOptions {
+                format,
+                appearance: Appearance::Light,
+                scale: 1.0,
+                acknowledge_diagnostics: true,
+            },
+            &mut TextEngine::new(),
+            "Noto Sans",
+        )
+        .unwrap()
+    };
+    let svg = export(ExportFormat::Svg);
+    let png = export(ExportFormat::Png);
+    let pdf = export(ExportFormat::Pdf);
+    assert!(String::from_utf8(svg.bytes).unwrap().contains("A &amp; B"));
+    assert!(png.bytes.starts_with(b"\x89PNG\r\n\x1a\n"));
+    assert!(pdf.bytes.starts_with(b"%PDF"));
+    assert!(
+        !png.diagnostics
+            .iter()
+            .any(|message| message.contains("unavailable") || message.contains("unresolved"))
+    );
 }

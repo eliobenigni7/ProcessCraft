@@ -17,7 +17,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     std::fs::create_dir_all(&output)?;
     let fixture_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/bpmn");
-    for name in ["event-ownership", "di-endpoints"] {
+    for name in [
+        "event-ownership",
+        "di-endpoints",
+        "di-label-styles",
+        "process-documentation",
+    ] {
         let input = std::fs::read(fixture_dir.join(format!("{name}.bpmn")))?;
         let parsed = prepare_import(&input, name)?;
         if !parsed.report.editable {

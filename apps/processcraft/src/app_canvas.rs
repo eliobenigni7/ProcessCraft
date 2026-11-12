@@ -58,6 +58,9 @@ impl ProcessCraft {
             (ui.available_width() - 24.0).max(1.0),
             (ui.available_height() - 24.0).max(1.0),
         );
+        #[cfg(test)]
+        ui.ctx()
+            .data_mut(|data| data.insert_temp(egui::Id::unique("test_canvas_size"), size));
         let fit_id = egui::Id::unique("processcraft-editor-fit");
         let document_key = snap.project.documents.get(self.doc).and_then(|document| {
             diagram
