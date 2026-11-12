@@ -11,9 +11,17 @@ FIX = ROOT / "tests/fixtures/bpmn20-schema"
 OUT = ROOT / "docs/research/bpmn-2-coverage.json"
 XSD = "{http://www.w3.org/2001/XMLSchema}"
 files = sorted(FIX.iterdir())
-sources = [{"file": p.name, "sha256": hashlib.sha256(p.read_bytes()).hexdigest(),
-            "url": "https://www.omg.org/spec/BPMN/2.0.2/PDF" if p.suffix == ".pdf" else "https://www.omg.org/spec/BPMN/20100501/" + p.name}
-           for p in files if p.suffix in (".xsd", ".cmof", ".pdf")]
+# The OMG specification PDF is not redistributed (it is git-ignored); its pinned hash
+# lets a local copy downloaded from the URL be checked, and keeps this inventory stable.
+SPEC_PDF = {"file": "BPMN-2.0.2.pdf",
+            "sha256": "d3d9258a70bf808c11ac52becea4ce645540a8b881117535f60a56fbf13e22f2",
+            "url": "https://www.omg.org/spec/BPMN/2.0.2/PDF"}
+pdf = FIX / SPEC_PDF["file"]
+if pdf.exists() and hashlib.sha256(pdf.read_bytes()).hexdigest() != SPEC_PDF["sha256"]:
+    raise SystemExit(f"{pdf} does not match the pinned OMG specification hash")
+sources = [SPEC_PDF] + [{"file": p.name, "sha256": hashlib.sha256(p.read_bytes()).hexdigest(),
+                         "url": "https://www.omg.org/spec/BPMN/20100501/" + p.name}
+                        for p in files if p.suffix in (".xsd", ".cmof")]
 declarations = []
 for p in files:
     if p.suffix != ".xsd":

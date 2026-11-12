@@ -82,4 +82,5 @@ Adding a mutation means touching, in `crates/processcraft-core/src/commands.rs`:
 - `docs/design/solution-design.md` — the architectural source of truth (crate ownership §4, commands/undo §7, native format §8, save/recovery §9, trust boundaries and limits §17, verification §20).
 - `docs/plans/` — milestone plans. M0–M2 are implemented; M3 closed under its adopted required scope; `modeling-parity.md` (bpmn-js-level canvas modeling) is implemented; M4 (installer, accessibility/performance qualification, platform expansion) is planned.
 - `docs/implementation/*-evidence.md` — what was actually verified per milestone, with measured limits. Feature commits update the matching evidence file (and regenerate `docs/research/bpmn-2-coverage.json` when BPMN coverage changes), sometimes in a follow-up "Record …" commit; evidence states measured limits rather than broad claims.
-- `design/` — FigCraft visual prototype (generated from `design/workbench.commands.json`); a design reference, separate from the Rust app.
+- `design/` — FigCraft visual prototype and English previews; a design reference, separate from the Rust app. Its authoring batch and working files are local-only (git-ignored).
+- The OMG `BPMN-2.0.2.pdf` is not redistributed (git-ignored); `scripts/generate_bpmn20_inventory.py` pins its hash so the inventory check passes with or without a local copy.

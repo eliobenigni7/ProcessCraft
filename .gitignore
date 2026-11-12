@@ -5,3 +5,22 @@
 .env.*
 !.env.example
 /.claude/
+
+# OMG BPMN 2.0.2 specification: copyrighted, not redistributed.
+# Download it from https://www.omg.org/spec/BPMN/2.0.2/PDF if needed;
+# scripts/generate_bpmn20_inventory.py checks its pinned SHA-256.
+/tests/fixtures/bpmn20-schema/BPMN-2.0.2.pdf
+
+# Internal design working files (logs, probes, Italian drafts, machine-specific paths)
+/design/build.log
+/design/probe*
+/design/import-check.json
+/design/en-translation.json
+/design/prototype-fixes.json
+/design/workbench.commands.json
+/design/ProcessCraft-tavole.pdf
+/design/previews/*-archivio*.png
+/design/previews/*-dizionario*.png
+/design/previews/*-tabella*.png
+/design/previews/*-componenti*.png
+/design/previews/*-scuro*.png
