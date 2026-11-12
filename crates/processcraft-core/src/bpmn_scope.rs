@@ -79,7 +79,7 @@ mod tests {
         );
         assert!(inventory().declarations.iter().all(|d| matches!(
             d.coverage.model.as_str(),
-            "unverified" | "partial" | "verified"
+            "unverified" | "partial" | "verified" | "not_applicable"
         )));
     }
 }

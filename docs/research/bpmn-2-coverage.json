@@ -37168,6 +37168,7 @@
       "declarations": 299,
       "cells": 1450,
       "verified": 1256,
+      "not_applicable": 0,
       "partial": 43,
       "unverified": 151
     },
@@ -37176,6 +37177,7 @@
         "declarations": 89,
         "cells": 438,
         "verified": 399,
+        "not_applicable": 0,
         "partial": 0,
         "unverified": 39
       },
@@ -37183,6 +37185,7 @@
         "declarations": 34,
         "cells": 166,
         "verified": 159,
+        "not_applicable": 0,
         "partial": 0,
         "unverified": 7
       },
@@ -37190,6 +37193,7 @@
         "declarations": 173,
         "cells": 861,
         "verified": 715,
+        "not_applicable": 0,
         "partial": 40,
         "unverified": 106
       },
@@ -37197,6 +37201,7 @@
         "declarations": 33,
         "cells": 132,
         "verified": 125,
+        "not_applicable": 0,
         "partial": 3,
         "unverified": 4
       },
@@ -37204,6 +37209,7 @@
         "declarations": 7,
         "cells": 28,
         "verified": 23,
+        "not_applicable": 0,
         "partial": 0,
         "unverified": 5
       }

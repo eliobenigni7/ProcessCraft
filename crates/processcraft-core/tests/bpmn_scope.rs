@@ -22,7 +22,7 @@ fn declarations_are_addressable_without_claiming_support() {
             // "verified" is set only from evidence fragments the inventory generator validates.
             assert!(matches!(
                 status.as_str(),
-                "unverified" | "partial" | "verified"
+                "unverified" | "partial" | "verified" | "not_applicable"
             ));
         }
     }

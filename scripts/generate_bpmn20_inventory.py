@@ -272,7 +272,7 @@ REQUIRED_SETS = {
 }
 SET_TAGS = {"descriptive": "D", "analytic": "A", "choreography": "C", "di": "I"}
 DI_SCHEMAS = ("BPMNDI.xsd", "DI.xsd", "DC.xsd")
-STATES = ("verified", "partial", "unverified")
+STATES = ("verified", "not_applicable", "partial", "unverified")
 DIMENSIONS = ("model", "edit", "render", "import", "export", "validate")
 semantic_base = {}
 for n in ET.parse(FIX / "Semantic.xsd").getroot().iter(XSD + "complexType"):
@@ -348,18 +348,26 @@ for frag in fragments:
             raise SystemExit(f"{where}: unknown declaration path")
         if cell["dimension"] not in DIMENSIONS:
             raise SystemExit(f"{where}: unknown dimension")
-        if cell.get("state") != "verified":
-            raise SystemExit(f"{where}: only state 'verified' is allowed")
-        if not cell.get("evidence"):
+        state = cell.get("state")
+        if state not in ("verified", "not_applicable"):
+            raise SystemExit(f"{where}: state must be 'verified' or 'not_applicable'")
+        if state == "not_applicable":
+            # Only for a validate/render cell with no normative constraint or notation; the note must cite the source.
+            if cell["dimension"] not in ("validate", "render"):
+                raise SystemExit(f"{where}: not_applicable is allowed only for validate and render")
+            if len(cell.get("note", "")) < 40 or not re.search(r"§|Table|p\.\s*\d|XSD", cell["note"]):
+                raise SystemExit(f"{where}: not_applicable needs a note citing the spec or XSD")
+        elif not cell.get("evidence"):
             raise SystemExit(f"{where}: empty evidence list")
         if (key, cell["dimension"]) in seen:
             raise SystemExit(f"{where}: duplicate cell across fragments")
         seen.add((key, cell["dimension"]))
-        for ref in cell["evidence"]:
+        for ref in cell.get("evidence", []):
             validate_evidence(ref, where)
         d = by_key[key]
-        d["coverage"][cell["dimension"]] = "verified"
-        d.setdefault("verified_evidence", {})[cell["dimension"]] = sorted(cell["evidence"])
+        d["coverage"][cell["dimension"]] = state
+        if cell.get("evidence"):
+            d.setdefault("verified_evidence", {})[cell["dimension"]] = sorted(cell["evidence"])
         if cell.get("note"):
             d.setdefault("verified_notes", {})[cell["dimension"]] = cell["note"]
 
@@ -376,7 +384,7 @@ for x in declarations:
         for dm in x["required_dims"]:
             bucket["cells"] += 1
             bucket[x["coverage"][dm]] += 1
-    pending += [(x["schema"], x["path"], dm) for dm in x["required_dims"] if x["coverage"][dm] != "verified"]
+    pending += [(x["schema"], x["path"], dm) for dm in x["required_dims"] if x["coverage"][dm] not in ("verified", "not_applicable")]
 required_scope["by_set"] = dict(sorted(required_scope["by_set"].items()))
 
 result = {"implementation_evidence_commit": "a69472b251de88a221a873476fa5cb51e60560db", "implementation_evidence_tree": "100cada0dd4910463cb2b7ae42d6f89c59583569", "profiles": profiles, "cmof_declarations": cmof, "version": "2.0.2", "coverage_policy": "unverified means no construct-level evidence recorded; raw retention is not modeling support", "sources": sources, "declarations": declarations, "required_scope": required_scope,
