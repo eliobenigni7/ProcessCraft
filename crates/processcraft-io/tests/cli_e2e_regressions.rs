@@ -300,3 +300,38 @@ fn call_activity_to_missing_local_callable_is_rejected_by_commands() {
         "{error}"
     );
 }
+
+#[test]
+fn plain_string_condition_with_a_colon_exports_and_reimports_equal() {
+    for text in ["status:approved", "a:b", "${amount > 1000}"] {
+        let again = round_trip(vec![
+            create_process("p"),
+            create_element("p", element("g", "ExclusiveGateway", Value::Null)),
+            create_element("p", element("t", "Task", Value::Null)),
+            sequence_flow("g", "t", json!(text)),
+        ]);
+        assert_eq!(
+            again.processes[0].flows[0]
+                .condition
+                .as_ref()
+                .and_then(|c| c.plain_text()),
+            Some(text)
+        );
+    }
+}
+
+#[test]
+fn data_store_reference_to_missing_local_store_is_rejected_atomically() {
+    let reference = element(
+        "r",
+        "DataStoreReference",
+        json!({"type": "dataStoreReference", "data_store_ref": "nothing"}),
+    );
+    let error = session_with(vec![create_process("p"), create_element("p", reference)])
+        .err()
+        .expect("rejected");
+    assert!(
+        error.contains("unresolved local activity reference"),
+        "{error}"
+    );
+}

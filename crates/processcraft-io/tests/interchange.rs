@@ -250,11 +250,8 @@ fn prefixed_formal_expression_retains_namespace() {
         again.document.processes[0].flows[0].condition,
         b.document.processes[0].flows[0].condition
     );
-    let mut editable = prepare_import(
-        include_bytes!("../../../tests/fixtures/bpmn/m2-flat-lanes.bpmn"),
-        "source",
-    )
-    .unwrap();
+    // `foo` is bound in the source, so the text may be a QName: refused.
+    let mut editable = prepare_import(input.as_bytes(), "source").unwrap();
     editable.document.processes[0].flows[0].condition = Some("foo:value".into());
     let mut p = ProjectData::new("p".into());
     p.documents.push(Arc::new(editable.document.clone()));

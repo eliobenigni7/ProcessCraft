@@ -9408,6 +9408,23 @@ fn export_document(
             .push("Text annotation has a separate native name that cannot be exported".into());
         return Err(ExportFailure { report });
     }
+    // A plain-string condition is text content, but `prefix:name` text whose prefix is
+    // bound in the source may be a QName that Legacy text cannot carry a context for.
+    let source_prefixes: std::collections::HashSet<String> = document
+        .provenance
+        .as_ref()
+        .and_then(|p| resources.iter().find(|r| r.id == p.source_resource_id))
+        .and_then(|r| tree(&r.bytes))
+        .map(|root| {
+            fn walk(e: &Elem, out: &mut std::collections::HashSet<String>) {
+                out.extend(e.namespaces.keys().cloned());
+                e.children.iter().for_each(|c| walk(c, out));
+            }
+            let mut out = std::collections::HashSet::new();
+            walk(&root, &mut out);
+            out
+        })
+        .unwrap_or_default();
     let unsupported = all_scopes.iter().any(|p| {
         p.nodes.iter().any(|n| {
             n.io_specification
@@ -9460,9 +9477,11 @@ fn export_document(
                 || (f.kind == FlowKind::Association
                     && (f.name.as_deref().is_some_and(|name| !name.is_empty())
                         || f.condition.is_some()))
-                || f.condition
-                    .as_ref()
-                    .is_some_and(|c| matches!(c, Expression::Legacy(text) if text.contains(':')))
+                || f.condition.as_ref().is_some_and(|c| {
+                    matches!(c, Expression::Legacy(text) if text
+                        .split_once(':')
+                        .is_some_and(|(prefix, _)| source_prefixes.contains(prefix)))
+                })
         })
     }) || document.diagrams.iter().any(|d| {
         d.shapes

@@ -2472,6 +2472,11 @@ fn activity_family_reference_scan(
         .flat_map(|c| &c.values)
         .map(|v| &v.id)
         .collect();
+    let data_stores: Vec<_> = doc
+        .data_stores
+        .iter()
+        .filter_map(|s| s.id.as_ref())
+        .collect();
     let process_ids: Vec<_> = doc.processes.iter().map(|p| &p.id).collect();
     let collaboration_ids: Vec<_> = doc
         .collaboration
@@ -3836,6 +3841,25 @@ fn activity_family_reference_scan(
                     "callActivity.calledElement",
                     &ModelReference::Qualified(reference.clone()),
                     callable_ids.clone(),
+                );
+            }
+            if let Some(NodeDetails::DataStoreReference {
+                data_store_ref: Some(reference),
+            }) = &node.details
+            {
+                let reference = match reference {
+                    crate::bpmn_data::DataStoreRef::Legacy(selector) => {
+                        ModelReference::Local(selector.clone())
+                    }
+                    crate::bpmn_data::DataStoreRef::Qualified(name) => {
+                        ModelReference::Qualified(name.clone())
+                    }
+                };
+                check(
+                    node.id.selector(),
+                    "dataStoreReference.dataStoreRef",
+                    &reference,
+                    data_stores.clone(),
                 );
             }
             if let Some(activity) = &node.activity {
