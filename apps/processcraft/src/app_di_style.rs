@@ -259,6 +259,7 @@ mod tests {
     fn plane_order_draft_applies_and_undo_redo_keeps_representation_ids() {
         let mut app = ProcessCraft::default();
         app.add(NodeKind::Task);
+        app.select(None);
         app.add(NodeKind::Task);
         let snap = app.ctl.session.snapshot();
         let document = &snap.project.documents[0];
