@@ -16,6 +16,10 @@ pub(crate) struct HistoryEntry {
 pub(crate) struct History {
     pub undo: Vec<HistoryEntry>,
     pub redo: Vec<HistoryEntry>,
+    /// Estimated cost per immutable document, keyed by Arc address. The held
+    /// clone keeps the address from being reused; entries no longer in history
+    /// are pruned after each trim.
+    doc_costs: std::collections::HashMap<usize, (Arc<BpmnDocument>, usize)>,
 }
 impl History {
     pub fn push(&mut self, state: HistoryEntry) {
@@ -66,10 +70,23 @@ impl History {
             self.undo.shrink_to_fit();
             self.redo.shrink_to_fit();
         }
+        let live: HashSet<usize> = self
+            .undo
+            .iter()
+            .chain(&self.redo)
+            .flat_map(|entry| {
+                let p = &entry.project;
+                p.documents
+                    .iter()
+                    .chain(p.checkpoints.iter().flat_map(|c| &c.content.documents))
+                    .map(|d| Arc::as_ptr(d) as usize)
+            })
+            .collect();
+        self.doc_costs.retain(|ptr, _| live.contains(ptr));
     }
     // Counts allocated capacities and shared data once, plus generous per-allocation
     // overhead. The history stack itself is charged even if it has spare capacity.
-    fn estimated_bytes(&self) -> usize {
+    fn estimated_bytes(&mut self) -> usize {
         let mut docs = HashSet::new();
         let mut resources = HashSet::new();
         let mut projects = HashSet::new();
@@ -143,7 +160,11 @@ impl History {
                 }
                 for d in &c.documents {
                     if docs.insert(Arc::as_ptr(d) as usize) {
-                        total += document(d);
+                        total += self
+                            .doc_costs
+                            .entry(Arc::as_ptr(d) as usize)
+                            .or_insert_with(|| (d.clone(), document(d)))
+                            .1;
                     }
                 }
             }
@@ -171,7 +192,11 @@ impl History {
             }
             for d in &p.documents {
                 if docs.insert(Arc::as_ptr(d) as usize) {
-                    total += document(d);
+                    total += self
+                        .doc_costs
+                        .entry(Arc::as_ptr(d) as usize)
+                        .or_insert_with(|| (d.clone(), document(d)))
+                        .1;
                 }
             }
         }

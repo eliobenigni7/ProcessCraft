@@ -1205,61 +1205,56 @@ pub fn propose_layout(
         list.sort_unstable();
         list.dedup();
     }
-    // Iterative Kosaraju, with stable sorted traversal and no recursion on imported data.
-    let mut seen = vec![false; n];
-    let mut order = Vec::new();
-    for root in 0..n {
-        if seen[root] {
+    // Rank by longest path after removing DFS back-edges (iterative, stable sorted
+    // traversal, no recursion on imported data). Sources are visited first so loops
+    // keep their entry node on the left and draw the returning edge as the back-edge.
+    let mut state = vec![0u8; n];
+    let mut back = BTreeSet::new();
+    let roots = (0..n)
+        .filter(|&v| reverse[v].is_empty())
+        .chain(0..n)
+        .collect::<Vec<_>>();
+    for root in roots {
+        if state[root] != 0 {
             continue;
         }
-        seen[root] = true;
+        state[root] = 1;
         let mut stack = vec![(root, 0)];
         while let Some((v, i)) = stack.pop() {
             if i < graph[v].len() {
                 stack.push((v, i + 1));
                 let w = graph[v][i];
-                if !seen[w] {
-                    seen[w] = true;
-                    stack.push((w, 0));
+                match state[w] {
+                    0 => {
+                        state[w] = 1;
+                        stack.push((w, 0));
+                    }
+                    1 => {
+                        back.insert((v, w));
+                    }
+                    _ => {}
                 }
             } else {
-                order.push(v);
+                state[v] = 2;
             }
         }
     }
     cancelled(cancel)?;
-    let mut component = vec![usize::MAX; n];
-    let mut count = 0;
-    for &root in order.iter().rev() {
-        if component[root] != usize::MAX {
-            continue;
-        }
-        component[root] = count;
-        let mut stack = vec![root];
-        while let Some(v) = stack.pop() {
-            for &w in &reverse[v] {
-                if component[w] == usize::MAX {
-                    component[w] = count;
-                    stack.push(w);
-                }
-            }
-        }
-        count += 1;
-    }
-    let mut dag = vec![BTreeSet::new(); count];
-    let mut indegree = vec![0; count];
-    for v in 0..n {
-        for &w in &graph[v] {
-            let (a, b) = (component[v], component[w]);
-            if a != b && dag[a].insert(b) {
-                indegree[b] += 1;
+    let mut indegree = vec![0; n];
+    for (v, targets) in graph.iter().enumerate() {
+        for &w in targets {
+            if !back.contains(&(v, w)) {
+                indegree[w] += 1;
             }
         }
     }
-    let mut ready: BTreeSet<_> = (0..count).filter(|&i| indegree[i] == 0).collect();
-    let mut rank = vec![0usize; count];
+    let mut ready: BTreeSet<_> = (0..n).filter(|&i| indegree[i] == 0).collect();
+    let mut rank = vec![0usize; n];
     while let Some(v) = ready.pop_first() {
-        for &w in &dag[v] {
+        for &w in &graph[v] {
+            if back.contains(&(v, w)) {
+                continue;
+            }
             rank[w] = rank[w].max(rank[v] + 1);
             indegree[w] -= 1;
             if indegree[w] == 0 {
@@ -1280,10 +1275,7 @@ pub fn propose_layout(
     let mut cells: BTreeMap<(usize, usize), Vec<usize>> = BTreeMap::new();
     for (i, id) in ids.iter().enumerate() {
         cells
-            .entry((
-                membership.get(id).copied().unwrap_or(bands - 1),
-                rank[component[i]],
-            ))
+            .entry((membership.get(id).copied().unwrap_or(bands - 1), rank[i]))
             .or_default()
             .push(i);
     }
@@ -1293,14 +1285,49 @@ pub fn propose_layout(
         .filter(|s| nodes.contains_key(&s.element))
         .map(|s| s.bounds.width)
         .fold(0.0, f64::max);
+    // Nodes sit on fixed-height rows so equal rows align across columns. A node
+    // alone in its column takes the lower-median row of its laid-out same-band
+    // neighbours, which centres splits and joins between their branches.
+    let max_height = d
+        .shapes
+        .iter()
+        .filter(|s| nodes.contains_key(&s.element))
+        .map(|s| s.bounds.height)
+        .fold(0.0, f64::max);
+    let band_of = |i: usize| membership.get(&ids[i]).copied().unwrap_or(bands - 1);
+    let mut row = vec![None; n];
+    for cell in cells.values().filter(|cell| cell.len() > 1) {
+        for (slot, &i) in cell.iter().enumerate() {
+            row[i] = Some(slot);
+        }
+    }
+    let mut singles: Vec<_> = cells
+        .values()
+        .filter(|cell| cell.len() == 1)
+        .map(|cell| cell[0])
+        .collect();
+    for _ in 0..2 {
+        for &i in &singles {
+            if row[i].is_some() {
+                continue;
+            }
+            let mut known: Vec<usize> = graph[i]
+                .iter()
+                .chain(&reverse[i])
+                .filter(|&&j| band_of(j) == band_of(i))
+                .filter_map(|&j| row[j])
+                .collect();
+            known.sort_unstable();
+            if !known.is_empty() {
+                row[i] = Some(known[(known.len() - 1) / 2]);
+            }
+        }
+        singles.reverse();
+    }
     let mut band_heights = vec![120.0_f64; bands];
-    for (&(band, _), cell) in &cells {
-        let h = cell
-            .iter()
-            .map(|&i| d.shapes[shape_by_element[&ids[i]]].bounds.height + 80.0)
-            .sum::<f64>()
-            + 40.0;
-        band_heights[band] = band_heights[band].max(h);
+    for (i, slot) in row.iter().enumerate() {
+        let h = (slot.unwrap_or(0) + 1) as f64 * (max_height + 80.0) + 40.0;
+        band_heights[band_of(i)] = band_heights[band_of(i)].max(h);
     }
     let mut band_y = vec![0.0; bands];
     for i in 1..bands {
@@ -1314,11 +1341,14 @@ pub fn propose_layout(
         .map(|(i, s)| (s.id.clone(), i))
         .collect();
     for (&(band, layer), cell) in &cells {
-        let mut y = band_y[band] + 60.0;
         for &i in cell {
             let shape = &d.shapes[shape_by_element[&ids[i]]];
             let out = &mut result.shapes[index[&shape.id.selector()]];
             let x = 80.0 + layer as f64 * (max_width + 160.0);
+            let y = band_y[band]
+                + 60.0
+                + row[i].unwrap_or(0) as f64 * (max_height + 80.0)
+                + (max_height - out.bounds.height) / 2.0;
             let dx = x - out.bounds.x;
             let dy = y - out.bounds.y;
             out.bounds.x = x;
@@ -1327,7 +1357,6 @@ pub fn propose_layout(
                 label.x += dx;
                 label.y += dy;
             }
-            y += out.bounds.height + 80.0;
         }
     }
     let width = 160.0 + (rank.iter().copied().max().unwrap_or(0) + 1) as f64 * (max_width + 160.0);
@@ -1391,6 +1420,89 @@ pub fn propose_layout(
     }
     let mut route_work = 0usize;
     const ROUTE_WORK_LIMIT: usize = 500_000;
+    // Event and gateway ports face their partner: aligned partners use the
+    // horizontal side, others the top or bottom vertex. Back-edges (rank does not
+    // increase) leave and enter over the top. Each side serves one flow per node.
+    let bounds_of = |id: &ElementSelector| {
+        result.shapes[index[&d.shapes[shape_by_element[id]].id.selector()]]
+            .bounds
+            .clone()
+    };
+    let is_task = |id: &ElementSelector| {
+        matches!(
+            nodes[id].kind,
+            NodeKind::Task | NodeKind::UserTask | NodeKind::ManualTask
+        )
+    };
+    let is_back = |s: &ElementSelector, t: &ElementSelector| rank[indices[s]] >= rank[indices[t]];
+    let mut sides = BTreeMap::<(ElementSelector, bool), Point>::new();
+    let mut used = BTreeMap::<ElementSelector, Vec<u8>>::new();
+    for back_pass in [true, false] {
+        for flow in flows.values() {
+            let (
+                Some(crate::bpmn_model::EventReference::Local(s)),
+                Some(crate::bpmn_model::EventReference::Local(t)),
+            ) = (&flow.source, &flow.target)
+            else {
+                return Err(err("invalid_di", "Flow endpoint is missing or external"));
+            };
+            if s == t || is_back(s, t) != back_pass {
+                continue;
+            }
+            for (own, other, source) in [(s, t, true), (t, s, false)] {
+                if !back_pass && is_task(own) {
+                    continue;
+                }
+                let (b, o) = (bounds_of(own), bounds_of(other));
+                let (cy, ocy) = (b.y + b.height / 2.0, o.y + o.height / 2.0);
+                // 0 top, 1 right, 2 bottom, 3 left.
+                let horizontal = if source { 1 } else { 3 };
+                let preferred = if back_pass {
+                    0
+                } else if (ocy - cy).abs() < 0.5 {
+                    horizontal
+                } else if ocy > cy {
+                    2
+                } else {
+                    0
+                };
+                // An external label below (or above) the node blocks that vertex.
+                let taken = used.entry(own.clone()).or_insert_with(|| {
+                    let label = result.shapes
+                        [index[&d.shapes[shape_by_element[own]].id.selector()]]
+                        .label_bounds
+                        .as_ref();
+                    match label {
+                        Some(l) if l.y >= b.y + b.height / 2.0 => vec![2],
+                        Some(_) => vec![0],
+                        None => vec![],
+                    }
+                });
+                let side = [preferred, horizontal, 2, 0]
+                    .into_iter()
+                    .find(|side| !taken.contains(side))
+                    .unwrap_or(preferred);
+                taken.push(side);
+                let point = match side {
+                    0 => Point {
+                        x: b.x + b.width / 2.0,
+                        y: b.y,
+                    },
+                    1 => Point {
+                        x: b.x + b.width,
+                        y: cy,
+                    },
+                    2 => Point {
+                        x: b.x + b.width / 2.0,
+                        y: b.y + b.height,
+                    },
+                    _ => Point { x: b.x, y: cy },
+                };
+                sides.insert((flow.id.selector(), source), point);
+            }
+        }
+    }
+    let mut loop_channels = vec![0usize; bands];
     for (number, flow) in flows.values().enumerate() {
         cancelled(cancel)?;
         let (
@@ -1433,32 +1545,29 @@ pub fn propose_layout(
                         y: port_y(id, bounds, list),
                     }
                 } else {
-                    let position = list
-                        .iter()
-                        .position(|edge| edge == &flow.id.selector())
-                        .unwrap_or(0);
-                    match (source, position % 4) {
-                        (true, 0) | (false, 3) => Point {
-                            x: bounds.x + bounds.width,
+                    // Only self-loops have no assigned side; they use the horizontal sides.
+                    sides
+                        .get(&(flow.id.selector(), source))
+                        .cloned()
+                        .unwrap_or(Point {
+                            x: if source {
+                                bounds.x + bounds.width
+                            } else {
+                                bounds.x
+                            },
                             y: bounds.y + bounds.height / 2.0,
-                        },
-                        (false, 0) | (true, 3) => Point {
-                            x: bounds.x,
-                            y: bounds.y + bounds.height / 2.0,
-                        },
-                        (true, 2) | (false, 2) => Point {
-                            x: bounds.x + bounds.width / 2.0,
-                            y: bounds.y + bounds.height,
-                        },
-                        _ => Point {
-                            x: bounds.x + bounds.width / 2.0,
-                            y: bounds.y,
-                        },
-                    }
+                        })
                 }
             };
-        let start = port(source_id, source, &outgoing[source_id], true);
-        let end = port(target_id, target, &incoming[target_id], false);
+        let back = source_id != target_id && is_back(source_id, target_id);
+        let start = match sides.get(&(flow.id.selector(), true)) {
+            Some(point) => point.clone(),
+            None => port(source_id, source, &outgoing[source_id], true),
+        };
+        let end = match sides.get(&(flow.id.selector(), false)) {
+            Some(point) => point.clone(),
+            None => port(target_id, target, &incoming[target_id], false),
+        };
         let points = if source_id == target_id {
             let gap = 40.0 + number as f64 * 2.0;
             vec![
@@ -1481,28 +1590,24 @@ pub fn propose_layout(
                 },
                 end.clone(),
             ]
-        } else if rank[component[indices[source_id]]] >= rank[component[indices[target_id]]]
-            && source_id > target_id
-        {
-            let gap = 40.0 + number as f64 * 16.0;
-            let channel_y = -gap;
+        } else if back {
+            // Loop back over the top, inside the topmost band's free margin above
+            // its first row (nodes start 60 below the band edge).
+            let band = band_of(indices[source_id]).min(band_of(indices[target_id]));
+            let channel_y = band_y[band] + 48.0 - 8.0 * loop_channels[band] as f64;
+            loop_channels[band] += 1;
+            if channel_y <= band_y[band] {
+                return Err(err("routing", "Too many loop-back routes in one band"));
+            }
             vec![
                 start.clone(),
                 Point {
-                    x: start.x + gap,
-                    y: start.y,
-                },
-                Point {
-                    x: start.x + gap,
+                    x: start.x,
                     y: channel_y,
                 },
                 Point {
-                    x: end.x - gap,
+                    x: end.x,
                     y: channel_y,
-                },
-                Point {
-                    x: end.x - gap,
-                    y: end.y,
                 },
                 end.clone(),
             ]

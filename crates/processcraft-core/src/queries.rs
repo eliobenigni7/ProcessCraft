@@ -6,6 +6,7 @@ use crate::{
     },
     model::*,
 };
+use std::collections::HashMap;
 
 /// Scalar model fields use JSON Pointer paths so bounded pages do not need to
 /// truncate large nested reference lists or lose absent values.
@@ -667,58 +668,70 @@ pub fn activity_table(
             _ => None,
         })
     };
+    // Index flows, lanes and dictionary labels once; per-activity scans are quadratic.
+    let mut outgoing: HashMap<ElementSelector, Vec<TableFlow>> = HashMap::new();
+    for f in p.flows.iter().filter(|f| f.kind == FlowKind::Sequence) {
+        if let (Some(source), Some(target)) = (resolve(&f.source), resolve(&f.target)) {
+            outgoing.entry(source).or_default().push(TableFlow {
+                id: f.id.selector(),
+                target,
+                condition: f.condition.clone(),
+            });
+        }
+    }
+    let mut lanes: HashMap<&ElementSelector, &Lane> = HashMap::new();
+    for lane in p.lanes {
+        for member in &lane.members {
+            lanes.entry(member).or_insert(lane);
+        }
+    }
+    let entries: HashMap<_, _> = project
+        .dictionary_entries
+        .iter()
+        .map(|e| (e.id, e.name.as_str()))
+        .rev()
+        .collect();
+    let mut labels: HashMap<(&ElementSelector, DictionaryKind), Vec<String>> = HashMap::new();
+    for l in project
+        .dictionary_links
+        .iter()
+        .filter(|l| l.source.document_id == document_id)
+    {
+        let name = match &l.target {
+            DictionaryTarget::Literal(s) => Some(s.as_str()),
+            DictionaryTarget::Entry(id) => entries.get(id).copied(),
+        };
+        if let Some(name) = name {
+            labels
+                .entry((&l.source.xml_id, l.kind))
+                .or_default()
+                .push(name.to_owned());
+        }
+    }
+    let label =
+        |source: &ElementSelector, kind| labels.get(&(source, kind)).cloned().unwrap_or_default();
     let mut rows = Vec::new();
     for n in p.nodes {
         if !n.kind.is_activity() {
             continue;
         }
-        let key = ElementKey {
-            document_id,
-            xml_id: n.id.selector(),
-        };
-        let lane = p
-            .lanes
-            .iter()
-            .find(|l| l.members.contains(&n.id.selector()));
-        let labels = |source: &ElementSelector, kind| {
-            project
-                .dictionary_links
-                .iter()
-                .filter(|l| {
-                    l.source.document_id == document_id
-                        && &l.source.xml_id == source
-                        && l.kind == kind
-                })
-                .filter_map(|l| target_name(project, &l.target).map(str::to_owned))
-                .collect::<Vec<_>>()
-        };
-        let outgoing = p
-            .flows
-            .iter()
-            .filter(|f| {
-                f.kind == FlowKind::Sequence
-                    && resolve(&f.source).as_ref() == Some(&n.id.selector())
-            })
-            .filter_map(|f| {
-                Some(TableFlow {
-                    id: f.id.selector(),
-                    target: resolve(&f.target)?,
-                    condition: f.condition.clone(),
-                })
-            })
-            .collect();
+        let selector = n.id.selector();
+        let lane = lanes.get(&selector);
         rows.push(ActivityRow {
-            key,
+            key: ElementKey {
+                document_id,
+                xml_id: selector.clone(),
+            },
             name: n.name.clone(),
             lane: lane.map(|l| l.id.selector()),
             role: lane.and_then(|l| {
-                labels(&l.id.selector(), DictionaryKind::Role)
+                label(&l.id.selector(), DictionaryKind::Role)
                     .into_iter()
                     .next()
             }),
-            systems: labels(&n.id.selector(), DictionaryKind::System),
-            documents: labels(&n.id.selector(), DictionaryKind::Document),
-            outgoing,
+            systems: label(&selector, DictionaryKind::System),
+            documents: label(&selector, DictionaryKind::Document),
+            outgoing: outgoing.get(&selector).cloned().unwrap_or_default(),
         });
     }
     Some(rows)

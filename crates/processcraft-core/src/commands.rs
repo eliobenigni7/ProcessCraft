@@ -810,11 +810,14 @@ pub struct Session {
     saved: Option<[u8; 32]>,
     selection: Vec<ElementKey>,
     history: History,
+    checkpoint_cache: crate::identity::CheckpointCache,
+    activity_scans: ActivityScans,
 }
 impl Session {
     pub fn new(project: ProjectData) -> Result<Self, CommandError> {
+        let mut checkpoint_cache = crate::identity::CheckpointCache::default();
         let content_id = project
-            .content_identity()
+            .content_identity_cached(&mut checkpoint_cache)
             .map_err(CommandError::InvalidParams)?;
         Ok(Self {
             id: Uuid::new_v4().to_string(),
@@ -824,6 +827,8 @@ impl Session {
             saved: Some(content_id),
             selection: vec![],
             history: History::default(),
+            checkpoint_cache,
+            activity_scans: Vec::new(),
         })
     }
     pub fn id(&self) -> String {
@@ -981,6 +986,7 @@ impl Session {
                     ) || matches!(m, Mutation::CreateChoreography { choreography, .. } if choreography.graph.is_some())
                 });
                 let mut candidate = (*self.project).clone();
+                let mut native_baseline = None;
                 for mutation in mutations {
                     if let Mutation::ApplyLayout { proposal } = &mutation {
                         if proposal.session_id != self.id {
@@ -989,6 +995,17 @@ impl Session {
                         if proposal.generation != self.generation {
                             return Err(CommandError::GenerationConflict);
                         }
+                    }
+                    // Explicit identity edits may change native XML IDs: settle the
+                    // implicit-change check first and rebuild the baseline lazily after.
+                    if matches!(
+                        mutation,
+                        Mutation::SetElementXmlId { .. }
+                            | Mutation::PromoteElementIdentity { .. }
+                            | Mutation::InitializeDocumentRootOrder { .. }
+                    ) && let Some(baseline) = native_baseline.take()
+                    {
+                        reject_implicit_native_xml_id_changes(&baseline, &candidate)?;
                     }
                     match mutation {
                         Mutation::SetElementXmlId {
@@ -1060,11 +1077,15 @@ impl Session {
                             );
                         }
                         other => {
-                            let previous = native_xml_ids(&candidate);
+                            if native_baseline.is_none() {
+                                native_baseline = Some(native_xml_ids(&candidate));
+                            }
                             mutate(&mut candidate, other)?;
-                            reject_implicit_native_xml_id_changes(&previous, &candidate)?;
                         }
                     }
+                }
+                if let Some(baseline) = native_baseline {
+                    reject_implicit_native_xml_id_changes(&baseline, &candidate)?;
                 }
                 if cleanup_activity_navigation {
                     prune_removed_activity_navigation(
@@ -1095,9 +1116,10 @@ impl Session {
                     &self.project,
                     &candidate,
                     &selector_mappings,
+                    &mut self.activity_scans,
                 )?;
                 let id = candidate
-                    .content_identity()
+                    .content_identity_cached(&mut self.checkpoint_cache)
                     .map_err(CommandError::InvalidParams)?;
                 if id == self.content_id {
                     changed = false;
@@ -1156,7 +1178,7 @@ impl Session {
                 self.selection = old.selection;
                 self.content_id = self
                     .project
-                    .content_identity()
+                    .content_identity_cached(&mut self.checkpoint_cache)
                     .map_err(CommandError::InvalidParams)?;
             }
             Request::Redo => {
@@ -1171,7 +1193,7 @@ impl Session {
                 self.selection = old.selection;
                 self.content_id = self
                     .project
-                    .content_identity()
+                    .content_identity_cached(&mut self.checkpoint_cache)
                     .map_err(CommandError::InvalidParams)?;
             }
         }
@@ -1190,6 +1212,22 @@ impl Session {
         })
     }
 }
+fn counts<'a, T: Eq + std::hash::Hash + 'a>(
+    items: impl IntoIterator<Item = &'a T>,
+) -> std::collections::HashMap<&'a T, usize> {
+    let mut counts = std::collections::HashMap::new();
+    for item in items {
+        *counts.entry(item).or_insert(0) += 1;
+    }
+    counts
+}
+/// True when some value occurs more often in `next` than in `previous`.
+fn introduces_new<T: Eq + std::hash::Hash>(previous: &[T], next: &[T]) -> bool {
+    let before = counts(previous);
+    counts(next)
+        .into_iter()
+        .any(|(item, count)| count > before.get(item).copied().unwrap_or(0))
+}
 fn reject_new_choreography_graph_issues(
     old: &ProjectData,
     candidate: &ProjectData,
@@ -1199,6 +1237,12 @@ fn reject_new_choreography_graph_issues(
         let Some(before) = old.documents.iter().find(|d| d.id == after.id) else {
             continue;
         };
+        // Both scans only visit choreography scopes.
+        if Arc::ptr_eq(before, after)
+            || (before.choreographies.is_empty() && after.choreographies.is_empty())
+        {
+            continue;
+        }
         let selected = |d: &BpmnDocument| {
             crate::validation::choreography_graph_diagnostics(d)
                 .into_iter()
@@ -1224,10 +1268,7 @@ fn reject_new_choreography_graph_issues(
             }
         }
         let next = selected(after);
-        if next.iter().any(|issue| {
-            next.iter().filter(|other| *other == issue).count()
-                > previous.iter().filter(|other| *other == issue).count()
-        }) {
+        if introduces_new(&previous, &next) {
             return Err(invalid(
                 "change introduces an invalid choreography graph reference or kind",
             ));
@@ -1246,10 +1287,7 @@ fn reject_new_choreography_graph_issues(
             }
         }
         let next = crate::validation::choreography_reference_issues(after);
-        if next.iter().any(|issue| {
-            next.iter().filter(|other| *other == issue).count()
-                > previous.iter().filter(|other| *other == issue).count()
-        }) {
+        if introduces_new(&previous, &next) {
             return Err(invalid(
                 "change introduces an invalid choreography reference",
             ));
@@ -1294,11 +1332,32 @@ fn reject_implicit_native_xml_id_changes(
     }
     Ok(())
 }
+/// Activity-reference scan of a document, memoized by `Arc` identity: the
+/// previous commit's "after" scan is the next commit's "before" scan.
+type ActivityScans = Vec<(
+    Arc<BpmnDocument>,
+    (
+        Vec<crate::validation::ActivityReferenceIssue>,
+        Vec<crate::validation::ActivityReferenceResolution>,
+    ),
+)>;
 fn reject_new_activity_reference_issues(
     old: &ProjectData,
     candidate: &ProjectData,
     mappings: &[SelectorMapping],
+    scans: &mut ActivityScans,
 ) -> Result<(), CommandError> {
+    let mut fresh: ActivityScans = Vec::new();
+    let mut scan = |doc: &Arc<BpmnDocument>| {
+        let result = scans
+            .iter()
+            .chain(&fresh)
+            .find(|(cached, _)| Arc::ptr_eq(cached, doc))
+            .map(|(_, result)| result.clone())
+            .unwrap_or_else(|| crate::validation::activity_family_reference_scan(doc));
+        fresh.push((doc.clone(), result.clone()));
+        result
+    };
     for after in &candidate.documents {
         let Some(before) = old.documents.iter().find(|doc| doc.id == after.id) else {
             // A document created in this batch has no earlier state: every
@@ -1310,7 +1369,11 @@ fn reject_new_activity_reference_issues(
             }
             continue;
         };
-        let mut previous = crate::validation::activity_family_reference_issues(before);
+        if Arc::ptr_eq(before, after) {
+            continue;
+        }
+        let (mut previous, mut old_resolutions) = scan(before);
+        let (next, new_resolutions) = scan(after);
         for issue in &mut previous {
             for mapping in mappings
                 .iter()
@@ -1326,17 +1389,11 @@ fn reject_new_activity_reference_issues(
                 }
             }
         }
-        let next = crate::validation::activity_family_reference_issues(after);
-        if next.iter().any(|issue| {
-            next.iter().filter(|other| *other == issue).count()
-                > previous.iter().filter(|other| *other == issue).count()
-        }) {
+        if introduces_new(&previous, &next) {
             return Err(invalid(
                 "change introduces an unresolved local activity reference",
             ));
         }
-        let mut old_resolutions = crate::validation::activity_family_reference_resolutions(before);
-        let new_resolutions = crate::validation::activity_family_reference_resolutions(after);
         for resolution in &mut old_resolutions {
             for mapping in mappings
                 .iter()
@@ -1356,36 +1413,35 @@ fn reject_new_activity_reference_issues(
                 }
             }
         }
+        let old_references = counts(old_resolutions.iter().map(|r| &r.reference));
+        let new_references = counts(new_resolutions.iter().map(|r| &r.reference));
+        let old_targets = counts(old_resolutions.iter());
+        let new_targets = counts(new_resolutions.iter());
         for old_resolution in &old_resolutions {
-            let old_count = old_resolutions
-                .iter()
-                .filter(|r| r.reference == old_resolution.reference)
-                .count();
-            let new_count = new_resolutions
-                .iter()
-                .filter(|r| r.reference == old_resolution.reference)
-                .count();
-            if new_count >= old_count && new_count > 0 {
-                let old_target_count = old_resolutions
-                    .iter()
-                    .filter(|r| {
-                        r.reference == old_resolution.reference
-                            && r.resolved_target == old_resolution.resolved_target
-                    })
-                    .count();
-                let new_target_count = new_resolutions
-                    .iter()
-                    .filter(|r| {
-                        r.reference == old_resolution.reference
-                            && r.resolved_target == old_resolution.resolved_target
-                    })
-                    .count();
-                if old_target_count > new_target_count {
-                    return Err(invalid("change would retarget a local activity reference"));
-                }
+            let old_count = old_references[&old_resolution.reference];
+            let new_count = new_references
+                .get(&old_resolution.reference)
+                .copied()
+                .unwrap_or(0);
+            if new_count >= old_count
+                && new_count > 0
+                && old_targets[old_resolution]
+                    > new_targets.get(old_resolution).copied().unwrap_or(0)
+            {
+                return Err(invalid("change would retarget a local activity reference"));
             }
         }
     }
+    // Keep one scan per candidate document; the clones keep their `Arc`s alive.
+    let mut kept: ActivityScans = Vec::new();
+    for (doc, result) in fresh.into_iter().chain(std::mem::take(scans)) {
+        if candidate.documents.iter().any(|d| Arc::ptr_eq(d, &doc))
+            && !kept.iter().any(|(k, _)| Arc::ptr_eq(k, &doc))
+        {
+            kept.push((doc, result));
+        }
+    }
+    *scans = kept;
     Ok(())
 }
 fn prune_removed_activity_navigation(
@@ -2217,6 +2273,35 @@ fn collect_node_ids(
         );
         for association in &content.data_associations {
             collect_association_ids(association, ids);
+        }
+    }
+}
+/// Clear gateway and activity default flows that point at deleted flows.
+fn clear_removed_defaults(
+    nodes: &mut [Node],
+    removed: &std::collections::HashSet<ElementSelector>,
+) {
+    for node in nodes {
+        if let Some(activity) = &mut node.activity
+            && activity
+                .default_flow
+                .as_ref()
+                .is_some_and(|flow| removed.contains(flow))
+        {
+            activity.default_flow = None;
+        }
+        match &mut node.details {
+            Some(crate::bpmn_model::NodeDetails::Gateway { default_flow, .. })
+                if default_flow
+                    .as_ref()
+                    .is_some_and(|flow| removed.contains(flow)) =>
+            {
+                *default_flow = None;
+            }
+            Some(crate::bpmn_model::NodeDetails::SubProcess { content }) => {
+                clear_removed_defaults(&mut content.nodes, removed);
+            }
+            _ => {}
         }
     }
 }
@@ -5436,6 +5521,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                 );
             }
             let d = doc(p, document_id, true)?;
+            let index = crate::reference_resolution::ReferenceIndex::new(d);
             let mut removed = std::collections::HashSet::new();
             let mut found = false;
             for pr in &mut d.processes {
@@ -5487,6 +5573,52 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             }
             if !found {
                 return Err(invalid("element not found or cannot be deleted"));
+            }
+            // Cascade in the same undo step: flows touching a deleted element go
+            // with it, and a deleted flow stops being any node's default flow.
+            let touches = |reference: &Option<crate::bpmn_activity::ModelReference>| {
+                reference.as_ref().is_some_and(|reference| {
+                    matches!(index.resolve(reference),
+                        crate::reference_resolution::ReferenceResolution::Resolved(id)
+                            if removed.contains(&id))
+                })
+            };
+            let incident: Vec<ElementSelector> = crate::queries::scopes(d)
+                .iter()
+                .flat_map(|scope| scope.flows.iter())
+                .chain(d.collaborations().flat_map(|c| c.flows.iter()))
+                .filter(|f| {
+                    !removed.contains(&f.id.selector())
+                        && (touches(&f.source) || touches(&f.target))
+                })
+                .map(|f| f.id.selector())
+                .collect();
+            for flow_id in &incident {
+                for pr in &mut d.processes {
+                    delete_nested(
+                        &mut pr.nodes,
+                        &mut pr.lanes,
+                        &mut pr.flows,
+                        &mut pr.data_associations,
+                        flow_id,
+                        &mut removed,
+                        0,
+                    );
+                }
+                for c in d
+                    .collaboration
+                    .iter_mut()
+                    .chain(&mut d.additional_collaborations)
+                {
+                    let n = c.flows.len();
+                    c.flows.retain(|x| x.id != *flow_id);
+                    if n != c.flows.len() {
+                        removed.insert(flow_id.clone());
+                    }
+                }
+            }
+            for pr in &mut d.processes {
+                clear_removed_defaults(&mut pr.nodes, &removed);
             }
             for dg in &mut d.diagrams {
                 dg.shapes.retain(|s| !removed.contains(&s.element));
@@ -5660,7 +5792,7 @@ static COMMAND_DESCRIPTORS: &[CommandDescriptor] = &[
     descriptor!("documentProperties","Document properties","document_id":"DocumentId","name":"string","folder":"XmlId|null"),
     descriptor!("rename","Rename","document_id":"DocumentId","element_id":"ElementSelector","name":"string"),
     descriptor!("documentation","Set documentation","document_id":"DocumentId","element_id":"ElementSelector","documentation":"string"),
-    descriptor!("delete","Delete element","document_id":"DocumentId","element_id":"ElementSelector"),
+    descriptor!("delete","Delete element with its connected flows","document_id":"DocumentId","element_id":"ElementSelector"),
     descriptor!("moveShape","Move shape","document_id":"DocumentId","diagram_id":"ElementSelector","shape_id":"ElementSelector","bounds":"Bounds"),
     descriptor!("reroute","Reroute edge","document_id":"DocumentId","diagram_id":"ElementSelector","edge_id":"ElementSelector","waypoints":"Point[]"),
     descriptor!("assignLane","Assign lane","document_id":"DocumentId","process_id":"ElementSelector","element_id":"ElementSelector","lane_id":"ElementSelector|null","bounds":"ShapeBounds[]"),
