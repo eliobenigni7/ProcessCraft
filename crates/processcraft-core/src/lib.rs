@@ -23,6 +23,7 @@ pub use validation::{Diagnostic, DiagnosticSeverity};
 
 pub mod layout;
 pub mod modeling;
+pub mod replace;
 pub mod rules;
 
 pub mod bpmn_catalog;

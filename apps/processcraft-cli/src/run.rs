@@ -655,6 +655,15 @@ fn query_project(path: &Path, query: Query) -> Result<(), Error> {
             let rows: Vec<_> = rows.into_iter().map(|row| json!({"key":row.key,"name":row.name,"lane":row.lane,"role":row.role,"systems":row.systems,"documents":row.documents,"outgoing":row.outgoing.into_iter().map(|flow| json!({"id":flow.id,"target":flow.target,"condition":flow.condition})).collect::<Vec<_>>() })).collect();
             json!({"rows":rows})
         }
+        Query::ReplaceOptions {
+            document_id,
+            element_id,
+        } => {
+            let document: DocumentId = document_id.parse().map_err(|e| error(2, e))?;
+            let element: ElementSelector = element_id.parse().map_err(|e| error(2, e))?;
+            json!({"options": replace_options(project, document, &element)
+                .ok_or_else(|| error(3, "document not found"))?})
+        }
     };
     emit(&result);
     Ok(())
@@ -665,6 +674,21 @@ fn query_project(path: &Path, query: Query) -> Result<(), Error> {
 struct FileLayoutProposal {
     base_content_id: [u8; 32],
     proposal: processcraft_core::layout::LayoutProposal,
+}
+
+/// Replace targets for an element, each with its menu label (shared by CLI and MCP).
+pub(crate) fn replace_options(
+    project: &ProjectData,
+    document: processcraft_core::ids::DocumentId,
+    element: &processcraft_core::ids::ElementSelector,
+) -> Option<Vec<Value>> {
+    let d = project.documents.iter().find(|d| d.id == document)?;
+    Some(
+        processcraft_core::replace::replace_options(d, element)
+            .into_iter()
+            .map(|target| json!({"label": target.label(), "target": target}))
+            .collect(),
+    )
 }
 
 fn query_fields_page(

@@ -749,6 +749,12 @@ pub enum Mutation {
         flow_id: crate::ids::ElementIdentity,
         edge_id: crate::ids::ElementIdentity,
     },
+    /// Replace a node or sequence flow with another BPMN type in place (see `replace::replace`).
+    ReplaceElement {
+        document_id: DocumentId,
+        element_id: ElementSelector,
+        target: crate::replace::ReplaceTarget,
+    },
 }
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(
@@ -1929,7 +1935,7 @@ fn nested_node_mut<'a>(
     }
     None
 }
-fn node_mut<'a>(
+pub(crate) fn node_mut<'a>(
     document: &'a mut BpmnDocument,
     id: &ElementSelector,
 ) -> Result<&'a mut Node, CommandError> {
@@ -5584,6 +5590,18 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                 mutate(p, m)?;
             }
         }
+        Mutation::ReplaceElement {
+            document_id,
+            element_id,
+            target,
+        } => {
+            let d = doc(p, document_id, true)?;
+            let batch = crate::replace::replace(d, &element_id, &target)
+                .map_err(CommandError::InvalidParams)?;
+            for m in batch {
+                mutate(p, m)?;
+            }
+        }
         Mutation::Delete {
             document_id,
             element_id,
@@ -5879,6 +5897,7 @@ static COMMAND_DESCRIPTORS: &[CommandDescriptor] = &[
     descriptor!("setNodeOwnerContact","Set node owner and contact","document_id":"DocumentId","element_id":"ElementSelector","owner":"string","contact":"string"),
     descriptor!("connect","Connect elements (flow kind chosen by BPMN rules)","document_id":"DocumentId","diagram_id":"ElementSelector","source_id":"ElementSelector","target_id":"ElementSelector","flow_id":"ElementIdentity","edge_id":"ElementIdentity"),
     descriptor!("append","Append an auto-placed connected element","document_id":"DocumentId","diagram_id":"ElementSelector","source_id":"ElementSelector","kind":"NodeKind","name":"string|null","node_id":"ElementIdentity","shape_id":"ElementIdentity","flow_id":"ElementIdentity","edge_id":"ElementIdentity"),
+    descriptor!("replaceElement","Replace an element with another BPMN type","document_id":"DocumentId","element_id":"ElementSelector","target":"ReplaceTarget"),
 ];
 pub fn command_descriptors() -> &'static [CommandDescriptor] {
     COMMAND_DESCRIPTORS

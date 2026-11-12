@@ -62,6 +62,14 @@ pub(super) struct CanvasState {
     /// Canvas search query while the search overlay is open, and whether it still needs focus.
     search: Option<String>,
     search_focus: bool,
+    /// Open replace popup (bpmn-js wrench menu).
+    replace: Option<ReplaceMenu>,
+}
+/// Replace popup for one element: filter text and whether the field still needs focus.
+struct ReplaceMenu {
+    element: ElementSelector,
+    query: String,
+    focus: bool,
 }
 
 fn fit(diagram: &processcraft_core::model::Diagram, size: Vec2) -> ((f64, f64), f32) {
@@ -167,6 +175,7 @@ const PAD_ENTRY: f32 = 22.0;
 enum PadAction {
     Append(NodeKind),
     Connect,
+    Replace,
     Delete,
 }
 impl PadAction {
@@ -178,6 +187,7 @@ impl PadAction {
             Self::Append(NodeKind::EndEvent) => "Append end event",
             Self::Append(_) => "Append text annotation",
             Self::Connect => "Connect (drag to the target)",
+            Self::Replace => "Change type (R)",
             Self::Delete => "Delete",
         }
     }
@@ -211,6 +221,9 @@ fn context_pad(
     }
     if located.is_some() {
         actions.push(PadAction::Connect);
+    }
+    if !processcraft_core::replace::replace_options(document, element).is_empty() {
+        actions.push(PadAction::Replace);
     }
     actions.push(PadAction::Delete);
     actions
@@ -266,6 +279,14 @@ fn paint_pad_icon(painter: &egui::Painter, action: PadAction, r: Rect, color: Co
             painter.line_segment([at(-2.0, 2.0), at(4.0, 2.0)], stroke);
         }
         PadAction::Connect => painter.arrow(at(-6.0, 6.0), Vec2::new(11.0, -11.0), stroke),
+        PadAction::Replace => {
+            // Wrench: a handle and a ring-shaped head.
+            painter.line_segment(
+                [at(-6.0, 6.0), at(1.0, -1.0)],
+                egui::Stroke::new(2.5, color),
+            );
+            painter.circle_stroke(at(3.5, -3.5), 3.5, stroke);
+        }
         PadAction::Delete => {
             painter.rect_stroke(
                 Rect::from_min_max(at(-5.0, -3.0), at(5.0, 7.0)),
@@ -275,6 +296,184 @@ fn paint_pad_icon(painter: &egui::Painter, action: PadAction, r: Rect, color: Co
             );
             painter.line_segment([at(-7.0, -5.0), at(7.0, -5.0)], stroke);
             painter.line_segment([at(-2.0, -7.0), at(2.0, -7.0)], stroke);
+        }
+    }
+}
+
+/// Small icon of a replace target: event circles with a trigger letter, gateway diamonds with
+/// their marker, activity boxes with a type letter or subprocess marker, data shapes, flows.
+fn paint_replace_icon(
+    painter: &egui::Painter,
+    target: &processcraft_core::replace::ReplaceTarget,
+    r: Rect,
+    color: Color32,
+) {
+    use processcraft_core::{replace::ReplaceTarget, rules};
+    let stroke = egui::Stroke::new(1.2, color);
+    let c = r.center();
+    let at = |x: f32, y: f32| c + Vec2::new(x, y);
+    let letter = |text: &str, size: f32| {
+        painter.text(
+            c,
+            egui::Align2::CENTER_CENTER,
+            text,
+            egui::FontId::proportional(size),
+            color,
+        );
+    };
+    let ReplaceTarget::Node {
+        kind,
+        trigger,
+        non_interrupting,
+        event_sub_process,
+        collapsed,
+    } = target
+    else {
+        painter.arrow(at(-7.0, 5.0), Vec2::new(14.0, -10.0), stroke);
+        match target {
+            ReplaceTarget::DefaultFlow => {
+                painter.line_segment([at(-6.0, -1.0), at(-2.0, 5.0)], stroke);
+            }
+            ReplaceTarget::ConditionalFlow => {
+                painter.add(egui::Shape::closed_line(
+                    vec![at(-7.0, 5.0), at(-4.0, 1.0), at(-1.0, 3.0), at(-4.0, 7.0)],
+                    stroke,
+                ));
+            }
+            _ => {}
+        }
+        return;
+    };
+    if rules::is_event(*kind) {
+        if *non_interrupting {
+            let points: Vec<Pos2> = (0..=24)
+                .map(|i| {
+                    let a = i as f32 / 24.0 * std::f32::consts::TAU;
+                    at(7.5 * a.cos(), 7.5 * a.sin())
+                })
+                .collect();
+            painter.extend(egui::Shape::dashed_line(&points, stroke, 2.0, 2.0));
+        } else {
+            let width = if *kind == NodeKind::EndEvent {
+                2.4
+            } else {
+                1.2
+            };
+            painter.circle_stroke(c, 7.5, egui::Stroke::new(width, color));
+        }
+        if matches!(
+            kind,
+            NodeKind::IntermediateCatchEvent
+                | NodeKind::IntermediateThrowEvent
+                | NodeKind::BoundaryEvent
+        ) {
+            painter.circle_stroke(c, 5.5, stroke);
+        }
+        if let Some(t) = trigger {
+            letter(&format!("{t:?}")[..1], 8.0);
+        }
+    } else if rules::is_gateway(*kind) {
+        painter.add(egui::Shape::closed_line(
+            vec![at(0.0, -8.0), at(8.0, 0.0), at(0.0, 8.0), at(-8.0, 0.0)],
+            stroke,
+        ));
+        let cross = || {
+            painter.line_segment([at(-2.5, -2.5), at(2.5, 2.5)], stroke);
+            painter.line_segment([at(-2.5, 2.5), at(2.5, -2.5)], stroke);
+        };
+        let plus = || {
+            painter.line_segment([at(0.0, -3.5), at(0.0, 3.5)], stroke);
+            painter.line_segment([at(-3.5, 0.0), at(3.5, 0.0)], stroke);
+        };
+        match kind {
+            NodeKind::ExclusiveGateway => cross(),
+            NodeKind::ParallelGateway => plus(),
+            NodeKind::ComplexGateway => {
+                cross();
+                plus();
+            }
+            NodeKind::InclusiveGateway => {
+                painter.circle_stroke(c, 3.0, stroke);
+            }
+            _ => {
+                painter.circle_stroke(c, 3.5, stroke);
+                painter.circle_stroke(c, 2.0, stroke);
+            }
+        }
+    } else if *kind == NodeKind::DataObjectReference {
+        painter.add(egui::Shape::closed_line(
+            vec![
+                at(-5.0, -7.0),
+                at(2.0, -7.0),
+                at(5.0, -4.0),
+                at(5.0, 7.0),
+                at(-5.0, 7.0),
+            ],
+            stroke,
+        ));
+    } else if *kind == NodeKind::DataStoreReference {
+        painter.rect_stroke(
+            Rect::from_center_size(c, Vec2::new(14.0, 12.0)),
+            3.0,
+            stroke,
+            egui::StrokeKind::Middle,
+        );
+        painter.line_segment([at(-7.0, -3.0), at(7.0, -3.0)], stroke);
+    } else {
+        let expanded = matches!(
+            kind,
+            NodeKind::SubProcess | NodeKind::AdHocSubProcess | NodeKind::Transaction
+        ) && !collapsed;
+        let outline = Rect::from_center_size(
+            c,
+            if expanded {
+                Vec2::new(17.0, 13.0)
+            } else {
+                Vec2::new(15.0, 11.0)
+            },
+        );
+        if *event_sub_process {
+            let corners = [
+                outline.left_top(),
+                outline.right_top(),
+                outline.right_bottom(),
+                outline.left_bottom(),
+                outline.left_top(),
+            ];
+            painter.extend(egui::Shape::dashed_line(&corners, stroke, 2.0, 1.5));
+        } else {
+            let width = if *kind == NodeKind::CallActivity {
+                2.4
+            } else {
+                1.2
+            };
+            painter.rect_stroke(
+                outline,
+                2.0,
+                egui::Stroke::new(width, color),
+                egui::StrokeKind::Middle,
+            );
+        }
+        if *kind == NodeKind::Transaction {
+            painter.rect_stroke(outline.shrink(2.0), 1.0, stroke, egui::StrokeKind::Middle);
+        }
+        let marker = match kind {
+            NodeKind::UserTask => "U",
+            NodeKind::ServiceTask => "S",
+            NodeKind::SendTask => "Sd",
+            NodeKind::ReceiveTask => "Rc",
+            NodeKind::ManualTask => "M",
+            NodeKind::BusinessRuleTask => "B",
+            NodeKind::ScriptTask => "Sc",
+            NodeKind::AdHocSubProcess => "~",
+            _ => "",
+        };
+        if !marker.is_empty() {
+            letter(marker, 7.5);
+        }
+        if *collapsed {
+            let plus = Rect::from_center_size(at(0.0, 3.5), Vec2::splat(4.0));
+            painter.rect_stroke(plus, 0.0, stroke, egui::StrokeKind::Middle);
         }
     }
 }
@@ -578,6 +777,7 @@ impl ProcessCraft {
             .show(ui, |ui| self.canvas_render(ui, size, true));
         self.auto_scroll(ui.ctx());
         self.search_ui(ui.ctx());
+        self.replace_ui(ui.ctx());
         #[cfg(test)]
         ui.ctx().data_mut(|data| {
             data.insert_temp(egui::Id::unique("test_canvas_rect"), frame.response.rect)
@@ -618,6 +818,7 @@ impl ProcessCraft {
                 self.append(element, kind);
             }
             PadAction::Connect => {}
+            PadAction::Replace => self.open_replace(element),
             PadAction::Delete => self.delete(),
         }
     }
@@ -1702,6 +1903,125 @@ impl ProcessCraft {
             Err(e) => self.ctl.error = format!("Could not duplicate the selection: {e}."),
         }
     }
+    pub(super) fn open_replace(&mut self, element: ElementSelector) {
+        self.canvas.replace = Some(ReplaceMenu {
+            element,
+            query: String::new(),
+            focus: true,
+        });
+    }
+    /// Replace popup next to the element: filter field and the core replace options with small
+    /// icons; Enter or a click applies, Escape or a selection change closes.
+    fn replace_ui(&mut self, ctx: &egui::Context) {
+        use processcraft_core::replace::{ReplaceTarget, replace_options};
+        let (Some(rect), Some(mut menu)) = (self.canvas.rect, self.canvas.replace.take()) else {
+            return;
+        };
+        let snap = self.ctl.session.snapshot();
+        let Some(d) = snap.project.documents.get(self.doc) else {
+            return;
+        };
+        let options = replace_options(d, &menu.element);
+        if options.is_empty() || self.selected.as_ref() != Some(&menu.element) {
+            return;
+        }
+        let anchor = self
+            .current_diagram(d)
+            .and_then(|diagram| {
+                if let Some(shape) = diagram.shapes.iter().find(|s| s.element == menu.element) {
+                    let screen = to_screen(rect, self.camera, self.zoom, &shape.bounds);
+                    return Some(screen.right_top() + Vec2::new(8.0, 0.0));
+                }
+                let edge = diagram.edges.iter().find(|e| e.element == menu.element)?;
+                let p = edge.waypoints.get(edge.waypoints.len() / 2)?;
+                let point = Bounds {
+                    x: p.x,
+                    y: p.y,
+                    width: 0.0,
+                    height: 0.0,
+                };
+                Some(to_screen(rect, self.camera, self.zoom, &point).min + Vec2::splat(8.0))
+            })
+            .unwrap_or(rect.left_top() + Vec2::splat(8.0));
+        let needle = menu.query.to_lowercase();
+        let shown: Vec<ReplaceTarget> = options
+            .into_iter()
+            .filter(|t| t.label().to_lowercase().contains(&needle))
+            .collect();
+        let palette = self.theme.palette();
+        let mut chosen = None;
+        let mut close = false;
+        egui::Area::new(egui::Id::unique("processcraft-replace-menu"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(anchor)
+            .show(ctx, |ui| {
+                egui::Frame::popup(ui.style()).show(ui, |ui| {
+                    ui.set_width(250.0);
+                    let field = ui.add(
+                        egui::TextEdit::singleline(&mut menu.query)
+                            .hint_text("Change type")
+                            .desired_width(f32::INFINITY),
+                    );
+                    if menu.focus {
+                        field.request_focus();
+                        menu.focus = false;
+                    }
+                    if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                        close = true;
+                    } else if field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                        chosen = shown.first().cloned();
+                        close = true;
+                    }
+                    if shown.is_empty() {
+                        ui.weak("No matching type");
+                    }
+                    egui::ScrollArea::vertical()
+                        .max_height(320.0)
+                        .show(ui, |ui| {
+                            for target in &shown {
+                                let (row, response) = ui.allocate_exact_size(
+                                    Vec2::new(ui.available_width(), 22.0),
+                                    Sense::click(),
+                                );
+                                if response.hovered() {
+                                    ui.painter().rect_filled(row, 3.0, palette.accent_soft);
+                                }
+                                paint_replace_icon(
+                                    ui.painter(),
+                                    target,
+                                    Rect::from_center_size(
+                                        row.left_center() + Vec2::new(13.0, 0.0),
+                                        Vec2::splat(18.0),
+                                    ),
+                                    palette.text,
+                                );
+                                ui.painter().text(
+                                    row.left_center() + Vec2::new(28.0, 0.0),
+                                    egui::Align2::LEFT_CENTER,
+                                    target.label(),
+                                    egui::FontId::proportional(13.0),
+                                    palette.text,
+                                );
+                                if response.clicked() {
+                                    chosen = Some(target.clone());
+                                    close = true;
+                                }
+                            }
+                        });
+                });
+            });
+        let element = menu.element.clone();
+        if !close {
+            self.canvas.replace = Some(menu);
+        }
+        if let Some(target) = chosen {
+            self.ctl.mutate(vec![Mutation::ReplaceElement {
+                document_id: d.id,
+                element_id: element,
+                target,
+            }]);
+        }
+    }
     fn open_search(&mut self) {
         self.canvas.search = Some(String::new());
         self.canvas.search_focus = true;
@@ -1740,6 +2060,14 @@ impl ProcessCraft {
             self.open_search();
         }
         let duplicate = ctx.input_mut(|i| i.consume_key(Modifiers::CTRL, Key::D));
+        // R: replace menu for a single selected element or sequence flow.
+        if editable
+            && self.multi.len() <= 1
+            && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::R))
+            && let Some(element) = self.selected.clone()
+        {
+            self.open_replace(element);
+        }
         if copy && !self.multi.is_empty() {
             self.copy_to_clipboard(ctx);
         }
@@ -2365,6 +2693,53 @@ mod tests {
             pad.iter()
                 .all(|(a, _)| !matches!(a, PadAction::Append(k) if *k != NodeKind::TextAnnotation))
         );
+    }
+    #[test]
+    fn r_opens_the_replace_menu_and_enter_turns_a_task_into_a_user_task() {
+        let mut app = ProcessCraft::default();
+        app.add(NodeKind::Task);
+        let task = app.selected.clone().unwrap();
+        let context = egui::Context::default();
+        let frame = |app: &mut ProcessCraft, events: Vec<egui::Event>| {
+            let mut output = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(900., 600.))),
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    app.canvas_shortcuts(ui.ctx());
+                    app.canvas_ui(ui)
+                },
+            );
+            output.textures_delta.clear();
+        };
+        let key = |key| egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        };
+        // The context pad offers the wrench for the task.
+        let snap = app.ctl.session.snapshot();
+        let screen = Rect::from_min_size(Pos2::ZERO, Vec2::new(100.0, 80.0));
+        assert!(
+            context_pad(&snap.project.documents[0], &task, screen)
+                .iter()
+                .any(|(a, _)| *a == PadAction::Replace)
+        );
+        frame(&mut app, vec![key(egui::Key::R)]);
+        assert!(app.canvas.replace.is_some());
+        frame(&mut app, vec![]);
+        frame(&mut app, vec![egui::Event::Text("User".into())]);
+        assert_eq!(app.canvas.replace.as_ref().unwrap().query, "User");
+        frame(&mut app, vec![key(egui::Key::Enter)]);
+        assert!(app.canvas.replace.is_none(), "{}", app.ctl.error);
+        let snap = app.ctl.session.snapshot();
+        let node = processcraft_core::queries::find_node(&snap.project.documents[0], &task)
+            .expect("same id");
+        assert_eq!(node.kind, NodeKind::UserTask);
     }
     #[test]
     fn vacant_bounds_avoids_shapes_but_not_containers() {

@@ -2995,6 +2995,7 @@ fn descriptors_match_protocol_tags() {
         "setNodeOwnerContact",
         "connect",
         "append",
+        "replaceElement",
     ];
     assert_eq!(
         descriptors.iter().map(|d| d.serde_tag).collect::<Vec<_>>(),

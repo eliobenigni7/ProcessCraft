@@ -230,6 +230,12 @@ enum Query {
         offset: usize,
         limit: usize,
     },
+    ReplaceOptions {
+        document_id: processcraft_core::ids::DocumentId,
+        element_id: processcraft_core::ids::ElementSelector,
+        offset: usize,
+        limit: usize,
+    },
 }
 
 fn schema(value: Value) -> Arc<serde_json::Map<String, Value>> {
@@ -267,7 +273,7 @@ fn tools() -> Vec<Tool> {
             .annotate(ToolAnnotations::new().read_only(true)),
         Tool::new(
             "query",
-            "Read paginated catalog fields, library, dictionary, usages, or review data",
+            "Read paginated catalog fields, library, dictionary, usages, replace options, or review data",
             query,
         )
         .annotate(ToolAnnotations::new().read_only(true)),
@@ -435,6 +441,10 @@ impl ServerHandler for Server {
                         processcraft_core::queries::activity_table(&snapshot.project, document_id, &process_id)
                             .ok_or_else(|| ErrorData::invalid_params("process not found", None))?
                             .into_iter().map(|row| json!({"key":row.key,"name":row.name,"lane":row.lane,"role":row.role,"systems":row.systems,"documents":row.documents,"outgoing":row.outgoing.into_iter().map(|f| json!({"id":f.id,"target":f.target,"condition":f.condition})).collect::<Vec<_>>() })).collect(), offset, limit),
+                    Query::ReplaceOptions { document_id, element_id, offset, limit } => (
+                        crate::run::replace_options(&snapshot.project, document_id, &element_id)
+                            .ok_or_else(|| ErrorData::invalid_params("document not found", None))?,
+                        offset, limit),
                 };
                 let total = items.len();
                 let mut result =

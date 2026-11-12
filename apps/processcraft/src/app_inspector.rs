@@ -904,6 +904,14 @@ impl ProcessCraft {
                             |n| node_kind_label(n.kind),
                         );
                     widgets::section_label(side, kind);
+                    if editable
+                        && snap.project.documents.get(self.doc).is_some_and(|d| {
+                            !processcraft_core::replace::replace_options(d, selected).is_empty()
+                        })
+                        && side.small_button("Change type…").clicked()
+                    {
+                        self.open_replace(selected.clone());
+                    }
                     side.label(
                         egui::RichText::new(if self.draft.is_empty() {
                             "Untitled"
