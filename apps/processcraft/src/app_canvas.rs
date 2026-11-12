@@ -2098,6 +2098,7 @@ impl ProcessCraft {
                                             start: from.round(),
                                             delta: delta.round(),
                                             before: ctx.input(|i| i.modifiers.command),
+                                            at: Some(Point { x: x0, y: y0 }),
                                         }]);
                                     }
                                 }

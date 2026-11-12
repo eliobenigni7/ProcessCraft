@@ -20,6 +20,8 @@ pub enum ConnectionKind {
     DataOutput,
     /// Plain association between a text annotation and another element.
     Association,
+    /// Directed association from a compensation boundary event to its compensation activity.
+    CompensationAssociation,
 }
 
 /// Where an element sits: its node or pool, direct scope, enclosing subprocesses, and the
@@ -34,6 +36,8 @@ pub struct Located<'a> {
     pub organisation: Option<ElementSelector>,
 }
 
+/// Collaboration-level text annotations are located with the collaboration as their
+/// organisation and no scope.
 pub fn locate<'a>(doc: &'a BpmnDocument, id: &ElementSelector) -> Option<Located<'a>> {
     fn walk<'a>(
         nodes: &'a [Node],
@@ -75,6 +79,29 @@ pub fn locate<'a>(doc: &'a BpmnDocument, id: &ElementSelector) -> Option<Located
                 scope: Some(scope),
                 ancestors,
                 organisation: Some(process.id.selector()),
+            });
+        }
+    }
+    for c in doc.collaborations() {
+        let annotation = c
+            .extras
+            .iter()
+            .flat_map(|e| &e.artifacts)
+            .find_map(|a| match a {
+                crate::bpmn_collaboration::CollaborationArtifact::TextAnnotation(n)
+                    if n.id == *id =>
+                {
+                    Some(n.as_ref())
+                }
+                _ => None,
+            });
+        if let Some(node) = annotation {
+            return Some(Located {
+                node: Some(node),
+                participant: None,
+                scope: None,
+                ancestors: Vec::new(),
+                organisation: Some(c.id.selector()),
             });
         }
     }
@@ -276,30 +303,61 @@ pub fn can_connect(
     source: &ElementSelector,
     target: &ElementSelector,
 ) -> Result<ConnectionKind, &'static str> {
-    if source == target {
-        return Err("Connecting an element to itself is not supported");
-    }
     let (Some(s), Some(t)) = (locate(doc, source), locate(doc, target)) else {
         return Err("Connect flow elements, data references, annotations, or pools");
     };
-    if s.organisation != t.organisation {
+    if source == target {
+        // A sequence-flow loop (bpmn-js allows it); nothing else connects to itself.
+        let node = s.node.filter(|n| is_flow_node(n.kind));
+        return match node.map(|n| sequence_refusal(n, n)) {
+            Some(None) => Ok(ConnectionKind::Sequence),
+            Some(Some(reason)) => Err(reason),
+            None => Err("Only flow nodes connect to themselves, by a sequence flow"),
+        };
+    }
+    let annotation = |e: &Located| e.node.is_some_and(|n| n.kind == NodeKind::TextAnnotation);
+    let annotation_pair = annotation(&s) != annotation(&t);
+    if s.organisation != t.organisation && !annotation_pair {
         if !message_source(&s) || !message_target(&t) {
             return Err(
                 "Across pools, connect a sending activity, message throw event, or pool to a receiving activity, message catch event, or pool",
             );
-        }
-        let nested = |e: &Located| e.node.is_some() && e.scope != e.organisation;
-        if nested(&s) || nested(&t) {
-            return Err("Message flows into or out of a subprocess are not supported");
         }
         if doc.collaborations().next().is_none() {
             return Err("Message flows need pools; add a pool for each process first");
         }
         return Ok(ConnectionKind::Message);
     }
+    if annotation_pair {
+        // Associations may cross scopes and pools (BPMN Association refs are any BaseElement).
+        if s.ancestors.contains(target)
+            || t.ancestors.contains(source)
+            || s.participant
+                .is_some_and(|_| t.organisation == s.organisation && t.scope.is_some())
+            || t.participant
+                .is_some_and(|_| s.organisation == t.organisation && s.scope.is_some())
+        {
+            return Err("An annotation cannot connect to its own container");
+        }
+        return Ok(ConnectionKind::Association);
+    }
     let (Some(sn), Some(tn)) = (s.node, t.node) else {
         return Err("A pool connects to other pools only by message flow");
     };
+    if sn.kind == NodeKind::BoundaryEvent
+        && has_definition(sn, |d| matches!(d, EventDefinition::Compensate { .. }))
+        && tn.kind.is_activity()
+    {
+        return if s.scope != t.scope {
+            Err("A compensation activity must be in the boundary event's process or subprocess")
+        } else if attached_to(sn) == Some(target) {
+            Err("A compensation boundary event cannot connect to its own host")
+        } else if is_event_subprocess(tn) {
+            Err("An event subprocess cannot be a compensation activity")
+        } else {
+            Ok(ConnectionKind::CompensationAssociation)
+        };
+    }
     if is_flow_node(sn.kind) && is_flow_node(tn.kind) {
         if s.scope != t.scope {
             return Err("Sequence flows must stay within one process or subprocess");
@@ -330,15 +388,6 @@ pub fn can_connect(
         } else {
             Err("The data reference is not visible from the source's scope")
         };
-    }
-    if (sn.kind == NodeKind::TextAnnotation) != (tn.kind == NodeKind::TextAnnotation) {
-        if s.ancestors.contains(target) || t.ancestors.contains(source) {
-            return Err("An annotation cannot connect to its own container");
-        }
-        if s.scope != t.scope {
-            return Err("Associations must stay within one process or subprocess");
-        }
-        return Ok(ConnectionKind::Association);
     }
     Err("These elements cannot be connected")
 }
@@ -622,6 +671,11 @@ mod tests {
             ("note", "task", Association),
             ("task", "note", Association),
             ("note", "data", Association),
+            ("task", "task", Sequence),
+            ("note", "inner", Association),
+            ("note", "pool2", Association),
+            ("inner", "other", Message),
+            ("compBoundary", "receive", CompensationAssociation),
         ];
         for (source, target, kind) in allowed {
             assert_eq!(check(&d, source, target), Ok(kind), "{source} -> {target}");
@@ -637,12 +691,14 @@ mod tests {
             ("task", "inner", "one process or subprocess"),
             ("task", "otherTimerStart", "Across pools"),
             ("timerBoundary", "other", "Across pools"),
-            ("inner", "other", "subprocess"),
             ("pool1", "task", "message flow"),
             ("innerData", "task", "not visible"),
-            ("note", "inner", "one process or subprocess"),
             ("data", "store", "cannot be connected"),
-            ("task", "task", "itself"),
+            ("end", "end", "End events"),
+            ("data", "data", "themselves"),
+            ("pool1", "note", "own container"),
+            ("compBoundary", "task", "own host"),
+            ("compBoundary", "inner", "boundary event's process"),
         ];
         for (source, target, reason) in refused {
             let result = check(&d, source, target);

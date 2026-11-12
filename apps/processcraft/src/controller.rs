@@ -182,7 +182,12 @@ impl Controller {
         self.apply_changes(request).is_some()
     }
     pub fn mutate_changes(&mut self, mutations: Vec<Mutation>) -> Option<ChangeSet> {
-        self.apply_changes(Request::Batch { mutations })
+        let changes = self.apply_changes(Request::Batch { mutations })?;
+        // Non-fatal notes from compound edits (e.g. routes laid out again after a move).
+        if !changes.warnings.is_empty() {
+            self.notify(changes.warnings.join("\n"));
+        }
+        Some(changes)
     }
     pub fn mutate(&mut self, mutations: Vec<Mutation>) -> bool {
         self.mutate_changes(mutations).is_some()

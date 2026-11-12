@@ -451,12 +451,24 @@ fn moving_into_a_lane_or_subprocess_updates_membership_and_scope() {
     let doc = document(&s);
     let located = processcraft_core::rules::locate(&doc, &sel("loose")).unwrap();
     assert_eq!(located.scope, Some(sel("sub")));
-    // A connected node is refused rather than left with flows across scopes.
-    let refused = batch(
+    // A connected node moves too; a sequence flow that would cross scopes (and cannot become a
+    // message flow inside one pool) is deleted with its edge, in the same undo step.
+    let before = s.snapshot();
+    batch(
         &mut s,
         vec![move_fixture("end", b(300.0, 520.0, 36.0, 36.0))],
-    );
+    )
+    .unwrap();
+    let doc = document(&s);
+    let located = processcraft_core::rules::locate(&doc, &sel("end")).unwrap();
+    assert_eq!(located.scope, Some(sel("sub")));
+    assert!(processcraft_core::queries::find_flow(&doc, &sel("flow_order_end")).is_none());
     assert!(
-        matches!(refused, Err(CommandError::InvalidParams(r)) if r.contains("without connections"))
+        doc.diagrams[0]
+            .edges
+            .iter()
+            .all(|e| e.element != sel("flow_order_end"))
     );
+    send(&mut s, Request::Undo).unwrap();
+    assert_eq!(s.snapshot().content_id, before.content_id);
 }

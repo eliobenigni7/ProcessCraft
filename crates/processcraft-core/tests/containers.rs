@@ -512,6 +512,7 @@ fn space_tool_moves_shapes_past_the_line_and_stretches_containers() {
         start,
         delta,
         before: false,
+        at: None,
     };
     batch(&mut s, vec![space(500.0, 100.0)]).unwrap();
     assert_eq!(bounds(&s, "review"), review);

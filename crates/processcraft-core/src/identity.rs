@@ -2967,11 +2967,15 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                         kinds.get(target),
                         Some(NodeKind::TextAnnotation | NodeKind::DataObjectReference)
                     )
+                    // A compensation association links a boundary event to its handler.
+                    && !(kinds.get(source) == Some(&NodeKind::BoundaryEvent)
+                        && kinds.get(target).is_some_and(|kind| kind.is_activity()))
                 {
                     return fail("association requires an artifact endpoint");
                 }
+                // Association refs are any BaseElement: a node of any scope may be an end.
                 let association_endpoint = |reference: &crate::ids::ElementSelector| {
-                    node_process.get(reference) == Some(&p.id)
+                    node_process.contains_key(reference)
                         || p.flows
                             .iter()
                             .any(|flow| flow.id == *reference && flow.kind == FlowKind::Sequence)
@@ -3020,11 +3024,21 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             }) {
                 return None;
             }
-            let process = node_process.get(id)?;
+            // Interaction nodes nested in subprocesses belong to the pool of their root process.
+            let mut process = node_process.get(id)?.clone();
+            for _ in 0..=32 {
+                match scopes_by_id
+                    .get(&process)
+                    .and_then(|scope| scope.parent.clone())
+                {
+                    Some(parent) => process = parent,
+                    None => break,
+                }
+            }
             let mut ps = c
                 .participants
                 .iter()
-                .filter(|p| endpoint(&p.process).as_ref() == Some(process));
+                .filter(|p| endpoint(&p.process).as_ref() == Some(&process));
             let first = ps.next()?;
             if ps.next().is_some() {
                 None

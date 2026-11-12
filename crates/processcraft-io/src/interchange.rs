@@ -5553,7 +5553,11 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                     Some(EventReference::Local(selector)) => {
                         if !p.nodes.iter().any(|n| n.id == *selector)
                             && !(f.kind == FlowKind::Association
-                                && (p.groups.iter().any(|g| g.id == *selector)
+                                // Association refs are any BaseElement, so any scope's node.
+                                && (all_scopes
+                                    .iter()
+                                    .any(|s| s.nodes.iter().any(|n| n.id == *selector))
+                                    || p.groups.iter().any(|g| g.id == *selector)
                                     || p.flows.iter().any(|flow| {
                                         flow.kind == FlowKind::Sequence && flow.id == *selector
                                     })))

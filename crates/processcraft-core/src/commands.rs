@@ -835,6 +835,34 @@ pub enum Mutation {
         delta: f64,
         #[serde(default)]
         before: bool,
+        /// Drag start: inside a pool, only that pool makes space (whole diagram otherwise).
+        #[serde(default)]
+        at: Option<Point>,
+    },
+    /// Align shapes left/center/right/top/middle/bottom (see `arrange::prepare_align`).
+    Align {
+        document_id: DocumentId,
+        diagram_id: ElementSelector,
+        shape_ids: Vec<ElementSelector>,
+        alignment: crate::arrange::Alignment,
+    },
+    /// Distribute shapes evenly (see `arrange::prepare_distribute`).
+    Distribute {
+        document_id: DocumentId,
+        diagram_id: ElementSelector,
+        shape_ids: Vec<ElementSelector>,
+        distribution: crate::arrange::Distribution,
+    },
+    /// Copy elements of a diagram and paste them moved by `dx`/`dy` with fresh IDs, into
+    /// `target_diagram_id` (default: the same diagram) (see `clipboard::copy` and `paste`).
+    Duplicate {
+        document_id: DocumentId,
+        diagram_id: ElementSelector,
+        element_ids: Vec<ElementSelector>,
+        dx: f64,
+        dy: f64,
+        #[serde(default)]
+        target_diagram_id: Option<ElementSelector>,
     },
 }
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
@@ -885,6 +913,16 @@ pub struct ChangeSet {
     pub selector_mappings: Vec<SelectorMapping>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub promoted_identities: Vec<PromotedIdentity>,
+    /// Non-fatal notes from compound mutations (e.g. routes laid out again by `moveElements`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
+}
+thread_local! {
+    /// Warnings raised while a batch is applied; collected into its [`ChangeSet`].
+    static WARNINGS: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+pub(crate) fn warn(warnings: impl IntoIterator<Item = String>) {
+    WARNINGS.with(|w| w.borrow_mut().extend(warnings));
 }
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -979,6 +1017,7 @@ impl Session {
         let mut changed = true;
         let mut selector_mappings = Vec::new();
         let mut promoted_identities = Vec::new();
+        WARNINGS.with(|w| w.borrow_mut().clear());
         match request {
             Request::Batch { mutations } => {
                 let explicit_root_orders: Vec<_> = mutations
@@ -1317,6 +1356,7 @@ impl Session {
             dirty: self.saved != Some(self.content_id),
             selector_mappings,
             promoted_identities,
+            warnings: WARNINGS.with(|w| std::mem::take(&mut *w.borrow_mut())),
         })
     }
 }
@@ -2441,14 +2481,31 @@ fn delete_nested(
         }
         return true;
     }
-    if let Some(index) = lanes.iter().position(|l| &l.id == id) {
-        collect_base_documentation_ids(lanes[index].base.as_ref(), removed);
-        collect_base_documentation_ids(lanes[index].child_lane_set_base.as_ref(), removed);
-        if let Some(child) = &lanes[index].child_lane_set_id {
-            removed.insert(child.selector());
+    if lanes.iter().any(|l| &l.id == id) {
+        // A lane goes with its child lanes at any depth (bpmn-js removes the lane's children).
+        let mut doomed = vec![id.clone()];
+        for _ in 0..32 {
+            let before = doomed.len();
+            for lane in lanes.iter() {
+                if lane.parent.as_ref().is_some_and(|p| doomed.contains(p))
+                    && !doomed.contains(&lane.id.selector())
+                {
+                    doomed.push(lane.id.selector());
+                }
+            }
+            if doomed.len() == before {
+                break;
+            }
         }
-        lanes.remove(index);
-        removed.insert(id.clone());
+        for lane in lanes.iter().filter(|l| doomed.contains(&l.id.selector())) {
+            collect_base_documentation_ids(lane.base.as_ref(), removed);
+            collect_base_documentation_ids(lane.child_lane_set_base.as_ref(), removed);
+            if let Some(child) = &lane.child_lane_set_id {
+                removed.insert(child.selector());
+            }
+        }
+        lanes.retain(|l| !doomed.contains(&l.id.selector()));
+        removed.extend(doomed);
         return true;
     }
     if let Some(index) = flows.iter().position(|f| &f.id == id) {
@@ -3123,6 +3180,20 @@ fn auto_resize(
     let d = doc(p, document_id, false)?;
     if resized && d.capability.allows_structural_editing() && !d.has_opaque_xml() {
         crate::containers::sync_lanes(old, d, diagram_id);
+    }
+    Ok(())
+}
+/// Apply a prepared move batch, passing its route warnings to the change set.
+fn apply_prepared(
+    p: &mut ProjectData,
+    prepared: crate::geometry::PreparedMove,
+) -> Result<(), CommandError> {
+    warn(prepared.warnings);
+    let Request::Batch { mutations } = prepared.request else {
+        return Err(invalid("invalid move"));
+    };
+    for m in mutations {
+        mutate(p, m)?;
     }
     Ok(())
 }
@@ -5254,7 +5325,17 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
         } => {
             let d = doc(p, document_id, true)?;
             if let Some(id) = process_id {
-                scope_parts_mut(d, &id)?.2.push(flow);
+                // BPMN export writes a scope's sequence flows before its associations; keep the
+                // same order so an exported file re-imports to the same model.
+                let flows = scope_parts_mut(d, &id)?.2;
+                let at = match flow.kind {
+                    FlowKind::Sequence => flows
+                        .iter()
+                        .position(|f| f.kind == FlowKind::Association)
+                        .unwrap_or(flows.len()),
+                    _ => flows.len(),
+                };
+                flows.insert(at, flow);
             } else {
                 d.collaboration
                     .as_mut()
@@ -5887,11 +5968,62 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             start,
             delta,
             before,
+            at,
         } => {
             let d = doc(p, document_id, false)?;
             let semantic = d.capability.allows_structural_editing() && !d.has_opaque_xml();
-            crate::containers::make_space(d, &diagram_id, axis, start, delta, !before, semantic)
+            crate::containers::make_space(d, &diagram_id, axis, start, delta, !before, semantic, at)
                 .map_err(CommandError::InvalidParams)?
+        }
+        Mutation::Align {
+            document_id,
+            diagram_id,
+            shape_ids,
+            alignment,
+        } => {
+            let prepared = crate::arrange::prepare_align(
+                doc(p, document_id, false)?,
+                &diagram_id,
+                &shape_ids,
+                alignment,
+            )
+            .map_err(invalid)?;
+            apply_prepared(p, prepared)?;
+        }
+        Mutation::Distribute {
+            document_id,
+            diagram_id,
+            shape_ids,
+            distribution,
+        } => {
+            let prepared = crate::arrange::prepare_distribute(
+                doc(p, document_id, false)?,
+                &diagram_id,
+                &shape_ids,
+                distribution,
+            )
+            .map_err(invalid)?;
+            apply_prepared(p, prepared)?;
+        }
+        Mutation::Duplicate {
+            document_id,
+            diagram_id,
+            element_ids,
+            dx,
+            dy,
+            target_diagram_id,
+        } => {
+            let d = doc(p, document_id, true)?;
+            let clipboard =
+                crate::clipboard::copy(d, &diagram_id, &element_ids).map_err(invalid)?;
+            let target = target_diagram_id.unwrap_or(diagram_id);
+            let fallback = crate::clipboard::default_scope(d, &target)
+                .ok_or_else(|| invalid("Create a process before pasting"))?;
+            let pasted = crate::clipboard::paste(d, &target, &fallback, &clipboard, dx, dy)
+                .map_err(invalid)?;
+            for m in pasted.mutations {
+                mutate(p, m)?;
+            }
         }
         Mutation::Delete {
             document_id,
@@ -6211,7 +6343,10 @@ static COMMAND_DESCRIPTORS: &[CommandDescriptor] = &[
     descriptor!("splitLane","Split a lane or pool into even lanes","document_id":"DocumentId","diagram_id":"ElementSelector","element_id":"ElementSelector","count":"u8"),
     descriptor!("createPool","Create a pool, wrapping a process diagram's content","document_id":"DocumentId","diagram_id":"ElementSelector","name":"string|null","center":"Point|null"),
     descriptor!("toggleCollapse","Collapse or expand a subprocess","document_id":"DocumentId","diagram_id":"ElementSelector","element_id":"ElementSelector"),
-    descriptor!("makeSpace","Insert or remove space at a line","document_id":"DocumentId","diagram_id":"ElementSelector","axis":"Axis","start":"number","delta":"number","before":"bool"),
+    descriptor!("makeSpace","Insert or remove space at a line","document_id":"DocumentId","diagram_id":"ElementSelector","axis":"Axis","start":"number","delta":"number","before":"bool","at":"Point|null"),
+    descriptor!("align","Align shapes","document_id":"DocumentId","diagram_id":"ElementSelector","shape_ids":"ElementSelector[]","alignment":"Alignment"),
+    descriptor!("distribute","Distribute shapes evenly","document_id":"DocumentId","diagram_id":"ElementSelector","shape_ids":"ElementSelector[]","distribution":"Distribution"),
+    descriptor!("duplicate","Copy elements and paste them at an offset with fresh IDs","document_id":"DocumentId","diagram_id":"ElementSelector","element_ids":"ElementSelector[]","dx":"number","dy":"number","target_diagram_id":"ElementSelector|null"),
 ];
 pub fn command_descriptors() -> &'static [CommandDescriptor] {
     COMMAND_DESCRIPTORS
