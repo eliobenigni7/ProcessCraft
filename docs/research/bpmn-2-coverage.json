@@ -17930,7 +17930,7 @@
         "render": "verified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "A",
@@ -17962,6 +17962,10 @@
         "render": [
           "crates/processcraft-render/tests/bpmn_scene.rs:activity_properties_change_shared_vectors_and_viewport",
           "crates/processcraft-render/tests/bpmn_scene.rs:collapsed_activity_marker_group_keeps_loop_and_compensation_left_of_plus"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:compensation_activity_is_not_connected_to_normal_flow"
         ]
       }
     },
@@ -19114,7 +19118,7 @@
         "render": "verified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "A"
@@ -19148,6 +19152,10 @@
         ],
         "render": [
           "crates/processcraft-render/tests/bpmn_scene.rs:non_interrupting_boundary_and_compensation_have_distinct_shared_vectors"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:error_and_cancel_boundary_events_must_interrupt"
         ]
       }
     },
@@ -21527,7 +21535,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "profile": "event definitions",
       "evidence": [
@@ -21561,6 +21569,10 @@
         ],
         "model": [
           "crates/processcraft-io/tests/interchange.rs:conditional_catch_expression_round_trips"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:conditional_event_needs_formal_expression_when_executable"
         ]
       }
     },
@@ -21583,7 +21595,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "A"
@@ -21605,6 +21617,10 @@
         ],
         "model": [
           "crates/processcraft-io/tests/interchange.rs:conditional_catch_expression_round_trips"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:conditional_event_needs_formal_expression_when_executable"
         ]
       }
     },
@@ -21627,7 +21643,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "A"
@@ -21653,6 +21669,10 @@
         ],
         "model": [
           "crates/processcraft-io/tests/interchange.rs:conditional_catch_expression_round_trips"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:conditional_event_needs_formal_expression_when_executable"
         ]
       }
     },
@@ -26358,7 +26378,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "A",
@@ -26382,6 +26402,10 @@
         ],
         "model": [
           "crates/processcraft-core/tests/commands.rs:choreography_sequence_flow_metadata_is_undoable_and_message_flow_rejected"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:flow_elements_cannot_carry_auditing_or_monitoring"
         ]
       }
     },
@@ -26457,7 +26481,7 @@
         "render": "verified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "not_applicable"
       },
       "required": [
         "A",
@@ -26490,6 +26514,9 @@
           "crates/processcraft-render/tests/bpmn_scene.rs:implicit_task_label_centers_each_line_in_shared_scene",
           "crates/processcraft-render/tests/bpmn_scene.rs:named_flow_without_di_label_is_visible"
         ]
+      },
+      "verified_notes": {
+        "validate": "BPMN 2.0.2 Table 8.44 (p. 86) describes name only as the descriptive name of the element; Semantic.xsd types it xsd:string; no constraint beyond the lexical type."
       }
     },
     {
@@ -27727,7 +27754,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "S"
@@ -27746,6 +27773,10 @@
         "import": [
           "crates/processcraft-io/tests/m3_foundation.rs:callable_process_name_and_global_task_implementation_survive_round_trip",
           "tests/fixtures/bpmn/m3-foundation/callable-name-implementation.bpmn"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:service_task_implementation_and_operation_are_validated"
         ]
       }
     },
@@ -29801,7 +29832,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "not_applicable"
       },
       "required": [
         "A"
@@ -29826,6 +29857,9 @@
           "crates/processcraft-core/tests/commands.rs:loop_identity_rename_preserves_checkpoint_and_undo_redo",
           "crates/processcraft-core/tests/m2.rs:loop_metadata_is_atomic_and_undoable"
         ]
+      },
+      "verified_notes": {
+        "validate": "BPMN 2.0.2 section 10.3.7 (p. 188) states LoopCharacteristics inherits BaseElement and has no further attributes or model associations; the abstract type has no constraint of its own."
       }
     },
     {
@@ -30804,7 +30838,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "A"
@@ -30830,6 +30864,10 @@
         ],
         "model": [
           "crates/processcraft-core/tests/m2.rs:loop_metadata_is_atomic_and_undoable"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:multi_instance_initialisation_and_references_are_validated"
         ]
       },
       "verified_notes": {
@@ -30905,7 +30943,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "A"
@@ -30930,6 +30968,10 @@
         ],
         "model": [
           "crates/processcraft-core/tests/m3_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:multi_instance_initialisation_and_references_are_validated"
         ]
       }
     },
@@ -30952,7 +30994,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "A"
@@ -30977,6 +31019,10 @@
         ],
         "model": [
           "crates/processcraft-core/tests/m3_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:multi_instance_data_items_must_be_scalar"
         ]
       }
     },
@@ -30999,7 +31045,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "A"
@@ -31024,6 +31070,10 @@
         ],
         "model": [
           "crates/processcraft-core/tests/m3_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:multi_instance_data_items_must_be_scalar"
         ]
       }
     },
@@ -31046,7 +31096,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "not_applicable"
       },
       "required": [
         "A"
@@ -31075,7 +31125,8 @@
         ]
       },
       "verified_notes": {
-        "import": "expression count 3 fails if completionCondition import breaks"
+        "import": "expression count 3 fails if completionCondition import breaks",
+        "validate": "BPMN 2.0.2 Table 10.29 (p. 192) describes completionCondition as a boolean Expression that cancels the remaining instances when true; it states no constraint beyond the Semantic.xsd Expression type."
       }
     },
     {
@@ -31097,7 +31148,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "not_applicable"
       },
       "required": [
         "A"
@@ -31123,6 +31174,9 @@
         "model": [
           "crates/processcraft-core/tests/m2.rs:loop_metadata_is_atomic_and_undoable"
         ]
+      },
+      "verified_notes": {
+        "validate": "BPMN 2.0.2 Table 10.29 (p. 191) describes isSequential only as a flag choosing sequential or parallel execution; Semantic.xsd types it xsd:boolean; no constraint beyond the lexical type."
       }
     },
     {
@@ -31144,7 +31198,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "A"
@@ -31170,6 +31224,10 @@
         ],
         "model": [
           "crates/processcraft-core/tests/m3_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:multi_instance_behavior_event_refs_must_match_behavior"
         ]
       }
     },
@@ -31192,7 +31250,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "A"
@@ -31218,6 +31276,10 @@
         ],
         "model": [
           "crates/processcraft-core/tests/m3_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:multi_instance_behavior_event_refs_must_match_behavior"
         ]
       }
     },
@@ -31240,7 +31302,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "A"
@@ -31266,6 +31328,10 @@
         ],
         "model": [
           "crates/processcraft-core/tests/m3_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:multi_instance_behavior_event_refs_must_match_behavior"
         ]
       }
     },
@@ -31288,7 +31354,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "S"
@@ -31310,6 +31376,10 @@
         ],
         "model": [
           "crates/processcraft-core/tests/m3_foundation.rs:multi_instance_behavior_values_round_trip_through_set_node_loop_with_undo"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:multi_instance_behavior_event_refs_must_match_behavior"
         ]
       }
     },
@@ -35212,7 +35282,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "partial"
+        "validate": "verified"
       },
       "evidence": [
         "crates/processcraft-io/tests/interchange.rs:activity_message_and_operation_qnames_roundtrip_with_loop_context",
@@ -35237,6 +35307,10 @@
         ],
         "import": [
           "crates/processcraft-io/tests/interchange.rs:activity_message_and_operation_qnames_roundtrip_with_loop_context"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:service_task_implementation_and_operation_are_validated"
         ]
       }
     },
@@ -35514,7 +35588,7 @@
         "render": "verified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "profile": "nested activities",
       "evidence": [
@@ -35551,6 +35625,10 @@
         ],
         "render": [
           "crates/processcraft-render/tests/bpmn_scene.rs:loop_and_multi_instance_markers_use_distinct_shared_vectors"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:standard_loop_maximum_is_validated"
         ]
       }
     },
@@ -35573,7 +35651,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "A"
@@ -35596,6 +35674,10 @@
         ],
         "model": [
           "crates/processcraft-core/tests/commands.rs:loop_identity_rename_preserves_checkpoint_and_undo_redo"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:standard_loop_maximum_is_validated"
         ]
       }
     },
@@ -35618,7 +35700,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "not_applicable"
       },
       "required": [
         "A"
@@ -35647,7 +35729,8 @@
         ]
       },
       "verified_notes": {
-        "import": "expression count 3 fails if loopCondition import breaks"
+        "import": "expression count 3 fails if loopCondition import breaks",
+        "validate": "BPMN 2.0.2 Table 10.28 (p. 190) says the looping behavior MAY be underspecified and merely documented; no constraint on the Expression is stated beyond its Semantic.xsd type."
       }
     },
     {
@@ -35669,7 +35752,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "not_applicable"
       },
       "required": [
         "A"
@@ -35696,6 +35779,9 @@
         "model": [
           "crates/processcraft-core/tests/m3_loops.rs:standard_loop_condition_test_before_and_maximum_set_read_and_undo"
         ]
+      },
+      "verified_notes": {
+        "validate": "BPMN 2.0.2 Table 10.28 (p. 190) describes testBefore only as the flag choosing evaluation at the beginning or end of the iteration; Semantic.xsd types it xsd:boolean; no constraint beyond the lexical type."
       }
     },
     {
@@ -35717,7 +35803,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "A"
@@ -35743,6 +35829,10 @@
         ],
         "model": [
           "crates/processcraft-core/tests/m3_loops.rs:standard_loop_condition_test_before_and_maximum_set_read_and_undo"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs",
+          "crates/processcraft-core/tests/m3r2_validate.rs:standard_loop_maximum_is_validated"
         ]
       }
     },
@@ -36275,7 +36365,7 @@
         "render": "verified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "not_applicable"
       },
       "required": [
         "D"
@@ -36306,6 +36396,9 @@
         "render": [
           "crates/processcraft-render/tests/bpmn_scene.rs:implicit_task_label_centers_each_line_in_shared_scene"
         ]
+      },
+      "verified_notes": {
+        "validate": "BPMN 2.0.2 section 10.3.1 (p. 155) states the Task inherits Activity (Table 10.3) and has no further attributes or model associations; the Activity constraints are checked on the owners that carry them."
       }
     },
     {
@@ -36327,7 +36420,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "not_applicable"
       },
       "required": [
         "A",
@@ -36351,6 +36444,9 @@
         "model": [
           "crates/processcraft-core/tests/m2.rs:activity_properties_validate_scope_and_kind_and_undo"
         ]
+      },
+      "verified_notes": {
+        "validate": "BPMN 2.0.2 section 10.3.1 (p. 155) states the Task inherits Activity (Table 10.3) and has no further attributes or model associations; the Activity constraints are checked on the owners that carry them."
       }
     },
     {
@@ -37330,35 +37426,35 @@
     "total": {
       "declarations": 299,
       "cells": 1450,
-      "verified": 1291,
-      "not_applicable": 6,
-      "partial": 23,
-      "unverified": 130
+      "verified": 1310,
+      "not_applicable": 14,
+      "partial": 22,
+      "unverified": 104
     },
     "by_set": {
       "A": {
         "declarations": 89,
         "cells": 438,
-        "verified": 399,
-        "not_applicable": 0,
+        "verified": 415,
+        "not_applicable": 7,
         "partial": 0,
-        "unverified": 39
+        "unverified": 16
       },
       "C": {
         "declarations": 34,
         "cells": 166,
-        "verified": 159,
-        "not_applicable": 0,
+        "verified": 160,
+        "not_applicable": 1,
         "partial": 0,
-        "unverified": 7
+        "unverified": 5
       },
       "D": {
         "declarations": 173,
         "cells": 861,
-        "verified": 750,
-        "not_applicable": 6,
-        "partial": 20,
-        "unverified": 85
+        "verified": 753,
+        "not_applicable": 9,
+        "partial": 19,
+        "unverified": 80
       },
       "I": {
         "declarations": 33,
@@ -37371,10 +37467,10 @@
       "S": {
         "declarations": 7,
         "cells": 28,
-        "verified": 23,
+        "verified": 25,
         "not_applicable": 0,
         "partial": 0,
-        "unverified": 5
+        "unverified": 3
       }
     }
   },
