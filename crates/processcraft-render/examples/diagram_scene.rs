@@ -164,8 +164,12 @@ fn main() -> Result<(), Box<dyn Error>> {
             association_direction: None,
             id: id(key),
             kind,
-            source: id(source),
-            target: id(target),
+            source: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+                source,
+            ))),
+            target: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+                target,
+            ))),
             name: Some(String::new()),
             documentation: String::new().into(),
             base_extras: None,

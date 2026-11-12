@@ -259,6 +259,8 @@ mod tests {
         let mut app = ProcessCraft::default();
         let document_id = app.ctl.session.snapshot().project.documents[0].id;
         let participant = |id: &str| Participant {
+            interface_refs: vec![],
+            endpoint_refs: vec![],
             id: id.parse().unwrap(),
             name: Some(id.into()),
             base: None,
@@ -268,8 +270,12 @@ mod tests {
         let message = Flow {
             id: "MessageFlow".parse().unwrap(),
             kind: FlowKind::Message,
-            source: "Buyer".parse().unwrap(),
-            target: "Seller".parse().unwrap(),
+            source: Some(processcraft_core::bpmn_activity::ModelReference::Local(
+                "Buyer".parse().unwrap(),
+            )),
+            target: Some(processcraft_core::bpmn_activity::ModelReference::Local(
+                "Seller".parse().unwrap(),
+            )),
             name: None,
             documentation: String::new().into(),
             base_extras: None,
@@ -279,6 +285,10 @@ mod tests {
             message_ref: None,
         };
         let choreography = Choreography {
+            extras: None,
+            conversation_nodes: vec![],
+            conversation_links: vec![],
+            correlation_keys: vec![],
             id: "Choreography".parse().unwrap(),
             name: Some("Orders".into()),
             base: None,

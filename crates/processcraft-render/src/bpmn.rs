@@ -45,6 +45,8 @@ fn has_uninterpreted_di(diagram: &processcraft_core::model::Diagram) -> bool {
 }
 
 struct SemanticIndex<'a> {
+    references: processcraft_core::reference_resolution::ReferenceIndex,
+    participants: Vec<&'a processcraft_core::model::Participant>,
     groups: Vec<&'a processcraft_core::bpmn_model::Group>,
     nodes: Vec<(&'a Node, usize)>,
     lanes: Vec<(&'a Lane, usize)>,
@@ -61,6 +63,8 @@ struct SemanticIndex<'a> {
 impl<'a> SemanticIndex<'a> {
     fn new(document: &'a BpmnDocument) -> Result<Self, RenderError> {
         let mut result = Self {
+            references: processcraft_core::reference_resolution::ReferenceIndex::new(document),
+            participants: Vec::new(),
             groups: Vec::new(),
             nodes: Vec::new(),
             lanes: Vec::new(),
@@ -174,8 +178,61 @@ impl<'a> SemanticIndex<'a> {
         for choreography in &document.choreographies {
             result.flows.extend(&choreography.message_flows);
             result.flows.extend(&choreography.sequence_flows);
+            result
+                .conversations
+                .extend(&choreography.conversation_nodes);
+            result
+                .conversation_links
+                .extend(&choreography.conversation_links);
+            if let Some(extras) = &choreography.extras {
+                for artifact in &extras.artifacts {
+                    match artifact {
+                        processcraft_core::bpmn_collaboration::CollaborationArtifact::Group(group) => result.groups.push(group),
+                        processcraft_core::bpmn_collaboration::CollaborationArtifact::TextAnnotation(node) => result.nodes.push((node, 0)),
+                        processcraft_core::bpmn_collaboration::CollaborationArtifact::Association(flow) => result.flows.push(flow),
+                    }
+                }
+            }
+            for node in &choreography.conversation_nodes {
+                if let Some(parent) = &node.parent {
+                    result.parents.insert(node.id.selector(), parent.clone());
+                }
+            }
+            for link in &choreography.conversation_links {
+                if let Some(parent) = choreography
+                    .conversation_nodes
+                    .iter()
+                    .find(|node| {
+                        result
+                            .resolved(&link.source)
+                            .as_ref()
+                            .is_some_and(|id| node.id == *id)
+                            || result
+                                .resolved(&link.target)
+                                .as_ref()
+                                .is_some_and(|id| node.id == *id)
+                    })
+                    .and_then(|node| node.parent.as_ref())
+                {
+                    result.parents.insert(link.id.selector(), parent.clone());
+                }
+            }
         }
-        if let Some(c) = &document.collaboration {
+        for c in document
+            .collaboration
+            .iter()
+            .chain(&document.additional_collaborations)
+        {
+            result.participants.extend(&c.participants);
+            if let Some(extras) = &c.extras {
+                for artifact in &extras.artifacts {
+                    match artifact {
+                        processcraft_core::bpmn_collaboration::CollaborationArtifact::Group(group) => result.groups.push(group),
+                        processcraft_core::bpmn_collaboration::CollaborationArtifact::TextAnnotation(node) => result.nodes.push((node, 0)),
+                        processcraft_core::bpmn_collaboration::CollaborationArtifact::Association(flow) => result.flows.push(flow),
+                    }
+                }
+            }
             result.flows.extend(&c.flows);
             result.conversations.extend(&c.conversation_nodes);
             result.conversation_links.extend(&c.conversation_links);
@@ -183,7 +240,16 @@ impl<'a> SemanticIndex<'a> {
                 if let Some(parent) = c
                     .conversation_nodes
                     .iter()
-                    .find(|node| node.id == link.source || node.id == link.target)
+                    .find(|node| {
+                        result
+                            .resolved(&link.source)
+                            .as_ref()
+                            .is_some_and(|id| node.id == *id)
+                            || result
+                                .resolved(&link.target)
+                                .as_ref()
+                                .is_some_and(|id| node.id == *id)
+                    })
                     .and_then(|node| node.parent.as_ref())
                 {
                     result.parents.insert(link.id.selector(), parent.clone());
@@ -196,6 +262,28 @@ impl<'a> SemanticIndex<'a> {
             }
         }
         Ok(result)
+    }
+    fn resolved(
+        &self,
+        reference: &Option<processcraft_core::bpmn_activity::ModelReference>,
+    ) -> Option<ElementSelector> {
+        reference
+            .as_ref()
+            .and_then(|reference| match self.references.resolve(reference) {
+                processcraft_core::reference_resolution::ReferenceResolution::Resolved(id) => {
+                    Some(id)
+                }
+                _ => None,
+            })
+    }
+    fn participant(
+        &self,
+        id: &ElementSelector,
+    ) -> Option<&'a processcraft_core::model::Participant> {
+        self.participants
+            .iter()
+            .copied()
+            .find(|participant| &participant.id == id)
     }
     fn hidden(&self, id: &ElementSelector, diagram: &processcraft_core::model::Diagram) -> bool {
         let mut parent = self.parents.get(id);
@@ -227,12 +315,12 @@ impl<'a> SemanticIndex<'a> {
     }
     fn group_label<'b>(&self, id: &ElementSelector, document: &'b BpmnDocument) -> Option<&'b str> {
         let group = self.groups.iter().find(|g| &g.id == id)?;
-        let value_id = group.category_value_ref.as_ref()?;
+        let value_id = self.resolved(&group.category_value_ref)?;
         document
             .categories
             .iter()
             .flat_map(|c| &c.values)
-            .find(|v| &v.id == value_id)?
+            .find(|v| v.id == value_id)?
             .value
             .as_deref()
     }
@@ -267,22 +355,25 @@ impl<'a> SemanticIndex<'a> {
             .find(|link| &link.id == id)
     }
     fn is_default_flow(&self, flow: &Flow) -> bool {
-        self.node(&flow.source).is_some_and(|(node,_)| matches!(&node.details,Some(NodeDetails::Gateway{default_flow:Some(id),..}) if id==&flow.id) || node.activity.as_ref().and_then(|a| a.default_flow.as_ref()).is_some_and(|id| id == &flow.id))
+        self.resolved(&flow.source).and_then(|source| self.node(&source)).is_some_and(|(node,_)| matches!(&node.details,Some(NodeDetails::Gateway{default_flow:Some(id),..}) if id==&flow.id) || node.activity.as_ref().and_then(|a| a.default_flow.as_ref()).is_some_and(|id| id == &flow.id))
     }
     fn conditional_flow_marker(&self, flow: &Flow) -> bool {
         matches!(flow.kind, FlowKind::Sequence)
             && flow.condition.is_some()
             && !self.is_default_flow(flow)
-            && !self.node(&flow.source).is_some_and(|(node, _)| {
-                matches!(
-                    node.kind,
-                    NodeKind::ExclusiveGateway
-                        | NodeKind::ParallelGateway
-                        | NodeKind::InclusiveGateway
-                        | NodeKind::ComplexGateway
-                        | NodeKind::EventBasedGateway
-                )
-            })
+            && self
+                .resolved(&flow.source)
+                .and_then(|source| self.node(&source))
+                .is_some_and(|(node, _)| {
+                    !matches!(
+                        node.kind,
+                        NodeKind::ExclusiveGateway
+                            | NodeKind::ParallelGateway
+                            | NodeKind::InclusiveGateway
+                            | NodeKind::ComplexGateway
+                            | NodeKind::EventBasedGateway
+                    )
+                })
     }
     fn node(&self, id: &ElementSelector) -> Option<(&'a Node, usize)> {
         self.nodes.iter().copied().find(|(n, _)| &n.id == id)
@@ -743,10 +834,7 @@ impl BpmnScene {
             .collect();
         ordered_shapes.sort_by_key(|shape| {
             if semantics.groups.iter().any(|g| g.id == shape.element)
-                || document
-                    .collaboration
-                    .as_ref()
-                    .is_some_and(|c| c.participants.iter().any(|p| p.id == shape.element))
+                || semantics.participant(&shape.element).is_some()
             {
                 (0, 0)
             } else if let Some((_, depth)) = semantics.lane(&shape.element) {
@@ -903,7 +991,6 @@ impl BpmnScene {
                     geometry: HitGeometry::Shape(b.clone()),
                 });
                 if shape_labels
-                    && shape.label.is_some()
                     && label_visible(shape.label.as_ref(), shape.label_visibility)
                     && !name.is_empty()
                 {
@@ -936,10 +1023,11 @@ impl BpmnScene {
                         diagnostics.push(format!("Participant band {} message visibility cannot be depicted on a middle band", shape.id));
                     } else if context.is_some_and(|(scope, activity)| {
                         activity.message_flow_refs.iter().any(|id| {
-                            scope
-                                .message_flows
-                                .iter()
-                                .any(|flow| &flow.id == id && flow.source == shape.element)
+                            scope.message_flows.iter().any(|flow| {
+                                &flow.id == id
+                                    && semantics.resolved(&flow.source).as_ref()
+                                        == Some(&shape.element)
+                            })
                         })
                     }) {
                         let cy = if bottom { y + h + 13.0 } else { y - 13.0 };
@@ -962,6 +1050,20 @@ impl BpmnScene {
                 continue;
             }
             if semantics.groups.iter().any(|g| g.id == shape.element) {
+                if semantics
+                    .groups
+                    .iter()
+                    .find(|g| g.id == shape.element)
+                    .is_some_and(|group| {
+                        group.category_value_ref.is_some()
+                            && semantics.resolved(&group.category_value_ref).is_none()
+                    })
+                {
+                    diagnostics.push(format!(
+                        "Group {} has an unresolved category value; its label is omitted",
+                        shape.element
+                    ));
+                }
                 let b = &shape.bounds;
                 let (x, y, w, h) = (
                     (b.x - origin.0) as f32,
@@ -1025,7 +1127,7 @@ impl BpmnScene {
                         false,
                         &mut diagnostics,
                     )?;
-                    if shape.label.is_some() {
+                    if label_visible(shape.label.as_ref(), shape.label_visibility) {
                         hits.push(HitRegion {
                             key: ElementKey {
                                 document_id: document.id,
@@ -1097,12 +1199,8 @@ impl BpmnScene {
                         .lane(&shape.element)
                         .map(|(lane, _)| lane.name.as_deref().unwrap_or(""))
                 });
-            if let Some(c) = &document.collaboration {
-                for p in &c.participants {
-                    if p.id == shape.element {
-                        name = Some(p.name.as_deref().unwrap_or(""));
-                    }
-                }
+            if let Some(p) = semantics.participant(&shape.element) {
+                name = Some(p.name.as_deref().unwrap_or(""));
             }
             let Some(name) = name else {
                 diagnostics.push(format!("Unknown shape element {}", shape.element));
@@ -1487,7 +1585,14 @@ impl BpmnScene {
                     }
                 }
                 _ if conversation.is_some() => {
-                    lines(&mut scene, &hexagon_points(x, y, w, h), stroke, 1.5)?
+                    let width = if conversation
+                        .is_some_and(|node| node.kind == ConversationKind::CallConversation)
+                    {
+                        3.0
+                    } else {
+                        1.5
+                    };
+                    lines(&mut scene, &hexagon_points(x, y, w, h), stroke, width)?
                 }
                 _ => lines(
                     &mut scene,
@@ -1839,19 +1944,9 @@ impl BpmnScene {
                 &mut diagnostics,
             )?;
             let is_lane_or_pool = semantics.lane(&shape.element).is_some()
-                || document
-                    .collaboration
-                    .as_ref()
-                    .is_some_and(|collaboration| {
-                        collaboration
-                            .participants
-                            .iter()
-                            .any(|participant| participant.id == shape.element)
-                    });
-            if document
-                .collaboration
-                .as_ref()
-                .and_then(|c| c.participants.iter().find(|p| p.id == shape.element))
+                || semantics.participant(&shape.element).is_some();
+            if semantics
+                .participant(&shape.element)
                 .and_then(|p| p.multiplicity.as_ref())
                 .and_then(|m| m.maximum)
                 .is_some_and(|maximum| maximum > 1)
@@ -1965,7 +2060,7 @@ impl BpmnScene {
                             .as_ref()
                             .and_then(|label| label.bounds.as_ref())
                             .is_none()
-                            && is_task_kind(marker_kind),
+                            && (is_task_kind(marker_kind) || choreography.is_some()),
                     &mut diagnostics,
                 )?;
                 if rotate_pool_label && !name.is_empty() {
@@ -2005,7 +2100,6 @@ impl BpmnScene {
                 },
             });
             if shape_labels
-                && shape.label.is_some()
                 && label_visible(shape.label.as_ref(), shape.label_visibility)
                 && !name.is_empty()
             {
@@ -2054,6 +2148,11 @@ impl BpmnScene {
                 continue;
             }
             if let Some(link) = semantics.conversation_link(&edge.element) {
+                if semantics.resolved(&link.source).is_none()
+                    || semantics.resolved(&link.target).is_none()
+                {
+                    diagnostics.push(format!("Conversation link {} has an unresolved endpoint; authored DI route is retained", link.id));
+                }
                 let stroke = color(edge.style.as_ref().and_then(|s| s.stroke.as_deref()), fg);
                 let points: Vec<_> = edge
                     .waypoints
@@ -2093,7 +2192,7 @@ impl BpmnScene {
                         false,
                         &mut diagnostics,
                     )?;
-                    if edge.label.is_some() {
+                    if label_visible(edge.label.as_ref(), edge.label_visibility) {
                         hits.push(HitRegion {
                             key: ElementKey {
                                 document_id: document.id,
@@ -2127,6 +2226,14 @@ impl BpmnScene {
                 diagnostics.push(format!("Unknown edge element {}", edge.element));
                 continue;
             };
+            if semantics.resolved(&flow.source).is_none()
+                || semantics.resolved(&flow.target).is_none()
+            {
+                diagnostics.push(format!(
+                    "Flow {} has an unresolved endpoint; authored DI route is retained",
+                    flow.id
+                ));
+            }
             let stroke = color(edge.style.as_ref().and_then(|s| s.stroke.as_deref()), fg);
             let pts: Vec<_> = edge
                 .waypoints
@@ -2239,7 +2346,7 @@ impl BpmnScene {
                     false,
                     &mut diagnostics,
                 )?;
-                if edge.label.is_some() {
+                if label_visible(edge.label.as_ref(), edge.label_visibility) {
                     hits.push(HitRegion {
                         key: ElementKey {
                             document_id: document.id,
@@ -3539,12 +3646,8 @@ impl BpmnViewport {
                         .find(|p| p.id == shape.element)
                         .map(|p| p.name.as_deref().unwrap_or(""))
                 });
-            if let Some(c) = &document.collaboration {
-                for p in &c.participants {
-                    if p.id == shape.element {
-                        name = Some(p.name.as_deref().unwrap_or(""));
-                    }
-                }
+            if let Some(p) = semantics.participant(&shape.element) {
+                name = Some(p.name.as_deref().unwrap_or(""));
             }
             let Some(name) = name else { continue };
             let display_name = if let Some((port, _)) = port {
@@ -3588,15 +3691,7 @@ impl BpmnViewport {
                     height: b.height.min(28.0),
                 }
             } else if semantics.lane(&shape.element).is_some()
-                || document
-                    .collaboration
-                    .as_ref()
-                    .is_some_and(|collaboration| {
-                        collaboration
-                            .participants
-                            .iter()
-                            .any(|participant| participant.id == shape.element)
-                    })
+                || semantics.participant(&shape.element).is_some()
             {
                 if shape.is_horizontal == Some(false) {
                     Bounds {
@@ -3666,10 +3761,7 @@ impl BpmnViewport {
                 ));
             }
             let is_lane_or_pool = semantics.lane(&shape.element).is_some()
-                || document
-                    .collaboration
-                    .as_ref()
-                    .is_some_and(|c| c.participants.iter().any(|p| p.id == shape.element));
+                || semantics.participant(&shape.element).is_some();
             let rotate_pool_label = is_lane_or_pool
                 && shape.is_horizontal != Some(false)
                 && shape
@@ -3736,7 +3828,7 @@ impl BpmnViewport {
                         .as_ref()
                         .and_then(|label| label.bounds.as_ref())
                         .is_none()
-                        && is_task_kind(marker_kind),
+                        && (is_task_kind(marker_kind) || choreography.is_some()),
                 &mut built.diagnostics,
             )?;
             if rotate_pool_label {
@@ -3745,7 +3837,7 @@ impl BpmnViewport {
                     (bounds.y + bounds.height - view.y - built.origin.1) as f32,
                 );
             }
-            if shape.label.is_some() {
+            if label_visible(shape.label.as_ref(), shape.label_visibility) {
                 let mut local = bounds.clone();
                 rebase(&mut local);
                 built.hits.push(HitRegion {
@@ -3826,6 +3918,11 @@ impl BpmnViewport {
             }
             if let Some(link) = semantics.conversation_link(&edge.element) {
                 let stroke = color(edge.style.as_ref().and_then(|s| s.stroke.as_deref()), fg);
+                if semantics.resolved(&link.source).is_none()
+                    || semantics.resolved(&link.target).is_none()
+                {
+                    built.diagnostics.push(format!("Conversation link {} has an unresolved endpoint; authored DI route is retained", link.id));
+                }
                 let mut visible = false;
                 for pair in edge.waypoints.windows(2) {
                     if let Some((a, b)) = clip_segment(&pair[0], &pair[1], view) {
@@ -3881,7 +3978,7 @@ impl BpmnViewport {
                             false,
                             &mut built.diagnostics,
                         )?;
-                        if edge.label.is_some() {
+                        if label_visible(edge.label.as_ref(), edge.label_visibility) {
                             let mut local = bounds.clone();
                             rebase(&mut local);
                             built.hits.push(HitRegion {
@@ -3918,6 +4015,14 @@ impl BpmnViewport {
             let Some(flow) = semantics.flow(&edge.element) else {
                 continue;
             };
+            if semantics.resolved(&flow.source).is_none()
+                || semantics.resolved(&flow.target).is_none()
+            {
+                built.diagnostics.push(format!(
+                    "Flow {} has an unresolved endpoint; authored DI route is retained",
+                    flow.id
+                ));
+            }
             let stroke = color(edge.style.as_ref().and_then(|s| s.stroke.as_deref()), fg);
             let mut path = PathBuilder::new();
             let mut segments = 0usize;

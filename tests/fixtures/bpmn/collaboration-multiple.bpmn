@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:t="urn:collab" xmlns:ext="urn:external" targetNamespace="urn:collab" id="Definitions">
+ <partnerEntity name="Customers"><documentation>Anonymous entity</documentation><participantRef>t:Buyer</participantRef></partnerEntity>
+ <collaboration id="Collab" name="First" isClosed="false">
+  <participant id="Buyer" processRef="t:Process"><interfaceRef>ext:Interface</interfaceRef><endPointRef>t:Endpoint</endPointRef><participantMultiplicity minimum="0" maximum="2"/></participant>
+  <participant id="Seller"/>
+  <messageFlow id="Request" sourceRef="t:Buyer" targetRef="t:Seller" messageRef="ext:Message"/>
+  <group id="Group" categoryValueRef="ext:CategoryValue"/><textAnnotation id="Note"><text>Note</text></textAnnotation><association id="Association" sourceRef="t:Buyer" targetRef="t:Note"/>
+  <subConversation id="Sub"><participantRef>t:Buyer</participantRef><messageFlowRef>t:Request</messageFlowRef><conversation id="Inner"/><callConversation id="Call" calledCollaborationRef="ext:Other"><participantAssociation><innerParticipantRef>ext:Inner</innerParticipantRef><outerParticipantRef>t:Buyer</outerParticipantRef></participantAssociation></callConversation></subConversation>
+  <conversationAssociation innerConversationNodeRef="ext:Inner" outerConversationNodeRef="t:Sub"/>
+  <participantAssociation><innerParticipantRef>ext:Inner</innerParticipantRef><outerParticipantRef>t:Buyer</outerParticipantRef></participantAssociation>
+  <messageFlowAssociation innerMessageFlowRef="ext:Flow" outerMessageFlowRef="t:Request"/>
+  <correlationKey id="Key"/><choreographyRef>ext:Choreography</choreographyRef><conversationLink id="Link" sourceRef="t:Sub" targetRef="t:Buyer"/>
+ </collaboration>
+ <process id="Process"/>
+ <endPoint id="Endpoint"/>
+ <partnerRole name="Provider"><participantRef>t:Seller</participantRef></partnerRole>
+ <globalConversation id="Global" name="Shared"/>
+</definitions>

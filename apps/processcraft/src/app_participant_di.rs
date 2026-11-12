@@ -183,6 +183,8 @@ mod tests {
     #[test]
     fn multiplicity_draft_keeps_optional_defaults_identity_and_invalid_text() {
         let participant = Participant {
+            interface_refs: vec![],
+            endpoint_refs: vec![],
             id: "Participant".parse().unwrap(),
             base: None,
             name: None,

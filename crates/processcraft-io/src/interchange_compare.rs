@@ -20,6 +20,10 @@ use std::{
 
 static EMPTY_FLOW_METADATA: LazyLock<Value> =
     LazyLock::new(|| json!(processcraft_core::bpmn_activity::FlowElementMetadata::default()));
+static EMPTY_COLLABORATION_EXTRAS: LazyLock<Value> =
+    LazyLock::new(|| json!(processcraft_core::bpmn_collaboration::CollaborationExtras::default()));
+static EMPTY_CALL_CONVERSATION: LazyLock<Value> =
+    LazyLock::new(|| json!(processcraft_core::bpmn_collaboration::CallConversationData::default()));
 
 struct Target {
     identity_path: String,
@@ -286,6 +290,26 @@ fn normalize(value: &mut Value, targets: &HashMap<NativeElementId, Target>) -> R
     match value {
         Value::Object(object) => {
             normalize_annotation(object)?;
+            if object.get("kind").and_then(Value::as_str) == Some("CallConversation")
+                && object.get("call") == Some(&*EMPTY_CALL_CONVERSATION)
+            {
+                object.remove("call");
+            }
+            // These aggregates have no separate XML wrapper. Explicit false,
+            // references, artifacts and association records remain observable.
+            if (object.contains_key("participants") || object.contains_key("message_flows"))
+                && object.get("extras") == Some(&*EMPTY_COLLABORATION_EXTRAS)
+            {
+                object.remove("extras");
+            }
+            // Association is not a NamedElement. Historical native creation
+            // used an empty string as bookkeeping; no name attribute is emitted.
+            // Nonempty names remain unsupported and export refuses them.
+            if object.get("kind").and_then(Value::as_str) == Some("Association")
+                && object.get("name").and_then(Value::as_str) == Some("")
+            {
+                object.insert("name".into(), Value::Null);
+            }
             normalize_namespaces(object)?;
             for value in object.values_mut() {
                 normalize(value, targets)?;
@@ -348,6 +372,75 @@ fn normalize(value: &mut Value, targets: &HashMap<NativeElementId, Target>) -> R
         }
         _ => {}
     }
+    Ok(())
+}
+fn normalize_legacy_root_order(value: &mut Value) -> Result<(), String> {
+    if value
+        .get("root_order")
+        .is_some_and(|order| !order.is_null())
+    {
+        return Ok(());
+    }
+    let mut order = Vec::new();
+    let mut append = |root: &Value, path: String| -> Result<(), String> {
+        let identity = root.get("id").filter(|id| !id.is_null());
+        order.push(match identity {
+            Some(identity) => {
+                let identity: ElementIdentity = serde_json::from_value(identity.clone())
+                    .map_err(|error| format!("Invalid typed root identity: {error}"))?;
+                json!(identity.selector())
+            }
+            // Reimport creates an anonymous native handle at this exact typed
+            // owner. This is a comparison key, never an identity in the model.
+            None => json!({"nativeTargetAt": format!("{path}/id")}),
+        });
+        Ok(())
+    };
+    // Match the legacy XML writer's default family order. Explicit root_order
+    // is authoritative and never reordered by this comparison-only bridge.
+    for key in ["item_definitions", "interfaces", "resources"] {
+        if let Some(roots) = value
+            .get("catalog")
+            .and_then(|catalog| catalog.get(key))
+            .and_then(Value::as_array)
+        {
+            for (index, root) in roots.iter().enumerate() {
+                append(root, format!("/catalog/{key}/{index}"))?;
+            }
+        }
+    }
+    for key in [
+        "global_tasks",
+        "correlation_properties",
+        "categories",
+        "data_stores",
+        "event_resources",
+        "root_event_definitions",
+        "partner_entities",
+        "partner_roles",
+        "endpoints",
+        "choreographies",
+    ] {
+        if let Some(roots) = value.get(key).and_then(Value::as_array) {
+            for (index, root) in roots.iter().enumerate() {
+                append(root, format!("/{key}/{index}"))?;
+            }
+        }
+    }
+    if let Some(root) = value.get("collaboration").filter(|root| !root.is_null()) {
+        append(root, "/collaboration".into())?;
+    }
+    for key in ["additional_collaborations", "processes"] {
+        if let Some(roots) = value.get(key).and_then(Value::as_array) {
+            for (index, root) in roots.iter().enumerate() {
+                append(root, format!("/{key}/{index}"))?;
+            }
+        }
+    }
+    value
+        .as_object_mut()
+        .ok_or("Document must serialize as an object")?
+        .insert("root_order".into(), Value::Array(order));
     Ok(())
 }
 fn normalize_legacy_di(value: &mut Value) -> Result<(), String> {
@@ -532,6 +625,7 @@ pub fn xml_model_value_for_export(
             .map_err(|error| error.to_string())?,
         );
     }
+    normalize_legacy_root_order(&mut value)?;
     normalize_legacy_di(&mut value)?;
     preserve_lane_wrapper_presence(&mut value)?;
     let mut targets = HashMap::new();

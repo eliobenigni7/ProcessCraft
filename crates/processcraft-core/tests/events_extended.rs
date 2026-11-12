@@ -352,8 +352,8 @@ fn di_endpoints_resolve_representation_ids_within_the_same_diagram() {
         base_extras: None,
         id: ident("flow"),
         kind: FlowKind::Sequence,
-        source: selector("start"),
-        target: selector("throw"),
+        source: Some(EventReference::Local(selector("start"))),
+        target: Some(EventReference::Local(selector("throw"))),
         name: None,
         documentation: String::new().into(),
         condition: None,
@@ -454,8 +454,8 @@ fn annotation_association_may_target_sequence_flow_and_its_di_edge() {
         base_extras: None,
         id: ident("sequence"),
         kind: FlowKind::Sequence,
-        source: selector("start"),
-        target: selector("throw"),
+        source: Some(EventReference::Local(selector("start"))),
+        target: Some(EventReference::Local(selector("throw"))),
         name: None,
         documentation: String::new().into(),
         condition: None,
@@ -467,8 +467,8 @@ fn annotation_association_may_target_sequence_flow_and_its_di_edge() {
         base_extras: None,
         id: ident("association"),
         kind: FlowKind::Association,
-        source: selector("note"),
-        target: selector("sequence"),
+        source: Some(EventReference::Local(selector("note"))),
+        target: Some(EventReference::Local(selector("sequence"))),
         name: None,
         documentation: String::new().into(),
         condition: None,
@@ -579,8 +579,8 @@ fn annotation_association_may_target_sequence_flow_and_its_di_edge() {
             base_extras: None,
             id: ident("other_sequence"),
             kind: FlowKind::Sequence,
-            source: selector("other_a"),
-            target: selector("other_b"),
+            source: Some(EventReference::Local(selector("other_a"))),
+            target: Some(EventReference::Local(selector("other_b"))),
             name: None,
             documentation: String::new().into(),
             condition: None,
@@ -592,7 +592,7 @@ fn annotation_association_may_target_sequence_flow_and_its_di_edge() {
         .iter_mut()
         .find(|f| f.id == selector("association"))
         .unwrap()
-        .target = selector("other_sequence");
+        .target = Some(EventReference::Local(selector("other_sequence")));
     assert!(cross_scope.validate().is_err());
 }
 

@@ -31,6 +31,66 @@ fn document(named: bool) -> BpmnDocument {
 }
 
 #[test]
+fn legacy_root_order_bridge_preserves_native_anonymity_and_explicit_order() {
+    use processcraft_io::interchange::{export_bpmn, prepare_import};
+    let imported = prepare_import(br#"<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" targetNamespace="urn:roots"><itemDefinition/><category id="Category"><categoryValue id="Value"/></category><globalTask id="Task"/><process id="P"/></definitions>"#, "Legacy roots").unwrap();
+    assert!(imported.report.editable);
+    let mut legacy = imported.document;
+    legacy.root_order = None;
+    legacy.catalog.item_definitions[0].id = None;
+    let id = legacy.id;
+    let mut project = ProjectData::new("Legacy roots".into());
+    project.documents.push(Arc::new(legacy));
+    project.resources = imported.resources;
+    project.validate().unwrap();
+    let native_before = project.content_identity().unwrap();
+    let expected = xml_model_value(&project.documents[0]).unwrap();
+    let output = export_bpmn(&project, id, false).unwrap();
+    assert_eq!(project.content_identity().unwrap(), native_before);
+    assert!(
+        project.documents[0].catalog.item_definitions[0]
+            .id
+            .is_none()
+    );
+    let mut actual = prepare_import(&output.bytes, "Reopened roots")
+        .unwrap()
+        .document;
+    assert_eq!(expected, xml_model_value(&actual).unwrap());
+    let anonymous = actual.catalog.item_definitions[0].id.as_ref().unwrap();
+    assert!(anonymous.xml_id().is_none());
+    actual.root_order.as_mut().unwrap().reverse();
+    assert_ne!(expected, xml_model_value(&actual).unwrap());
+    use processcraft_core::commands::{Envelope, Mutation, Request, Session};
+    let mut session = Session::new(project.clone()).unwrap();
+    session
+        .apply(
+            Envelope {
+                request_id: "initialize-preserving-xml-order".into(),
+                session_id: session.id(),
+                expected_generation: Some(0),
+            },
+            Request::Batch {
+                mutations: vec![Mutation::InitializeDocumentRootOrder { document_id: id }],
+            },
+        )
+        .unwrap();
+    let initialized = session.snapshot();
+    assert_eq!(
+        expected,
+        xml_model_value(&initialized.project.documents[0]).unwrap()
+    );
+    assert!(
+        initialized.project.documents[0].catalog.item_definitions[0]
+            .id
+            .as_ref()
+            .unwrap()
+            .xml_id()
+            .is_none()
+    );
+    assert_eq!(project.content_identity().unwrap(), native_before);
+}
+
+#[test]
 fn reimport_local_handles_normalize_by_exact_owner_path_without_mutation() {
     let first = document(false);
     let second = document(false);
@@ -62,7 +122,10 @@ fn sibling_owner_swaps_and_reference_retargeting_are_observable() {
         xml_model_value(&swapped).unwrap()
     );
     let mut retargeted = original.clone();
-    retargeted.processes[0].flows[0].source = retargeted.processes[0].nodes[1].id.selector();
+    retargeted.processes[0].flows[0].source =
+        Some(processcraft_core::bpmn_activity::ModelReference::Local(
+            retargeted.processes[0].nodes[1].id.selector(),
+        ));
     assert_ne!(
         xml_model_value(&original).unwrap(),
         xml_model_value(&retargeted).unwrap()
@@ -78,7 +141,9 @@ fn assigned_native_and_legacy_ids_compare_by_real_xml_id() {
         xml_id: Some("First".parse().unwrap()),
     };
     native.processes[0].nodes[0].id = first.clone();
-    native.processes[0].flows[0].source = first.selector();
+    native.processes[0].flows[0].source = Some(
+        processcraft_core::bpmn_activity::ModelReference::Local(first.selector()),
+    );
     assert_eq!(
         xml_model_value(&legacy).unwrap(),
         xml_model_value(&native).unwrap()
@@ -165,9 +230,11 @@ fn duplicate_owner_and_unknown_native_target_fail_closed() {
             .contains("multiple serialized owners")
     );
     let mut unknown = document(false);
-    unknown.processes[0].flows[0].source = ElementSelector::Native {
-        native_id: processcraft_core::ids::NativeElementId::new(),
-    };
+    unknown.processes[0].flows[0].source = Some(
+        processcraft_core::bpmn_activity::ModelReference::Local(ElementSelector::Native {
+            native_id: processcraft_core::ids::NativeElementId::new(),
+        }),
+    );
     assert!(
         xml_model_value(&unknown)
             .unwrap_err()

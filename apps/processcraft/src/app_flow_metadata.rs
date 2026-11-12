@@ -123,10 +123,12 @@ impl ProcessCraft {
                             &flow.id,
                             incoming.len() + outgoing.len() + 1,
                         );
-                        if flow.target == target {
+                        if matches!(&flow.target, Some(processcraft_core::bpmn_activity::ModelReference::Local(id)) if *id == target)
+                        {
                             incoming.push((flow.id.selector(), label.clone()));
                         }
-                        if flow.source == target {
+                        if matches!(&flow.source, Some(processcraft_core::bpmn_activity::ModelReference::Local(id)) if *id == target)
+                        {
                             outgoing.push((flow.id.selector(), label));
                         }
                     }

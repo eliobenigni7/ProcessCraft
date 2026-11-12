@@ -221,6 +221,12 @@ fn optional_identity_rows(
                     "operations" => Some("Operation"),
                     "resources" => Some("Resource"),
                     "parameters" => Some("Resource parameter"),
+                    "partner_entities" => Some("Partner entity"),
+                    "partner_roles" => Some("Partner role"),
+                    "endpoints" => Some("Endpoint"),
+                    "conversation_associations" => Some("Conversation association"),
+                    "participant_associations" => Some("Participant association"),
+                    "message_flow_associations" => Some("Message flow association"),
                     _ => None,
                 };
                 for (index, item) in array.iter().enumerate() {
@@ -1384,7 +1390,7 @@ impl ProcessCraft {
                             .into_iter()
                             .flat_map(|s| s.flows)
                             .filter(|f| {
-                                f.source == node.id
+                                matches!(&f.source, Some(processcraft_core::bpmn_activity::ModelReference::Local(id)) if node.id == *id)
                                     && f.kind == processcraft_core::model::FlowKind::Sequence
                             })
                             .collect();
@@ -1487,7 +1493,7 @@ impl ProcessCraft {
                 checkbox(ui, "For compensation", &mut value.is_for_compensation, false);
                 text(ui, "Start quantity (default 1)", &mut value.start_quantity, false);
                 text(ui, "Completion quantity (default 1)", &mut value.completion_quantity, false);
-                let outgoing: Vec<_> = queries::scopes(document).into_iter().flat_map(|s|s.flows).filter(|f|f.kind == FlowKind::Sequence && f.source == node.id).collect();
+                let outgoing: Vec<_> = queries::scopes(document).into_iter().flat_map(|s|s.flows).filter(|f|f.kind == FlowKind::Sequence && matches!(&f.source, Some(processcraft_core::bpmn_activity::ModelReference::Local(id)) if node.id == *id)).collect();
                 egui::ComboBox::from_label("Activity default flow").selected_text(value.default_flow.as_ref().map_or("None".into(), |id| flow_label(document,id))).show_ui(ui, |ui| {
                     ui.selectable_value(&mut value.default_flow,None,"None");
                     for flow in outgoing { ui.selectable_value(&mut value.default_flow,Some(flow.id.selector()), flow_label(document,&flow.id.selector())); }

@@ -230,8 +230,12 @@ fn incomplete_process_and_cycles_in_sequence_are_valid() {
             association_direction: None,
             id: id("loop"),
             kind: FlowKind::Sequence,
-            source: id("task"),
-            target: id("task"),
+            source: Some(processcraft_core::bpmn_model::EventReference::Local(id(
+                "task",
+            ))),
+            target: Some(processcraft_core::bpmn_model::EventReference::Local(id(
+                "task",
+            ))),
             name: Some(String::new()),
             documentation: String::new().into(),
             condition: None,
@@ -271,8 +275,12 @@ fn endpoint_plane_and_resource_boundaries() {
             association_direction: None,
             id: id("flow"),
             kind: FlowKind::Sequence,
-            source: id("task"),
-            target: id("task"),
+            source: Some(processcraft_core::bpmn_model::EventReference::Local(id(
+                "task",
+            ))),
+            target: Some(processcraft_core::bpmn_model::EventReference::Local(id(
+                "task",
+            ))),
             name: Some(String::new()),
             documentation: String::new().into(),
             condition: None,
@@ -512,6 +520,8 @@ fn collaboration_and_diagram_names_preserve_omission_and_empty_values() {
     let mut project = sample();
     let doc = std::sync::Arc::make_mut(&mut project.documents[0]);
     doc.collaboration = Some(Collaboration {
+        kind: None,
+        extras: None,
         correlation_keys: vec![],
         base: None,
         name: None,

@@ -45,7 +45,8 @@ pub fn prepare_import(bytes: &[u8], source_name: &str) -> Result<PreparedImport,
     let initial = parse_profile(bytes);
     let projected = initial.and_then(|document| {
         let check = (document.has_semantic_common_metadata_features()
-            || document.has_di_choreography_features())
+            || document.has_di_choreography_features()
+            || document.has_expanded_collaboration())
         .then(|| export_document(&document, std::slice::from_ref(&resource), true));
         if let Some(Err(_)) = check {
             None
@@ -292,9 +293,16 @@ fn supported_base_owner(name: &str) -> bool {
             | "collaboration"
             | "participant"
             | "participantMultiplicity"
+            | "globalConversation"
+            | "conversationAssociation"
+            | "participantAssociation"
+            | "messageFlowAssociation"
+            | "partnerEntity"
+            | "partnerRole"
+            | "endPoint"
+            | "callConversation"
             | "conversation"
             | "subConversation"
-            | "callConversation"
             | "conversationLink"
             | "choreography"
             | "choreographyTask"
@@ -748,6 +756,21 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                                 | ("resourceParameter", "type")
                                 | ("correlationProperty", "type")
                                 | ("callActivity", "calledElement")
+                                | ("participant", "processRef")
+                                | ("group", "categoryValueRef")
+                                | (
+                                    "messageFlow" | "conversationLink" | "association",
+                                    "sourceRef" | "targetRef"
+                                )
+                                | ("callConversation", "calledCollaborationRef")
+                                | (
+                                    "conversationAssociation",
+                                    "innerConversationNodeRef" | "outerConversationNodeRef"
+                                )
+                                | (
+                                    "messageFlowAssociation",
+                                    "innerMessageFlowRef" | "outerMessageFlowRef"
+                                )
                                 | ("process", "definitionalCollaborationRef")
                                 | ("ioBinding", "operationRef")
                                 | ("resourceParameterBinding", "parameterRef")
@@ -819,14 +842,7 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                         (item.ns.as_str(), item.name.as_str(), key),
                         (B, "sequenceFlow", "sourceRef" | "targetRef")
                             | (B, "boundaryEvent", "attachedToRef")
-                            | (B, "participant", "processRef")
-                            | (B, "group", "categoryValueRef")
                             | (B, "choreographyTask", "initiatingParticipantRef")
-                            | (
-                                B,
-                                "messageFlow" | "conversationLink" | "association",
-                                "sourceRef" | "targetRef"
-                            )
                             | (BD, "BPMNPlane" | "BPMNShape" | "BPMNEdge", "bpmnElement")
                             | (BD, "BPMNEdge", "sourceElement" | "targetElement")
                     ) {
@@ -851,12 +867,7 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
             }
             Event::End(_) => {
                 let mut item = stack.pop()?;
-                if item.ns == B
-                    && matches!(
-                        item.name.as_str(),
-                        "flowNodeRef" | "participantRef" | "messageFlowRef"
-                    )
-                {
+                if item.ns == B && matches!(item.name.as_str(), "flowNodeRef") {
                     let q = item.text.trim();
                     if item.name == "flowNodeRef" && !q.contains(':') {
                         item.text = q.to_owned();
@@ -876,7 +887,14 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                 if item.ns == B
                     && matches!(
                         item.name.as_str(),
-                        "inMessageRef"
+                        "participantRef"
+                            | "messageFlowRef"
+                            | "interfaceRef"
+                            | "endPointRef"
+                            | "innerParticipantRef"
+                            | "outerParticipantRef"
+                            | "choreographyRef"
+                            | "inMessageRef"
                             | "outMessageRef"
                             | "errorRef"
                             | "eventDefinitionRef"
@@ -923,6 +941,11 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                                 "documentation"
                                     | "flowNodeRef"
                                     | "participantRef"
+                                    | "interfaceRef"
+                                    | "endPointRef"
+                                    | "innerParticipantRef"
+                                    | "outerParticipantRef"
+                                    | "choreographyRef"
                                     | "text"
                                     | "dataInputRefs"
                                     | "optionalInputRefs"
@@ -2761,11 +2784,9 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
                 base: take_anonymous_base(n),
                 id: element_identity(n)?,
                 category_value_ref: n
-                    .attrs
+                    .catalog_qnames
                     .get("categoryValueRef")
-                    .map(|v| v.parse())
-                    .transpose()
-                    .ok()?,
+                    .map(|q| event_reference(q, target_namespace)),
             });
             continue;
         }
@@ -2839,8 +2860,14 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
                 id: element_identity(n)?,
                 name: None,
                 kind: FlowKind::Association,
-                source: selector(n, "sourceRef")?,
-                target: selector(n, "targetRef")?,
+                source: Some(event_reference(
+                    n.catalog_qnames.get("sourceRef")?,
+                    target_namespace,
+                )),
+                target: Some(event_reference(
+                    n.catalog_qnames.get("targetRef")?,
+                    target_namespace,
+                )),
                 documentation: anonymous_documentation(n, documentation(n)?),
                 condition: None,
                 association_direction: direction,
@@ -3177,8 +3204,8 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
                 association_direction: None,
                 id: element_identity(n)?,
                 kind: FlowKind::Sequence,
-                source: selector(n, "sourceRef")?,
-                target: selector(n, "targetRef")?,
+                source: Some(EventReference::Local(selector(n, "sourceRef")?)),
+                target: Some(EventReference::Local(selector(n, "targetRef")?)),
                 name: n.attrs.get("name").cloned(),
                 documentation: anonymous_documentation(n, flow_parts(n)?.0),
                 condition: flow_parts(n)?.1,
@@ -3271,6 +3298,35 @@ fn scopes(d: &BpmnDocument) -> Option<Vec<Scope<'_>>> {
     }
     Some(result)
 }
+fn parse_participant_association(
+    e: &Elem,
+    namespace: &str,
+) -> Option<processcraft_core::bpmn_collaboration::ParticipantAssociation> {
+    if e.ns != B
+        || e.name != "participantAssociation"
+        || !attrs(e, &["id"])
+        || e.children.len() != 2
+    {
+        return None;
+    }
+    let reference = |child: &Elem, name: &str| -> Option<EventReference> {
+        if child.ns != B || child.name != name || !attrs(child, &[]) || !child.children.is_empty() {
+            return None;
+        }
+        Some(event_reference(
+            child.catalog_text_qname.as_ref()?,
+            namespace,
+        ))
+    };
+    Some(
+        processcraft_core::bpmn_collaboration::ParticipantAssociation {
+            id: optional_id(e)?,
+            base: take_anonymous_base(e),
+            inner: Some(reference(&e.children[0], "innerParticipantRef")?),
+            outer: Some(reference(&e.children[1], "outerParticipantRef")?),
+        },
+    )
+}
 fn parse_conversation(
     e: &Elem,
     parent: Option<ElementSelector>,
@@ -3279,35 +3335,69 @@ fn parse_conversation(
     namespace: &str,
 ) -> Option<()> {
     use processcraft_core::bpmn_collaboration::{ConversationKind, ConversationNode};
-    if depth > 32 || !attrs(e, &["id", "name"]) {
+    if depth > 32
+        || !e.text.trim().is_empty()
+        || !attrs(e, &["id", "name", "calledCollaborationRef"])
+    {
         return None;
     }
     let kind = match e.name.as_str() {
         "conversation" => ConversationKind::Conversation,
         "subConversation" => ConversationKind::SubConversation,
+        "callConversation" => ConversationKind::CallConversation,
         _ => return None,
     };
     let node_id = element_identity(e)?;
     let mut refs = Vec::new();
+    let mut message_flow_refs = Vec::new();
+    let mut call = matches!(kind, ConversationKind::CallConversation).then(|| {
+        processcraft_core::bpmn_collaboration::CallConversationData {
+            called_collaboration_ref: e
+                .catalog_qnames
+                .get("calledCollaborationRef")
+                .map(|q| event_reference(q, namespace)),
+            participant_associations: Vec::new(),
+        }
+    });
+    if call.is_none() && e.attrs.contains_key("calledCollaborationRef") {
+        return None;
+    }
     let mut correlation_keys = Vec::new();
+    let mut phase = 0;
     for c in &e.children {
         if c.ns != B {
             return None;
         }
         match c.name.as_str() {
-            "participantRef" if c.attrs.is_empty() && c.children.is_empty() => {
-                refs.push(c.text.parse().ok()?)
+            "participantRef" if phase == 0 && c.attrs.is_empty() && c.children.is_empty() => {
+                refs.push(event_reference(c.catalog_text_qname.as_ref()?, namespace))
             }
-            "correlationKey" => correlation_keys.push(parse_correlation_key(c, namespace)?),
-            "conversation" | "subConversation"
-                if matches!(kind, ConversationKind::SubConversation) =>
+            "messageFlowRef" if phase <= 1 && c.attrs.is_empty() && c.children.is_empty() => {
+                phase = 1;
+                message_flow_refs.push(event_reference(c.catalog_text_qname.as_ref()?, namespace));
+            }
+            "correlationKey" if phase <= 2 => {
+                phase = 2;
+                correlation_keys.push(parse_correlation_key(c, namespace)?);
+            }
+            "participantAssociation" if phase <= 3 && call.is_some() => {
+                phase = 3;
+                call.as_mut()?
+                    .participant_associations
+                    .push(parse_participant_association(c, namespace)?);
+            }
+            "conversation" | "subConversation" | "callConversation"
+                if phase <= 3 && matches!(kind, ConversationKind::SubConversation) =>
             {
+                phase = 3;
                 parse_conversation(c, Some(node_id.selector()), out, depth + 1, namespace)?
             }
             _ => return None,
         }
     }
     out.push(ConversationNode {
+        message_flow_refs,
+        call,
         correlation_keys,
         base: take_anonymous_base(e),
         id: node_id,
@@ -3318,56 +3408,294 @@ fn parse_conversation(
     });
     Some(())
 }
-fn parse_participant(e: &Elem) -> Option<Participant> {
-    if !attrs(e, &["id", "name", "processRef"]) || e.children.len() > 1 {
+fn parse_participant(e: &Elem, namespace: &str) -> Option<Participant> {
+    if !e.text.trim().is_empty() || !attrs(e, &["id", "name", "processRef"]) {
         return None;
     }
-    let multiplicity = if let Some(child) = e.children.first() {
-        if child.ns != B
-            || child.name != "participantMultiplicity"
-            || !attrs(child, &["id", "minimum", "maximum"])
-            || !child.children.is_empty()
-        {
+    let mut interface_refs = Vec::new();
+    let mut endpoint_refs = Vec::new();
+    let mut multiplicity = None;
+    let mut phase = 0;
+    for child in &e.children {
+        if child.ns != B {
             return None;
         }
-        Some(processcraft_core::model::ParticipantMultiplicity {
-            id: optional_id(child)?,
-            base: take_anonymous_base(child),
-            minimum: child
-                .attrs
-                .get("minimum")
-                .map(|v| v.parse())
-                .transpose()
-                .ok()?,
-            maximum: child
-                .attrs
-                .get("maximum")
-                .map(|v| v.parse())
-                .transpose()
-                .ok()?,
-        })
-    } else {
-        None
-    };
+        match child.name.as_str() {
+            "interfaceRef" if phase == 0 && attrs(child, &[]) && child.children.is_empty() => {
+                interface_refs.push(event_reference(
+                    child.catalog_text_qname.as_ref()?,
+                    namespace,
+                ))
+            }
+            "endPointRef" if phase <= 1 && attrs(child, &[]) && child.children.is_empty() => {
+                phase = 1;
+                endpoint_refs.push(event_reference(
+                    child.catalog_text_qname.as_ref()?,
+                    namespace,
+                ));
+            }
+            "participantMultiplicity"
+                if phase <= 1
+                    && multiplicity.is_none()
+                    && attrs(child, &["id", "minimum", "maximum"])
+                    && child.children.is_empty() =>
+            {
+                phase = 2;
+                multiplicity = Some(processcraft_core::model::ParticipantMultiplicity {
+                    id: optional_id(child)?,
+                    base: take_anonymous_base(child),
+                    minimum: child
+                        .attrs
+                        .get("minimum")
+                        .map(|v| v.parse())
+                        .transpose()
+                        .ok()?,
+                    maximum: child
+                        .attrs
+                        .get("maximum")
+                        .map(|v| v.parse())
+                        .transpose()
+                        .ok()?,
+                });
+            }
+            _ => return None,
+        }
+    }
     Some(Participant {
+        interface_refs,
+        endpoint_refs,
         multiplicity,
         base: take_anonymous_base(e),
         id: element_identity(e)?,
         name: e.attrs.get("name").cloned(),
         process: e
-            .attrs
+            .catalog_qnames
             .get("processRef")
-            .map(|v| v.parse())
-            .transpose()
-            .ok()?,
+            .map(|q| event_reference(q, namespace)),
+    })
+}
+fn parse_collaboration_artifact(
+    e: &Elem,
+    namespace: &str,
+) -> Option<processcraft_core::bpmn_collaboration::CollaborationArtifact> {
+    use processcraft_core::bpmn_collaboration::CollaborationArtifact;
+    match e.name.as_str() {
+        "group" if attrs(e, &["id", "categoryValueRef"]) && e.children.is_empty() => Some(
+            CollaborationArtifact::Group(processcraft_core::bpmn_model::Group {
+                base: take_anonymous_base(e),
+                id: element_identity(e)?,
+                category_value_ref: e
+                    .catalog_qnames
+                    .get("categoryValueRef")
+                    .map(|q| event_reference(q, namespace)),
+            }),
+        ),
+        "textAnnotation" if attrs(e, &["id", "textFormat"]) => {
+            let mut text = None;
+            for child in &e.children {
+                if child.ns != B || child.name != "text" || text.is_some() {
+                    return None;
+                }
+                text = Some(mixed_body(child, true)?);
+            }
+            Some(CollaborationArtifact::TextAnnotation(Box::new(Node {
+                flow_metadata: None,
+                base_extras: anonymous_extras(e),
+                item_aware: None,
+                id: element_identity(e)?,
+                name: None,
+                documentation: anonymous_documentation(e, String::new()),
+                kind: NodeKind::TextAnnotation,
+                details: Some(NodeDetails::TextAnnotation {
+                    text_format: e.attrs.get("textFormat").cloned(),
+                    text,
+                }),
+                owner: String::new(),
+                contact: String::new(),
+                activity: None,
+                io_specification: None,
+                loop_characteristics: None,
+            })))
+        }
+        "association" if attrs(e, &["id", "sourceRef", "targetRef", "associationDirection"]) => {
+            let association_direction =
+                match e.attrs.get("associationDirection").map(String::as_str) {
+                    None => None,
+                    Some("None") => Some(processcraft_core::bpmn_model::AssociationDirection::None),
+                    Some("One") => Some(processcraft_core::bpmn_model::AssociationDirection::One),
+                    Some("Both") => Some(processcraft_core::bpmn_model::AssociationDirection::Both),
+                    _ => return None,
+                };
+            Some(CollaborationArtifact::Association(Box::new(Flow {
+                message_ref: None,
+                flow_metadata: None,
+                base_extras: anonymous_extras(e),
+                association_direction,
+                id: element_identity(e)?,
+                kind: FlowKind::Association,
+                source: Some(event_reference(
+                    e.catalog_qnames.get("sourceRef")?,
+                    namespace,
+                )),
+                target: Some(event_reference(
+                    e.catalog_qnames.get("targetRef")?,
+                    namespace,
+                )),
+                name: None,
+                documentation: anonymous_documentation(e, documentation(e)?),
+                condition: None,
+            })))
+        }
+        _ => None,
+    }
+}
+fn write_collaboration_artifacts(
+    xml: &mut String,
+    extras: Option<&processcraft_core::bpmn_collaboration::CollaborationExtras>,
+    namespace: &str,
+    context: &ExportContext,
+) {
+    use processcraft_core::bpmn_collaboration::CollaborationArtifact;
+    if let Some(extras) = extras {
+        for artifact in &extras.artifacts {
+            match artifact {
+                CollaborationArtifact::Group(group) => write_scope(
+                    xml,
+                    &[],
+                    &[],
+                    &[],
+                    &[],
+                    std::slice::from_ref(group),
+                    context,
+                    namespace,
+                ),
+                CollaborationArtifact::TextAnnotation(node) => write_scope(
+                    xml,
+                    std::slice::from_ref(node.as_ref()),
+                    &[],
+                    &[],
+                    &[],
+                    &[],
+                    context,
+                    namespace,
+                ),
+                CollaborationArtifact::Association(flow) => write_scope(
+                    xml,
+                    &[],
+                    std::slice::from_ref(flow.as_ref()),
+                    &[],
+                    &[],
+                    &[],
+                    context,
+                    namespace,
+                ),
+            }
+        }
+    }
+}
+fn parse_collaboration_extras_child(
+    e: &Elem,
+    namespace: &str,
+    value: &mut processcraft_core::bpmn_collaboration::CollaborationExtras,
+) -> Option<bool> {
+    use processcraft_core::bpmn_collaboration::{ConversationAssociation, MessageFlowAssociation};
+    match e.name.as_str() {
+        "group" | "textAnnotation" | "association" => value
+            .artifacts
+            .push(parse_collaboration_artifact(e, namespace)?),
+        "participantAssociation" => value
+            .participant_associations
+            .push(parse_participant_association(e, namespace)?),
+        "conversationAssociation" | "messageFlowAssociation" => {
+            let (inner, outer) = if e.name == "conversationAssociation" {
+                ("innerConversationNodeRef", "outerConversationNodeRef")
+            } else {
+                ("innerMessageFlowRef", "outerMessageFlowRef")
+            };
+            if !attrs(e, &["id", inner, outer])
+                || !e.text.trim().is_empty()
+                || !e.children.is_empty()
+            {
+                return None;
+            }
+            let inner = Some(event_reference(e.catalog_qnames.get(inner)?, namespace));
+            let outer = Some(event_reference(e.catalog_qnames.get(outer)?, namespace));
+            if e.name == "conversationAssociation" {
+                value
+                    .conversation_associations
+                    .push(ConversationAssociation {
+                        id: optional_id(e)?,
+                        base: take_anonymous_base(e),
+                        inner,
+                        outer,
+                    });
+            } else {
+                value
+                    .message_flow_associations
+                    .push(MessageFlowAssociation {
+                        id: optional_id(e)?,
+                        base: take_anonymous_base(e),
+                        inner,
+                        outer,
+                    });
+            }
+        }
+        "choreographyRef" if attrs(e, &[]) && e.children.is_empty() => value
+            .choreography_refs
+            .push(event_reference(e.catalog_text_qname.as_ref()?, namespace)),
+        _ => return Some(false),
+    }
+    Some(true)
+}
+fn parse_partner_refs(e: &Elem, namespace: &str) -> Option<Vec<EventReference>> {
+    if !e.text.trim().is_empty() {
+        return None;
+    }
+    let mut result = Vec::new();
+    for child in &e.children {
+        if child.ns != B
+            || child.name != "participantRef"
+            || !attrs(child, &[])
+            || !child.children.is_empty()
+        {
+            return None;
+        }
+        result.push(event_reference(
+            child.catalog_text_qname.as_ref()?,
+            namespace,
+        ));
+    }
+    Some(result)
+}
+fn collaboration_child_phase(name: &str) -> Option<u8> {
+    Some(match name {
+        "participant" => 0,
+        "messageFlow" => 1,
+        "group" | "textAnnotation" | "association" => 2,
+        "conversation" | "subConversation" | "callConversation" => 3,
+        "conversationAssociation" => 4,
+        "participantAssociation" => 5,
+        "messageFlowAssociation" => 6,
+        "correlationKey" => 7,
+        "choreographyRef" => 8,
+        "conversationLink" => 9,
+        _ => return None,
     })
 }
 fn parse_collaboration(e: &Elem, namespace: &str) -> Option<Collaboration> {
     use processcraft_core::bpmn_collaboration::ConversationLink;
-    if !attrs(e, &["id", "name"]) {
+    if !e.text.trim().is_empty() || !attrs(e, &["id", "name", "isClosed"]) {
         return None;
     }
+    let mut extras = processcraft_core::bpmn_collaboration::CollaborationExtras {
+        is_closed: optional_bool(e.attrs.get("isClosed"))?,
+        ..Default::default()
+    };
     let mut c = Collaboration {
+        kind: (e.name == "globalConversation").then_some(
+            processcraft_core::bpmn_collaboration::CollaborationRootKind::GlobalConversation,
+        ),
+        extras: None,
         correlation_keys: Vec::new(),
         base: take_anonymous_base(e),
         id: element_identity(e)?,
@@ -3377,12 +3705,18 @@ fn parse_collaboration(e: &Elem, namespace: &str) -> Option<Collaboration> {
         conversation_nodes: vec![],
         conversation_links: vec![],
     };
+    let mut phase = 0;
     for child in &e.children {
+        let next = collaboration_child_phase(&child.name)?;
+        if next < phase {
+            return None;
+        }
+        phase = next;
         if child.ns != B {
             return None;
         }
         match child.name.as_str() {
-            "participant" => c.participants.push(parse_participant(child)?),
+            "participant" => c.participants.push(parse_participant(child, namespace)?),
             "messageFlow"
                 if attrs(
                     child,
@@ -3400,13 +3734,19 @@ fn parse_collaboration(e: &Elem, namespace: &str) -> Option<Collaboration> {
                     id: element_identity(child)?,
                     name: child.attrs.get("name").cloned(),
                     kind: FlowKind::Message,
-                    source: selector(child, "sourceRef")?,
-                    target: selector(child, "targetRef")?,
+                    source: Some(event_reference(
+                        child.catalog_qnames.get("sourceRef")?,
+                        namespace,
+                    )),
+                    target: Some(event_reference(
+                        child.catalog_qnames.get("targetRef")?,
+                        namespace,
+                    )),
                     documentation: anonymous_documentation(child, documentation(child)?),
                     condition: None,
                 })
             }
-            "conversation" | "subConversation" => {
+            "conversation" | "subConversation" | "callConversation" => {
                 parse_conversation(child, None, &mut c.conversation_nodes, 0, namespace)?
             }
             "correlationKey" => c
@@ -3420,12 +3760,22 @@ fn parse_collaboration(e: &Elem, namespace: &str) -> Option<Collaboration> {
                     base: take_anonymous_base(child),
                     id: element_identity(child)?,
                     name: child.attrs.get("name").cloned(),
-                    source: selector(child, "sourceRef")?,
-                    target: selector(child, "targetRef")?,
+                    source: Some(event_reference(
+                        child.catalog_qnames.get("sourceRef")?,
+                        namespace,
+                    )),
+                    target: Some(event_reference(
+                        child.catalog_qnames.get("targetRef")?,
+                        namespace,
+                    )),
                 })
             }
+            _ if parse_collaboration_extras_child(child, namespace, &mut extras)? => {}
             _ => return None,
         }
+    }
+    if extras != Default::default() {
+        c.extras = Some(extras);
     }
     Some(c)
 }
@@ -3434,10 +3784,18 @@ fn parse_choreography(
     namespace: &str,
 ) -> Option<processcraft_core::bpmn_collaboration::Choreography> {
     use processcraft_core::bpmn_collaboration::{Choreography, ChoreographyActivity};
-    if !attrs(e, &["id", "name"]) {
+    if !e.text.trim().is_empty() || !attrs(e, &["id", "name", "isClosed"]) {
         return None;
     }
+    let mut extras = processcraft_core::bpmn_collaboration::CollaborationExtras {
+        is_closed: optional_bool(e.attrs.get("isClosed"))?,
+        ..Default::default()
+    };
     let mut c = Choreography {
+        extras: None,
+        conversation_nodes: Vec::new(),
+        conversation_links: Vec::new(),
+        correlation_keys: Vec::new(),
         base: take_anonymous_base(e),
         id: element_identity(e)?,
         name: e.attrs.get("name").cloned(),
@@ -3446,12 +3804,18 @@ fn parse_choreography(
         activities: vec![],
         sequence_flows: vec![],
     };
+    let mut phase = 0;
     for child in &e.children {
+        let next = collaboration_child_phase(&child.name).unwrap_or(10);
+        if next < phase {
+            return None;
+        }
+        phase = next;
         if child.ns != B {
             return None;
         }
         match child.name.as_str() {
-            "participant" => c.participants.push(parse_participant(child)?),
+            "participant" => c.participants.push(parse_participant(child, namespace)?),
             "messageFlow"
                 if attrs(
                     child,
@@ -3469,11 +3833,42 @@ fn parse_choreography(
                     id: element_identity(child)?,
                     name: child.attrs.get("name").cloned(),
                     kind: FlowKind::Message,
-                    source: selector(child, "sourceRef")?,
-                    target: selector(child, "targetRef")?,
+                    source: Some(event_reference(
+                        child.catalog_qnames.get("sourceRef")?,
+                        namespace,
+                    )),
+                    target: Some(event_reference(
+                        child.catalog_qnames.get("targetRef")?,
+                        namespace,
+                    )),
                     documentation: anonymous_documentation(child, documentation(child)?),
                     condition: None,
                 })
+            }
+            "conversation" | "subConversation" | "callConversation" => {
+                parse_conversation(child, None, &mut c.conversation_nodes, 0, namespace)?
+            }
+            "correlationKey" => c
+                .correlation_keys
+                .push(parse_correlation_key(child, namespace)?),
+            "conversationLink"
+                if attrs(child, &["id", "name", "sourceRef", "targetRef"])
+                    && child.children.is_empty() =>
+            {
+                c.conversation_links
+                    .push(processcraft_core::bpmn_collaboration::ConversationLink {
+                        base: take_anonymous_base(child),
+                        id: element_identity(child)?,
+                        name: child.attrs.get("name").cloned(),
+                        source: Some(event_reference(
+                            child.catalog_qnames.get("sourceRef")?,
+                            namespace,
+                        )),
+                        target: Some(event_reference(
+                            child.catalog_qnames.get("targetRef")?,
+                            namespace,
+                        )),
+                    })
             }
             "choreographyTask" if attrs(child, &["id", "name", "initiatingParticipantRef"]) => {
                 let mut participants = Vec::new();
@@ -3491,8 +3886,20 @@ fn parse_choreography(
                         return None;
                     }
                     match reference.name.as_str() {
-                        "participantRef" => participants.push(reference.text.parse().ok()?),
-                        "messageFlowRef" => messages.push(reference.text.parse().ok()?),
+                        "participantRef" => {
+                            match event_reference(reference.catalog_text_qname.as_ref()?, namespace)
+                            {
+                                EventReference::Local(id) => participants.push(id),
+                                _ => return None,
+                            }
+                        }
+                        "messageFlowRef" => {
+                            match event_reference(reference.catalog_text_qname.as_ref()?, namespace)
+                            {
+                                EventReference::Local(id) => messages.push(id),
+                                _ => return None,
+                            }
+                        }
                         _ => return None,
                     }
                 }
@@ -3524,14 +3931,18 @@ fn parse_choreography(
                     id: element_identity(child)?,
                     name: child.attrs.get("name").cloned(),
                     kind: FlowKind::Sequence,
-                    source: selector(child, "sourceRef")?,
-                    target: selector(child, "targetRef")?,
+                    source: Some(EventReference::Local(selector(child, "sourceRef")?)),
+                    target: Some(EventReference::Local(selector(child, "targetRef")?)),
                     documentation: anonymous_documentation(child, flow_parts(child)?.0),
                     condition: flow_parts(child)?.1,
                 })
             }
+            _ if parse_collaboration_extras_child(child, namespace, &mut extras)? => {}
             _ => return None,
         }
+    }
+    if extras != Default::default() {
+        c.extras = Some(extras);
     }
     Some(c)
 }
@@ -3703,6 +4114,59 @@ fn event_definition_identity(definition: &EventDefinition) -> Option<&ElementIde
         | EventDefinition::Timer { id, .. } => id.as_ref(),
     }
 }
+// Called only while importing a new BPMN source; native archives are never promoted on read.
+fn imported_root_selector(document: &mut BpmnDocument, name: &str) -> Option<ElementSelector> {
+    fn ensure(id: &mut Option<ElementIdentity>) -> ElementSelector {
+        id.get_or_insert_with(ElementIdentity::anonymous).selector()
+    }
+    Some(match name {
+        "rootElement"
+        | "globalTask"
+        | "globalManualTask"
+        | "globalBusinessRuleTask"
+        | "globalScriptTask"
+        | "globalUserTask" => ensure(&mut document.global_tasks.last_mut()?.id),
+        "correlationProperty" => ensure(&mut document.correlation_properties.last_mut()?.id),
+        "itemDefinition" => ensure(&mut document.catalog.item_definitions.last_mut()?.id),
+        "interface" => ensure(&mut document.catalog.interfaces.last_mut()?.id),
+        "resource" => ensure(&mut document.catalog.resources.last_mut()?.id),
+        "dataStore" => ensure(&mut document.data_stores.last_mut()?.id),
+        "partnerEntity" => ensure(&mut document.partner_entities.last_mut()?.id),
+        "partnerRole" => ensure(&mut document.partner_roles.last_mut()?.id),
+        "endPoint" => ensure(&mut document.endpoints.last_mut()?.id),
+        "category" => document.categories.last()?.id.selector(),
+        "message" | "signal" | "error" | "escalation" => match document.event_resources.last()? {
+            EventResource::Message { id, .. }
+            | EventResource::Signal { id, .. }
+            | EventResource::Error { id, .. }
+            | EventResource::Escalation { id, .. } => id.selector(),
+        },
+        "choreography" => document.choreographies.last()?.id.selector(),
+        "collaboration" | "globalConversation" => document
+            .additional_collaborations
+            .last()
+            .or(document.collaboration.as_ref())?
+            .id
+            .selector(),
+        "process" => document.processes.last()?.id.selector(),
+        name if name.ends_with("EventDefinition") => {
+            let id = match document.root_event_definitions.last_mut()? {
+                EventDefinition::Message { id, .. }
+                | EventDefinition::Signal { id, .. }
+                | EventDefinition::Error { id, .. }
+                | EventDefinition::Escalation { id, .. }
+                | EventDefinition::Conditional { id, .. }
+                | EventDefinition::Link { id, .. }
+                | EventDefinition::Cancel { id, .. }
+                | EventDefinition::Compensate { id, .. }
+                | EventDefinition::Terminate { id, .. }
+                | EventDefinition::Timer { id, .. } => id,
+            };
+            ensure(id)
+        }
+        _ => return None,
+    })
+}
 fn event_definition_resources_valid(document: &BpmnDocument, definition: &EventDefinition) -> bool {
     fn local_or_external(
         reference: &EventReference,
@@ -3780,6 +4244,7 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
     });
     let mut seen_non_import = false;
     let mut root_phase = 0;
+    let mut imported_order = Vec::new();
     for e in &root.children {
         let phase = match (e.ns.as_str(), e.name.as_str()) {
             (B, "import") => 0,
@@ -4036,12 +4501,50 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                     }
                 });
             }
+            (B, "partnerEntity" | "partnerRole") => {
+                if !attrs(e, &["id", "name"]) {
+                    return None;
+                }
+                let refs = parse_partner_refs(e, &target_namespace)?;
+                if e.name == "partnerEntity" {
+                    d.partner_entities
+                        .push(processcraft_core::bpmn_collaboration::PartnerEntity {
+                            id: optional_id(e)?,
+                            base: take_anonymous_base(e),
+                            name: e.attrs.get("name").cloned(),
+                            participant_refs: refs,
+                        });
+                } else {
+                    d.partner_roles
+                        .push(processcraft_core::bpmn_collaboration::PartnerRole {
+                            id: optional_id(e)?,
+                            base: take_anonymous_base(e),
+                            name: e.attrs.get("name").cloned(),
+                            participant_refs: refs,
+                        });
+                }
+            }
+            (B, "endPoint") => {
+                if !attrs(e, &["id"]) || !e.text.trim().is_empty() || !e.children.is_empty() {
+                    return None;
+                }
+                d.endpoints
+                    .push(processcraft_core::bpmn_collaboration::EndPoint {
+                        id: optional_id(e)?,
+                        base: take_anonymous_base(e),
+                    });
+            }
             (B, "choreography") => {
                 d.choreographies
                     .push(parse_choreography(e, &target_namespace)?);
             }
-            (B, "collaboration") if d.collaboration.is_none() => {
-                d.collaboration = Some(parse_collaboration(e, &target_namespace)?);
+            (B, "collaboration" | "globalConversation") => {
+                let collaboration = parse_collaboration(e, &target_namespace)?;
+                if d.collaboration.is_none() {
+                    d.collaboration = Some(collaboration);
+                } else {
+                    d.additional_collaborations.push(collaboration);
+                }
             }
             (B, "process") => {
                 if !attrs(
@@ -4300,7 +4803,11 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
             }
             _ => return None,
         }
+        if phase == 2 {
+            imported_order.push(imported_root_selector(&mut d, &e.name)?);
+        }
     }
+    d.root_order = Some(imported_order);
     if d.root_event_definitions
         .iter()
         .any(|definition| !event_definition_resources_valid(&d, definition))
@@ -4392,20 +4899,22 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
             }
         }
         for f in p.flows {
-            if !(p.nodes.iter().any(|n| n.id == f.source)
-                || (f.kind == FlowKind::Association
-                    && (p.groups.iter().any(|g| g.id == f.source)
-                        || p.flows
-                            .iter()
-                            .any(|flow| flow.kind == FlowKind::Sequence && flow.id == f.source))))
-                || !(p.nodes.iter().any(|n| n.id == f.target)
-                    || (f.kind == FlowKind::Association
-                        && (p.groups.iter().any(|g| g.id == f.target)
-                            || p.flows.iter().any(|flow| {
-                                flow.kind == FlowKind::Sequence && flow.id == f.target
-                            }))))
-            {
-                return None;
+            for reference in [&f.source, &f.target] {
+                match reference {
+                    Some(EventReference::Local(selector)) => {
+                        if !p.nodes.iter().any(|n| n.id == *selector)
+                            && !(f.kind == FlowKind::Association
+                                && (p.groups.iter().any(|g| g.id == *selector)
+                                    || p.flows.iter().any(|flow| {
+                                        flow.kind == FlowKind::Sequence && flow.id == *selector
+                                    })))
+                        {
+                            return None;
+                        }
+                    }
+                    Some(EventReference::Qualified(_)) if f.kind == FlowKind::Association => {}
+                    _ => return None,
+                }
             }
         }
     }
@@ -4619,6 +5128,27 @@ fn collect_owner_metadata(document: &BpmnDocument) -> Result<BTreeMap<String, Pe
     }
     for process in &mut remaining.processes {
         clear_mixed(&mut process.nodes);
+    }
+    for extras in remaining
+        .collaboration
+        .iter_mut()
+        .chain(&mut remaining.additional_collaborations)
+        .filter_map(|c| c.extras.as_mut())
+        .chain(
+            remaining
+                .choreographies
+                .iter_mut()
+                .filter_map(|c| c.extras.as_mut()),
+        )
+    {
+        for artifact in &mut extras.artifacts {
+            if let processcraft_core::bpmn_collaboration::CollaborationArtifact::TextAnnotation(
+                node,
+            ) = artifact
+            {
+                clear_mixed(std::slice::from_mut(node.as_mut()));
+            }
+        }
     }
     for task in &mut remaining.global_tasks {
         if let processcraft_core::bpmn_activity::GlobalTaskKind::Script {
@@ -5098,6 +5628,127 @@ impl std::ops::Deref for ExportContext<'_> {
         self.document
     }
 }
+fn write_participant_association(
+    xml: &mut String,
+    value: &processcraft_core::bpmn_collaboration::ParticipantAssociation,
+    namespace: &str,
+    context: &ExportContext,
+) {
+    xml.push_str(&format!("<participantAssociation xmlns=\"{B}\""));
+    if let Some(id) = &value.id {
+        write_xml_id(xml, id);
+    }
+    anonymous_base_attributes(xml, value.id.as_ref(), value.base.as_ref());
+    xml.push('>');
+    anonymous_base_children(xml, value.id.as_ref(), value.base.as_ref());
+    if let Some(inner) = &value.inner {
+        write_event_qname_text(xml, "innerParticipantRef", inner, namespace, context);
+    }
+    if let Some(outer) = &value.outer {
+        write_event_qname_text(xml, "outerParticipantRef", outer, namespace, context);
+    }
+    xml.push_str("</participantAssociation>");
+}
+fn write_collaboration_associations(
+    xml: &mut String,
+    extras: Option<&processcraft_core::bpmn_collaboration::CollaborationExtras>,
+    namespace: &str,
+    context: &ExportContext,
+) {
+    let Some(extras) = extras else {
+        return;
+    };
+    for value in &extras.conversation_associations {
+        let refs: Vec<_> = [
+            ("innerConversationNodeRef", value.inner.as_ref()),
+            ("outerConversationNodeRef", value.outer.as_ref()),
+        ]
+        .into_iter()
+        .filter_map(|(name, r)| r.map(|r| (name, r)))
+        .collect();
+        let tag = write_collaboration_qname_owner(
+            xml,
+            "conversationAssociation",
+            &refs,
+            namespace,
+            context,
+            &{
+                let mut scopes = Vec::new();
+                collaboration_base_scopes(value.base.as_ref(), &mut scopes);
+                scopes
+            },
+        );
+        if let Some(id) = &value.id {
+            write_xml_id(xml, id);
+        }
+        finish_anonymous_base_empty(xml, &tag, value.id.as_ref(), value.base.as_ref());
+    }
+    for value in &extras.participant_associations {
+        write_participant_association(xml, value, namespace, context);
+    }
+    for value in &extras.message_flow_associations {
+        let refs: Vec<_> = [
+            ("innerMessageFlowRef", value.inner.as_ref()),
+            ("outerMessageFlowRef", value.outer.as_ref()),
+        ]
+        .into_iter()
+        .filter_map(|(name, r)| r.map(|r| (name, r)))
+        .collect();
+        let tag = write_collaboration_qname_owner(
+            xml,
+            "messageFlowAssociation",
+            &refs,
+            namespace,
+            context,
+            &{
+                let mut scopes = Vec::new();
+                collaboration_base_scopes(value.base.as_ref(), &mut scopes);
+                scopes
+            },
+        );
+        if let Some(id) = &value.id {
+            write_xml_id(xml, id);
+        }
+        finish_anonymous_base_empty(xml, &tag, value.id.as_ref(), value.base.as_ref());
+    }
+}
+fn write_conversation_links(
+    xml: &mut String,
+    links: &[processcraft_core::bpmn_collaboration::ConversationLink],
+    namespace: &str,
+    context: &ExportContext,
+) {
+    for link in links {
+        let refs: Vec<_> = [
+            ("sourceRef", link.source.as_ref()),
+            ("targetRef", link.target.as_ref()),
+        ]
+        .into_iter()
+        .filter_map(|(name, r)| r.map(|r| (name, r)))
+        .collect();
+        let tag =
+            write_collaboration_qname_owner(xml, "conversationLink", &refs, namespace, context, &{
+                let mut scopes = Vec::new();
+                collaboration_base_scopes(link.base.as_ref(), &mut scopes);
+                scopes
+            });
+        write_xml_id(xml, &link.id);
+        write_xml_name(xml, link.name.as_deref());
+        finish_anonymous_base_empty(xml, &tag, Some(&link.id), link.base.as_ref());
+    }
+}
+fn write_collaboration_refs(
+    xml: &mut String,
+    extras: Option<&processcraft_core::bpmn_collaboration::CollaborationExtras>,
+    namespace: &str,
+    context: &ExportContext,
+) {
+    if let Some(extras) = extras {
+        for reference in &extras.choreography_refs {
+            write_event_qname_text(xml, "choreographyRef", reference, namespace, context);
+        }
+    }
+}
 fn write_conversations(
     xml: &mut String,
     nodes: &[processcraft_core::bpmn_collaboration::ConversationNode],
@@ -5111,25 +5762,47 @@ fn write_conversations(
             processcraft_core::bpmn_collaboration::ConversationKind::SubConversation => {
                 "subConversation"
             }
+            processcraft_core::bpmn_collaboration::ConversationKind::CallConversation => {
+                "callConversation"
+            }
         };
-        xml.push_str(&format!("<{tag}"));
+        let refs: Vec<_> = node
+            .call
+            .as_ref()
+            .and_then(|c| c.called_collaboration_ref.as_ref())
+            .map(|r| vec![("calledCollaborationRef", r)])
+            .unwrap_or_default();
+        let mut scopes = Vec::new();
+        collaboration_base_scopes(node.base.as_ref(), &mut scopes);
+        for key in &node.correlation_keys {
+            collaboration_base_scopes(key.base.as_ref(), &mut scopes);
+        }
+        if let Some(call) = &node.call {
+            for value in &call.participant_associations {
+                collaboration_base_scopes(value.base.as_ref(), &mut scopes);
+            }
+        }
+        let tag = write_collaboration_qname_owner(xml, tag, &refs, namespace, document, &scopes);
         write_xml_id(xml, &node.id);
         write_xml_name(xml, node.name.as_deref());
         anonymous_base_attributes(xml, Some(&node.id), node.base.as_ref());
         xml.push('>');
         anonymous_base_children(xml, Some(&node.id), node.base.as_ref());
         for participant in &node.participant_refs {
-            write_local_qname_text(
-                xml,
-                "participantRef",
-                xml_reference(document, participant),
-                namespace,
-            );
+            write_event_qname_text(xml, "participantRef", participant, namespace, document);
+        }
+        for reference in &node.message_flow_refs {
+            write_event_qname_text(xml, "messageFlowRef", reference, namespace, document);
         }
         for key in &node.correlation_keys {
             write_correlation_key(xml, key, namespace, document);
         }
         write_conversations(xml, nodes, Some(&node.id.selector()), namespace, document);
+        if let Some(call) = &node.call {
+            for association in &call.participant_associations {
+                write_participant_association(xml, association, namespace, document);
+            }
+        }
         xml.push_str(&format!("</{tag}>"));
     }
 }
@@ -5161,29 +5834,158 @@ fn write_local_qname_open(xml: &mut String, tag: &str, namespace: &str) -> Strin
         tag.to_owned()
     }
 }
+fn collaboration_base_scopes<'a>(
+    base: Option<&'a processcraft_core::bpmn_metadata::BaseMetadata>,
+    scopes: &mut Vec<&'a [processcraft_core::bpmn_xml::NamespaceBinding]>,
+) {
+    use processcraft_core::bpmn_xml::MixedXml;
+    if let Some(base) = base {
+        if !base.namespaces.is_empty() {
+            scopes.push(&base.namespaces);
+        }
+        for doc in &base.documentation {
+            if let MixedXml::Structured(content) = &doc.content {
+                scopes.push(&content.namespaces);
+            }
+        }
+        if let Some(ext) = &base.extension_elements {
+            scopes.push(&ext.content.namespaces);
+        }
+    }
+}
+fn collaboration_flow_scopes(flow: &Flow) -> Vec<&[processcraft_core::bpmn_xml::NamespaceBinding]> {
+    use processcraft_core::{bpmn_metadata::DocumentationSet, bpmn_xml::MixedXml};
+    let mut scopes = Vec::new();
+    if let DocumentationSet::Structured(docs) = &flow.documentation {
+        for doc in docs {
+            if let MixedXml::Structured(content) = &doc.content {
+                scopes.push(content.namespaces.as_slice());
+            }
+        }
+    }
+    if let Some(extras) = &flow.base_extras {
+        if !extras.namespaces.is_empty() {
+            scopes.push(&extras.namespaces);
+        }
+        if let Some(ext) = &extras.extension_elements {
+            scopes.push(&ext.content.namespaces);
+        }
+    }
+    scopes
+}
+fn write_collaboration_qname_owner(
+    xml: &mut String,
+    tag: &str,
+    refs: &[(&str, &EventReference)],
+    namespace: &str,
+    context: &ExportContext,
+    scopes: &[&[processcraft_core::bpmn_xml::NamespaceBinding]],
+) -> String {
+    let values: Vec<_> = refs
+        .iter()
+        .map(|(name, reference)| (*name, event_reference_qname(reference, namespace, context)))
+        .collect();
+    let empty_default = values.iter().any(|(_, q)| q.namespace.is_empty());
+    let mut prefixes = std::collections::BTreeMap::<String, String>::new();
+    let mut next_prefix = |uri: &str| -> String {
+        if let Some(prefix) = prefixes.get(uri) {
+            return prefix.clone();
+        }
+        let prefix = scopes
+            .first()
+            .and_then(|first| {
+                first
+                    .iter()
+                    .find(|binding| {
+                        !binding.prefix.is_empty()
+                            && binding.prefix != "xml"
+                            && binding.uri == uri
+                            && !prefixes.values().any(|used| used == &binding.prefix)
+                            && scopes
+                                .iter()
+                                .all(|scope| scope.iter().any(|n| n.prefix == binding.prefix))
+                    })
+                    .or_else(|| {
+                        first.iter().find(|binding| {
+                            !binding.prefix.is_empty()
+                                && binding.prefix != "xml"
+                                && !prefixes.values().any(|used| used == &binding.prefix)
+                                && scopes
+                                    .iter()
+                                    .all(|scope| scope.iter().any(|n| n.prefix == binding.prefix))
+                        })
+                    })
+            })
+            .map(|binding| binding.prefix.clone())
+            .unwrap_or_else(|| {
+                let mut i = prefixes.len();
+                loop {
+                    let p = format!("pc_cref{i}");
+                    if !prefixes.values().any(|used| used == &p) {
+                        break p;
+                    }
+                    i += 1;
+                }
+            });
+        prefixes.insert(uri.to_owned(), prefix.clone());
+        prefix
+    };
+    let owner = if empty_default {
+        format!("{}:{tag}", next_prefix(B))
+    } else {
+        tag.to_owned()
+    };
+    let mut attrs = Vec::new();
+    for (name, q) in values {
+        let lexical = if q.namespace.is_empty() || (!empty_default && q.namespace == B) {
+            q.local.to_string()
+        } else {
+            format!("{}:{}", next_prefix(&q.namespace), q.local)
+        };
+        attrs.push((name, lexical));
+    }
+    xml.push('<');
+    xml.push_str(&owner);
+    if empty_default {
+        xml.push_str(" xmlns=\"\"");
+    }
+    for (uri, prefix) in prefixes {
+        xml.push_str(&format!(" xmlns:{prefix}=\"{}\"", esc(&uri)));
+    }
+    for (name, value) in attrs {
+        xml.push_str(&format!(" {name}=\"{}\"", esc(&value)));
+    }
+    owner
+}
 fn write_participant(
     xml: &mut String,
     participant: &Participant,
     namespace: &str,
     document: &ExportContext,
 ) {
-    let tag = if participant.process.is_some() {
-        write_local_qname_open(xml, "participant", namespace)
-    } else {
-        xml.push_str("<participant");
-        "participant".to_owned()
-    };
+    let refs: Vec<_> = participant
+        .process
+        .iter()
+        .map(|r| ("processRef", r))
+        .collect();
+    let mut scopes = Vec::new();
+    collaboration_base_scopes(participant.base.as_ref(), &mut scopes);
+    if let Some(multiplicity) = &participant.multiplicity {
+        collaboration_base_scopes(multiplicity.base.as_ref(), &mut scopes);
+    }
+    let tag =
+        write_collaboration_qname_owner(xml, "participant", &refs, namespace, document, &scopes);
     write_xml_id(xml, &participant.id);
     write_xml_name(xml, participant.name.as_deref());
-    if let Some(process) = &participant.process {
-        xml.push_str(&format!(
-            " processRef=\"{}\"",
-            local_qname_value(xml_reference(document, process), namespace)
-        ));
-    }
     anonymous_base_attributes(xml, Some(&participant.id), participant.base.as_ref());
     xml.push('>');
     anonymous_base_children(xml, Some(&participant.id), participant.base.as_ref());
+    for reference in &participant.interface_refs {
+        write_event_qname_text(xml, "interfaceRef", reference, namespace, document);
+    }
+    for reference in &participant.endpoint_refs {
+        write_event_qname_text(xml, "endPointRef", reference, namespace, document);
+    }
     if let Some(value) = &participant.multiplicity {
         xml.push_str(&format!("<participantMultiplicity xmlns=\"{B}\""));
         if let Some(id) = &value.id {
@@ -5205,40 +6007,24 @@ fn write_participant(
     xml.push_str(&format!("</{tag}>"));
 }
 fn write_message_flow(xml: &mut String, flow: &Flow, namespace: &str, document: &ExportContext) {
-    let message_qname = flow
-        .message_ref
-        .as_ref()
-        .map(|r| event_reference_qname(r, namespace, document));
-    let empty_message_ns = message_qname
-        .as_ref()
-        .is_some_and(|q| q.namespace.is_empty());
-    let tag = if empty_message_ns && !namespace.is_empty() {
-        xml.push_str(&format!(
-            "<pc_message:messageFlow xmlns:pc_message=\"{B}\" xmlns=\"\" xmlns:tns=\"{}\"",
-            esc(namespace)
-        ));
-        "pc_message:messageFlow".to_owned()
-    } else {
-        write_local_qname_open(xml, "messageFlow", namespace)
-    };
-    if let Some(q) = &message_qname {
-        if q.namespace.is_empty() {
-            xml.push_str(&format!(" messageRef=\"{}\"", q.local));
-        } else {
-            xml.push_str(&format!(
-                " xmlns:pc_message_ref=\"{}\" messageRef=\"pc_message_ref:{}\"",
-                esc(&q.namespace),
-                q.local
-            ));
-        }
-    }
+    let refs: Vec<_> = [
+        ("sourceRef", flow.source.as_ref()),
+        ("targetRef", flow.target.as_ref()),
+        ("messageRef", flow.message_ref.as_ref()),
+    ]
+    .into_iter()
+    .filter_map(|(name, r)| r.map(|r| (name, r)))
+    .collect();
+    let tag = write_collaboration_qname_owner(
+        xml,
+        "messageFlow",
+        &refs,
+        namespace,
+        document,
+        &collaboration_flow_scopes(flow),
+    );
     write_xml_id(xml, &flow.id);
     write_xml_name(xml, flow.name.as_deref());
-    xml.push_str(&format!(
-        " sourceRef=\"{}\" targetRef=\"{}\"",
-        local_qname_value(xml_reference(document, &flow.source), namespace),
-        local_qname_value(xml_reference(document, &flow.target), namespace)
-    ));
     anonymous_extras_attributes(xml, &flow.id, flow.base_extras.as_ref());
     xml.push('>');
     write_doc(xml, &flow.documentation, flow.base_extras.as_ref());
@@ -5934,6 +6720,15 @@ fn anonymous_extras_attributes(
 fn write_xml_name(xml: &mut String, name: Option<&str>) {
     if let Some(name) = name {
         xml.push_str(&format!(" name=\"{}\"", esc(name)));
+    }
+}
+fn local_flow_xml_reference<'a>(
+    document: &'a ExportContext<'a>,
+    reference: Option<&EventReference>,
+) -> String {
+    match reference {
+        Some(EventReference::Local(selector)) => xml_reference(document, selector).to_string(),
+        _ => String::new(),
     }
 }
 fn xml_reference<'a>(document: &'a ExportContext<'a>, selector: &ElementSelector) -> &'a XmlId {
@@ -7238,8 +8033,8 @@ fn write_scope(
         write_xml_name(xml, f.name.as_deref());
         xml.push_str(&format!(
             " sourceRef=\"{}\" targetRef=\"{}\"",
-            xml_reference(document, &f.source),
-            xml_reference(document, &f.target)
+            local_flow_xml_reference(document, f.source.as_ref()),
+            local_flow_xml_reference(document, f.target.as_ref())
         ));
         if let Some(value) = f.flow_metadata.as_ref().and_then(|m| m.is_immediate) {
             xml.push_str(&format!(" isImmediate=\"{value}\""));
@@ -7284,29 +8079,35 @@ fn write_scope(
         xml.push_str("</textAnnotation>");
     }
     for group in groups {
-        let tag = if group.category_value_ref.is_some() {
-            write_local_qname_open(xml, "group", namespace)
-        } else {
-            xml.push_str("<group");
-            "group".to_owned()
-        };
+        let refs: Vec<_> = group
+            .category_value_ref
+            .iter()
+            .map(|r| ("categoryValueRef", r))
+            .collect();
+        let mut scopes = Vec::new();
+        collaboration_base_scopes(group.base.as_ref(), &mut scopes);
+        let tag =
+            write_collaboration_qname_owner(xml, "group", &refs, namespace, document, &scopes);
         write_xml_id(xml, &group.id);
-        if let Some(id) = &group.category_value_ref {
-            xml.push_str(&format!(
-                " categoryValueRef=\"{}\"",
-                local_qname_value(xml_reference(document, id), namespace)
-            ));
-        }
         finish_anonymous_base_empty(xml, &tag, Some(&group.id), group.base.as_ref());
     }
     for f in flows.iter().filter(|f| f.kind == FlowKind::Association) {
-        let tag = write_local_qname_open(xml, "association", namespace);
+        let refs: Vec<_> = [
+            ("sourceRef", f.source.as_ref()),
+            ("targetRef", f.target.as_ref()),
+        ]
+        .into_iter()
+        .filter_map(|(name, r)| r.map(|r| (name, r)))
+        .collect();
+        let tag = write_collaboration_qname_owner(
+            xml,
+            "association",
+            &refs,
+            namespace,
+            document,
+            &collaboration_flow_scopes(f),
+        );
         write_xml_id(xml, &f.id);
-        xml.push_str(&format!(
-            " sourceRef=\"{}\" targetRef=\"{}\"",
-            local_qname_value(xml_reference(document, &f.source), namespace),
-            local_qname_value(xml_reference(document, &f.target), namespace)
-        ));
         if let Some(direction) = f.association_direction {
             xml.push_str(&format!(" associationDirection=\"{:?}\"", direction));
         }
@@ -7542,15 +8343,15 @@ fn missing_xml_reference(document: &ExportContext) -> Option<ElementSelector> {
             }
         }
         for flow in scope.flows {
-            for reference in [&flow.source, &flow.target] {
-                if let Some(missing) = check(document, reference) {
+            for reference in flow.source.iter().chain(flow.target.iter()) {
+                if let Some(missing) = check_ref(document, reference) {
                     return Some(missing);
                 }
             }
         }
         for group in scope.groups {
             if let Some(reference) = &group.category_value_ref
-                && let Some(missing) = check(document, reference)
+                && let Some(missing) = check_ref(document, reference)
             {
                 return Some(missing);
             }
@@ -7641,28 +8442,28 @@ fn missing_xml_reference(document: &ExportContext) -> Option<ElementSelector> {
     if let Some(collab) = &document.collaboration {
         for p in &collab.participants {
             if let Some(r) = &p.process
-                && let Some(missing) = check(document, r)
+                && let Some(missing) = check_ref(document, r)
             {
                 return Some(missing);
             }
         }
         for f in &collab.flows {
-            for r in [&f.source, &f.target] {
-                if let Some(missing) = check(document, r) {
+            for r in f.source.iter().chain(f.target.iter()) {
+                if let Some(missing) = check_ref(document, r) {
                     return Some(missing);
                 }
             }
         }
         for n in &collab.conversation_nodes {
             for r in &n.participant_refs {
-                if let Some(missing) = check(document, r) {
+                if let Some(missing) = check_ref(document, r) {
                     return Some(missing);
                 }
             }
         }
         for l in &collab.conversation_links {
-            for r in [&l.source, &l.target] {
-                if let Some(missing) = check(document, r) {
+            for r in l.source.iter().chain(l.target.iter()) {
+                if let Some(missing) = check_ref(document, r) {
                     return Some(missing);
                 }
             }
@@ -7671,7 +8472,7 @@ fn missing_xml_reference(document: &ExportContext) -> Option<ElementSelector> {
     for choreography in &document.choreographies {
         for p in &choreography.participants {
             if let Some(r) = &p.process
-                && let Some(missing) = check(document, r)
+                && let Some(missing) = check_ref(document, r)
             {
                 return Some(missing);
             }
@@ -7681,8 +8482,8 @@ fn missing_xml_reference(document: &ExportContext) -> Option<ElementSelector> {
             .iter()
             .chain(&choreography.sequence_flows)
         {
-            for r in [&f.source, &f.target] {
-                if let Some(missing) = check(document, r) {
+            for r in f.source.iter().chain(f.target.iter()) {
+                if let Some(missing) = check_ref(document, r) {
                     return Some(missing);
                 }
             }
@@ -8151,14 +8952,31 @@ fn export_document(
         }
         xml.push_str(&format!("</{tag}>"));
     }
-    write_catalog(&mut xml, &document.catalog);
+    let mut root_spans = crate::root_order_export::RootSpans::new(document.root_order.is_some());
+    macro_rules! record_root {
+        ($id:expr, $start:expr) => {
+            if let Err(reason) = root_spans.record($id, $start, xml.len()) {
+                report.blocked.push(reason);
+                return Err(ExportFailure { report });
+            }
+        };
+    }
+    if let Err(reason) = write_catalog(&mut xml, &document.catalog, &mut root_spans) {
+        report.blocked.push(reason);
+        return Err(ExportFailure { report });
+    }
     for task in &document.global_tasks {
+        let start = xml.len();
         write_global_task(&mut xml, task, &namespace, &context);
+        record_root!(task.id.as_ref(), start);
     }
     for property in &document.correlation_properties {
+        let start = xml.len();
         write_correlation_property(&mut xml, property, &namespace, &context);
+        record_root!(property.id.as_ref(), start);
     }
     for category in &document.categories {
+        let start = xml.len();
         xml.push_str("<category");
         write_xml_id(&mut xml, &category.id);
         if let Some(name) = &category.name {
@@ -8181,8 +8999,10 @@ fn export_document(
             );
         }
         xml.push_str("</category>");
+        record_root!(Some(&category.id), start);
     }
     for store in &document.data_stores {
+        let start = xml.len();
         let unqualified = store
             .item_aware
             .as_ref()
@@ -8219,8 +9039,10 @@ fn export_document(
         anonymous_base_children(&mut xml, store.id.as_ref(), store.base.as_ref());
         write_item_state(&mut xml, store.item_aware.as_ref(), unqualified);
         xml.push_str(&format!("</{tag}>"));
+        record_root!(store.id.as_ref(), start);
     }
     for resource in &document.event_resources {
+        let start = xml.len();
         let (tag, id, name, qname) = match resource {
             EventResource::Signal {
                 id,
@@ -8288,11 +9110,56 @@ fn export_document(
             _ => {}
         }
         finish_anonymous_base_empty(&mut xml, &owner_tag, Some(id), resource.base());
+        record_root!(Some(id), start);
     }
     for definition in &document.root_event_definitions {
+        let start = xml.len();
         write_event_definition(&mut xml, definition, false, &namespace, &context);
+        record_root!(event_definition_identity(definition), start);
+    }
+    for value in &document.partner_entities {
+        let start = xml.len();
+        xml.push_str("<partnerEntity");
+        if let Some(id) = &value.id {
+            write_xml_id(&mut xml, id);
+        }
+        write_xml_name(&mut xml, value.name.as_deref());
+        anonymous_base_attributes(&mut xml, value.id.as_ref(), value.base.as_ref());
+        xml.push('>');
+        anonymous_base_children(&mut xml, value.id.as_ref(), value.base.as_ref());
+        for reference in &value.participant_refs {
+            write_event_qname_text(&mut xml, "participantRef", reference, &namespace, &context);
+        }
+        xml.push_str("</partnerEntity>");
+        record_root!(value.id.as_ref(), start);
+    }
+    for value in &document.partner_roles {
+        let start = xml.len();
+        xml.push_str("<partnerRole");
+        if let Some(id) = &value.id {
+            write_xml_id(&mut xml, id);
+        }
+        write_xml_name(&mut xml, value.name.as_deref());
+        anonymous_base_attributes(&mut xml, value.id.as_ref(), value.base.as_ref());
+        xml.push('>');
+        anonymous_base_children(&mut xml, value.id.as_ref(), value.base.as_ref());
+        for reference in &value.participant_refs {
+            write_event_qname_text(&mut xml, "participantRef", reference, &namespace, &context);
+        }
+        xml.push_str("</partnerRole>");
+        record_root!(value.id.as_ref(), start);
+    }
+    for value in &document.endpoints {
+        let start = xml.len();
+        xml.push_str("<endPoint");
+        if let Some(id) = &value.id {
+            write_xml_id(&mut xml, id);
+        }
+        finish_anonymous_base_empty(&mut xml, "endPoint", value.id.as_ref(), value.base.as_ref());
+        record_root!(value.id.as_ref(), start);
     }
     for c in &document.choreographies {
+        let start = xml.len();
         if c.activities
             .iter()
             .any(|a| a.participant_refs.len() < 2 || !(1..=2).contains(&a.message_flow_refs.len()))
@@ -8303,6 +9170,9 @@ fn export_document(
         xml.push_str("<choreography");
         write_xml_id(&mut xml, &c.id);
         write_xml_name(&mut xml, c.name.as_deref());
+        if let Some(value) = c.extras.as_ref().and_then(|e| e.is_closed) {
+            xml.push_str(&format!(" isClosed=\"{value}\""));
+        }
         anonymous_base_attributes(&mut xml, Some(&c.id), c.base.as_ref());
         xml.push('>');
         anonymous_base_children(&mut xml, Some(&c.id), c.base.as_ref());
@@ -8312,6 +9182,14 @@ fn export_document(
         for f in &c.message_flows {
             write_message_flow(&mut xml, f, &namespace, &context);
         }
+        write_collaboration_artifacts(&mut xml, c.extras.as_ref(), &namespace, &context);
+        write_conversations(&mut xml, &c.conversation_nodes, None, &namespace, &context);
+        write_collaboration_associations(&mut xml, c.extras.as_ref(), &namespace, &context);
+        for key in &c.correlation_keys {
+            write_correlation_key(&mut xml, key, &namespace, &context);
+        }
+        write_collaboration_refs(&mut xml, c.extras.as_ref(), &namespace, &context);
+        write_conversation_links(&mut xml, &c.conversation_links, &namespace, &context);
         for a in &c.activities {
             let tag = write_local_qname_open(&mut xml, "choreographyTask", &namespace);
             write_xml_id(&mut xml, &a.id);
@@ -8354,8 +9232,8 @@ fn export_document(
             write_xml_name(&mut xml, f.name.as_deref());
             xml.push_str(&format!(
                 " sourceRef=\"{}\" targetRef=\"{}\"",
-                xml_reference(&context, &f.source),
-                xml_reference(&context, &f.target)
+                local_flow_xml_reference(&context, f.source.as_ref()),
+                local_flow_xml_reference(&context, f.target.as_ref())
             ));
             if let Some(value) = f.flow_metadata.as_ref().and_then(|m| m.is_immediate) {
                 xml.push_str(&format!(" isImmediate=\"{value}\""));
@@ -8370,11 +9248,25 @@ fn export_document(
             xml.push_str("</sequenceFlow>");
         }
         xml.push_str("</choreography>");
+        record_root!(Some(&c.id), start);
     }
-    if let Some(c) = &document.collaboration {
-        xml.push_str("<collaboration");
+    for c in document
+        .collaboration
+        .iter()
+        .chain(&document.additional_collaborations)
+    {
+        let start = xml.len();
+        let tag = if c.kind.is_some() {
+            "globalConversation"
+        } else {
+            "collaboration"
+        };
+        xml.push_str(&format!("<{tag}"));
         write_xml_id(&mut xml, &c.id);
         write_xml_name(&mut xml, c.name.as_deref());
+        if let Some(value) = c.extras.as_ref().and_then(|e| e.is_closed) {
+            xml.push_str(&format!(" isClosed=\"{value}\""));
+        }
         anonymous_base_attributes(&mut xml, Some(&c.id), c.base.as_ref());
         xml.push('>');
         anonymous_base_children(&mut xml, Some(&c.id), c.base.as_ref());
@@ -8384,24 +9276,19 @@ fn export_document(
         for f in &c.flows {
             write_message_flow(&mut xml, f, &namespace, &context);
         }
+        write_collaboration_artifacts(&mut xml, c.extras.as_ref(), &namespace, &context);
         write_conversations(&mut xml, &c.conversation_nodes, None, &namespace, &context);
+        write_collaboration_associations(&mut xml, c.extras.as_ref(), &namespace, &context);
         for key in &c.correlation_keys {
             write_correlation_key(&mut xml, key, &namespace, &context);
         }
-        for link in &c.conversation_links {
-            let tag = write_local_qname_open(&mut xml, "conversationLink", &namespace);
-            write_xml_id(&mut xml, &link.id);
-            write_xml_name(&mut xml, link.name.as_deref());
-            xml.push_str(&format!(
-                " sourceRef=\"{}\" targetRef=\"{}\"",
-                local_qname_value(xml_reference(&context, &link.source), &namespace),
-                local_qname_value(xml_reference(&context, &link.target), &namespace)
-            ));
-            finish_anonymous_base_empty(&mut xml, &tag, Some(&link.id), link.base.as_ref());
-        }
-        xml.push_str("</collaboration>");
+        write_collaboration_refs(&mut xml, c.extras.as_ref(), &namespace, &context);
+        write_conversation_links(&mut xml, &c.conversation_links, &namespace, &context);
+        xml.push_str(&format!("</{tag}>"));
+        record_root!(Some(&c.id), start);
     }
     for p in &document.processes {
+        let start = xml.len();
         xml.push_str("<process");
         write_xml_id(&mut xml, &p.id);
         write_xml_name(&mut xml, p.name.as_deref());
@@ -8498,6 +9385,11 @@ fn export_document(
             }
         }
         xml.push_str("</process>");
+        record_root!(Some(&p.id), start);
+    }
+    if let Err(reason) = root_spans.finish(&mut xml, document.root_order.as_deref()) {
+        report.blocked.push(reason);
+        return Err(ExportFailure { report });
     }
     for d in &document.diagrams {
         let ns_binding = format!(" xmlns=\"{}\"", esc(&namespace));
@@ -9163,8 +10055,13 @@ fn catalog_attribute(
         write_catalog_qname_attribute(xml, name, q, generated_prefix);
     }
 }
-fn write_catalog(xml: &mut String, catalog: &processcraft_core::bpmn_catalog::SupportingCatalog) {
+fn write_catalog(
+    xml: &mut String,
+    catalog: &processcraft_core::bpmn_catalog::SupportingCatalog,
+    spans: &mut crate::root_order_export::RootSpans,
+) -> Result<(), String> {
     for item in &catalog.item_definitions {
+        let start = xml.len();
         let tag = catalog_open(xml, "itemDefinition", item.base.as_ref());
         if let Some(id) = &item.id {
             write_xml_id(xml, id);
@@ -9186,8 +10083,10 @@ fn write_catalog(xml: &mut String, catalog: &processcraft_core::bpmn_catalog::Su
         } else {
             xml.push_str("/>");
         }
+        spans.record(item.id.as_ref(), start, xml.len())?;
     }
     for interface in &catalog.interfaces {
+        let start = xml.len();
         let tag = catalog_open(xml, "interface", interface.base.as_ref());
         xml.push_str(&format!(" name=\"{}\"", esc(&interface.name)));
         if let Some(id) = &interface.id {
@@ -9221,8 +10120,10 @@ fn write_catalog(xml: &mut String, catalog: &processcraft_core::bpmn_catalog::Su
             xml.push_str(&format!("</{op_tag}>"));
         }
         xml.push_str(&format!("</{tag}>"));
+        spans.record(interface.id.as_ref(), start, xml.len())?;
     }
     for resource in &catalog.resources {
+        let start = xml.len();
         let tag = catalog_open(xml, "resource", resource.base.as_ref());
         xml.push_str(&format!(" name=\"{}\"", esc(&resource.name)));
         if let Some(id) = &resource.id {
@@ -9261,7 +10162,9 @@ fn write_catalog(xml: &mut String, catalog: &processcraft_core::bpmn_catalog::Su
             }
         }
         xml.push_str(&format!("</{tag}>"));
+        spans.record(resource.id.as_ref(), start, xml.len())?;
     }
+    Ok(())
 }
 fn write_loop_expression(
     xml: &mut String,

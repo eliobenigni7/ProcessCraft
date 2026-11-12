@@ -1,7 +1,9 @@
 //! Explicit file capabilities and a qualified local file replacement boundary.
 mod access;
 mod activity_export;
+mod collaboration_export;
 pub mod recovery;
+mod root_order_export;
 mod save;
 pub use recovery::{RecoveryOrigin, RecoveryRecord, RecoveryStore};
 

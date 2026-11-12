@@ -216,6 +216,83 @@ impl ProjectData {
                     "Collaboration and conversation semantics are only partially checked; BPMN 2.0.2 Clause 9.",
                 );
             }
+            for collaboration in doc
+                .collaboration
+                .iter()
+                .chain(&doc.additional_collaborations)
+            {
+                if collaboration.kind
+                    == Some(crate::bpmn_collaboration::CollaborationRootKind::GlobalConversation)
+                {
+                    if !collaboration.conversation_nodes.is_empty() {
+                        emit(
+                            collaboration.id.selector(),
+                            "globalConversationHasNodes",
+                            "A GlobalConversation must not contain ConversationNodes; BPMN 2.0.2 §9.5.5.",
+                        );
+                    }
+                    if collaboration
+                        .extras
+                        .as_ref()
+                        .is_some_and(|extras| !extras.choreography_refs.is_empty())
+                    {
+                        emit(
+                            collaboration.id.selector(),
+                            "globalConversationChoreographyRef",
+                            "choreographyRef does not apply to GlobalConversation; BPMN 2.0.2 §9.5.5.",
+                        );
+                    }
+                }
+            }
+            let reference_index = crate::reference_resolution::ReferenceIndex::new(doc);
+            for nodes in doc
+                .collaboration
+                .iter()
+                .chain(&doc.additional_collaborations)
+                .map(|c| &c.conversation_nodes)
+                .chain(doc.choreographies.iter().map(|c| &c.conversation_nodes))
+            {
+                for node in nodes {
+                    if node.kind == crate::bpmn_collaboration::ConversationKind::CallConversation
+                        && !node.message_flow_refs.is_empty()
+                    {
+                        emit(
+                            node.id.selector(),
+                            "callConversationMessageFlowRef",
+                            "messageFlowRef does not apply to CallConversation; BPMN 2.0.2 §9.5.4.",
+                        );
+                    }
+                    if let Some(call) = &node.call
+                        && call.participant_associations.iter().any(|association| association.inner.is_some())
+                        && !call.called_collaboration_ref.as_ref().is_some_and(|reference| {
+                            matches!(reference_index.resolve(reference), crate::reference_resolution::ReferenceResolution::Resolved(selector) if doc.collaborations().any(|collaboration| collaboration.id.selector() == selector))
+                        })
+                    {
+                        emit(node.id.selector(), "associationInnerScopeUnqualified", "Called collaboration ownership is unresolved; participant association inner scope cannot be qualified; BPMN 2.0.2 §9.5.4.");
+                    }
+                }
+            }
+            for issue in conversation_link_endpoint_scope_unqualified(doc) {
+                emit(
+                    issue.owner,
+                    "conversationLinkEndpointScopeUnqualified",
+                    "Conversation Link endpoint ownership cannot be established in this collaboration; BPMN 2.0.2 §9.5.6.",
+                );
+            }
+            for issue in message_flow_endpoint_scope_unqualified(doc) {
+                emit(
+                    issue.owner,
+                    "messageFlowEndpointScopeUnqualified",
+                    "Message Flow endpoint ownership cannot be established in this collaboration; BPMN 2.0.2 §9.4.",
+                );
+            }
+            for issue in association_inner_scope_unqualified(doc) {
+                emit(
+                    issue.owner,
+                    "associationInnerScopeUnqualified",
+                    "Referenced inner association ownership cannot be established from modeled references; BPMN 2.0.2 §§9.3.1, 9.4.2 and 9.5.8.",
+                );
+            }
             for choreography in &doc.choreographies {
                 emit(
                     choreography.id.selector(),
@@ -317,7 +394,18 @@ impl ProjectData {
                                 .collect();
                             if let Some(flows) = flows
                                 && !flows.is_empty()
-                                && !flows.iter().any(|flow| flow.source == shape.element)
+                                && flows.iter().all(|flow| {
+                                    matches!(
+                                        flow.source,
+                                        Some(crate::bpmn_model::EventReference::Local(_))
+                                    )
+                                })
+                                && !flows.iter().any(|flow| {
+                                    flow.source.as_ref()
+                                        == Some(&crate::bpmn_model::EventReference::Local(
+                                            shape.element.clone(),
+                                        ))
+                                })
                             {
                                 emit(
                                     shape.id.selector(),
@@ -605,8 +693,12 @@ impl ProjectData {
                     }
                 }
                 for flow in scope.flows.iter().filter(|f| f.kind == FlowKind::Sequence) {
-                    incoming.entry(&flow.target).or_default().push(flow);
-                    outgoing.entry(&flow.source).or_default().push(flow);
+                    if let Some(crate::bpmn_model::EventReference::Local(target)) = &flow.target {
+                        incoming.entry(target).or_default().push(flow);
+                    }
+                    if let Some(crate::bpmn_model::EventReference::Local(source)) = &flow.source {
+                        outgoing.entry(source).or_default().push(flow);
+                    }
                 }
                 let mut has_start = false;
                 let mut has_end = false;
@@ -1114,7 +1206,12 @@ impl ProjectData {
                                     "Event-based gateway outgoing flow has a condition; BPMN 2.0.2 §10.6.6, p. 296.",
                                 );
                             }
-                            if let Some(target) = scope.nodes.iter().find(|n| n.id == flow.target) {
+                            if let Some(target) = scope.nodes.iter().find(|n| {
+                                flow.target.as_ref()
+                                    == Some(&crate::bpmn_model::EventReference::Local(
+                                        n.id.selector(),
+                                    ))
+                            }) {
                                 if !matches!(
                                     target.kind,
                                     NodeKind::IntermediateCatchEvent | NodeKind::ReceiveTask
@@ -1194,6 +1291,344 @@ pub fn activity_family_reference_issues(
     doc: &crate::model::BpmnDocument,
 ) -> Vec<ActivityReferenceIssue> {
     activity_family_reference_scan(doc).0
+}
+
+/// Inner association references whose referenced owner cannot be proven from
+/// currently modeled choreography and CallConversation paths. External QNames
+/// are inert and excluded. Caller and called process definitional collaboration
+/// references are followed when their local ownership can be established.
+pub fn association_inner_scope_unqualified(
+    doc: &crate::model::BpmnDocument,
+) -> Vec<ActivityReferenceIssue> {
+    use crate::reference_resolution::{ReferenceIndex, ReferenceResolution};
+    let index = ReferenceIndex::new(doc);
+    let mut result = Vec::new();
+    for (root, nodes, extras, owner_participants) in doc
+        .collaborations()
+        .map(|c| (&c.id, &c.conversation_nodes, &c.extras, &c.participants))
+        .chain(
+            doc.choreographies
+                .iter()
+                .map(|c| (&c.id, &c.conversation_nodes, &c.extras, &c.participants)),
+        )
+    {
+        let Some(extras) = extras else { continue };
+        let mut roots = Vec::new();
+        for reference in extras.choreography_refs.iter().chain(
+            nodes
+                .iter()
+                .filter_map(|n| n.call.as_ref()?.called_collaboration_ref.as_ref()),
+        ) {
+            if let ReferenceResolution::Resolved(selector) = index.resolve(reference) {
+                roots.push(selector);
+            }
+        }
+        // Follow only process and callable references actually owned by these participants.
+        for participant in owner_participants {
+            let Some(reference) = &participant.process else {
+                continue;
+            };
+            let ReferenceResolution::Resolved(process_selector) = index.resolve(reference) else {
+                continue;
+            };
+            let Some(process) = doc
+                .processes
+                .iter()
+                .find(|p| p.id.selector() == process_selector)
+            else {
+                continue;
+            };
+            if let Some(reference) = process
+                .activity_metadata
+                .as_ref()
+                .and_then(|m| m.definitional_collaboration_ref.as_ref())
+                && let ReferenceResolution::Resolved(selector) = index.resolve(reference)
+            {
+                roots.push(selector);
+            }
+            let mut stack: Vec<_> = process.nodes.iter().collect();
+            while let Some(node) = stack.pop() {
+                if let Some(NodeDetails::SubProcess { content }) = &node.details {
+                    stack.extend(content.nodes.iter());
+                }
+                if let Some(NodeDetails::CallActivity {
+                    called_element: Some(qname),
+                }) = &node.details
+                {
+                    let reference = crate::bpmn_activity::ModelReference::Qualified(qname.clone());
+                    let ReferenceResolution::Resolved(called_selector) = index.resolve(&reference)
+                    else {
+                        continue;
+                    };
+                    let Some(called) = doc
+                        .processes
+                        .iter()
+                        .find(|p| p.id.selector() == called_selector)
+                    else {
+                        continue;
+                    };
+                    if let Some(reference) = called
+                        .activity_metadata
+                        .as_ref()
+                        .and_then(|m| m.definitional_collaboration_ref.as_ref())
+                        && let ReferenceResolution::Resolved(selector) = index.resolve(reference)
+                    {
+                        roots.push(selector);
+                    }
+                }
+            }
+        }
+        let mut participants = Vec::new();
+        let mut conversations = Vec::new();
+        let mut flows = Vec::new();
+        for collaboration in doc
+            .collaborations()
+            .filter(|c| roots.contains(&c.id.selector()))
+        {
+            participants.extend(collaboration.participants.iter().map(|v| v.id.selector()));
+            conversations.extend(
+                collaboration
+                    .conversation_nodes
+                    .iter()
+                    .map(|v| v.id.selector()),
+            );
+            flows.extend(
+                collaboration
+                    .flows
+                    .iter()
+                    .filter(|v| v.kind == FlowKind::Message)
+                    .map(|v| v.id.selector()),
+            );
+        }
+        for choreography in doc
+            .choreographies
+            .iter()
+            .filter(|c| roots.contains(&c.id.selector()))
+        {
+            participants.extend(choreography.participants.iter().map(|v| v.id.selector()));
+            conversations.extend(
+                choreography
+                    .conversation_nodes
+                    .iter()
+                    .map(|v| v.id.selector()),
+            );
+            flows.extend(choreography.message_flows.iter().map(|v| v.id.selector()));
+        }
+        let mut check = |owner: ElementSelector,
+                         field: &'static str,
+                         reference: &crate::bpmn_activity::ModelReference,
+                         candidates: &[ElementSelector]| {
+            match index.resolve(reference) {
+                ReferenceResolution::External | ReferenceResolution::NamespaceUnknown => {}
+                ReferenceResolution::Resolved(selector) if candidates.contains(&selector) => {}
+                _ => result.push(ActivityReferenceIssue {
+                    owner,
+                    field,
+                    target: reference.clone(),
+                }),
+            }
+        };
+        for association in &extras.participant_associations {
+            if let Some(reference) = &association.inner {
+                check(
+                    association
+                        .id
+                        .as_ref()
+                        .map_or_else(|| root.selector(), |id| id.selector()),
+                    "participantAssociation.innerRef",
+                    reference,
+                    &participants,
+                );
+            }
+        }
+        for association in &extras.conversation_associations {
+            if let Some(reference) = &association.inner {
+                check(
+                    association
+                        .id
+                        .as_ref()
+                        .map_or_else(|| root.selector(), |id| id.selector()),
+                    "conversationAssociation.innerRef",
+                    reference,
+                    &conversations,
+                );
+            }
+        }
+        for association in &extras.message_flow_associations {
+            if let Some(reference) = &association.inner {
+                check(
+                    association
+                        .id
+                        .as_ref()
+                        .map_or_else(|| root.selector(), |id| id.selector()),
+                    "messageFlowAssociation.innerRef",
+                    reference,
+                    &flows,
+                );
+            }
+        }
+    }
+    result
+}
+
+/// Local Message Flow endpoints for which participant-process ownership cannot be established.
+/// External references are inert. Incomplete participant process bindings remain unqualified.
+pub fn message_flow_endpoint_scope_unqualified(
+    doc: &crate::model::BpmnDocument,
+) -> Vec<ActivityReferenceIssue> {
+    use crate::reference_resolution::{ReferenceIndex, ReferenceResolution};
+    let index = ReferenceIndex::new(doc);
+    let mut issues = Vec::new();
+    for (participants, flows) in doc
+        .collaborations()
+        .map(|c| (&c.participants, &c.flows))
+        .chain(
+            doc.choreographies
+                .iter()
+                .map(|c| (&c.participants, &c.message_flows)),
+        )
+    {
+        let participant_ids: Vec<_> = participants.iter().map(|p| p.id.selector()).collect();
+        let mut node_ids = Vec::new();
+        for participant in participants {
+            let Some(reference) = &participant.process else {
+                continue;
+            };
+            let ReferenceResolution::Resolved(selector) = index.resolve(reference) else {
+                continue;
+            };
+            let Some(process) = doc
+                .processes
+                .iter()
+                .find(|process| process.id.selector() == selector)
+            else {
+                continue;
+            };
+            let mut stack: Vec<_> = process.nodes.iter().collect();
+            while let Some(node) = stack.pop() {
+                if node.kind.is_activity()
+                    || matches!(
+                        node.kind,
+                        NodeKind::StartEvent
+                            | NodeKind::EndEvent
+                            | NodeKind::IntermediateCatchEvent
+                            | NodeKind::IntermediateThrowEvent
+                            | NodeKind::BoundaryEvent
+                    )
+                {
+                    node_ids.push(node.id.selector());
+                }
+                if let Some(NodeDetails::SubProcess { content }) = &node.details {
+                    stack.extend(content.nodes.iter());
+                }
+            }
+        }
+        for flow in flows.iter().filter(|flow| flow.kind == FlowKind::Message) {
+            for (field, reference) in [
+                ("messageFlow.sourceRef", &flow.source),
+                ("messageFlow.targetRef", &flow.target),
+            ] {
+                let Some(reference) = reference else { continue };
+                match index.resolve(reference) {
+                    ReferenceResolution::Resolved(selector)
+                        if participant_ids.contains(&selector) || node_ids.contains(&selector) => {}
+                    ReferenceResolution::Resolved(_) | ReferenceResolution::MissingLocal => issues
+                        .push(ActivityReferenceIssue {
+                            owner: flow.id.selector(),
+                            field,
+                            target: reference.clone(),
+                        }),
+                    ReferenceResolution::External | ReferenceResolution::NamespaceUnknown => {}
+                }
+            }
+        }
+    }
+    issues
+}
+
+/// Local Conversation Link endpoints outside provable root-owned conversation nodes,
+/// participants, or participant processes remain unqualified.
+pub fn conversation_link_endpoint_scope_unqualified(
+    doc: &crate::model::BpmnDocument,
+) -> Vec<ActivityReferenceIssue> {
+    use crate::reference_resolution::{ReferenceIndex, ReferenceResolution};
+    let index = ReferenceIndex::new(doc);
+    let mut issues = Vec::new();
+    for (participants, conversations, links) in doc
+        .collaborations()
+        .map(|c| {
+            (
+                &c.participants,
+                &c.conversation_nodes,
+                &c.conversation_links,
+            )
+        })
+        .chain(doc.choreographies.iter().map(|c| {
+            (
+                &c.participants,
+                &c.conversation_nodes,
+                &c.conversation_links,
+            )
+        }))
+    {
+        let mut owned: Vec<_> = participants
+            .iter()
+            .map(|p| p.id.selector())
+            .chain(conversations.iter().map(|n| n.id.selector()))
+            .collect();
+        for participant in participants {
+            let Some(reference) = &participant.process else {
+                continue;
+            };
+            let ReferenceResolution::Resolved(selector) = index.resolve(reference) else {
+                continue;
+            };
+            let Some(process) = doc
+                .processes
+                .iter()
+                .find(|process| process.id.selector() == selector)
+            else {
+                continue;
+            };
+            let mut stack: Vec<_> = process.nodes.iter().collect();
+            while let Some(node) = stack.pop() {
+                if node.kind.is_activity()
+                    || matches!(
+                        node.kind,
+                        NodeKind::StartEvent
+                            | NodeKind::EndEvent
+                            | NodeKind::IntermediateCatchEvent
+                            | NodeKind::IntermediateThrowEvent
+                            | NodeKind::BoundaryEvent
+                    )
+                {
+                    owned.push(node.id.selector());
+                }
+                if let Some(NodeDetails::SubProcess { content }) = &node.details {
+                    stack.extend(content.nodes.iter());
+                }
+            }
+        }
+        for link in links {
+            for (field, reference) in [
+                ("conversationLink.sourceRef", &link.source),
+                ("conversationLink.targetRef", &link.target),
+            ] {
+                let Some(reference) = reference else { continue };
+                match index.resolve(reference) {
+                    ReferenceResolution::Resolved(selector) if owned.contains(&selector) => {}
+                    ReferenceResolution::Resolved(_) | ReferenceResolution::MissingLocal => issues
+                        .push(ActivityReferenceIssue {
+                            owner: link.id.selector(),
+                            field,
+                            target: reference.clone(),
+                        }),
+                    ReferenceResolution::External | ReferenceResolution::NamespaceUnknown => {}
+                }
+            }
+        }
+    }
+    issues
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1294,7 +1729,12 @@ fn activity_family_reference_scan(
         .map(|v| &v.id)
         .collect();
     let process_ids: Vec<_> = doc.processes.iter().map(|p| &p.id).collect();
-    let collaboration_ids: Vec<_> = doc.collaboration.iter().map(|c| &c.id).collect();
+    let collaboration_ids: Vec<_> = doc
+        .collaboration
+        .iter()
+        .chain(&doc.additional_collaborations)
+        .map(|c| &c.id)
+        .collect();
     let callable_ids: Vec<_> = doc
         .processes
         .iter()
@@ -1302,7 +1742,11 @@ fn activity_family_reference_scan(
         .chain(doc.global_tasks.iter().filter_map(|task| task.id.as_ref()))
         .collect();
     let mut keys = Vec::new();
-    if let Some(collaboration) = &doc.collaboration {
+    for collaboration in doc
+        .collaboration
+        .iter()
+        .chain(&doc.additional_collaborations)
+    {
         keys.extend(
             collaboration
                 .correlation_keys
@@ -1319,6 +1763,20 @@ fn activity_family_reference_scan(
         }
     }
     for choreography in &doc.choreographies {
+        keys.extend(
+            choreography
+                .correlation_keys
+                .iter()
+                .map(|key| (choreography.id.selector(), key)),
+        );
+        for conversation in &choreography.conversation_nodes {
+            keys.extend(
+                conversation
+                    .correlation_keys
+                    .iter()
+                    .map(|key| (conversation.id.selector(), key)),
+            );
+        }
         for activity in &choreography.activities {
             keys.extend(
                 activity
@@ -1674,9 +2132,394 @@ fn activity_family_reference_scan(
             }
         }
     }
+    // Each collaboration root has its own participant, conversation and message-flow scope.
+    let endpoints: Vec<_> = doc
+        .endpoints
+        .iter()
+        .filter_map(|endpoint| endpoint.id.as_ref())
+        .collect();
+    let all_collaborations: Vec<_> = doc
+        .collaboration
+        .iter()
+        .chain(&doc.additional_collaborations)
+        .map(|c| &c.id)
+        .collect();
+    let choreography_ids: Vec<_> = doc.choreographies.iter().map(|c| &c.id).collect();
+    let all_participants: Vec<_> = doc
+        .collaboration
+        .iter()
+        .chain(&doc.additional_collaborations)
+        .flat_map(|c| &c.participants)
+        .chain(doc.choreographies.iter().flat_map(|c| &c.participants))
+        .map(|p| &p.id)
+        .collect();
+    let all_conversations: Vec<_> = doc
+        .collaboration
+        .iter()
+        .chain(&doc.additional_collaborations)
+        .flat_map(|c| &c.conversation_nodes)
+        .chain(
+            doc.choreographies
+                .iter()
+                .flat_map(|c| &c.conversation_nodes),
+        )
+        .map(|n| &n.id)
+        .collect();
+    let all_message_flows: Vec<_> = doc
+        .collaboration
+        .iter()
+        .chain(&doc.additional_collaborations)
+        .flat_map(|c| &c.flows)
+        .chain(doc.choreographies.iter().flat_map(|c| &c.message_flows))
+        .filter(|f| f.kind == FlowKind::Message)
+        .map(|f| &f.id)
+        .collect();
+    for (owner, refs) in doc
+        .partner_entities
+        .iter()
+        .map(|p| (p.id.as_ref(), &p.participant_refs))
+        .chain(
+            doc.partner_roles
+                .iter()
+                .map(|p| (p.id.as_ref(), &p.participant_refs)),
+        )
+    {
+        for reference in refs {
+            check(
+                owner.map_or_else(|| doc.definitions_id.selector(), |id| id.selector()),
+                "partner.participantRef",
+                reference,
+                all_participants.clone(),
+            );
+        }
+    }
+    for (root, participants, flows, nodes, links, extras) in doc
+        .collaboration
+        .iter()
+        .chain(&doc.additional_collaborations)
+        .map(|c| {
+            (
+                &c.id,
+                &c.participants,
+                &c.flows,
+                &c.conversation_nodes,
+                &c.conversation_links,
+                &c.extras,
+            )
+        })
+        .chain(doc.choreographies.iter().map(|c| {
+            (
+                &c.id,
+                &c.participants,
+                &c.message_flows,
+                &c.conversation_nodes,
+                &c.conversation_links,
+                &c.extras,
+            )
+        }))
+    {
+        let participant_ids: Vec<_> = participants.iter().map(|p| &p.id).collect();
+        let flow_ids: Vec<_> = flows
+            .iter()
+            .filter(|f| f.kind == FlowKind::Message)
+            .map(|f| &f.id)
+            .collect();
+        let node_ids: Vec<_> = nodes.iter().map(|n| &n.id).collect();
+        for participant in participants {
+            if let Some(reference) = &participant.process {
+                check(
+                    participant.id.selector(),
+                    "participant.processRef",
+                    reference,
+                    process_ids.clone(),
+                );
+            }
+            for reference in &participant.interface_refs {
+                check(
+                    participant.id.selector(),
+                    "participant.interfaceRef",
+                    reference,
+                    interfaces.clone(),
+                );
+            }
+            for reference in &participant.endpoint_refs {
+                check(
+                    participant.id.selector(),
+                    "participant.endPointRef",
+                    reference,
+                    endpoints.clone(),
+                );
+            }
+        }
+        for node in nodes {
+            for reference in &node.participant_refs {
+                check(
+                    node.id.selector(),
+                    "conversation.participantRef",
+                    reference,
+                    participant_ids.clone(),
+                );
+            }
+            for reference in &node.message_flow_refs {
+                check(
+                    node.id.selector(),
+                    "conversation.messageFlowRef",
+                    reference,
+                    flow_ids.clone(),
+                );
+            }
+            if let Some(call) = &node.call {
+                if let Some(reference) = &call.called_collaboration_ref {
+                    check(
+                        node.id.selector(),
+                        "callConversation.calledCollaborationRef",
+                        reference,
+                        all_collaborations.clone(),
+                    );
+                }
+                let inner_participants = call
+                    .called_collaboration_ref
+                    .as_ref()
+                    .and_then(|reference| {
+                        doc.collaboration
+                            .iter()
+                            .chain(&doc.additional_collaborations)
+                            .find(|collaboration| {
+                                reference.matches_identity(&collaboration.id, target_ns)
+                            })
+                    })
+                    .map(|collaboration| {
+                        collaboration
+                            .participants
+                            .iter()
+                            .map(|participant| &participant.id)
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_else(|| all_participants.clone());
+                for association in &call.participant_associations {
+                    let owner = association
+                        .id
+                        .as_ref()
+                        .map_or_else(|| node.id.selector(), |id| id.selector());
+                    for (field, reference) in [
+                        ("participantAssociation.innerRef", &association.inner),
+                        ("participantAssociation.outerRef", &association.outer),
+                    ] {
+                        if let Some(reference) = reference {
+                            check(
+                                owner.clone(),
+                                field,
+                                reference,
+                                if field.ends_with(".outerRef") {
+                                    participant_ids.clone()
+                                } else {
+                                    inner_participants.clone()
+                                },
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        let mut message_endpoints = participant_ids.clone();
+        for scope in queries::scopes(doc) {
+            message_endpoints.extend(
+                scope
+                    .nodes
+                    .iter()
+                    .filter(|node| {
+                        node.kind.is_activity()
+                            || matches!(
+                                node.kind,
+                                NodeKind::StartEvent
+                                    | NodeKind::EndEvent
+                                    | NodeKind::IntermediateCatchEvent
+                                    | NodeKind::IntermediateThrowEvent
+                                    | NodeKind::BoundaryEvent
+                            )
+                    })
+                    .map(|node| &node.id),
+            );
+        }
+        for link in links {
+            let mut candidates = message_endpoints.clone();
+            candidates.extend(node_ids.iter().copied());
+            let is_match = |reference: &ModelReference,
+                            choices: &[&crate::ids::ElementIdentity]| {
+                choices
+                    .iter()
+                    .any(|id| reference.matches_identity(id, target_ns))
+            };
+            if let Some(reference) = &link.source {
+                let choices = match &link.target {
+                    Some(other) if is_match(other, &node_ids) => message_endpoints.clone(),
+                    Some(other) if is_match(other, &message_endpoints) => node_ids.clone(),
+                    _ => candidates.clone(),
+                };
+                check(
+                    link.id.selector(),
+                    "conversationLink.sourceRef",
+                    reference,
+                    choices,
+                );
+            }
+            if let Some(reference) = &link.target {
+                let choices = match &link.source {
+                    Some(other) if is_match(other, &node_ids) => message_endpoints.clone(),
+                    Some(other) if is_match(other, &message_endpoints) => node_ids.clone(),
+                    _ => candidates.clone(),
+                };
+                check(
+                    link.id.selector(),
+                    "conversationLink.targetRef",
+                    reference,
+                    choices,
+                );
+            }
+        }
+        for flow in flows.iter().filter(|f| f.kind == FlowKind::Message) {
+            if let Some(reference) = &flow.source {
+                check(
+                    flow.id.selector(),
+                    "messageFlow.sourceRef",
+                    reference,
+                    message_endpoints.clone(),
+                );
+            }
+            if let Some(reference) = &flow.target {
+                check(
+                    flow.id.selector(),
+                    "messageFlow.targetRef",
+                    reference,
+                    message_endpoints.clone(),
+                );
+            }
+        }
+        if let Some(extra) = extras {
+            let base_selectors = doc.base_element_selectors();
+            let base_elements: Vec<_> = doc
+                .element_identities()
+                .into_iter()
+                .filter(|identity| base_selectors.contains(&identity.selector()))
+                .collect();
+            for artifact in &extra.artifacts {
+                if let crate::bpmn_collaboration::CollaborationArtifact::Group(group) = artifact
+                    && let Some(reference) = &group.category_value_ref
+                {
+                    check(
+                        group.id.selector(),
+                        "group.categoryValueRef",
+                        reference,
+                        categories.clone(),
+                    );
+                }
+                if let crate::bpmn_collaboration::CollaborationArtifact::Association(flow) =
+                    artifact
+                {
+                    if let Some(reference) = &flow.source {
+                        check(
+                            flow.id.selector(),
+                            "association.sourceRef",
+                            reference,
+                            base_elements.clone(),
+                        );
+                    }
+                    if let Some(reference) = &flow.target {
+                        check(
+                            flow.id.selector(),
+                            "association.targetRef",
+                            reference,
+                            base_elements.clone(),
+                        );
+                    }
+                }
+            }
+            for association in &extra.participant_associations {
+                let owner = association
+                    .id
+                    .as_ref()
+                    .map_or_else(|| root.selector(), |id| id.selector());
+                for (field, reference) in [
+                    ("participantAssociation.innerRef", &association.inner),
+                    ("participantAssociation.outerRef", &association.outer),
+                ] {
+                    if let Some(reference) = reference {
+                        check(
+                            owner.clone(),
+                            field,
+                            reference,
+                            if field.ends_with(".outerRef") {
+                                participant_ids.clone()
+                            } else {
+                                all_participants.clone()
+                            },
+                        );
+                    }
+                }
+            }
+            for association in &extra.conversation_associations {
+                let owner = association
+                    .id
+                    .as_ref()
+                    .map_or_else(|| root.selector(), |id| id.selector());
+                for (field, reference) in [
+                    ("conversationAssociation.innerRef", &association.inner),
+                    ("conversationAssociation.outerRef", &association.outer),
+                ] {
+                    if let Some(reference) = reference {
+                        check(
+                            owner.clone(),
+                            field,
+                            reference,
+                            if field.ends_with(".outerRef") {
+                                node_ids.clone()
+                            } else {
+                                all_conversations.clone()
+                            },
+                        );
+                    }
+                }
+            }
+            for association in &extra.message_flow_associations {
+                let owner = association
+                    .id
+                    .as_ref()
+                    .map_or_else(|| root.selector(), |id| id.selector());
+                for (field, reference) in [
+                    ("messageFlowAssociation.innerRef", &association.inner),
+                    ("messageFlowAssociation.outerRef", &association.outer),
+                ] {
+                    if let Some(reference) = reference {
+                        check(
+                            owner.clone(),
+                            field,
+                            reference,
+                            if field.ends_with(".outerRef") {
+                                flow_ids.clone()
+                            } else {
+                                all_message_flows.clone()
+                            },
+                        );
+                    }
+                }
+            }
+            for reference in &extra.choreography_refs {
+                check(
+                    root.selector(),
+                    "collaboration.choreographyRef",
+                    reference,
+                    choreography_ids.clone(),
+                );
+            }
+        }
+    }
     // Message references are semantic; band ownership and plane order point to
     // representations and are resolved only within their owning diagram.
-    if let Some(collaboration) = &doc.collaboration {
+    for collaboration in doc
+        .collaboration
+        .iter()
+        .chain(&doc.additional_collaborations)
+    {
         for flow in &collaboration.flows {
             if let Some(reference) = &flow.message_ref {
                 check(
@@ -1777,6 +2620,81 @@ fn activity_family_reference_scan(
         })
         .collect();
     let all_scopes = queries::scopes(doc);
+    let base_selectors = doc.base_element_selectors();
+    let base_elements: Vec<_> = doc
+        .element_identities()
+        .into_iter()
+        .filter(|identity| base_selectors.contains(&identity.selector()))
+        .collect();
+    for scope in &all_scopes {
+        for group in scope.groups {
+            if let Some(reference) = &group.category_value_ref {
+                check(
+                    group.id.selector(),
+                    "group.categoryValueRef",
+                    reference,
+                    categories.clone(),
+                );
+            }
+        }
+        let flow_nodes: Vec<_> = scope
+            .nodes
+            .iter()
+            .filter(|node| {
+                !matches!(
+                    node.kind,
+                    NodeKind::TextAnnotation
+                        | NodeKind::DataObjectReference
+                        | NodeKind::DataStoreReference
+                )
+            })
+            .map(|node| &node.id)
+            .collect();
+        for flow in scope
+            .flows
+            .iter()
+            .filter(|flow| flow.kind == FlowKind::Association)
+        {
+            if let Some(reference) = &flow.source {
+                check(
+                    flow.id.selector(),
+                    "association.sourceRef",
+                    reference,
+                    base_elements.clone(),
+                );
+            }
+            if let Some(reference) = &flow.target {
+                check(
+                    flow.id.selector(),
+                    "association.targetRef",
+                    reference,
+                    base_elements.clone(),
+                );
+            }
+        }
+        for flow in scope
+            .flows
+            .iter()
+            .filter(|flow| flow.kind == FlowKind::Sequence)
+        {
+            if let Some(reference) = &flow.source {
+                check(
+                    flow.id.selector(),
+                    "sequenceFlow.sourceRef",
+                    reference,
+                    flow_nodes.clone(),
+                );
+            }
+            if let Some(reference) = &flow.target {
+                check(
+                    flow.id.selector(),
+                    "sequenceFlow.targetRef",
+                    reference,
+                    flow_nodes.clone(),
+                );
+            }
+        }
+    }
     let mut all_output_sets: Vec<&crate::bpmn_data::IoSet> = Vec::new();
     for process in &doc.processes {
         if let Some(io) = &process.io_specification {
@@ -1844,9 +2762,15 @@ fn activity_family_reference_scan(
                         .filter(|flow| {
                             flow.kind == FlowKind::Sequence
                                 && if incoming {
-                                    flow.target == activity.id.selector()
+                                    flow.target.as_ref()
+                                        == Some(&crate::bpmn_model::EventReference::Local(
+                                            activity.id.selector(),
+                                        ))
                                 } else {
-                                    flow.source == activity.id.selector()
+                                    flow.source.as_ref()
+                                        == Some(&crate::bpmn_model::EventReference::Local(
+                                            activity.id.selector(),
+                                        ))
                                 }
                         })
                         .map(|flow| &flow.id)
@@ -2094,9 +3018,19 @@ fn activity_family_reference_scan(
                                     flow.kind == FlowKind::Sequence
                                         && event.id.as_ref().is_some_and(|id| {
                                             if incoming {
-                                                flow.target == id.selector()
+                                                flow.target.as_ref()
+                                                    == Some(
+                                                        &crate::bpmn_model::EventReference::Local(
+                                                            id.selector(),
+                                                        ),
+                                                    )
                                             } else {
-                                                flow.source == id.selector()
+                                                flow.source.as_ref()
+                                                    == Some(
+                                                        &crate::bpmn_model::EventReference::Local(
+                                                            id.selector(),
+                                                        ),
+                                                    )
                                             }
                                         })
                                 })
@@ -2303,9 +3237,15 @@ fn activity_family_reference_scan(
                         .filter(|flow| {
                             flow.kind == FlowKind::Sequence
                                 && if incoming {
-                                    flow.target == node.id.selector()
+                                    flow.target.as_ref()
+                                        == Some(&crate::bpmn_model::EventReference::Local(
+                                            node.id.selector(),
+                                        ))
                                 } else {
-                                    flow.source == node.id.selector()
+                                    flow.source.as_ref()
+                                        == Some(&crate::bpmn_model::EventReference::Local(
+                                            node.id.selector(),
+                                        ))
                                 }
                         })
                         .map(|flow| &flow.id)

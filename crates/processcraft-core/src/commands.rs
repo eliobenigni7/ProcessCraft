@@ -21,6 +21,27 @@ pub struct Envelope {
 #[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
 #[allow(clippy::large_enum_variant)]
 pub enum Mutation {
+    SetCollaborationRoot {
+        document_id: DocumentId,
+        collaboration: Collaboration,
+    },
+    DeleteCollaborationRoot {
+        document_id: DocumentId,
+        collaboration_id: ElementSelector,
+    },
+    SetPartnerCatalog {
+        document_id: DocumentId,
+        partner_entities: Vec<crate::bpmn_collaboration::PartnerEntity>,
+        partner_roles: Vec<crate::bpmn_collaboration::PartnerRole>,
+        endpoints: Vec<crate::bpmn_collaboration::EndPoint>,
+    },
+    SetDocumentRootOrder {
+        document_id: DocumentId,
+        order: Option<Vec<ElementSelector>>,
+    },
+    InitializeDocumentRootOrder {
+        document_id: DocumentId,
+    },
     SetDiagramPlaneMetadata {
         document_id: DocumentId,
         diagram_id: ElementSelector,
@@ -731,6 +752,16 @@ impl Session {
         let mut promoted_identities = Vec::new();
         match request {
             Request::Batch { mutations } => {
+                let explicit_root_orders: Vec<_> = mutations
+                    .iter()
+                    .filter_map(|mutation| match mutation {
+                        Mutation::SetDocumentRootOrder { document_id, .. }
+                        | Mutation::InitializeDocumentRootOrder { document_id } => {
+                            Some(*document_id)
+                        }
+                        _ => None,
+                    })
+                    .collect();
                 let explicit_plane_orders: Vec<_> = mutations
                     .iter()
                     .filter_map(|mutation| match mutation {
@@ -746,6 +777,16 @@ impl Session {
                     matches!(
                         mutation,
                         Mutation::SetGlobalTasks { .. }
+                            | Mutation::SetSupportingCatalog { .. }
+                            | Mutation::SetDataStores { .. }
+                            | Mutation::SetRootEventDefinitions { .. }
+                            | Mutation::SetEventResources { .. }
+                            | Mutation::UpdateCategory { .. }
+                            | Mutation::DeleteCategory { .. }
+                            | Mutation::Delete { .. }
+                            | Mutation::SetCollaborationRoot { .. }
+                            | Mutation::DeleteCollaborationRoot { .. }
+                            | Mutation::SetPartnerCatalog { .. }
                             | Mutation::DeleteChoreographyActivity { .. }
                             | Mutation::SetParticipantMultiplicity { .. }
                             | Mutation::SetCorrelationProperties { .. }
@@ -762,9 +803,13 @@ impl Session {
                     )
                 });
                 if envelope.expected_generation.is_none()
-                    && mutations
-                        .iter()
-                        .any(|m| matches!(m, Mutation::PromoteElementIdentity { .. }))
+                    && mutations.iter().any(|m| {
+                        matches!(
+                            m,
+                            Mutation::PromoteElementIdentity { .. }
+                                | Mutation::InitializeDocumentRootOrder { .. }
+                        )
+                    })
                 {
                     return Err(CommandError::InvalidParams(
                         "identity promotion requires an expected generation".into(),
@@ -830,6 +875,36 @@ impl Session {
                                 selector,
                             });
                         }
+                        Mutation::InitializeDocumentRootOrder { document_id } => {
+                            let document = doc(&mut candidate, document_id, true)?;
+                            if document.root_order.is_some() {
+                                return Err(invalid("root order is already initialized"));
+                            }
+                            document.visit_optional_root_identities_with_path_mut(
+                                |path, identity| {
+                                    if identity.is_none() {
+                                        let new_identity = crate::ids::ElementIdentity::anonymous();
+                                        promoted_identities.push(PromotedIdentity {
+                                            document_id,
+                                            model_path: path.to_owned(),
+                                            selector: new_identity.selector(),
+                                        });
+                                        *identity = Some(new_identity);
+                                    }
+                                },
+                            );
+                            document.root_order = Some(
+                                document
+                                    .root_element_identities()
+                                    .into_iter()
+                                    .map(|identity| {
+                                        identity.map(|id| id.selector()).ok_or_else(|| {
+                                            invalid("anonymous root could not be promoted")
+                                        })
+                                    })
+                                    .collect::<Result<Vec<_>, _>>()?,
+                            );
+                        }
                         other => {
                             let previous = native_xml_ids(&candidate);
                             mutate(&mut candidate, other)?;
@@ -844,6 +919,12 @@ impl Session {
                         &selector_mappings,
                     );
                 }
+                reconcile_root_orders(
+                    &self.project,
+                    &mut candidate,
+                    &selector_mappings,
+                    &explicit_root_orders,
+                )?;
                 reconcile_plane_orders(
                     &self.project,
                     &mut candidate,
@@ -1118,6 +1199,54 @@ fn prune_removed_activity_navigation(
         });
     }
 }
+fn reconcile_root_orders(
+    old: &ProjectData,
+    candidate: &mut ProjectData,
+    mappings: &[SelectorMapping],
+    explicit: &[DocumentId],
+) -> Result<(), CommandError> {
+    for document in &mut candidate.documents {
+        if explicit.contains(&document.id)
+            || document.root_order.is_none()
+            || !old
+                .documents
+                .iter()
+                .any(|before| before.id == document.id && before.root_order.is_some())
+        {
+            continue;
+        }
+        let available: Vec<_> = document
+            .root_element_identities()
+            .into_iter()
+            .map(|identity| {
+                identity.map(|id| id.selector()).ok_or_else(|| {
+                    invalid("promote anonymous roots before adding them to an ordered document")
+                })
+            })
+            .collect::<Result<_, _>>()?;
+        let mut order = document.root_order.clone().unwrap_or_default();
+        for id in &mut order {
+            for mapping in mappings
+                .iter()
+                .filter(|mapping| mapping.document_id == document.id)
+            {
+                if *id == mapping.from {
+                    *id = mapping.to.clone();
+                }
+            }
+        }
+        order.retain(|id| available.contains(id));
+        for id in available {
+            if !order.contains(&id) {
+                order.push(id);
+            }
+        }
+        if document.root_order.as_ref() != Some(&order) {
+            Arc::make_mut(document).root_order = Some(order);
+        }
+    }
+    Ok(())
+}
 fn reconcile_plane_orders(
     old: &ProjectData,
     candidate: &mut ProjectData,
@@ -1299,6 +1428,10 @@ fn documentation_is_structured(d: &BpmnDocument, id: &ElementSelector) -> bool {
                 .iter()
                 .any(|f| f.id == *id && matches!(f.documentation, DocumentationSet::Structured(_)))
         })
+        || d.additional_collaborations
+            .iter()
+            .flat_map(|root| &root.flows)
+            .any(|f| f.id == *id && matches!(f.documentation, DocumentationSet::Structured(_)))
         || d.choreographies
             .iter()
             .flat_map(|c| c.sequence_flows.iter().chain(&c.message_flows))
@@ -1493,6 +1626,27 @@ fn node_mut<'a>(
     for process in &mut document.processes {
         if let Some(node) = nested_node_mut(&mut process.nodes, id, 0) {
             return Ok(node);
+        }
+    }
+    use crate::bpmn_collaboration::CollaborationArtifact;
+    for extras in document
+        .collaboration
+        .iter_mut()
+        .chain(&mut document.additional_collaborations)
+        .filter_map(|root| root.extras.as_mut())
+        .chain(
+            document
+                .choreographies
+                .iter_mut()
+                .filter_map(|root| root.extras.as_mut()),
+        )
+    {
+        for artifact in &mut extras.artifacts {
+            if let CollaborationArtifact::TextAnnotation(node) = artifact
+                && &node.id == id
+            {
+                return Ok(node);
+            }
         }
     }
     Err(invalid("node not found"))
@@ -1989,11 +2143,57 @@ fn flow_mut<'a>(
         {
             return Ok(flow);
         }
+        if let Some(flow) = artifact_flow_mut(&mut choreography.extras, id) {
+            return Ok(flow);
+        }
     }
-    d.collaboration
-        .as_mut()
-        .and_then(|c| c.flows.iter_mut().find(|f| &f.id == id))
-        .ok_or_else(|| invalid("flow not found"))
+    for collaboration in &mut d.additional_collaborations {
+        if let Some(flow) = collaboration.flows.iter_mut().find(|flow| &flow.id == id) {
+            return Ok(flow);
+        }
+        if let Some(flow) = artifact_flow_mut(&mut collaboration.extras, id) {
+            return Ok(flow);
+        }
+    }
+    if let Some(collaboration) = &mut d.collaboration {
+        if let Some(flow) = collaboration.flows.iter_mut().find(|flow| &flow.id == id) {
+            return Ok(flow);
+        }
+        if let Some(flow) = artifact_flow_mut(&mut collaboration.extras, id) {
+            return Ok(flow);
+        }
+    }
+    Err(invalid("flow not found"))
+}
+fn artifact_flow_mut<'a>(
+    extras: &'a mut Option<crate::bpmn_collaboration::CollaborationExtras>,
+    id: &ElementSelector,
+) -> Option<&'a mut Flow> {
+    use crate::bpmn_collaboration::CollaborationArtifact;
+    extras
+        .as_mut()?
+        .artifacts
+        .iter_mut()
+        .find_map(|artifact| match artifact {
+            CollaborationArtifact::Association(flow) if &flow.id == id => Some(flow.as_mut()),
+            _ => None,
+        })
+}
+fn remove_collaboration_artifact(
+    extras: &mut Option<crate::bpmn_collaboration::CollaborationExtras>,
+    id: &ElementSelector,
+) -> bool {
+    use crate::bpmn_collaboration::CollaborationArtifact;
+    let Some(extras) = extras else { return false };
+    let Some(index) = extras.artifacts.iter().position(|artifact| match artifact {
+        CollaborationArtifact::Group(value) => &value.id == id,
+        CollaborationArtifact::TextAnnotation(value) => &value.id == id,
+        CollaborationArtifact::Association(value) => &value.id == id,
+    }) else {
+        return false;
+    };
+    extras.artifacts.remove(index);
+    true
 }
 fn diagram<'a>(
     d: &'a mut BpmnDocument,
@@ -2031,6 +2231,71 @@ fn remove_di_shapes(
 }
 fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
     match m {
+        Mutation::SetCollaborationRoot {
+            document_id,
+            collaboration,
+        } => {
+            let document = doc(p, document_id, true)?;
+            if let Some(existing) = document
+                .collaboration
+                .as_mut()
+                .filter(|root| root.id == collaboration.id)
+            {
+                *existing = collaboration;
+            } else if let Some(existing) = document
+                .additional_collaborations
+                .iter_mut()
+                .find(|root| root.id == collaboration.id)
+            {
+                *existing = collaboration;
+            } else if document.collaboration.is_none() {
+                document.collaboration = Some(collaboration);
+            } else {
+                document.additional_collaborations.push(collaboration);
+            }
+        }
+        Mutation::DeleteCollaborationRoot {
+            document_id,
+            collaboration_id,
+        } => {
+            let document = doc(p, document_id, true)?;
+            if document
+                .collaboration
+                .as_ref()
+                .is_some_and(|root| root.id == collaboration_id)
+            {
+                document.collaboration = None;
+            } else {
+                let index = document
+                    .additional_collaborations
+                    .iter()
+                    .position(|root| root.id == collaboration_id)
+                    .ok_or_else(|| invalid("collaboration root not found"))?;
+                document.additional_collaborations.remove(index);
+            }
+            document
+                .diagrams
+                .retain(|diagram| diagram.plane != collaboration_id);
+        }
+        Mutation::SetPartnerCatalog {
+            document_id,
+            partner_entities,
+            partner_roles,
+            endpoints,
+        } => {
+            let document = doc(p, document_id, true)?;
+            document.partner_entities = partner_entities;
+            document.partner_roles = partner_roles;
+            document.endpoints = endpoints;
+        }
+        Mutation::SetDocumentRootOrder { document_id, order } => {
+            doc(p, document_id, true)?.root_order = order;
+        }
+        Mutation::InitializeDocumentRootOrder { .. } => {
+            return Err(invalid(
+                "root order initialization requires the shared session",
+            ));
+        }
         Mutation::SetDiagramPlaneMetadata {
             document_id,
             diagram_id,
@@ -2448,6 +2713,14 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                 flow.documentation = documentation.clone();
                 found = true;
             }
+            for collaboration in &mut d.additional_collaborations {
+                for flow in &mut collaboration.flows {
+                    if flow.id == element_id {
+                        flow.documentation = documentation.clone();
+                        found = true;
+                    }
+                }
+            }
             for choreography in &mut d.choreographies {
                 for flow in choreography
                     .sequence_flows
@@ -2460,6 +2733,12 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                     }
                 }
             }
+            crate::metadata_visit::visit_legacy_metadata_mut(d, |id, value, _| {
+                if id == &element_id {
+                    *value = documentation.clone();
+                    found = true;
+                }
+            });
             if !found {
                 return Err(invalid("element has no legacy documentation field"));
             }
@@ -3261,6 +3540,17 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                 .find(|f| f.id == flow_id && f.kind == FlowKind::Sequence)
                 .ok_or_else(|| invalid("sequence flow not found"))?
                 .clone();
+            if !matches!(
+                &old.source,
+                Some(crate::bpmn_model::EventReference::Local(_))
+            ) || !matches!(
+                &old.target,
+                Some(crate::bpmn_model::EventReference::Local(_))
+            ) {
+                return Err(invalid(
+                    "splice requires resolved local sequence-flow endpoints",
+                ));
+            }
             if flows
                 .iter()
                 .filter(|f| f.kind == FlowKind::Sequence && f.source == old.source)
@@ -3275,7 +3565,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                 return Err(invalid("ambiguous branch"));
             }
             if new_flow.kind != FlowKind::Sequence
-                || new_flow.source != node.id
+                || !matches!(&new_flow.source, Some(crate::bpmn_model::EventReference::Local(id)) if id == &node.id.selector())
                 || new_flow.target != old.target
                 || new_flow.condition.is_some()
                 || shape.element != node.id
@@ -3283,7 +3573,8 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             {
                 return Err(invalid("invalid splice elements"));
             }
-            flows.iter_mut().find(|f| f.id == flow_id).unwrap().target = node.id.selector();
+            flows.iter_mut().find(|f| f.id == flow_id).unwrap().target =
+                Some(crate::bpmn_model::EventReference::Local(node.id.selector()));
             nodes.push(node);
             flows.push(new_flow);
             let dg = diagram(d, &diagram_id)?;
@@ -3621,6 +3912,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                     || d.has_event_qname_refs()
                     || d.has_activity_qname_refs()
                     || d.has_di_choreography_qname_refs()
+                    || d.has_collaboration_qname_refs()
                     || d.extensions.iter().any(|e| e.definition.is_some())
                     || d.relationships
                         .iter()
@@ -3657,6 +3949,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             let d = doc(p, document_id, false)?;
             if crate::queries::find_node(d, &element_id)
                 .is_some_and(|node| node.kind == NodeKind::TextAnnotation)
+                || d.collaboration.iter().chain(&d.additional_collaborations).filter_map(|root| root.extras.as_ref()).chain(d.choreographies.iter().filter_map(|root| root.extras.as_ref())).flat_map(|extras| &extras.artifacts).any(|artifact| matches!(artifact, crate::bpmn_collaboration::CollaborationArtifact::TextAnnotation(node) if node.id == element_id))
             {
                 return Err(invalid("use SetTextAnnotation to edit annotation text"));
             }
@@ -3665,6 +3958,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                 .flat_map(|scope| scope.flows)
                 .chain(d.collaboration.iter().flat_map(|c| &c.flows))
                 .any(|flow| flow.id == element_id && flow.kind == FlowKind::Association)
+                || d.collaboration.iter().chain(&d.additional_collaborations).filter_map(|root| root.extras.as_ref()).chain(d.choreographies.iter().filter_map(|root| root.extras.as_ref())).flat_map(|extras| &extras.artifacts).any(|artifact| matches!(artifact, crate::bpmn_collaboration::CollaborationArtifact::Association(flow) if flow.id == element_id))
             {
                 return Err(invalid(
                     "association has no BPMN name; use its native label where available",
@@ -3697,6 +3991,22 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                 }
             }
             if let Some(c) = &mut d.collaboration {
+                if c.id == element_id {
+                    c.name = name.clone();
+                    found = true;
+                }
+                for node in &mut c.conversation_nodes {
+                    if node.id == element_id {
+                        node.name = name.clone();
+                        found = true;
+                    }
+                }
+                for link in &mut c.conversation_links {
+                    if link.id == element_id {
+                        link.name = name.clone();
+                        found = true;
+                    }
+                }
                 for part in &mut c.participants {
                     if part.id == element_id {
                         part.name = name.clone();
@@ -3708,6 +4018,48 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                         f.name = name.clone();
                         found = true;
                     }
+                }
+            }
+            for c in &mut d.additional_collaborations {
+                if c.id == element_id {
+                    c.name = name.clone();
+                    found = true;
+                }
+                for participant in &mut c.participants {
+                    if participant.id == element_id {
+                        participant.name = name.clone();
+                        found = true;
+                    }
+                }
+                for node in &mut c.conversation_nodes {
+                    if node.id == element_id {
+                        node.name = name.clone();
+                        found = true;
+                    }
+                }
+                for link in &mut c.conversation_links {
+                    if link.id == element_id {
+                        link.name = name.clone();
+                        found = true;
+                    }
+                }
+                for flow in &mut c.flows {
+                    if flow.id == element_id {
+                        flow.name = name.clone();
+                        found = true;
+                    }
+                }
+            }
+            for partner in &mut d.partner_entities {
+                if partner.id.as_ref().is_some_and(|id| id == &element_id) {
+                    partner.name = name.clone();
+                    found = true;
+                }
+            }
+            for partner in &mut d.partner_roles {
+                if partner.id.as_ref().is_some_and(|id| id == &element_id) {
+                    partner.name = name.clone();
+                    found = true;
                 }
             }
             for choreography in &mut d.choreographies {
@@ -3724,6 +4076,18 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                 for activity in &mut choreography.activities {
                     if activity.id == element_id {
                         activity.name = name.clone();
+                        found = true;
+                    }
+                }
+                for node in &mut choreography.conversation_nodes {
+                    if node.id == element_id {
+                        node.name = name.clone();
+                        found = true;
+                    }
+                }
+                for link in &mut choreography.conversation_links {
+                    if link.id == element_id {
+                        link.name = name.clone();
                         found = true;
                     }
                 }
@@ -3748,7 +4112,15 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             documentation,
         } => {
             let d = doc(p, document_id, false)?;
-            if documentation_is_structured(d, &element_id) {
+            let mut structured = documentation_is_structured(d, &element_id);
+            crate::metadata_visit::visit_legacy_metadata_mut(d, |id, value, _| {
+                if id == &element_id
+                    && matches!(value, crate::bpmn_metadata::DocumentationSet::Structured(_))
+                {
+                    structured = true;
+                }
+            });
+            if structured {
                 return Err(invalid(
                     "structured documentation requires an explicit documentation edit",
                 ));
@@ -3781,6 +4153,14 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                     }
                 }
             }
+            for collaboration in &mut d.additional_collaborations {
+                for flow in &mut collaboration.flows {
+                    if flow.id == element_id {
+                        flow.documentation = documentation.clone().into();
+                        found = true;
+                    }
+                }
+            }
             for choreography in &mut d.choreographies {
                 for flow in choreography
                     .sequence_flows
@@ -3793,6 +4173,12 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                     }
                 }
             }
+            crate::metadata_visit::visit_legacy_metadata_mut(d, |id, value, _| {
+                if id == &element_id {
+                    *value = documentation.clone().into();
+                    found = true;
+                }
+            });
             if !found {
                 return Err(invalid("element not found"));
             }
@@ -3899,6 +4285,33 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                     removed.insert(element_id.clone());
                     found = true;
                 }
+                if remove_collaboration_artifact(&mut c.extras, &element_id) {
+                    removed.insert(element_id.clone());
+                    found = true;
+                }
+            }
+            for c in &mut d.additional_collaborations {
+                let n = c.participants.len() + c.flows.len();
+                c.participants.retain(|value| value.id != element_id);
+                c.flows.retain(|value| value.id != element_id);
+                if n != c.participants.len() + c.flows.len()
+                    || remove_collaboration_artifact(&mut c.extras, &element_id)
+                {
+                    removed.insert(element_id.clone());
+                    found = true;
+                }
+            }
+            for c in &mut d.choreographies {
+                let n = c.participants.len() + c.message_flows.len() + c.sequence_flows.len();
+                c.participants.retain(|value| value.id != element_id);
+                c.message_flows.retain(|value| value.id != element_id);
+                c.sequence_flows.retain(|value| value.id != element_id);
+                if n != c.participants.len() + c.message_flows.len() + c.sequence_flows.len()
+                    || remove_collaboration_artifact(&mut c.extras, &element_id)
+                {
+                    removed.insert(element_id.clone());
+                    found = true;
+                }
             }
             if !found {
                 return Err(invalid("element not found or cannot be deleted"));
@@ -3934,6 +4347,11 @@ pub struct CommandParam {
 }
 macro_rules! descriptor { ($id:literal,$label:literal $(,$name:literal:$ty:literal)* $(,)?) => { CommandDescriptor { id: $id, serde_tag: $id, label: $label, params: &[$(CommandParam {name:$name,value_type:$ty,required:true}),*] } }; }
 static COMMAND_DESCRIPTORS: &[CommandDescriptor] = &[
+    descriptor!("setCollaborationRoot", "Set collaboration root", "document_id":"DocumentId", "collaboration":"Collaboration"),
+    descriptor!("deleteCollaborationRoot", "Delete collaboration root", "document_id":"DocumentId", "collaboration_id":"ElementSelector"),
+    descriptor!("setPartnerCatalog", "Set partner and endpoint catalog", "document_id":"DocumentId", "partner_entities":"PartnerEntity[]", "partner_roles":"PartnerRole[]", "endpoints":"EndPoint[]"),
+    descriptor!("setDocumentRootOrder", "Set document root order", "document_id":"DocumentId", "order":"ElementSelector[]|null"),
+    descriptor!("initializeDocumentRootOrder", "Initialize document root order", "document_id":"DocumentId"),
     descriptor!("setDiagramPlaneMetadata", "Set plane metadata", "document_id":"DocumentId", "diagram_id":"ElementSelector", "metadata":"DiElementMetadata|null"),
     descriptor!("setDiagramPlaneOrder", "Set plane representation order", "document_id":"DocumentId", "diagram_id":"ElementSelector", "order":"ElementSelector[]|null"),
     descriptor!("setShapeRepresentationMetadata", "Set shape representation metadata", "document_id":"DocumentId", "diagram_id":"ElementSelector", "shape_id":"ElementSelector", "metadata":"DiElementMetadata|null", "is_message_visible":"bool|null", "participant_band_kind":"ParticipantBandKind|null", "choreography_activity_shape":"DiReference|null"),

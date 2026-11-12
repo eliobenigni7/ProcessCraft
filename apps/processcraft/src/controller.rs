@@ -484,6 +484,8 @@ mod lifecycle {
             Mutation::CreateCollaboration {
                 document_id: d.id,
                 collaboration: Collaboration {
+                    kind: None,
+                    extras: None,
                     correlation_keys: Vec::new(),
                     base: None,
                     name: None,
@@ -497,11 +499,15 @@ mod lifecycle {
             Mutation::CreateParticipant {
                 document_id: d.id,
                 participant: Participant {
+                    interface_refs: vec![],
+                    endpoint_refs: vec![],
                     multiplicity: None,
                     base: None,
                     id: participant.clone().into(),
                     name: Some("Pool".into()),
-                    process: Some(p.id.selector()),
+                    process: Some(processcraft_core::bpmn_activity::ModelReference::Local(
+                        p.id.selector(),
+                    )),
                 },
             },
             Mutation::CreateShape {

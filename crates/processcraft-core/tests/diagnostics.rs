@@ -72,8 +72,12 @@ fn complete_connected_process_has_no_incomplete_warnings() {
         association_direction: None,
         id: id(name),
         kind: FlowKind::Sequence,
-        source: id(source),
-        target: id(target),
+        source: Some(processcraft_core::bpmn_model::EventReference::Local(id(
+            source,
+        ))),
+        target: Some(processcraft_core::bpmn_model::EventReference::Local(id(
+            target,
+        ))),
         name: Some(String::new()),
         documentation: String::new().into(),
         condition: None,
@@ -132,8 +136,12 @@ fn nested_gateway_diagnostics_are_advisory_and_anchored() {
                 association_direction: None,
                 id: id("default_flow"),
                 kind: FlowKind::Sequence,
-                source: id("nested_gateway"),
-                target: id("nested_task"),
+                source: Some(processcraft_core::bpmn_model::EventReference::Local(id(
+                    "nested_gateway",
+                ))),
+                target: Some(processcraft_core::bpmn_model::EventReference::Local(id(
+                    "nested_task",
+                ))),
                 name: Some(String::new()),
                 documentation: String::new().into(),
                 condition: Some("true".into()),
@@ -183,8 +191,12 @@ fn activity_conditions_are_allowed_but_event_gateway_conditions_are_diagnosed() 
         association_direction: None,
         id: id(name),
         kind: FlowKind::Sequence,
-        source: id(source),
-        target: id(target),
+        source: Some(processcraft_core::bpmn_model::EventReference::Local(id(
+            source,
+        ))),
+        target: Some(processcraft_core::bpmn_model::EventReference::Local(id(
+            target,
+        ))),
         name: Some(String::new()),
         documentation: String::new().into(),
         condition: condition.map(Into::into),
@@ -1066,8 +1078,12 @@ fn explicit_flow_node_refs_check_kind_scope_and_direction() {
         association_direction: None,
         id: id("sequence"),
         kind: FlowKind::Sequence,
-        source: id("source"),
-        target: id("target"),
+        source: Some(processcraft_core::bpmn_model::EventReference::Local(id(
+            "source",
+        ))),
+        target: Some(processcraft_core::bpmn_model::EventReference::Local(id(
+            "target",
+        ))),
         name: None,
         documentation: String::new().into(),
         base_extras: None,
@@ -1134,8 +1150,12 @@ fn message_task_cardinality_is_conditional_and_receive_instantiate_checks_incomi
         association_direction: None,
         id: id("sequence"),
         kind: FlowKind::Sequence,
-        source: id("send"),
-        target: id("receive"),
+        source: Some(processcraft_core::bpmn_model::EventReference::Local(id(
+            "send",
+        ))),
+        target: Some(processcraft_core::bpmn_model::EventReference::Local(id(
+            "receive",
+        ))),
         name: None,
         documentation: String::new().into(),
         base_extras: None,
@@ -1195,11 +1215,15 @@ fn participant_band_and_multiplicity_advisories_are_anchored() {
     };
     let mut doc = BpmnDocument::new("d".into(), id("defs"));
     doc.collaboration = Some(Collaboration {
+        kind: None,
+        extras: None,
         correlation_keys: vec![],
         base: None,
         name: None,
         id: id("collab"),
         participants: vec![Participant {
+            interface_refs: vec![],
+            endpoint_refs: vec![],
             multiplicity: Some(ParticipantMultiplicity {
                 id: None,
                 base: None,
@@ -1290,6 +1314,8 @@ fn participant_band_owner_resolves_to_same_diagram_activity_shape() {
         style: None,
     };
     let participant = |name: &str| Participant {
+        interface_refs: vec![],
+        endpoint_refs: vec![],
         multiplicity: None,
         base: None,
         id: id(name),
@@ -1298,6 +1324,10 @@ fn participant_band_owner_resolves_to_same_diagram_activity_shape() {
     };
     let mut doc = BpmnDocument::new("d".into(), id("defs"));
     doc.choreographies.push(Choreography {
+        extras: None,
+        conversation_nodes: vec![],
+        conversation_links: vec![],
+        correlation_keys: vec![],
         base: None,
         id: id("choreo"),
         name: None,
@@ -1361,8 +1391,12 @@ fn participant_band_owner_resolves_to_same_diagram_activity_shape() {
         association_direction: None,
         id: id("request"),
         kind: FlowKind::Message,
-        source: id("p2"),
-        target: id("p1"),
+        source: Some(processcraft_core::bpmn_model::EventReference::Local(id(
+            "p2",
+        ))),
+        target: Some(processcraft_core::bpmn_model::EventReference::Local(id(
+            "p1",
+        ))),
         name: None,
         documentation: String::new().into(),
         condition: None,
@@ -1382,10 +1416,280 @@ fn participant_band_owner_resolves_to_same_diagram_activity_shape() {
         .push(id("unresolved"));
     assert!(!has_warning(&doc, "participantBandMessageMissing"));
     doc.choreographies[0].activities[0].message_flow_refs.pop();
-    doc.choreographies[0].message_flows[0].source = id("p1");
+    doc.choreographies[0].message_flows[0].source = Some(
+        processcraft_core::bpmn_model::EventReference::Local(id("p1")),
+    );
     assert!(!has_warning(&doc, "participantBandMessageMissing"));
     doc.diagrams[0].shapes[1].participant_band_kind = Some(ParticipantBandKind::MiddleInitiating);
     assert!(has_warning(&doc, "participantBandMiddleMessage"));
+    doc.choreographies[0].participants[0].process = Some(
+        processcraft_core::bpmn_model::EventReference::Local(id("absent_process")),
+    );
+    let issues = processcraft_core::validation::activity_family_reference_issues(&doc);
+    assert!(
+        issues
+            .iter()
+            .any(|issue| issue.field == "participant.processRef")
+    );
+    doc.choreographies[0].participants[0].process =
+        Some(processcraft_core::bpmn_model::EventReference::Qualified(
+            processcraft_core::bpmn_model::QNameRef {
+                namespace: "urn:foreign".into(),
+                local: id("absent_process"),
+            },
+        ));
+    assert!(
+        !processcraft_core::validation::activity_family_reference_issues(&doc)
+            .iter()
+            .any(|issue| issue.field == "participant.processRef")
+    );
+    doc.choreographies[0].participants[0].process = None;
+    doc.choreographies[0].message_flows[0].target = Some(
+        processcraft_core::bpmn_model::EventReference::Local(id("absent_participant")),
+    );
+    let issues = processcraft_core::validation::activity_family_reference_issues(&doc);
+    assert!(
+        issues
+            .iter()
+            .any(|issue| issue.field == "messageFlow.targetRef")
+    );
+    doc.choreographies[0].message_flows[0].target = Some(
+        processcraft_core::bpmn_model::EventReference::Local(id("p2")),
+    );
+    doc.collaboration = Some(Collaboration {
+        kind: None,
+        extras: None,
+        correlation_keys: vec![],
+        base: None,
+        name: None,
+        id: id("other_root"),
+        participants: vec![participant("other_participant")],
+        flows: vec![],
+        conversation_nodes: vec![],
+        conversation_links: vec![],
+    });
+    let local = |name: &str| {
+        Some(processcraft_core::bpmn_model::EventReference::Local(id(
+            name,
+        )))
+    };
+    let association = processcraft_core::bpmn_collaboration::ParticipantAssociation {
+        id: None,
+        base: None,
+        inner: local("other_participant"),
+        outer: local("other_participant"),
+    };
+    doc.choreographies[0].extras =
+        Some(processcraft_core::bpmn_collaboration::CollaborationExtras {
+            participant_associations: vec![association],
+            ..Default::default()
+        });
+    let issues = processcraft_core::validation::activity_family_reference_issues(&doc);
+    assert!(
+        issues
+            .iter()
+            .any(|issue| issue.field == "participantAssociation.outerRef")
+    );
+    assert!(
+        !issues
+            .iter()
+            .any(|issue| issue.field == "participantAssociation.innerRef")
+    );
+    doc.choreographies[0]
+        .extras
+        .as_mut()
+        .unwrap()
+        .participant_associations[0]
+        .outer = local("p1");
+    let issues = processcraft_core::validation::activity_family_reference_issues(&doc);
+    assert!(
+        !issues
+            .iter()
+            .any(|issue| issue.field == "participantAssociation.outerRef")
+    );
+    doc.choreographies[0].conversation_nodes.push(
+        processcraft_core::bpmn_collaboration::ConversationNode {
+            message_flow_refs: vec![],
+            call: None,
+            correlation_keys: vec![],
+            base: None,
+            id: id("conversation"),
+            name: None,
+            kind: processcraft_core::bpmn_collaboration::ConversationKind::Conversation,
+            participant_refs: vec![],
+            parent: None,
+        },
+    );
+    doc.choreographies[0].conversation_links.push(
+        processcraft_core::bpmn_collaboration::ConversationLink {
+            id: id("link"),
+            name: None,
+            base: None,
+            source: local("conversation"),
+            target: local("p1"),
+        },
+    );
+    assert!(
+        !processcraft_core::validation::activity_family_reference_issues(&doc)
+            .iter()
+            .any(|issue| issue.field.starts_with("conversationLink."))
+    );
+    doc.choreographies[0].conversation_links[0].source = local("p2");
+    assert!(
+        processcraft_core::validation::activity_family_reference_issues(&doc)
+            .iter()
+            .any(|issue| issue.field.starts_with("conversationLink."))
+    );
+    let mut second_choreography = doc.choreographies[0].clone();
+    second_choreography.id = id("second_choreography");
+    second_choreography.participants = vec![participant("inner_second")];
+    second_choreography.activities.clear();
+    second_choreography.message_flows.clear();
+    second_choreography.conversation_nodes.clear();
+    second_choreography.conversation_links.clear();
+    second_choreography.extras = None;
+    doc.choreographies.push(second_choreography);
+    let extras = doc.choreographies[0].extras.as_mut().unwrap();
+    extras.choreography_refs = vec![
+        processcraft_core::bpmn_model::EventReference::Local(id("choreo")),
+        processcraft_core::bpmn_model::EventReference::Local(id("second_choreography")),
+    ];
+    extras.participant_associations[0].inner = local("p1");
+    assert!(processcraft_core::validation::association_inner_scope_unqualified(&doc).is_empty());
+    doc.choreographies[0]
+        .extras
+        .as_mut()
+        .unwrap()
+        .participant_associations[0]
+        .inner = local("inner_second");
+    assert!(processcraft_core::validation::association_inner_scope_unqualified(&doc).is_empty());
+    doc.choreographies[0]
+        .extras
+        .as_mut()
+        .unwrap()
+        .participant_associations[0]
+        .inner = local("other_participant");
+    assert_eq!(
+        processcraft_core::validation::association_inner_scope_unqualified(&doc).len(),
+        1
+    );
+    let process =
+        |name: &str,
+         metadata: Option<processcraft_core::bpmn_activity::ProcessActivityMetadata>| {
+            Process {
+                activity_metadata: metadata,
+                base_extras: None,
+                is_executable: None,
+                io_specification: None,
+                lane_set_base: None,
+                lane_set_id: None,
+                groups: vec![],
+                data_objects: vec![],
+                data_associations: vec![],
+                id: id(name),
+                name: None,
+                documentation: String::new().into(),
+                nodes: vec![],
+                lanes: vec![],
+                flows: vec![],
+            }
+        };
+    let metadata = processcraft_core::bpmn_activity::ProcessActivityMetadata {
+        definitional_collaboration_ref: local("other_root"),
+        ..Default::default()
+    };
+    doc.processes
+        .push(process("caller_process", Some(metadata.clone())));
+    doc.choreographies[0].participants[0].process = local("caller_process");
+    assert!(processcraft_core::validation::association_inner_scope_unqualified(&doc).is_empty());
+    doc.processes[0].activity_metadata = None;
+    doc.processes
+        .push(process("called_process", Some(metadata)));
+    let mut call_node = node("call", NodeKind::CallActivity, "call");
+    call_node.details = Some(processcraft_core::bpmn_model::NodeDetails::CallActivity {
+        called_element: Some(processcraft_core::bpmn_model::QNameRef {
+            namespace: processcraft_core::model::GENERATED_TARGET_NAMESPACE.into(),
+            local: id("called_process"),
+        }),
+    });
+    doc.processes[0].nodes.push(call_node);
+    doc.processes[1]
+        .nodes
+        .push(node("unrelated_task", NodeKind::Task, "other"));
+    doc.categories
+        .push(processcraft_core::bpmn_model::Category {
+            id: id("category"),
+            name: None,
+            base: None,
+            values: vec![processcraft_core::bpmn_model::CategoryValue {
+                id: id("category_value"),
+                value: None,
+                base: None,
+            }],
+        });
+    doc.processes[0]
+        .groups
+        .push(processcraft_core::bpmn_model::Group {
+            id: id("group"),
+            base: None,
+            category_value_ref: local("category_value"),
+        });
+    assert!(
+        !processcraft_core::validation::activity_family_reference_issues(&doc)
+            .iter()
+            .any(|issue| issue.field == "group.categoryValueRef")
+    );
+    doc.processes[0].groups[0].category_value_ref = local("category");
+    assert!(
+        processcraft_core::validation::activity_family_reference_issues(&doc)
+            .iter()
+            .any(|issue| issue.field == "group.categoryValueRef")
+    );
+    doc.processes[0].groups[0].category_value_ref =
+        Some(processcraft_core::bpmn_model::EventReference::Qualified(
+            processcraft_core::bpmn_model::QNameRef {
+                namespace: "urn:foreign".into(),
+                local: id("category"),
+            },
+        ));
+    assert!(
+        !processcraft_core::validation::activity_family_reference_issues(&doc)
+            .iter()
+            .any(|issue| issue.field == "group.categoryValueRef")
+    );
+
+    doc.choreographies[0].message_flows[0].source = local("call");
+    assert!(
+        processcraft_core::validation::message_flow_endpoint_scope_unqualified(&doc).is_empty()
+    );
+    doc.choreographies[0].message_flows[0].source = local("unrelated_task");
+    assert_eq!(
+        processcraft_core::validation::message_flow_endpoint_scope_unqualified(&doc).len(),
+        1
+    );
+    doc.choreographies[0].message_flows[0].source = local("p1");
+    doc.choreographies[0].conversation_links[0].source = local("conversation");
+    doc.choreographies[0].conversation_links[0].target = local("call");
+    assert!(
+        processcraft_core::validation::conversation_link_endpoint_scope_unqualified(&doc)
+            .is_empty()
+    );
+    doc.choreographies[0].conversation_links[0].target = local("unrelated_task");
+    assert_eq!(
+        processcraft_core::validation::conversation_link_endpoint_scope_unqualified(&doc).len(),
+        1
+    );
+    assert!(processcraft_core::validation::association_inner_scope_unqualified(&doc).is_empty());
+    doc.collaboration.as_mut().unwrap().kind =
+        Some(processcraft_core::bpmn_collaboration::CollaborationRootKind::GlobalConversation);
+    doc.collaboration.as_mut().unwrap().extras =
+        Some(processcraft_core::bpmn_collaboration::CollaborationExtras {
+            choreography_refs: vec![processcraft_core::bpmn_model::EventReference::Local(id(
+                "choreo",
+            ))],
+            ..Default::default()
+        });
+    assert!(has_warning(&doc, "globalConversationChoreographyRef"));
     doc.choreographies[0].activities[0].participant_refs = vec![id("p2")];
     assert!(
         processcraft_core::validation::activity_family_reference_issues(&doc)

@@ -543,6 +543,16 @@ pub(crate) fn semantic_ids(d: &BpmnDocument) -> HashSet<crate::ids::ElementSelec
 fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<usize, String> {
     short(&d.name)?;
     let mut metadata_error = Ok(());
+    let collaboration = crate::collaboration_read::collaboration_read(d);
+    for docs in collaboration.docs {
+        crate::bpmn_metadata::validate_set(docs)?;
+    }
+    for extras in collaboration.extras {
+        crate::bpmn_metadata::validate_extras(extras)?;
+    }
+    for base in collaboration.bases {
+        crate::bpmn_metadata::validate_base(base)?;
+    }
     for base in crate::activity_read::activity_read(d).bases {
         crate::bpmn_metadata::validate_base(base)?;
     }
@@ -575,10 +585,28 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
     if identities
         .len()
         .saturating_add(anonymous_multiplicities)
+        .saturating_add(crate::collaboration_read::collaboration_read(d).anonymous)
         .saturating_add(crate::activity_read::activity_read(d).anonymous_owners)
         > 10_000
     {
         return fail("document element limit exceeded");
+    }
+    if let Some(order) = &d.root_order {
+        let roots = d.root_element_identities();
+        if roots.iter().any(|id| id.is_none()) {
+            return fail(
+                "Root order requires explicit native identity promotion for anonymous roots",
+            );
+        }
+        let expected: HashSet<_> = roots
+            .into_iter()
+            .flatten()
+            .map(|id| id.selector())
+            .collect();
+        let actual: HashSet<_> = order.iter().cloned().collect();
+        if actual.len() != order.len() || actual != expected {
+            return fail("Root order must contain each modeled root exactly once");
+        }
     }
     let mut native_ids = HashSet::new();
     let mut xml_ids = HashSet::new();
@@ -644,8 +672,16 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
     for name in crate::activity_read::activity_read(d).qnames {
         check_qname(name)?;
     }
+    for name in crate::collaboration_read::collaboration_qnames(d) {
+        check_qname(name)?;
+    }
     let local =
         |name: &crate::bpmn_model::QNameRef| local_namespace == Some(name.namespace.as_str());
+    let reference_index = crate::reference_resolution::ReferenceIndex::new(d);
+    let endpoint = |reference: &Option<crate::bpmn_activity::ModelReference>| -> Option<crate::ids::ElementSelector> {
+        reference.as_ref().and_then(|reference| match reference_index.resolve(reference) { crate::reference_resolution::ReferenceResolution::Resolved(value) => Some(value), _ => None })
+    };
+
     if d.extensions.len() > 256 || d.relationships.len() > 256 {
         return fail("Definitions declaration limit exceeded");
     }
@@ -688,7 +724,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             check_flow_message(flow)?;
         }
     }
-    if let Some(collaboration) = &d.collaboration {
+    for collaboration in d.collaborations() {
         for flow in &collaboration.flows {
             check_flow_message(flow)?;
         }
@@ -1350,7 +1386,9 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                     }
                     if default_flow.as_ref().is_some_and(|id| {
                         !scope.flows.iter().any(|f| {
-                            &f.id == id && f.source == n.id && f.kind == FlowKind::Sequence
+                            &f.id == id
+                                && endpoint(&f.source).is_some_and(|source| source == n.id)
+                                && f.kind == FlowKind::Sequence
                         })
                     }) {
                         return fail("gateway default must be an outgoing flow in the same scope");
@@ -1412,6 +1450,58 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             shape_ids.insert(id.selector());
         }
     }
+    let collaboration_extras = d
+        .collaborations()
+        .map(|c| (&c.id, &c.extras))
+        .chain(d.choreographies.iter().map(|c| (&c.id, &c.extras)));
+    for (owner, extras) in collaboration_extras {
+        if let Some(extras) = extras {
+            for artifact in &extras.artifacts {
+                use crate::bpmn_collaboration::CollaborationArtifact;
+                match artifact {
+                    CollaborationArtifact::Group(group) => {
+                        add(&mut ids, &group.id)?;
+                        group_ids.insert(group.id.selector());
+                        shape_ids.insert(group.id.selector());
+                        element_scope.insert(group.id.selector(), owner.selector());
+                    }
+                    CollaborationArtifact::TextAnnotation(node) => {
+                        if node.kind != NodeKind::TextAnnotation
+                            || node.activity.is_some()
+                            || node.io_specification.is_some()
+                            || node.loop_characteristics.is_some()
+                            || node.item_aware.is_some()
+                            || node.flow_metadata.is_some()
+                            || node.details.as_ref().is_some_and(|details| {
+                                !matches!(
+                                    details,
+                                    crate::bpmn_model::NodeDetails::TextAnnotation { .. }
+                                )
+                            })
+                        {
+                            return fail("Collaboration text annotation has incompatible metadata");
+                        }
+                        add(&mut ids, &node.id)?;
+                        shape_ids.insert(node.id.selector());
+                        element_scope.insert(node.id.selector(), owner.selector());
+                    }
+                    CollaborationArtifact::Association(flow) => {
+                        if flow.kind != FlowKind::Association
+                            || flow.condition.is_some()
+                            || flow.message_ref.is_some()
+                            || flow.flow_metadata.is_some()
+                            || flow.name.is_some()
+                        {
+                            return fail("Collaboration association has incompatible metadata");
+                        }
+                        add(&mut ids, &flow.id)?;
+                        flow_ids.insert(flow.id.selector());
+                        element_scope.insert(flow.id.selector(), owner.selector());
+                    }
+                }
+            }
+        }
+    }
     for process in &d.processes {
         add(&mut ids, &process.id)?;
         if let Some(name) = &process.name {
@@ -1442,9 +1532,12 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             node_process.insert(group.id.selector(), p.id.clone());
             element_scope.insert(group.id.selector(), p.id.clone());
             if group.category_value_ref.as_ref().is_some_and(|id| {
-                !d.categories
-                    .iter()
-                    .any(|c| c.values.iter().any(|v| &v.id == id))
+                !id.is_external(local_namespace)
+                    && !d.categories.iter().any(|c| {
+                        c.values
+                            .iter()
+                            .any(|v| id.matches_identity(&v.id, local_namespace))
+                    })
             }) {
                 return fail("missing group category value");
             }
@@ -1516,9 +1609,11 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                     }
                 }
                 if activity.default_flow.as_ref().is_some_and(|id| {
-                    !p.flows
-                        .iter()
-                        .any(|f| &f.id == id && f.source == n.id && f.kind == FlowKind::Sequence)
+                    !p.flows.iter().any(|f| {
+                        &f.id == id
+                            && endpoint(&f.source).is_some_and(|source| source == n.id)
+                            && f.kind == FlowKind::Sequence
+                    })
                 }) {
                     return fail("activity default must be outgoing flow in same scope");
                 }
@@ -2010,6 +2105,47 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
         if let Some(name) = &choreography.name {
             short(name)?;
         }
+        let conversation_parents: HashMap<_, _> = choreography
+            .conversation_nodes
+            .iter()
+            .map(|n| (n.id.selector(), n.parent.clone()))
+            .collect();
+        acyclic_selectors(&conversation_parents, "conversation")?;
+        for node in &choreography.conversation_nodes {
+            if node.call.is_some()
+                && node.kind != crate::bpmn_collaboration::ConversationKind::CallConversation
+            {
+                return fail("Call conversation metadata requires a call conversation");
+            }
+            if node.parent.as_ref().is_some_and(|parent| {
+                !choreography.conversation_nodes.iter().any(|n| {
+                    &n.id == parent
+                        && n.kind == crate::bpmn_collaboration::ConversationKind::SubConversation
+                })
+            }) {
+                return fail("invalid parent conversation");
+            }
+            let mut seen = HashSet::new();
+            for participant in &node.participant_refs {
+                if !seen.insert(participant)
+                    || (!participant.is_external(local_namespace)
+                        && !choreography
+                            .participants
+                            .iter()
+                            .any(|p| participant.matches_identity(&p.id, local_namespace)))
+                {
+                    return fail("invalid conversation participant");
+                }
+            }
+            add(&mut ids, &node.id)?;
+            shape_ids.insert(node.id.selector());
+            element_scope.insert(node.id.selector(), choreography.id.selector());
+        }
+        for link in &choreography.conversation_links {
+            add(&mut ids, &link.id)?;
+            flow_ids.insert(link.id.selector());
+            element_scope.insert(link.id.selector(), choreography.id.selector());
+        }
         for participant in &choreography.participants {
             add(&mut ids, &participant.id)?;
             if let Some(name) = &participant.name {
@@ -2017,11 +2153,13 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             }
             shape_ids.insert(participant.id.selector());
             element_scope.insert(participant.id.selector(), choreography.id.selector());
-            if participant
-                .process
-                .as_ref()
-                .is_some_and(|id| !d.processes.iter().any(|p| &p.id == id))
-            {
+            if participant.process.as_ref().is_some_and(|id| {
+                !id.is_external(local_namespace)
+                    && !d
+                        .processes
+                        .iter()
+                        .any(|p| id.matches_identity(&p.id, local_namespace))
+            }) {
                 return fail("missing choreography participant process");
             }
         }
@@ -2035,17 +2173,17 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             }
             flow_ids.insert(flow.id.selector());
             element_scope.insert(flow.id.selector(), choreography.id.selector());
+            let source = endpoint(&flow.source);
+            let target = endpoint(&flow.target);
             if flow.kind != FlowKind::Message
                 || flow.condition.is_some()
-                || flow.source == flow.target
-                || !choreography
-                    .participants
-                    .iter()
-                    .any(|p| p.id == flow.source)
-                || !choreography
-                    .participants
-                    .iter()
-                    .any(|p| p.id == flow.target)
+                || (source.is_some() && source == target)
+                || source
+                    .as_ref()
+                    .is_some_and(|id| !choreography.participants.iter().any(|p| &p.id == id))
+                || target
+                    .as_ref()
+                    .is_some_and(|id| !choreography.participants.iter().any(|p| &p.id == id))
             {
                 return fail("invalid choreography message flow");
             }
@@ -2098,14 +2236,26 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             flow_ids.insert(flow.id.selector());
             element_scope.insert(flow.id.selector(), choreography.id.selector());
             if flow.kind != FlowKind::Sequence
-                || !choreography.activities.iter().any(|a| a.id == flow.source)
-                || !choreography.activities.iter().any(|a| a.id == flow.target)
+                || matches!(
+                    &flow.source,
+                    Some(crate::bpmn_activity::ModelReference::Qualified(_))
+                )
+                || matches!(
+                    &flow.target,
+                    Some(crate::bpmn_activity::ModelReference::Qualified(_))
+                )
+                || endpoint(&flow.source)
+                    .as_ref()
+                    .is_some_and(|id| !choreography.activities.iter().any(|a| &a.id == id))
+                || endpoint(&flow.target)
+                    .as_ref()
+                    .is_some_and(|id| !choreography.activities.iter().any(|a| &a.id == id))
             {
                 return fail("invalid choreography sequence flow");
             }
         }
     }
-    if let Some(c) = &d.collaboration {
+    for c in d.collaboration.iter().chain(&d.additional_collaborations) {
         add(&mut ids, &c.id)?;
         if let Some(name) = &c.name {
             definitions_text(name)?;
@@ -2116,17 +2266,20 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             shape_ids.insert(p.id.selector());
             // Older native projects placed their own participant on a process plane.
             // Retain those projects without accepting participants from other processes.
-            if let Some(process) = &p.process {
-                element_scope.insert(p.id.selector(), process.clone());
+            if let Some(process) = endpoint(&p.process) {
+                element_scope.insert(p.id.selector(), process);
             }
             if let Some(name) = &p.name {
                 short(name)?;
             }
 
-            if p.process
-                .as_ref()
-                .is_some_and(|id| !d.processes.iter().any(|x| &x.id == id))
-            {
+            if p.process.as_ref().is_some_and(|id| {
+                !id.is_external(local_namespace)
+                    && !d
+                        .processes
+                        .iter()
+                        .any(|x| id.matches_identity(&x.id, local_namespace))
+            }) {
                 return fail("missing participant process");
             }
         }
@@ -2147,6 +2300,11 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             .collect();
         acyclic_selectors(&parents, "conversation")?;
         for node in &c.conversation_nodes {
+            if node.call.is_some()
+                && node.kind != crate::bpmn_collaboration::ConversationKind::CallConversation
+            {
+                return fail("Call conversation metadata requires a call conversation");
+            }
             add(&mut ids, &node.id)?;
             if let Some(name) = &node.name {
                 short(name)?;
@@ -2166,7 +2324,11 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             let mut unique = HashSet::new();
             for participant in &node.participant_refs {
                 if !unique.insert(participant)
-                    || !c.participants.iter().any(|p| &p.id == participant)
+                    || (!participant.is_external(local_namespace)
+                        && !c
+                            .participants
+                            .iter()
+                            .any(|p| participant.matches_identity(&p.id, local_namespace)))
                 {
                     return fail("invalid conversation participant");
                 }
@@ -2182,8 +2344,9 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                 |id: &crate::ids::ElementSelector| c.participants.iter().any(|p| &p.id == id);
             let conversation =
                 |id: &crate::ids::ElementSelector| c.conversation_nodes.iter().any(|n| &n.id == id);
-            if !((participant(&link.source) && conversation(&link.target))
-                || (conversation(&link.source) && participant(&link.target)))
+            if let (Some(source), Some(target)) = (endpoint(&link.source), endpoint(&link.target))
+                && !((participant(&source) && conversation(&target))
+                    || (conversation(&source) && participant(&target)))
             {
                 return fail("invalid conversation link endpoints");
             }
@@ -2308,48 +2471,64 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             if f.kind != FlowKind::Sequence && f.condition.is_some() {
                 return fail("condition requires sequence flow");
             }
-            if f.kind == FlowKind::Association
-                && !group_ids.contains(&f.source)
-                && !group_ids.contains(&f.target)
-                && !matches!(
-                    kinds.get(&f.source),
-                    Some(NodeKind::TextAnnotation | NodeKind::DataObjectReference)
-                )
-                && !matches!(
-                    kinds.get(&f.target),
-                    Some(NodeKind::TextAnnotation | NodeKind::DataObjectReference)
-                )
+            if f.kind == FlowKind::Sequence
+                && (matches!(
+                    &f.source,
+                    Some(crate::bpmn_activity::ModelReference::Qualified(_))
+                ) || matches!(
+                    &f.target,
+                    Some(crate::bpmn_activity::ModelReference::Qualified(_))
+                ))
             {
-                return fail("association requires an artifact endpoint");
+                return fail("Sequence flow endpoints require IDREF selectors");
             }
-            let association_endpoint = |reference: &crate::ids::ElementSelector| {
-                node_process.get(reference) == Some(&p.id)
-                    || p.flows
-                        .iter()
-                        .any(|flow| flow.id == *reference && flow.kind == FlowKind::Sequence)
-            };
-            if f.kind == FlowKind::Message
-                || (f.kind == FlowKind::Association
-                    && (!association_endpoint(&f.source) || !association_endpoint(&f.target)))
-                || (f.kind != FlowKind::Association
-                    && (node_process.get(&f.source) != Some(&p.id)
-                        || node_process.get(&f.target) != Some(&p.id)))
-            {
+            let source = endpoint(&f.source);
+            let target = endpoint(&f.target);
+            if f.kind == FlowKind::Message {
                 return fail("invalid process flow endpoints");
             }
-            if f.kind == FlowKind::Sequence
-                && (!kinds
-                    .get(&f.source)
-                    .is_some_and(|kind| is_flow_node(*kind) && !matches!(kind, NodeKind::EndEvent))
-                    || !kinds.get(&f.target).is_some_and(|kind| {
+            if let (Some(source), Some(target)) = (&source, &target) {
+                if f.kind == FlowKind::Association
+                    && !group_ids.contains(source)
+                    && !group_ids.contains(target)
+                    && !matches!(
+                        kinds.get(source),
+                        Some(NodeKind::TextAnnotation | NodeKind::DataObjectReference)
+                    )
+                    && !matches!(
+                        kinds.get(target),
+                        Some(NodeKind::TextAnnotation | NodeKind::DataObjectReference)
+                    )
+                {
+                    return fail("association requires an artifact endpoint");
+                }
+                let association_endpoint = |reference: &crate::ids::ElementSelector| {
+                    node_process.get(reference) == Some(&p.id)
+                        || p.flows
+                            .iter()
+                            .any(|flow| flow.id == *reference && flow.kind == FlowKind::Sequence)
+                };
+                if (f.kind == FlowKind::Association
+                    && (!association_endpoint(source) || !association_endpoint(target)))
+                    || (f.kind != FlowKind::Association
+                        && (node_process.get(source) != Some(&p.id)
+                            || node_process.get(target) != Some(&p.id)))
+                {
+                    return fail("invalid process flow endpoints");
+                }
+                if f.kind == FlowKind::Sequence
+                    && (!kinds.get(source).is_some_and(|kind| {
+                        is_flow_node(*kind) && !matches!(kind, NodeKind::EndEvent)
+                    }) || !kinds.get(target).is_some_and(|kind| {
                         is_flow_node(*kind) && !matches!(kind, NodeKind::StartEvent)
                     }))
-            {
-                return fail("invalid sequence endpoint");
+                {
+                    return fail("invalid sequence endpoint");
+                }
             }
         }
     }
-    if let Some(c) = &d.collaboration {
+    for c in d.collaboration.iter().chain(&d.additional_collaborations) {
         let participant_for =
             |id: &crate::ids::ElementSelector| -> Option<crate::ids::ElementSelector> {
                 if let Some(p) = c.participants.iter().find(|p| &p.id == id) {
@@ -2362,7 +2541,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                 let mut ps = c
                     .participants
                     .iter()
-                    .filter(|p| p.process.as_ref() == Some(process));
+                    .filter(|p| endpoint(&p.process).as_ref() == Some(process));
                 let first = ps.next()?;
                 if ps.next().is_some() {
                     None
@@ -2374,11 +2553,11 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             if f.flow_metadata.is_some() && f.kind != FlowKind::Sequence {
                 return fail("Flow-element metadata requires a sequence flow");
             }
+            let source = endpoint(&f.source);
+            let target = endpoint(&f.target);
             if f.condition.is_some()
                 || f.kind != FlowKind::Message
-                || participant_for(&f.source).is_none()
-                || participant_for(&f.target).is_none()
-                || participant_for(&f.source) == participant_for(&f.target)
+                || matches!((&source, &target), (Some(source), Some(target)) if participant_for(source).is_none() || participant_for(target).is_none() || participant_for(source) == participant_for(target))
             {
                 return fail("invalid message flow endpoints");
             }
@@ -2434,10 +2613,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
         };
         if !scopes.iter().any(|p| p.id == diagram.plane)
             && !d.choreographies.iter().any(|c| c.id == diagram.plane)
-            && !d
-                .collaboration
-                .as_ref()
-                .is_some_and(|c| c.id == diagram.plane)
+            && !d.collaborations().any(|c| c.id == diagram.plane)
         {
             return fail("invalid diagram plane");
         }

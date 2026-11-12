@@ -6,8 +6,8 @@ use processcraft_core::bpmn_activity::CorrelationKey;
 use processcraft_core::bpmn_collaboration::{ChoreographyActivity, ConversationNode};
 #[derive(Clone)]
 enum KeyOwner {
-    Collaboration,
-    Conversation(Box<ConversationNode>),
+    Collaboration(Box<Collaboration>),
+    Conversation(Box<Collaboration>, Box<ConversationNode>),
     Choreography(ElementSelector, Box<ChoreographyActivity>),
 }
 struct KeyDraft {
@@ -18,11 +18,13 @@ pub(super) struct CorrelationKeysDraft {
     owner: KeyOwner,
     keys: Vec<KeyDraft>,
     error: String,
+    generation: u64,
 }
 impl CorrelationKeysDraft {
-    fn new(owner: KeyOwner, values: &[CorrelationKey]) -> Self {
+    fn new(owner: KeyOwner, values: &[CorrelationKey], generation: u64) -> Self {
         Self {
             owner,
+            generation,
             keys: values
                 .iter()
                 .map(|k| KeyDraft {
@@ -57,22 +59,40 @@ impl ProcessCraft {
     ) {
         if self.correlation_keys_draft.is_none() {
             ui.menu_button("Edit correlation keys…", |ui| {
-                if let Some(c) = &document.collaboration {
+                let roots = document
+                    .collaboration
+                    .iter()
+                    .chain(document.additional_collaborations.iter())
+                    .cloned()
+                    .chain(
+                        document
+                            .choreographies
+                            .iter()
+                            .map(super::collaboration::choreography_view),
+                    );
+                for (index, root) in roots.enumerate() {
+                    let label = local_choice_label(
+                        root.name.as_deref(),
+                        "Collaboration",
+                        &root.id,
+                        index + 1,
+                    );
                     if ui
                         .add_enabled(
                             editable && !self.draft_dirty,
-                            egui::Button::new("Collaboration"),
+                            egui::Button::new(format!("{label} keys")),
                         )
                         .clicked()
                         && self.commit_draft()
                     {
                         self.correlation_keys_draft = Some(CorrelationKeysDraft::new(
-                            KeyOwner::Collaboration,
-                            &c.correlation_keys,
+                            KeyOwner::Collaboration(Box::new(root.clone())),
+                            &root.correlation_keys,
+                            self.ctl.session.snapshot().generation,
                         ));
                         ui.close();
                     }
-                    for (i, node) in c.conversation_nodes.iter().enumerate() {
+                    for (i, node) in root.conversation_nodes.iter().enumerate() {
                         let label = local_choice_label(
                             node.name.as_deref(),
                             "Conversation",
@@ -80,13 +100,20 @@ impl ProcessCraft {
                             i + 1,
                         );
                         if ui
-                            .add_enabled(editable && !self.draft_dirty, egui::Button::new(label))
+                            .add_enabled(
+                                editable && !self.draft_dirty,
+                                egui::Button::new(format!("{label} keys")),
+                            )
                             .clicked()
                             && self.commit_draft()
                         {
                             self.correlation_keys_draft = Some(CorrelationKeysDraft::new(
-                                KeyOwner::Conversation(Box::new(node.clone())),
+                                KeyOwner::Conversation(
+                                    Box::new(root.clone()),
+                                    Box::new(node.clone()),
+                                ),
                                 &node.correlation_keys,
+                                self.ctl.session.snapshot().generation,
                             ));
                             ui.close();
                         }
@@ -111,6 +138,7 @@ impl ProcessCraft {
                                     Box::new(activity.clone()),
                                 ),
                                 &activity.correlation_keys,
+                                self.ctl.session.snapshot().generation,
                             ));
                             ui.close();
                         }
@@ -166,18 +194,29 @@ impl ProcessCraft {
         if ui.button("Apply correlation keys").clicked() {
             match draft.build() {
                 Ok(keys) => {
+                    if draft.generation != self.ctl.session.snapshot().generation {
+                        draft.error = "The model changed while this draft was open. Cancel it and reopen the editor.".into();
+                        return;
+                    }
                     let mutation = match &draft.owner {
-                        KeyOwner::Collaboration => Mutation::SetCollaborationCorrelationKeys {
-                            document_id: document.id,
-                            correlation_keys: keys,
-                        },
-                        KeyOwner::Conversation(node) => {
-                            let mut node = node.as_ref().clone();
-                            node.correlation_keys = keys;
-                            Mutation::UpdateConversationNode {
-                                document_id: document.id,
-                                node,
+                        KeyOwner::Collaboration(root) => {
+                            let mut updated = root.as_ref().clone();
+                            updated.correlation_keys = keys;
+                            super::collaboration::update_root(document, updated)
+                        }
+                        KeyOwner::Conversation(root, node) => {
+                            let mut updated = root.as_ref().clone();
+                            if let Some(current) = updated
+                                .conversation_nodes
+                                .iter_mut()
+                                .find(|value| value.id == node.id)
+                            {
+                                current.correlation_keys = keys;
+                            } else {
+                                draft.error = "The conversation no longer exists.".into();
+                                return;
                             }
+                            super::collaboration::update_root(document, updated)
                         }
                         KeyOwner::Choreography(id, activity) => {
                             let mut activity = activity.as_ref().clone();

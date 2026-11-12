@@ -217,6 +217,7 @@ pub(crate) fn validate(document: &BpmnDocument, effective_namespace: &str) -> Re
         } else {
             Cow::Borrowed(document)
         };
+    crate::collaboration_export::validate(&checked)?;
     let check = Check {
         xml_ids: checked
             .element_identities()
@@ -247,8 +248,10 @@ pub(crate) fn validate(document: &BpmnDocument, effective_namespace: &str) -> Re
     {
         // Plane order is native representation bookkeeping, not an XML IDREF.
         // XML emits children in that order without referencing their XML IDs.
-        if resolution.reference.field != "di.planeOrder"
-            && matches!(resolution.reference.target, EventReference::Local(_))
+        if !matches!(
+            resolution.reference.field,
+            "di.planeOrder" | "definitions.rootOrder"
+        ) && matches!(resolution.reference.target, EventReference::Local(_))
         {
             check.selector(&resolution.resolved_target, resolution.reference.field)?;
         }

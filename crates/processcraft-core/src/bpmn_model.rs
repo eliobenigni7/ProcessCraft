@@ -556,5 +556,5 @@ pub struct Group {
     pub base: Option<crate::bpmn_metadata::BaseMetadata>,
 
     pub id: crate::ids::ElementIdentity,
-    pub category_value_ref: Option<crate::ids::ElementSelector>,
+    pub category_value_ref: Option<crate::bpmn_activity::ModelReference>,
 }

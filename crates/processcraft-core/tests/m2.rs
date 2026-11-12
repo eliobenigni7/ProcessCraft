@@ -305,8 +305,12 @@ fn splice_is_one_undo_and_rejects_branches() {
         association_direction: None,
         id: id(name),
         kind: FlowKind::Sequence,
-        source: id(source),
-        target: id(target),
+        source: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+            source,
+        ))),
+        target: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+            target,
+        ))),
         name: Some(String::new()),
         documentation: String::new().into(),
         condition: None,
@@ -760,8 +764,12 @@ fn nested_scope_edits_and_cross_scope_flows_are_atomic() {
         association_direction: None,
         id: id("cross"),
         kind: FlowKind::Sequence,
-        source: id("inner"),
-        target: id("activity"),
+        source: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+            "inner",
+        ))),
+        target: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+            "activity",
+        ))),
         name: Some(String::new()),
         documentation: String::new().into(),
         condition: None,
@@ -928,11 +936,15 @@ fn conversation_crud_checks_references_and_undoes_atomically() {
     let (initial, key) = fixture();
     let mut project = (*initial.snapshot().project).clone();
     Arc::make_mut(&mut project.documents[0]).collaboration = Some(Collaboration {
+        kind: None,
+        extras: None,
         correlation_keys: vec![],
         base: None,
         name: None,
         id: id("collaboration"),
         participants: vec![Participant {
+            interface_refs: vec![],
+            endpoint_refs: vec![],
             multiplicity: None,
             base: None,
             id: id("participant"),
@@ -945,20 +957,28 @@ fn conversation_crud_checks_references_and_undoes_atomically() {
     });
     let mut session = Session::new(project).unwrap();
     let node = ConversationNode {
+        call: None,
+        message_flow_refs: vec![],
         correlation_keys: vec![],
         base: None,
         id: id("conversation"),
         name: Some("Order".into()),
         kind: ConversationKind::Conversation,
-        participant_refs: vec![id("participant")],
+        participant_refs: vec![processcraft_core::bpmn_activity::ModelReference::Local(id(
+            "participant",
+        ))],
         parent: None,
     };
     let link = ConversationLink {
         base: None,
         id: id("conversation_link"),
         name: Some(String::new()),
-        source: id("participant"),
-        target: id("conversation"),
+        source: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+            "participant",
+        ))),
+        target: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+            "conversation",
+        ))),
     };
     apply(
         &mut session,
@@ -989,8 +1009,12 @@ fn conversation_crud_checks_references_and_undoes_atomically() {
         base: None,
         id: id("bad_link"),
         name: Some(String::new()),
-        source: id("missing"),
-        target: id("conversation"),
+        source: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+            "missing",
+        ))),
+        target: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+            "conversation",
+        ))),
     };
     assert!(
         apply(
@@ -1042,11 +1066,17 @@ fn choreography_crud_rejects_cross_scope_references_and_undoes() {
     use processcraft_core::bpmn_collaboration::{Choreography, ChoreographyActivity};
     let (mut session, key) = fixture();
     let choreography = Choreography {
+        extras: None,
+        conversation_nodes: vec![],
+        conversation_links: vec![],
+        correlation_keys: vec![],
         base: None,
         id: id("choreography"),
         name: Some("Exchange".into()),
         participants: vec![
             Participant {
+                interface_refs: vec![],
+                endpoint_refs: vec![],
                 multiplicity: None,
                 base: None,
                 id: id("buyer"),
@@ -1054,6 +1084,8 @@ fn choreography_crud_rejects_cross_scope_references_and_undoes() {
                 process: None,
             },
             Participant {
+                interface_refs: vec![],
+                endpoint_refs: vec![],
                 multiplicity: None,
                 base: None,
                 id: id("seller"),
@@ -1516,11 +1548,15 @@ fn conversation_delete_removes_di_and_undo_restores_it() {
     let mut project = (*initial.snapshot().project).clone();
     let doc = Arc::make_mut(&mut project.documents[0]);
     doc.collaboration = Some(Collaboration {
+        kind: None,
+        extras: None,
         correlation_keys: vec![],
         base: None,
         name: None,
         id: id("collaboration"),
         participants: vec![Participant {
+            interface_refs: vec![],
+            endpoint_refs: vec![],
             multiplicity: None,
             base: None,
             id: id("buyer"),
@@ -1529,20 +1565,28 @@ fn conversation_delete_removes_di_and_undo_restores_it() {
         }],
         flows: vec![],
         conversation_nodes: vec![ConversationNode {
+            call: None,
+            message_flow_refs: vec![],
             correlation_keys: vec![],
             base: None,
             id: id("conversation"),
             name: Some("Order".into()),
             kind: ConversationKind::Conversation,
-            participant_refs: vec![id("buyer")],
+            participant_refs: vec![processcraft_core::bpmn_activity::ModelReference::Local(id(
+                "buyer",
+            ))],
             parent: None,
         }],
         conversation_links: vec![ConversationLink {
             base: None,
             id: id("link"),
             name: Some(String::new()),
-            source: id("buyer"),
-            target: id("conversation"),
+            source: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+                "buyer",
+            ))),
+            target: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+                "conversation",
+            ))),
         }],
     });
     doc.diagrams.push(Diagram {
@@ -1776,8 +1820,12 @@ fn descriptive_commands_validate_references_and_undo_atomically() {
         base_extras: None,
         id: id("association"),
         kind: FlowKind::Association,
-        source: key.xml_id.clone(),
-        target: id("note"),
+        source: Some(processcraft_core::bpmn_activity::ModelReference::Local(
+            key.xml_id.clone(),
+        )),
+        target: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+            "note",
+        ))),
         name: Some(String::new()),
         documentation: String::new().into(),
         condition: None,
@@ -1805,7 +1853,11 @@ fn descriptive_commands_validate_references_and_undo_atomically() {
                 group: Group {
                     base: None,
                     id: id("group"),
-                    category_value_ref: Some(id("category_value")),
+                    category_value_ref: Some(
+                        processcraft_core::bpmn_activity::ModelReference::Local(id(
+                            "category_value",
+                        )),
+                    ),
                 },
             },
             Mutation::SetLaneSetId {
@@ -1979,8 +2031,12 @@ fn activity_properties_validate_scope_and_kind_and_undo() {
         base_extras: None,
         id: id("activity_default"),
         kind: FlowKind::Sequence,
-        source: key.xml_id.clone(),
-        target: id("activity_target"),
+        source: Some(processcraft_core::bpmn_activity::ModelReference::Local(
+            key.xml_id.clone(),
+        )),
+        target: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+            "activity_target",
+        ))),
         name: Some(String::new()),
         documentation: String::new().into(),
         condition: None,

@@ -185,8 +185,12 @@ fn fixture(docs: usize, nodes: usize, active: usize, resource: usize) -> Project
                         association_direction: None,
                         id: id(&format!("flow_{i}")),
                         kind: FlowKind::Sequence,
-                        source: n.id.selector(),
-                        target: process.nodes[i + 1].id.selector(),
+                        source: Some(processcraft_core::bpmn_activity::ModelReference::Local(
+                            n.id.selector(),
+                        )),
+                        target: Some(processcraft_core::bpmn_activity::ModelReference::Local(
+                            process.nodes[i + 1].id.selector(),
+                        )),
                         name: Some(format!("Branch {i}")),
                         documentation: "Qualification flow".into(),
                         condition: Some(format!("amount > {i}").into()),

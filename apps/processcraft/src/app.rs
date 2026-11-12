@@ -559,16 +559,69 @@ impl ProcessCraft {
                 }
             }
         }
-        if let Some(d) = snap.project.documents.get(self.doc)
-            && let Some(c) = &d.collaboration
+        if let Some(document) = snap.project.documents.get(self.doc)
+            && let Some(selected) = &id
         {
-            for participant in &c.participants {
-                if id
-                    .as_ref()
-                    .is_some_and(|selected| participant.id.selector() == *selected)
-                {
+            if !self.is_node
+                && let Some(node) = processcraft_core::queries::find_node(document, selected)
+            {
+                self.draft_name_present = node.name.is_some();
+                self.draft = match &node.details {
+                    Some(processcraft_core::bpmn_model::NodeDetails::TextAnnotation {
+                        text: Some(body),
+                        ..
+                    }) => body.plain_text().unwrap_or_default().to_owned(),
+                    _ => node.name.clone().unwrap_or_default(),
+                };
+                self.docs = node
+                    .documentation
+                    .plain_text()
+                    .unwrap_or_default()
+                    .to_owned();
+                self.is_node = true;
+            }
+            if !self.is_flow
+                && let Some(flow) = processcraft_core::queries::find_flow(document, selected)
+            {
+                self.draft_name_present = flow.name.is_some();
+                self.draft = flow.name.clone().unwrap_or_default();
+                self.docs = flow
+                    .documentation
+                    .plain_text()
+                    .unwrap_or_default()
+                    .to_owned();
+                self.is_flow = true;
+            }
+        }
+        if let Some(d) = snap.project.documents.get(self.doc)
+            && let Some(selected) = &id
+        {
+            for root in d
+                .collaboration
+                .iter()
+                .chain(d.additional_collaborations.iter())
+            {
+                if let Some(participant) = root.participants.iter().find(|v| v.id == *selected) {
                     self.draft_name_present = participant.name.is_some();
                     self.draft = participant.name.clone().unwrap_or_default();
+                }
+                if let Some(node) = root.conversation_nodes.iter().find(|v| v.id == *selected) {
+                    self.draft_name_present = node.name.is_some();
+                    self.draft = node.name.clone().unwrap_or_default();
+                }
+                if let Some(link) = root.conversation_links.iter().find(|v| v.id == *selected) {
+                    self.draft_name_present = link.name.is_some();
+                    self.draft = link.name.clone().unwrap_or_default();
+                }
+                if let Some(flow) = root.flows.iter().find(|v| v.id == *selected) {
+                    self.draft_name_present = flow.name.is_some();
+                    self.draft = flow.name.clone().unwrap_or_default();
+                    self.docs = flow
+                        .documentation
+                        .plain_text()
+                        .unwrap_or_default()
+                        .to_owned();
+                    self.is_flow = true;
                 }
             }
         }
@@ -576,6 +629,22 @@ impl ProcessCraft {
             && let Some(selected) = &id
         {
             for choreography in &document.choreographies {
+                if let Some(node) = choreography
+                    .conversation_nodes
+                    .iter()
+                    .find(|node| node.id == *selected)
+                {
+                    self.draft_name_present = node.name.is_some();
+                    self.draft = node.name.clone().unwrap_or_default();
+                }
+                if let Some(link) = choreography
+                    .conversation_links
+                    .iter()
+                    .find(|link| link.id == *selected)
+                {
+                    self.draft_name_present = link.name.is_some();
+                    self.draft = link.name.clone().unwrap_or_default();
+                }
                 if let Some(participant) = choreography
                     .participants
                     .iter()
@@ -1397,6 +1466,8 @@ impl ProcessCraft {
             batch.push(Mutation::CreateCollaboration {
                 document_id: d.id,
                 collaboration: Collaboration {
+                    kind: None,
+                    extras: None,
                     correlation_keys: Vec::new(),
                     base: None,
                     name: None,
@@ -1416,11 +1487,15 @@ impl ProcessCraft {
         batch.push(Mutation::CreateParticipant {
             document_id: d.id,
             participant: Participant {
+                interface_refs: vec![],
+                endpoint_refs: vec![],
                 multiplicity: None,
                 base: None,
                 id: participant.clone().into(),
                 name: Some("Pool".into()),
-                process: Some(p.id.selector()),
+                process: Some(processcraft_core::bpmn_activity::ModelReference::Local(
+                    p.id.selector(),
+                )),
             },
         });
         batch.push(Mutation::CreateShape {
@@ -1650,8 +1725,8 @@ impl ProcessCraft {
             return;
         };
         let (Some(a), Some(b), Some(edge)) = (
-            diagram.shapes.iter().find(|s| s.element == flow.source),
-            diagram.shapes.iter().find(|s| s.element == flow.target),
+            diagram.shapes.iter().find(|s| matches!(&flow.source, Some(processcraft_core::bpmn_activity::ModelReference::Local(id)) if s.element == *id)),
+            diagram.shapes.iter().find(|s| matches!(&flow.target, Some(processcraft_core::bpmn_activity::ModelReference::Local(id)) if s.element == *id)),
             diagram.edges.iter().find(|e| e.element == flow.id),
         ) else {
             return;
@@ -1724,8 +1799,12 @@ impl ProcessCraft {
                     association_direction: None,
                     id: eid.clone().into(),
                     kind: self.connection_kind,
-                    source: a.id.selector(),
-                    target: b.id.selector(),
+                    source: Some(processcraft_core::bpmn_activity::ModelReference::Local(
+                        a.id.selector(),
+                    )),
+                    target: Some(processcraft_core::bpmn_activity::ModelReference::Local(
+                        b.id.selector(),
+                    )),
                     name: (self.connection_kind != FlowKind::Association).then(String::new),
                     documentation: String::new().into(),
                     condition: None,
@@ -2165,6 +2244,8 @@ mod tests {
         let mut app = ProcessCraft::default();
         let document_id = app.ctl.session.snapshot().project.documents[0].id;
         let participant = |id: &str, name: Option<&str>| Participant {
+            interface_refs: vec![],
+            endpoint_refs: vec![],
             id: id.parse().unwrap(),
             name: name.map(str::to_owned),
             base: None,
@@ -2172,6 +2253,10 @@ mod tests {
             multiplicity: None,
         };
         let choreography = Choreography {
+            extras: None,
+            conversation_nodes: vec![],
+            conversation_links: vec![],
+            correlation_keys: vec![],
             id: "Choreography".parse().unwrap(),
             name: None,
             base: None,
@@ -2182,8 +2267,12 @@ mod tests {
             message_flows: vec![Flow {
                 id: "Message".parse().unwrap(),
                 kind: FlowKind::Message,
-                source: "Buyer".parse().unwrap(),
-                target: "Seller".parse().unwrap(),
+                source: Some(processcraft_core::bpmn_activity::ModelReference::Local(
+                    "Buyer".parse().unwrap(),
+                )),
+                target: Some(processcraft_core::bpmn_activity::ModelReference::Local(
+                    "Seller".parse().unwrap(),
+                )),
                 name: Some(String::new()),
                 documentation: "Original documentation".into(),
                 base_extras: None,
@@ -3587,3 +3676,24 @@ mod m3;
 
 #[path = "app_collaboration.rs"]
 mod collaboration;
+
+#[path = "app_partners.rs"]
+mod partners;
+
+#[path = "app_conversation_details.rs"]
+mod conversation_details;
+
+#[path = "app_collaboration_associations.rs"]
+mod collaboration_associations;
+
+#[path = "app_collaboration_participant.rs"]
+mod collaboration_participant;
+
+#[path = "app_collaboration_root.rs"]
+mod collaboration_root;
+
+#[path = "app_collaboration_connection.rs"]
+mod collaboration_connection;
+
+#[path = "app_collaboration_artifacts.rs"]
+mod collaboration_artifacts;

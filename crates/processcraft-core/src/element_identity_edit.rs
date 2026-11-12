@@ -67,6 +67,110 @@ fn correlation_key_selectors(
         }
     }
 }
+fn optional_reference_selector(
+    value: &mut Option<crate::bpmn_activity::ModelReference>,
+    visit: &mut impl FnMut(&mut ElementSelector),
+) {
+    if let Some(reference) = value {
+        event_ref_selector(reference, visit);
+    }
+}
+fn participant_selectors(
+    participant: &mut Participant,
+    visit: &mut impl FnMut(&mut ElementSelector),
+) {
+    optional_reference_selector(&mut participant.process, visit);
+    for reference in participant
+        .interface_refs
+        .iter_mut()
+        .chain(&mut participant.endpoint_refs)
+    {
+        event_ref_selector(reference, visit);
+    }
+}
+fn conversation_selectors(
+    node: &mut crate::bpmn_collaboration::ConversationNode,
+    visit: &mut impl FnMut(&mut ElementSelector),
+) {
+    correlation_key_selectors(&mut node.correlation_keys, visit);
+    for reference in node
+        .participant_refs
+        .iter_mut()
+        .chain(&mut node.message_flow_refs)
+    {
+        event_ref_selector(reference, visit);
+    }
+    if let Some(parent) = &mut node.parent {
+        visit(parent);
+    }
+    if let Some(call) = &mut node.call {
+        optional_reference_selector(&mut call.called_collaboration_ref, visit);
+        for association in &mut call.participant_associations {
+            optional_reference_selector(&mut association.inner, visit);
+            optional_reference_selector(&mut association.outer, visit);
+        }
+    }
+}
+fn collaboration_extras_selectors(
+    extras: &mut Option<crate::bpmn_collaboration::CollaborationExtras>,
+    visit: &mut impl FnMut(&mut ElementSelector),
+) {
+    use crate::bpmn_collaboration::CollaborationArtifact;
+    if let Some(extras) = extras {
+        for reference in &mut extras.choreography_refs {
+            event_ref_selector(reference, visit);
+        }
+        for association in &mut extras.conversation_associations {
+            optional_reference_selector(&mut association.inner, visit);
+            optional_reference_selector(&mut association.outer, visit);
+        }
+        for association in &mut extras.participant_associations {
+            optional_reference_selector(&mut association.inner, visit);
+            optional_reference_selector(&mut association.outer, visit);
+        }
+        for association in &mut extras.message_flow_associations {
+            optional_reference_selector(&mut association.inner, visit);
+            optional_reference_selector(&mut association.outer, visit);
+        }
+        for artifact in &mut extras.artifacts {
+            match artifact {
+                CollaborationArtifact::Group(group) => {
+                    if let Some(reference) = &mut group.category_value_ref {
+                        event_ref_selector(reference, visit);
+                    }
+                }
+                CollaborationArtifact::Association(flow) => {
+                    optional_reference_selector(&mut flow.source, visit);
+                    optional_reference_selector(&mut flow.target, visit);
+                }
+                CollaborationArtifact::TextAnnotation(_) => {}
+            }
+        }
+    }
+}
+fn collaboration_root_selectors(
+    c: &mut Collaboration,
+    visit: &mut impl FnMut(&mut ElementSelector),
+) {
+    collaboration_extras_selectors(&mut c.extras, visit);
+    correlation_key_selectors(&mut c.correlation_keys, visit);
+    for participant in &mut c.participants {
+        participant_selectors(participant, visit);
+    }
+    for flow in &mut c.flows {
+        optional_reference_selector(&mut flow.source, visit);
+        optional_reference_selector(&mut flow.target, visit);
+        optional_reference_selector(&mut flow.message_ref, visit);
+        flow_metadata_selectors(&mut flow.flow_metadata, visit);
+    }
+    for node in &mut c.conversation_nodes {
+        conversation_selectors(node, visit);
+    }
+    for link in &mut c.conversation_links {
+        optional_reference_selector(&mut link.source, visit);
+        optional_reference_selector(&mut link.target, visit);
+    }
+}
 
 /// Visit selectors held by process and subprocess flow containers.
 fn scope_selectors(
@@ -83,8 +187,12 @@ fn scope_selectors(
     }
     for flow in flows {
         flow_metadata_selectors(&mut flow.flow_metadata, visit);
-        visit(&mut flow.source);
-        visit(&mut flow.target);
+        if let Some(reference) = &mut flow.source {
+            event_ref_selector(reference, visit);
+        }
+        if let Some(reference) = &mut flow.target {
+            event_ref_selector(reference, visit);
+        }
     }
     for lane in lanes {
         if let Some(parent) = &mut lane.parent {
@@ -96,7 +204,7 @@ fn scope_selectors(
     }
     for group in groups {
         if let Some(value) = &mut group.category_value_ref {
-            visit(value);
+            event_ref_selector(value, visit);
         }
     }
     for association in associations {
@@ -324,6 +432,24 @@ fn io_selectors(
     }
 }
 fn document_selectors(d: &mut BpmnDocument, visit: &mut impl FnMut(&mut ElementSelector)) {
+    if let Some(order) = &mut d.root_order {
+        for selector in order {
+            visit(selector);
+        }
+    }
+    for partner in &mut d.partner_entities {
+        for reference in &mut partner.participant_refs {
+            event_ref_selector(reference, visit);
+        }
+    }
+    for partner in &mut d.partner_roles {
+        for reference in &mut partner.participant_refs {
+            event_ref_selector(reference, visit);
+        }
+    }
+    for collaboration in &mut d.additional_collaborations {
+        collaboration_root_selectors(collaboration, visit);
+    }
     for property in &mut d.correlation_properties {
         for retrieval in &mut property.retrieval_expressions {
             if let Some(reference) = &mut retrieval.message_ref {
@@ -376,10 +502,18 @@ fn document_selectors(d: &mut BpmnDocument, visit: &mut impl FnMut(&mut ElementS
         );
     }
     if let Some(collaboration) = &mut d.collaboration {
+        collaboration_extras_selectors(&mut collaboration.extras, visit);
         correlation_key_selectors(&mut collaboration.correlation_keys, visit);
         for participant in &mut collaboration.participants {
+            for reference in participant
+                .interface_refs
+                .iter_mut()
+                .chain(&mut participant.endpoint_refs)
+            {
+                event_ref_selector(reference, visit);
+            }
             if let Some(process) = &mut participant.process {
-                visit(process);
+                event_ref_selector(process, visit);
             }
         }
         for flow in &mut collaboration.flows {
@@ -387,27 +521,61 @@ fn document_selectors(d: &mut BpmnDocument, visit: &mut impl FnMut(&mut ElementS
                 event_ref_selector(reference, visit);
             }
             flow_metadata_selectors(&mut flow.flow_metadata, visit);
-            visit(&mut flow.source);
-            visit(&mut flow.target);
+            if let Some(reference) = &mut flow.source {
+                event_ref_selector(reference, visit);
+            }
+            if let Some(reference) = &mut flow.target {
+                event_ref_selector(reference, visit);
+            }
         }
         for node in &mut collaboration.conversation_nodes {
+            for reference in &mut node.message_flow_refs {
+                event_ref_selector(reference, visit);
+            }
+            if let Some(call) = &mut node.call {
+                optional_reference_selector(&mut call.called_collaboration_ref, visit);
+                for association in &mut call.participant_associations {
+                    optional_reference_selector(&mut association.inner, visit);
+                    optional_reference_selector(&mut association.outer, visit);
+                }
+            }
             correlation_key_selectors(&mut node.correlation_keys, visit);
             for reference in &mut node.participant_refs {
-                visit(reference);
+                event_ref_selector(reference, visit);
             }
             if let Some(parent) = &mut node.parent {
                 visit(parent);
             }
         }
         for link in &mut collaboration.conversation_links {
-            visit(&mut link.source);
-            visit(&mut link.target);
+            if let Some(reference) = &mut link.source {
+                event_ref_selector(reference, visit);
+            }
+            if let Some(reference) = &mut link.target {
+                event_ref_selector(reference, visit);
+            }
         }
     }
     for choreography in &mut d.choreographies {
+        collaboration_extras_selectors(&mut choreography.extras, visit);
+        correlation_key_selectors(&mut choreography.correlation_keys, visit);
+        for node in &mut choreography.conversation_nodes {
+            conversation_selectors(node, visit);
+        }
+        for link in &mut choreography.conversation_links {
+            optional_reference_selector(&mut link.source, visit);
+            optional_reference_selector(&mut link.target, visit);
+        }
         for participant in &mut choreography.participants {
+            for reference in participant
+                .interface_refs
+                .iter_mut()
+                .chain(&mut participant.endpoint_refs)
+            {
+                event_ref_selector(reference, visit);
+            }
             if let Some(process) = &mut participant.process {
-                visit(process);
+                event_ref_selector(process, visit);
             }
         }
         for flow in choreography
@@ -419,8 +587,12 @@ fn document_selectors(d: &mut BpmnDocument, visit: &mut impl FnMut(&mut ElementS
                 event_ref_selector(reference, visit);
             }
             flow_metadata_selectors(&mut flow.flow_metadata, visit);
-            visit(&mut flow.source);
-            visit(&mut flow.target);
+            if let Some(reference) = &mut flow.source {
+                event_ref_selector(reference, visit);
+            }
+            if let Some(reference) = &mut flow.target {
+                event_ref_selector(reference, visit);
+            }
         }
         for activity in &mut choreography.activities {
             flow_metadata_selectors(&mut activity.flow_metadata, visit);
@@ -478,6 +650,62 @@ fn optional_identity(
 ) {
     if let Some(value) = value {
         visit(value);
+    }
+}
+fn collaboration_extras_ids(
+    extras: &mut Option<crate::bpmn_collaboration::CollaborationExtras>,
+    visit: &mut impl FnMut(&mut ElementIdentity),
+) {
+    use crate::bpmn_collaboration::CollaborationArtifact;
+    if let Some(extras) = extras {
+        for association in &mut extras.conversation_associations {
+            optional_identity(&mut association.id, visit);
+        }
+        for association in &mut extras.participant_associations {
+            optional_identity(&mut association.id, visit);
+        }
+        for association in &mut extras.message_flow_associations {
+            optional_identity(&mut association.id, visit);
+        }
+        for artifact in &mut extras.artifacts {
+            match artifact {
+                CollaborationArtifact::Group(group) => visit(&mut group.id),
+                CollaborationArtifact::TextAnnotation(node) => visit(&mut node.id),
+                CollaborationArtifact::Association(flow) => flow_id(flow, visit),
+            }
+        }
+    }
+}
+fn conversation_ids(
+    node: &mut crate::bpmn_collaboration::ConversationNode,
+    visit: &mut impl FnMut(&mut ElementIdentity),
+) {
+    visit(&mut node.id);
+    key_ids(&mut node.correlation_keys, visit);
+    if let Some(call) = &mut node.call {
+        for association in &mut call.participant_associations {
+            optional_identity(&mut association.id, visit);
+        }
+    }
+}
+fn collaboration_root_ids(c: &mut Collaboration, visit: &mut impl FnMut(&mut ElementIdentity)) {
+    visit(&mut c.id);
+    key_ids(&mut c.correlation_keys, visit);
+    collaboration_extras_ids(&mut c.extras, visit);
+    for participant in &mut c.participants {
+        visit(&mut participant.id);
+        if let Some(m) = &mut participant.multiplicity {
+            optional_identity(&mut m.id, visit);
+        }
+    }
+    for flow in &mut c.flows {
+        flow_id(flow, visit);
+    }
+    for node in &mut c.conversation_nodes {
+        conversation_ids(node, visit);
+    }
+    for link in &mut c.conversation_links {
+        visit(&mut link.id);
     }
 }
 fn base_owner_id(
@@ -793,6 +1021,18 @@ fn event_io_ids(io: &mut crate::bpmn_model::EventIo, visit: &mut impl FnMut(&mut
     }
 }
 fn document_ids(d: &mut BpmnDocument, visit: &mut impl FnMut(&mut ElementIdentity)) {
+    for partner in &mut d.partner_entities {
+        optional_identity(&mut partner.id, visit);
+    }
+    for partner in &mut d.partner_roles {
+        optional_identity(&mut partner.id, visit);
+    }
+    for endpoint in &mut d.endpoints {
+        optional_identity(&mut endpoint.id, visit);
+    }
+    for collaboration in &mut d.additional_collaborations {
+        collaboration_root_ids(collaboration, visit);
+    }
     for property in &mut d.correlation_properties {
         optional_identity(&mut property.id, visit);
         for retrieval in &mut property.retrieval_expressions {
@@ -908,6 +1148,7 @@ fn document_ids(d: &mut BpmnDocument, visit: &mut impl FnMut(&mut ElementIdentit
         );
     }
     if let Some(collaboration) = &mut d.collaboration {
+        collaboration_extras_ids(&mut collaboration.extras, visit);
         key_ids(&mut collaboration.correlation_keys, visit);
         visit(&mut collaboration.id);
         for participant in &mut collaboration.participants {
@@ -922,12 +1163,25 @@ fn document_ids(d: &mut BpmnDocument, visit: &mut impl FnMut(&mut ElementIdentit
         for node in &mut collaboration.conversation_nodes {
             key_ids(&mut node.correlation_keys, visit);
             visit(&mut node.id);
+            if let Some(call) = &mut node.call {
+                for association in &mut call.participant_associations {
+                    optional_identity(&mut association.id, visit);
+                }
+            }
         }
         for link in &mut collaboration.conversation_links {
             visit(&mut link.id);
         }
     }
     for choreography in &mut d.choreographies {
+        collaboration_extras_ids(&mut choreography.extras, visit);
+        key_ids(&mut choreography.correlation_keys, visit);
+        for node in &mut choreography.conversation_nodes {
+            conversation_ids(node, visit);
+        }
+        for link in &mut choreography.conversation_links {
+            visit(&mut link.id);
+        }
         visit(&mut choreography.id);
         for participant in &mut choreography.participants {
             visit(&mut participant.id);
@@ -993,6 +1247,110 @@ enum QNameKind {
     DataElement,
     SequenceFlow,
     DiShape,
+    Participant,
+    Conversation,
+    MessageFlow,
+    Choreography,
+    Endpoint,
+    Interaction,
+}
+fn optional_reference_qname(
+    value: &mut Option<crate::bpmn_activity::ModelReference>,
+    kind: QNameKind,
+    visit: &mut impl FnMut(&mut crate::bpmn_model::QNameRef, QNameKind),
+) {
+    if let Some(reference) = value {
+        event_ref_qname(reference, kind, visit);
+    }
+}
+fn participant_qnames(
+    value: &mut Participant,
+    visit: &mut impl FnMut(&mut crate::bpmn_model::QNameRef, QNameKind),
+) {
+    optional_reference_qname(&mut value.process, QNameKind::Process, visit);
+    for reference in &mut value.interface_refs {
+        event_ref_qname(reference, QNameKind::Interface, visit);
+    }
+    for reference in &mut value.endpoint_refs {
+        event_ref_qname(reference, QNameKind::Endpoint, visit);
+    }
+}
+fn conversation_qnames(
+    value: &mut crate::bpmn_collaboration::ConversationNode,
+    visit: &mut impl FnMut(&mut crate::bpmn_model::QNameRef, QNameKind),
+) {
+    for reference in &mut value.participant_refs {
+        event_ref_qname(reference, QNameKind::Participant, visit);
+    }
+    for reference in &mut value.message_flow_refs {
+        event_ref_qname(reference, QNameKind::MessageFlow, visit);
+    }
+    keys_qnames(&mut value.correlation_keys, visit);
+    if let Some(call) = &mut value.call {
+        optional_reference_qname(
+            &mut call.called_collaboration_ref,
+            QNameKind::Collaboration,
+            visit,
+        );
+        for association in &mut call.participant_associations {
+            optional_reference_qname(&mut association.inner, QNameKind::Participant, visit);
+            optional_reference_qname(&mut association.outer, QNameKind::Participant, visit);
+        }
+    }
+}
+fn collaboration_extras_qnames(
+    value: &mut Option<crate::bpmn_collaboration::CollaborationExtras>,
+    visit: &mut impl FnMut(&mut crate::bpmn_model::QNameRef, QNameKind),
+) {
+    use crate::bpmn_collaboration::CollaborationArtifact;
+    if let Some(value) = value {
+        for reference in &mut value.choreography_refs {
+            event_ref_qname(reference, QNameKind::Choreography, visit);
+        }
+        for a in &mut value.conversation_associations {
+            optional_reference_qname(&mut a.inner, QNameKind::Conversation, visit);
+            optional_reference_qname(&mut a.outer, QNameKind::Conversation, visit);
+        }
+        for a in &mut value.participant_associations {
+            optional_reference_qname(&mut a.inner, QNameKind::Participant, visit);
+            optional_reference_qname(&mut a.outer, QNameKind::Participant, visit);
+        }
+        for a in &mut value.message_flow_associations {
+            optional_reference_qname(&mut a.inner, QNameKind::MessageFlow, visit);
+            optional_reference_qname(&mut a.outer, QNameKind::MessageFlow, visit);
+        }
+        for artifact in &mut value.artifacts {
+            match artifact {
+                CollaborationArtifact::Association(flow) => flow_qnames(flow, visit),
+                CollaborationArtifact::Group(group) => optional_reference_qname(
+                    &mut group.category_value_ref,
+                    QNameKind::CategoryValue,
+                    visit,
+                ),
+                CollaborationArtifact::TextAnnotation(_) => {}
+            }
+        }
+    }
+}
+fn collaboration_root_qnames(
+    value: &mut Collaboration,
+    visit: &mut impl FnMut(&mut crate::bpmn_model::QNameRef, QNameKind),
+) {
+    collaboration_extras_qnames(&mut value.extras, visit);
+    keys_qnames(&mut value.correlation_keys, visit);
+    for participant in &mut value.participants {
+        participant_qnames(participant, visit);
+    }
+    for flow in &mut value.flows {
+        flow_qnames(flow, visit);
+    }
+    for node in &mut value.conversation_nodes {
+        conversation_qnames(node, visit);
+    }
+    for link in &mut value.conversation_links {
+        optional_reference_qname(&mut link.source, QNameKind::Interaction, visit);
+        optional_reference_qname(&mut link.target, QNameKind::Interaction, visit);
+    }
 }
 fn role_qnames(
     roles: &mut [crate::bpmn_activity::ResourceRole],
@@ -1105,6 +1463,13 @@ fn flow_qnames(
     flow: &mut Flow,
     visit: &mut impl FnMut(&mut crate::bpmn_model::QNameRef, QNameKind),
 ) {
+    let endpoint_kind = if flow.kind == FlowKind::Message {
+        QNameKind::Interaction
+    } else {
+        QNameKind::RelationshipElement
+    };
+    optional_reference_qname(&mut flow.source, endpoint_kind, visit);
+    optional_reference_qname(&mut flow.target, endpoint_kind, visit);
     if let Some(reference) = &mut flow.message_ref {
         event_ref_qname(reference, QNameKind::Message, visit);
     }
@@ -1115,11 +1480,19 @@ fn flow_qnames(
 }
 fn scope_qnames(
     nodes: &mut [Node],
+    groups: &mut [crate::bpmn_model::Group],
     objects: &mut [crate::bpmn_data::DataObject],
     associations: &mut [crate::bpmn_data::DataAssociation],
     flows: &mut [Flow],
     visit: &mut impl FnMut(&mut crate::bpmn_model::QNameRef, QNameKind),
 ) {
+    for group in groups {
+        optional_reference_qname(
+            &mut group.category_value_ref,
+            QNameKind::CategoryValue,
+            visit,
+        );
+    }
     for object in objects {
         flow_metadata_qnames(&mut object.flow_metadata, visit);
         meta_qnames(&mut object.item_aware, visit);
@@ -1262,6 +1635,7 @@ fn scope_qnames(
             }
             Some(NodeDetails::SubProcess { content }) => scope_qnames(
                 &mut content.nodes,
+                &mut content.groups,
                 &mut content.data_objects,
                 &mut content.data_associations,
                 &mut content.flows,
@@ -1354,6 +1728,19 @@ fn document_qnames(
     d: &mut BpmnDocument,
     visit: &mut impl FnMut(&mut crate::bpmn_model::QNameRef, QNameKind),
 ) {
+    for partner in &mut d.partner_entities {
+        for reference in &mut partner.participant_refs {
+            event_ref_qname(reference, QNameKind::Participant, visit);
+        }
+    }
+    for partner in &mut d.partner_roles {
+        for reference in &mut partner.participant_refs {
+            event_ref_qname(reference, QNameKind::Participant, visit);
+        }
+    }
+    for root in &mut d.additional_collaborations {
+        collaboration_root_qnames(root, visit);
+    }
     for property in &mut d.correlation_properties {
         optional_qname(&mut property.item_type, QNameKind::Item, visit);
         for retrieval in &mut property.retrieval_expressions {
@@ -1462,6 +1849,7 @@ fn document_qnames(
         }
         scope_qnames(
             &mut process.nodes,
+            &mut process.groups,
             &mut process.data_objects,
             &mut process.data_associations,
             &mut process.flows,
@@ -1469,6 +1857,17 @@ fn document_qnames(
         );
     }
     if let Some(collaboration) = &mut d.collaboration {
+        collaboration_extras_qnames(&mut collaboration.extras, visit);
+        for participant in &mut collaboration.participants {
+            participant_qnames(participant, visit);
+        }
+        for node in &mut collaboration.conversation_nodes {
+            conversation_qnames(node, visit);
+        }
+        for link in &mut collaboration.conversation_links {
+            optional_reference_qname(&mut link.source, QNameKind::Interaction, visit);
+            optional_reference_qname(&mut link.target, QNameKind::Interaction, visit);
+        }
         keys_qnames(&mut collaboration.correlation_keys, visit);
         for node in &mut collaboration.conversation_nodes {
             keys_qnames(&mut node.correlation_keys, visit);
@@ -1478,6 +1877,18 @@ fn document_qnames(
         }
     }
     for choreography in &mut d.choreographies {
+        collaboration_extras_qnames(&mut choreography.extras, visit);
+        keys_qnames(&mut choreography.correlation_keys, visit);
+        for participant in &mut choreography.participants {
+            participant_qnames(participant, visit);
+        }
+        for node in &mut choreography.conversation_nodes {
+            conversation_qnames(node, visit);
+        }
+        for link in &mut choreography.conversation_links {
+            optional_reference_qname(&mut link.source, QNameKind::Interaction, visit);
+            optional_reference_qname(&mut link.target, QNameKind::Interaction, visit);
+        }
         for activity in &mut choreography.activities {
             flow_metadata_qnames(&mut activity.flow_metadata, visit);
             keys_qnames(&mut activity.correlation_keys, visit);
@@ -1553,7 +1964,61 @@ pub(crate) fn set_xml_id(
     use crate::bpmn_model::EventResource;
     let selected_id =
         |id: &Option<ElementIdentity>| id.as_ref().is_some_and(|id| id.selector() == *selected);
-    let target_kind = if doc
+    let target_kind = if doc.endpoints.iter().any(|value| selected_id(&value.id)) {
+        Some(QNameKind::Endpoint)
+    } else if doc
+        .collaboration
+        .iter()
+        .chain(&doc.additional_collaborations)
+        .any(|root| root.id.selector() == *selected)
+    {
+        Some(QNameKind::Collaboration)
+    } else if doc
+        .choreographies
+        .iter()
+        .any(|root| root.id.selector() == *selected)
+    {
+        Some(QNameKind::Choreography)
+    } else if doc
+        .collaboration
+        .iter()
+        .chain(&doc.additional_collaborations)
+        .flat_map(|root| &root.participants)
+        .chain(
+            doc.choreographies
+                .iter()
+                .flat_map(|root| &root.participants),
+        )
+        .any(|participant| participant.id.selector() == *selected)
+    {
+        Some(QNameKind::Participant)
+    } else if doc
+        .collaboration
+        .iter()
+        .chain(&doc.additional_collaborations)
+        .flat_map(|root| &root.conversation_nodes)
+        .chain(
+            doc.choreographies
+                .iter()
+                .flat_map(|root| &root.conversation_nodes),
+        )
+        .any(|node| node.id.selector() == *selected)
+    {
+        Some(QNameKind::Conversation)
+    } else if doc
+        .collaboration
+        .iter()
+        .chain(&doc.additional_collaborations)
+        .flat_map(|root| &root.flows)
+        .chain(
+            doc.choreographies
+                .iter()
+                .flat_map(|root| &root.message_flows),
+        )
+        .any(|flow| flow.kind == FlowKind::Message && flow.id.selector() == *selected)
+    {
+        Some(QNameKind::MessageFlow)
+    } else if doc
         .diagrams
         .iter()
         .flat_map(|diagram| &diagram.shapes)
@@ -1599,11 +2064,33 @@ pub(crate) fn set_xml_id(
             )
             .any(|k| selected_id(&k.id))
     }) || doc
-        .choreographies
+        .additional_collaborations
         .iter()
-        .flat_map(|c| &c.activities)
-        .flat_map(|a| &a.correlation_keys)
-        .any(|k| selected_id(&k.id))
+        .flat_map(|root| {
+            root.correlation_keys.iter().chain(
+                root.conversation_nodes
+                    .iter()
+                    .flat_map(|n| &n.correlation_keys),
+            )
+        })
+        .any(|key| selected_id(&key.id))
+        || doc
+            .choreographies
+            .iter()
+            .flat_map(|root| {
+                root.correlation_keys.iter().chain(
+                    root.conversation_nodes
+                        .iter()
+                        .flat_map(|n| &n.correlation_keys),
+                )
+            })
+            .any(|key| selected_id(&key.id))
+        || doc
+            .choreographies
+            .iter()
+            .flat_map(|c| &c.activities)
+            .flat_map(|a| &a.correlation_keys)
+            .any(|k| selected_id(&k.id))
     {
         Some(QNameKind::CorrelationKey)
     } else if doc
@@ -1697,8 +2184,16 @@ pub(crate) fn set_xml_id(
             })
     {
         Some(QNameKind::EventDefinition)
-    } else if crate::queries::find_node(doc, selected).is_some_and(|node| node.kind.is_activity()) {
+    } else if crate::queries::find_node(doc, selected).is_some_and(|node| node.kind.is_activity())
+        || doc
+            .choreographies
+            .iter()
+            .flat_map(|root| &root.activities)
+            .any(|node| node.id.selector() == *selected)
+    {
         Some(QNameKind::Activity)
+    } else if crate::queries::find_node(doc, selected).is_some() {
+        Some(QNameKind::Interaction)
     } else if doc
         .diagrams
         .iter()
@@ -1750,7 +2245,13 @@ pub(crate) fn set_xml_id(
     document_qnames(doc, &mut |reference, kind| {
         let matches = Some(kind) == target_kind
             || kind == QNameKind::RelationshipElement
-            || (kind == QNameKind::Callable && target_kind == Some(QNameKind::Process));
+            || (kind == QNameKind::Callable && target_kind == Some(QNameKind::Process))
+            || (kind == QNameKind::Collaboration && target_kind == Some(QNameKind::Choreography))
+            || (kind == QNameKind::Interaction
+                && matches!(
+                    target_kind,
+                    Some(QNameKind::Participant | QNameKind::Conversation | QNameKind::Activity)
+                ));
         has_qnames |= matches;
         if matches
             && old_xml_id.as_ref() == Some(&reference.local)
@@ -1795,7 +2296,16 @@ pub(crate) fn set_xml_id(
         document_qnames(doc, &mut |reference, kind| {
             if (Some(kind) == target_kind
                 || kind == QNameKind::RelationshipElement
-                || (kind == QNameKind::Callable && target_kind == Some(QNameKind::Process)))
+                || (kind == QNameKind::Callable && target_kind == Some(QNameKind::Process))
+                || (kind == QNameKind::Collaboration
+                    && target_kind == Some(QNameKind::Choreography))
+                || (kind == QNameKind::Interaction
+                    && matches!(
+                        target_kind,
+                        Some(
+                            QNameKind::Participant | QNameKind::Conversation | QNameKind::Activity
+                        )
+                    )))
                 && &reference.local == old
                 && reference.namespace == namespace
             {

@@ -760,11 +760,15 @@ fn conversation_geometry_session() -> processcraft_core::commands::Session {
     let mut project = (*source.snapshot().project).clone();
     let doc = std::sync::Arc::make_mut(&mut project.documents[0]);
     doc.collaboration = Some(Collaboration {
+        kind: None,
+        extras: None,
         correlation_keys: vec![],
         base: None,
         name: None,
         id: "collaboration".parse().unwrap(),
         participants: vec![Participant {
+            interface_refs: vec![],
+            endpoint_refs: vec![],
             multiplicity: None,
             base: None,
             id: "buyer".parse().unwrap(),
@@ -773,20 +777,28 @@ fn conversation_geometry_session() -> processcraft_core::commands::Session {
         }],
         flows: vec![],
         conversation_nodes: vec![ConversationNode {
+            message_flow_refs: vec![],
+            call: None,
             correlation_keys: vec![],
             base: None,
             id: "conversation".parse().unwrap(),
             name: Some("Order".into()),
             kind: ConversationKind::Conversation,
-            participant_refs: vec!["buyer".parse().unwrap()],
+            participant_refs: vec![processcraft_core::bpmn_activity::ModelReference::Local(
+                "buyer".parse().unwrap(),
+            )],
             parent: None,
         }],
         conversation_links: vec![ConversationLink {
             base: None,
             id: "link".parse().unwrap(),
             name: Some(String::new()),
-            source: "buyer".parse().unwrap(),
-            target: "conversation".parse().unwrap(),
+            source: Some(processcraft_core::bpmn_activity::ModelReference::Local(
+                "buyer".parse().unwrap(),
+            )),
+            target: Some(processcraft_core::bpmn_activity::ModelReference::Local(
+                "conversation".parse().unwrap(),
+            )),
         }],
     });
     let shape = |id: &str, element: &str, x| Shape {
@@ -1081,11 +1093,17 @@ fn native_anonymous_shape_moves_connected_route_and_undoes() {
         }
     }
     for flow in &mut process.flows {
-        if flow.source.to_string() == "start" {
-            flow.source = node.clone();
+        if matches!(&flow.source, Some(processcraft_core::bpmn_activity::ModelReference::Local(id)) if id.to_string() == "start")
+        {
+            flow.source = Some(processcraft_core::bpmn_activity::ModelReference::Local(
+                node.clone(),
+            ));
         }
-        if flow.target.to_string() == "start" {
-            flow.target = node.clone();
+        if matches!(&flow.target, Some(processcraft_core::bpmn_activity::ModelReference::Local(id)) if id.to_string() == "start")
+        {
+            flow.target = Some(processcraft_core::bpmn_activity::ModelReference::Local(
+                node.clone(),
+            ));
         }
     }
     for diagram in &mut doc.diagrams {
@@ -1309,8 +1327,12 @@ fn association_edge_attachment_follows_rerouted_sequence_with_undo() {
         flow_metadata: None,
         id: "association".parse().unwrap(),
         kind: FlowKind::Association,
-        source: "note".parse().unwrap(),
-        target: "review".parse().unwrap(),
+        source: Some(processcraft_core::bpmn_activity::ModelReference::Local(
+            "note".parse().unwrap(),
+        )),
+        target: Some(processcraft_core::bpmn_activity::ModelReference::Local(
+            "review".parse().unwrap(),
+        )),
         name: None,
         documentation: String::new().into(),
         base_extras: None,
@@ -1459,8 +1481,12 @@ fn nested_move_translates_edge_attachment_and_label_as_one_gesture() {
         flow_metadata: None,
         id: "association".parse().unwrap(),
         kind: FlowKind::Association,
-        source: "note".parse().unwrap(),
-        target: "review".parse().unwrap(),
+        source: Some(processcraft_core::bpmn_activity::ModelReference::Local(
+            "note".parse().unwrap(),
+        )),
+        target: Some(processcraft_core::bpmn_activity::ModelReference::Local(
+            "review".parse().unwrap(),
+        )),
         name: None,
         documentation: String::new().into(),
         base_extras: None,
@@ -1651,6 +1677,8 @@ fn valid_choreography_band_moves_with_only_its_owner_and_undoes() {
     let mut project = (*source.snapshot().project).clone();
     let document = std::sync::Arc::make_mut(&mut project.documents[0]);
     let participant = |id: &str| Participant {
+        interface_refs: vec![],
+        endpoint_refs: vec![],
         id: id.parse().unwrap(),
         name: Some(id.into()),
         process: None,
@@ -1658,14 +1686,22 @@ fn valid_choreography_band_moves_with_only_its_owner_and_undoes() {
         multiplicity: None,
     };
     document.choreographies.push(Choreography {
+        extras: None,
+        conversation_nodes: vec![],
+        conversation_links: vec![],
+        correlation_keys: vec![],
         id: "choreo".parse().unwrap(),
         name: None,
         base: None,
         participants: vec![participant("buyer"), participant("seller")],
         message_flows: vec![Flow {
             id: "message".parse().unwrap(),
-            source: "buyer".parse().unwrap(),
-            target: "seller".parse().unwrap(),
+            source: Some(processcraft_core::bpmn_activity::ModelReference::Local(
+                "buyer".parse().unwrap(),
+            )),
+            target: Some(processcraft_core::bpmn_activity::ModelReference::Local(
+                "seller".parse().unwrap(),
+            )),
             kind: FlowKind::Message,
             name: None,
             documentation: String::new().into(),
@@ -1751,4 +1787,54 @@ fn valid_choreography_band_moves_with_only_its_owner_and_undoes() {
     assert_eq!(session.snapshot().content_id, before.content_id);
     apply_session(&mut session, Request::Redo);
     assert_eq!(session.snapshot().content_id, after.content_id);
+}
+
+#[test]
+fn unresolved_qualified_endpoint_is_never_retargeted_by_local_name() {
+    use processcraft_core::{
+        bpmn_activity::ModelReference,
+        bpmn_model::QNameRef,
+        commands::{Mutation, Request, ShapeBounds},
+    };
+    let session = conversation_geometry_session();
+    let snapshot = session.snapshot();
+    let mut document = (*snapshot.project.documents[0]).clone();
+    let link = &mut document.collaboration.as_mut().unwrap().conversation_links[0];
+    link.source = Some(ModelReference::Qualified(QNameRef {
+        namespace: "urn:external".into(),
+        local: "buyer".parse().unwrap(),
+    }));
+    let diagram_id = "conversation_diagram".parse().unwrap();
+    let request = prepare_move(
+        &document,
+        &diagram_id,
+        vec![ShapeBounds {
+            diagram_id: diagram_id.clone(),
+            shape_id: "buyer_shape".parse().unwrap(),
+            bounds: rect(2.0, 3.0, 10.0, 10.0),
+        }],
+    )
+    .unwrap()
+    .request;
+    let Request::Batch { mutations } = request else {
+        panic!("batch")
+    };
+    assert!(
+        !mutations
+            .iter()
+            .any(|m| matches!(m, Mutation::Reroute { .. }))
+    );
+    let result = prepare_move(
+        &document,
+        &diagram_id,
+        vec![ShapeBounds {
+            diagram_id: diagram_id.clone(),
+            shape_id: "conversation_shape".parse().unwrap(),
+            bounds: rect(32.0, 3.0, 10.0, 10.0),
+        }],
+    );
+    assert!(
+        result.is_err(),
+        "moving the known endpoint of an unresolved connection must be refused"
+    );
 }

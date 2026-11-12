@@ -38,6 +38,7 @@ const EXPANDED_EVENTS_DI_CAPABILITY: &str = "bpmn-expanded-events-di";
 const COMMON_METADATA_CAPABILITY: &str = "bpmn-common-metadata-v1";
 const EXPANDED_ACTIVITIES_CAPABILITY: &str = "bpmn-expanded-activities-v1";
 const DI_CHOREOGRAPHY_CAPABILITY: &str = "bpmn-di-choreography-v1";
+const EXPANDED_COLLABORATION_CAPABILITY: &str = "bpmn-expanded-collaboration-v1";
 
 fn has_native_identity_features(
     documents: &[Arc<BpmnDocument>],
@@ -386,6 +387,19 @@ pub fn write_bytes(project: &ProjectData) -> Result<Vec<u8>, NativeError> {
     {
         required_capabilities.push(DI_CHOREOGRAPHY_CAPABILITY.into());
     }
+    if project
+        .documents
+        .iter()
+        .any(|d| d.has_expanded_collaboration())
+        || project.checkpoints.iter().any(|c| {
+            c.content
+                .documents
+                .iter()
+                .any(|d| d.has_expanded_collaboration())
+        })
+    {
+        required_capabilities.push(EXPANDED_COLLABORATION_CAPABILITY.into());
+    }
     let manifest = Manifest {
         format: "processcraft".into(),
         schema: 3,
@@ -585,6 +599,7 @@ fn load_with_limits(
                 && cap != COMMON_METADATA_CAPABILITY
                 && cap != EXPANDED_ACTIVITIES_CAPABILITY
                 && cap != DI_CHOREOGRAPHY_CAPABILITY
+                && cap != EXPANDED_COLLABORATION_CAPABILITY
         })
         || (manifest.schema < 3 && !manifest.required_capabilities.is_empty())
         || (manifest.schema == 3
@@ -800,6 +815,17 @@ fn load_with_limits(
         return Err(err(
             "DI and choreography representation requires capability",
         ));
+    }
+    if (dto.documents.iter().any(|d| d.has_expanded_collaboration())
+        || frozen
+            .iter()
+            .any(|(_, c)| c.documents.iter().any(|d| d.has_expanded_collaboration())))
+        && !manifest
+            .required_capabilities
+            .iter()
+            .any(|cap| cap == EXPANDED_COLLABORATION_CAPABILITY)
+    {
+        return Err(err("expanded collaboration requires capability"));
     }
     for resources in std::iter::once(&dto.resources).chain(frozen.iter().map(|(_, c)| &c.resources))
     {

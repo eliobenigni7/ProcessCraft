@@ -627,7 +627,9 @@ fn nested_duplicate_ids_and_cross_scope_edges_are_rejected_by_core() {
     else {
         panic!("nested")
     };
-    content.flows[0].target = outer_id.selector();
+    content.flows[0].target = Some(processcraft_core::bpmn_model::EventReference::Local(
+        outer_id.selector(),
+    ));
     let mut project = ProjectData::new("test".into());
     project.documents.push(Arc::new(doc));
     project.resources = parsed.resources;
@@ -1339,7 +1341,12 @@ fn supporting_catalog_qnames_and_presence_roundtrip() {
     let catalog = &parsed.document.catalog;
     assert_eq!(catalog.item_definitions.len(), 2);
     assert_eq!(catalog.item_definitions[0].is_collection, Some(false));
-    assert_eq!(catalog.item_definitions[1].id, None);
+    assert!(
+        catalog.item_definitions[1]
+            .id
+            .as_ref()
+            .is_some_and(|id| id.xml_id().is_none())
+    );
     assert_eq!(
         catalog.resources[0].parameters[1]
             .type_ref
@@ -1350,7 +1357,10 @@ fn supporting_catalog_qnames_and_presence_roundtrip() {
     );
     let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
     assert!(again.report.editable);
-    assert_eq!(parsed.document.catalog, again.document.catalog);
+    assert_eq!(
+        processcraft_io::interchange_compare::xml_model_value(&parsed.document).unwrap(),
+        processcraft_io::interchange_compare::xml_model_value(&again.document).unwrap()
+    );
 }
 
 #[test]
@@ -1403,7 +1413,10 @@ fn supporting_catalog_external_operation_references_are_retained_without_resolut
     );
     assert_eq!(op.error_refs[0].local.to_string(), "RemoteError");
     let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
-    assert_eq!(parsed.document.catalog, again.document.catalog);
+    assert_eq!(
+        processcraft_io::interchange_compare::xml_model_value(&parsed.document).unwrap(),
+        processcraft_io::interchange_compare::xml_model_value(&again.document).unwrap()
+    );
 }
 
 #[test]
@@ -1419,7 +1432,10 @@ fn catalog_only_prefixed_document_keeps_unqualified_message_qname() {
     );
     let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
     assert!(again.report.editable);
-    assert_eq!(parsed.document.catalog, again.document.catalog);
+    assert_eq!(
+        processcraft_io::interchange_compare::xml_model_value(&parsed.document).unwrap(),
+        processcraft_io::interchange_compare::xml_model_value(&again.document).unwrap()
+    );
 }
 
 #[test]
@@ -1581,7 +1597,10 @@ fn item_aware_metadata_transformations_and_assignments_roundtrip() {
     assert!(process.data_associations[0].transformation.is_some());
     let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
     assert!(again.report.editable);
-    assert_eq!(parsed.document.data_stores, again.document.data_stores);
+    assert_eq!(
+        processcraft_io::interchange_compare::xml_model_value(&parsed.document).unwrap(),
+        processcraft_io::interchange_compare::xml_model_value(&again.document).unwrap()
+    );
     assert_eq!(
         process.data_objects,
         again.document.processes[0].data_objects
@@ -1599,7 +1618,12 @@ fn data_elements_allow_optional_xml_ids_and_process_io() {
     let parsed = prepare_import(input, "optional data ids").unwrap();
     assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
     let process = &parsed.document.processes[0];
-    assert!(parsed.document.data_stores[0].id.is_none());
+    assert!(
+        parsed.document.data_stores[0]
+            .id
+            .as_ref()
+            .is_some_and(|id| id.xml_id().is_none())
+    );
     assert!(process.data_objects[0].id.is_none());
     assert!(
         process.io_specification.as_ref().unwrap().inputs[0]
@@ -1608,7 +1632,10 @@ fn data_elements_allow_optional_xml_ids_and_process_io() {
     );
     assert!(process.data_associations[0].id.is_none());
     let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
-    assert_eq!(parsed.document.data_stores, again.document.data_stores);
+    assert_eq!(
+        processcraft_io::interchange_compare::xml_model_value(&parsed.document).unwrap(),
+        processcraft_io::interchange_compare::xml_model_value(&again.document).unwrap()
+    );
     assert_eq!(
         process.data_objects,
         again.document.processes[0].data_objects
@@ -1720,7 +1747,10 @@ fn definitions_without_process_graph_roundtrip() {
         let output = export(&parsed);
         let again = prepare_import(&output.bytes, "again").unwrap();
         assert!(again.report.editable);
-        assert_eq!(parsed.document.data_stores, again.document.data_stores);
+        assert_eq!(
+            processcraft_io::interchange_compare::xml_model_value(&parsed.document).unwrap(),
+            processcraft_io::interchange_compare::xml_model_value(&again.document).unwrap()
+        );
         assert_eq!(
             parsed.document.event_resources,
             again.document.event_resources
@@ -2145,7 +2175,14 @@ fn call_activity_resolves_xml_id_of_native_process_identity() {
     if let ElementIdentity::Native { xml_id, .. } = &mut identity {
         *xml_id = Some("called".parse().unwrap());
     }
+    let old_selector = called.id.selector();
     called.id = identity;
+    let new_selector = called.id.selector();
+    for selector in parsed.document.root_order.as_mut().unwrap() {
+        if *selector == old_selector {
+            *selector = new_selector.clone();
+        }
+    }
     let output = export(&parsed);
     let again = prepare_import(&output.bytes, "again").unwrap();
     assert!(again.report.editable);
@@ -2680,8 +2717,18 @@ fn anonymous_metadata_stays_on_its_typed_owner() {
     let parsed = prepare_import(source.as_bytes(), "anonymous metadata").unwrap();
     assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
     let catalog = &parsed.document.catalog;
-    assert!(catalog.item_definitions[0].id.is_none());
-    assert!(catalog.interfaces[0].id.is_none());
+    assert!(
+        catalog.item_definitions[0]
+            .id
+            .as_ref()
+            .is_some_and(|id| id.xml_id().is_none())
+    );
+    assert!(
+        catalog.interfaces[0]
+            .id
+            .as_ref()
+            .is_some_and(|id| id.xml_id().is_none())
+    );
     assert!(
         catalog.interfaces[0]
             .operations
@@ -2738,7 +2785,10 @@ fn anonymous_metadata_stays_on_its_typed_owner() {
     let output = export(&parsed).bytes;
     let again = prepare_import(&output, "again").unwrap();
     assert!(again.report.editable);
-    assert_eq!(again.document.catalog, parsed.document.catalog);
+    assert_eq!(
+        processcraft_io::interchange_compare::xml_model_value(&parsed.document).unwrap(),
+        processcraft_io::interchange_compare::xml_model_value(&again.document).unwrap()
+    );
     assert_eq!(
         again.document.processes[2].lane_set_base,
         parsed.document.processes[2].lane_set_base
@@ -3232,4 +3282,194 @@ fn all_participant_band_and_edge_message_visibility_values_roundtrip() {
             );
         }
     }
+}
+
+#[test]
+fn multiple_collaborations_and_anonymous_root_order_roundtrip() {
+    use processcraft_core::bpmn_collaboration::{CollaborationRootKind, ConversationKind};
+    let source = include_bytes!("../../../tests/fixtures/bpmn/collaboration-multiple.bpmn");
+    let parsed = prepare_import(source, "collaborations").unwrap();
+    assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+    assert_eq!(
+        parsed.document.additional_collaborations[0].kind,
+        Some(CollaborationRootKind::GlobalConversation)
+    );
+    assert!(
+        parsed.document.partner_entities[0]
+            .id
+            .as_ref()
+            .is_some_and(|id| id.xml_id().is_none())
+    );
+    let collab = parsed.document.collaboration.as_ref().unwrap();
+    assert_eq!(collab.extras.as_ref().unwrap().is_closed, Some(false));
+    assert_eq!(collab.extras.as_ref().unwrap().artifacts.len(), 3);
+    assert!(collab.conversation_nodes.iter().any(|node| {
+        node.kind == ConversationKind::CallConversation
+            && node
+                .call
+                .as_ref()
+                .is_some_and(|call| call.participant_associations.len() == 1)
+    }));
+    let output = export(&parsed);
+    let again = prepare_import(&output.bytes, "again").unwrap();
+    assert!(again.report.editable);
+    assert_eq!(
+        processcraft_io::interchange_compare::xml_model_value(&parsed.document).unwrap(),
+        processcraft_io::interchange_compare::xml_model_value(&again.document).unwrap()
+    );
+    let xml = std::str::from_utf8(&output.bytes).unwrap();
+    assert!(xml.find("<partnerEntity").unwrap() < xml.find("<collaboration").unwrap());
+    assert!(xml.find("<process").unwrap() < xml.find("<endPoint").unwrap());
+}
+
+#[test]
+fn invalid_collaboration_child_order_and_unsupported_children_are_protected() {
+    let source = std::str::from_utf8(include_bytes!(
+        "../../../tests/fixtures/bpmn/collaboration-multiple.bpmn"
+    ))
+    .unwrap();
+    let order = source.replace(
+        "<interfaceRef>ext:Interface</interfaceRef><endPointRef>t:Endpoint</endPointRef>",
+        "<endPointRef>t:Endpoint</endPointRef><interfaceRef>ext:Interface</interfaceRef>",
+    );
+    let parsed = prepare_import(order.as_bytes(), "bad order").unwrap();
+    assert!(!parsed.report.editable);
+    assert_eq!(export(&parsed).bytes, order.as_bytes());
+    let unknown = source.replacen(
+        "<globalConversation id=\"Global\" name=\"Shared\"/>",
+        "<globalConversation id=\"Global\" name=\"Shared\"><unexpected/></globalConversation>",
+        1,
+    );
+    let parsed = prepare_import(unknown.as_bytes(), "unknown child").unwrap();
+    assert!(!parsed.report.editable);
+    assert_eq!(export(&parsed).bytes, unknown.as_bytes());
+}
+
+#[test]
+fn collaboration_external_qnames_do_not_alias_local_names() {
+    use processcraft_core::bpmn_model::EventReference;
+    let source = std::str::from_utf8(include_bytes!(
+        "../../../tests/fixtures/bpmn/collaboration-multiple.bpmn"
+    ))
+    .unwrap()
+    .replacen("processRef=\"t:Process\"", "processRef=\"ext:Process\"", 1)
+    .replacen(
+        "sourceRef=\"t:Buyer\" targetRef=\"t:Seller\"",
+        "sourceRef=\"ext:Buyer\" targetRef=\"t:Seller\"",
+        1,
+    )
+    .replacen(
+        "sourceRef=\"t:Sub\" targetRef=\"t:Buyer\"",
+        "sourceRef=\"ext:Sub\" targetRef=\"t:Buyer\"",
+        1,
+    );
+    let parsed = prepare_import(source.as_bytes(), "external names").unwrap();
+    assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+    let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+    assert!(again.report.editable);
+    let collab = again.document.collaboration.as_ref().unwrap();
+    assert!(
+        matches!(&collab.participants[0].process, Some(EventReference::Qualified(q)) if q.namespace == "urn:external")
+    );
+    assert!(
+        matches!(&collab.flows[0].source, Some(EventReference::Qualified(q)) if q.namespace == "urn:external")
+    );
+    assert!(
+        matches!(&collab.conversation_links[0].source, Some(EventReference::Qualified(q)) if q.namespace == "urn:external")
+    );
+}
+
+#[test]
+fn collaboration_unqualified_qnames_keep_the_empty_namespace() {
+    use processcraft_core::bpmn_model::EventReference;
+    let input = br#"<b:definitions xmlns:b="http://www.omg.org/spec/BPMN/20100524/MODEL" targetNamespace="urn:target"><b:collaboration id="C"><b:participant id="P" processRef="Process"><b:interfaceRef>Interface</b:interfaceRef><b:endPointRef>Endpoint</b:endPointRef></b:participant><b:messageFlow id="M" sourceRef="P" targetRef="Remote"/><b:conversation id="N"><b:participantRef>P</b:participantRef><b:messageFlowRef>M</b:messageFlowRef></b:conversation></b:collaboration></b:definitions>"#;
+    let parsed = prepare_import(input, "empty namespace").unwrap();
+    assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+    let out = export(&parsed);
+    let again = prepare_import(&out.bytes, "again").unwrap();
+    assert!(again.report.editable);
+    let collaboration = again.document.collaboration.as_ref().unwrap();
+    assert!(
+        matches!(&collaboration.participants[0].process, Some(EventReference::Qualified(q)) if q.namespace.is_empty())
+    );
+    assert!(
+        matches!(&collaboration.flows[0].source, Some(EventReference::Qualified(q)) if q.namespace.is_empty())
+    );
+    assert!(
+        matches!(&collaboration.conversation_nodes[0].participant_refs[0], EventReference::Qualified(q) if q.namespace.is_empty())
+    );
+}
+
+#[test]
+fn collaboration_qname_owners_keep_documentation_namespace_scope() {
+    let source = std::str::from_utf8(include_bytes!("../../../tests/fixtures/bpmn/collaboration-multiple.bpmn")).unwrap()
+        .replace("messageRef=\"ext:Message\"/>", "messageRef=\"ext:Message\"><documentation>Scoped message</documentation></messageFlow>")
+        .replace("<participantMultiplicity minimum=\"0\" maximum=\"2\"/>", "<participantMultiplicity minimum=\"0\" maximum=\"2\"><documentation>Scoped multiplicity</documentation></participantMultiplicity>")
+        .replace("<conversationAssociation innerConversationNodeRef=\"ext:Inner\" outerConversationNodeRef=\"t:Sub\"/>", "<conversationAssociation innerConversationNodeRef=\"ext:Inner\" outerConversationNodeRef=\"t:Sub\"><documentation>Scoped association</documentation></conversationAssociation>");
+    let parsed = prepare_import(source.as_bytes(), "scoped docs").unwrap();
+    assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+    let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+    assert!(again.report.editable);
+    assert_eq!(
+        processcraft_io::interchange_compare::xml_model_value(&parsed.document).unwrap(),
+        processcraft_io::interchange_compare::xml_model_value(&again.document).unwrap()
+    );
+}
+
+#[test]
+fn collaboration_group_external_category_qname_remains_external() {
+    use processcraft_core::{
+        bpmn_collaboration::CollaborationArtifact, bpmn_model::EventReference,
+    };
+    let source = std::str::from_utf8(include_bytes!(
+        "../../../tests/fixtures/bpmn/collaboration-multiple.bpmn"
+    ))
+    .unwrap()
+    .replacen(
+        "categoryValueRef=\"ext:CategoryValue\"",
+        "categoryValueRef=\"ext:Value\"",
+        1,
+    );
+    let parsed = prepare_import(source.as_bytes(), "external group category").unwrap();
+    assert!(parsed.report.editable);
+    let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+    assert!(again.report.editable);
+    let extras = again
+        .document
+        .collaboration
+        .as_ref()
+        .unwrap()
+        .extras
+        .as_ref()
+        .unwrap();
+    assert!(
+        matches!(&extras.artifacts[0], CollaborationArtifact::Group(group) if matches!(&group.category_value_ref, Some(EventReference::Qualified(q)) if q.namespace == "urn:external"))
+    );
+}
+
+#[test]
+fn choreography_inherited_collaboration_fields_roundtrip() {
+    let source = include_bytes!("../../../tests/fixtures/bpmn/choreography-inherited.bpmn");
+    let parsed = prepare_import(source, "inherited choreography").unwrap();
+    assert!(parsed.report.editable, "{:?}", parsed.report.limitations);
+    let choreography = &parsed.document.choreographies[0];
+    assert_eq!(choreography.conversation_nodes.len(), 1);
+    assert_eq!(choreography.conversation_links.len(), 1);
+    assert_eq!(choreography.correlation_keys.len(), 1);
+    let extras = choreography.extras.as_ref().unwrap();
+    assert_eq!(
+        (
+            extras.conversation_associations.len(),
+            extras.participant_associations.len(),
+            extras.message_flow_associations.len(),
+            extras.choreography_refs.len()
+        ),
+        (1, 1, 1, 1)
+    );
+    let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+    assert!(again.report.editable);
+    assert_eq!(
+        processcraft_io::interchange_compare::xml_model_value(&parsed.document).unwrap(),
+        processcraft_io::interchange_compare::xml_model_value(&again.document).unwrap()
+    );
 }

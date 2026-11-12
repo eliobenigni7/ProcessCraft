@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:tns="urn:choreo" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:v="urn:vendor" xmlns:ext="urn:external" targetNamespace="urn:choreo" id="Definitions">
+ <message id="Message"/>
+ <choreography id="Choreo">
+  <participant id="Buyer" name="Buyer"><participantMultiplicity id="Multiplicity" minimum="0" maximum="3"/></participant>
+  <participant id="Seller" name="Seller"/>
+  <messageFlow id="MessageFlow" sourceRef="tns:Buyer" targetRef="tns:Seller" messageRef="tns:Message"/>
+  <messageFlow id="Response" sourceRef="tns:Seller" targetRef="tns:Buyer" messageRef="tns:Message"/>
+  <conversation id="Conversation"><participantRef>tns:Buyer</participantRef><messageFlowRef>tns:MessageFlow</messageFlowRef></conversation>
+  <conversationAssociation innerConversationNodeRef="ext:Inner" outerConversationNodeRef="tns:Conversation"/>
+  <participantAssociation><innerParticipantRef>ext:Inner</innerParticipantRef><outerParticipantRef>tns:Buyer</outerParticipantRef></participantAssociation>
+  <messageFlowAssociation innerMessageFlowRef="ext:Inner" outerMessageFlowRef="tns:MessageFlow"/>
+  <correlationKey id="Correlation"/><choreographyRef>ext:Choreography</choreographyRef><conversationLink id="ConversationLink" sourceRef="tns:Conversation" targetRef="tns:Buyer"/>
+  <choreographyTask id="Task" initiatingParticipantRef="tns:Buyer"><participantRef>tns:Buyer</participantRef><participantRef>tns:Seller</participantRef><messageFlowRef>tns:MessageFlow</messageFlowRef><messageFlowRef>tns:Response</messageFlowRef></choreographyTask>
+ </choreography>
+ <bpmndi:BPMNDiagram id="Diagram"><bpmndi:BPMNPlane id="Plane" bpmnElement="tns:Choreo" v:plane="A">
+  <di:extension><dc:Bounds x="1" y="2" width="3" height="4"/></di:extension>
+  <bpmndi:BPMNShape id="TaskShape" bpmnElement="tns:Task"><dc:Bounds x="100" y="100" width="160" height="100"/></bpmndi:BPMNShape>
+  <bpmndi:BPMNEdge id="FlowEdge" bpmnElement="tns:Response" messageVisibleKind="non_initiating"><di:waypoint x="100" y="100"/><di:waypoint x="260" y="200"/></bpmndi:BPMNEdge>
+  <bpmndi:BPMNShape id="BuyerBand" bpmnElement="tns:Buyer" choreographyActivityShape="tns:TaskShape" participantBandKind="top_initiating" isMessageVisible="false" v:band="B"><dc:Bounds x="100" y="100" width="160" height="30"/><bpmndi:BPMNLabel v:label="C"><dc:Bounds x="110" y="105" width="120" height="20"/></bpmndi:BPMNLabel></bpmndi:BPMNShape>
+  <bpmndi:BPMNShape id="SellerBand" bpmnElement="tns:Seller" choreographyActivityShape="tns:TaskShape" participantBandKind="bottom_non_initiating" isMessageVisible="true"><dc:Bounds x="100" y="170" width="160" height="30"/></bpmndi:BPMNShape>
+ </bpmndi:BPMNPlane></bpmndi:BPMNDiagram>
+</definitions>

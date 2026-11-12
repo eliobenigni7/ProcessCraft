@@ -253,6 +253,26 @@ pub fn find_node<'a>(document: &'a BpmnDocument, id: &ElementSelector) -> Option
     scopes(document)
         .into_iter()
         .find_map(|scope| scope.nodes.iter().find(|node| &node.id.selector() == id))
+        .or_else(|| {
+            document
+                .collaborations()
+                .filter_map(|c| c.extras.as_ref())
+                .chain(
+                    document
+                        .choreographies
+                        .iter()
+                        .filter_map(|c| c.extras.as_ref()),
+                )
+                .flat_map(|extras| &extras.artifacts)
+                .find_map(|artifact| match artifact {
+                    crate::bpmn_collaboration::CollaborationArtifact::TextAnnotation(node)
+                        if &node.id.selector() == id =>
+                    {
+                        Some(node.as_ref())
+                    }
+                    _ => None,
+                })
+        })
 }
 /// Resolve a persistent semantic or DI selector without converting its native
 /// UUID into an XML identifier or allocating an identity for a legacy null.
@@ -271,10 +291,8 @@ pub fn find_flow<'a>(document: &'a BpmnDocument, id: &ElementSelector) -> Option
         .find_map(|scope| scope.flows.iter().find(|flow| &flow.id.selector() == id))
         .or_else(|| {
             document
-                .collaboration
-                .as_ref()?
-                .flows
-                .iter()
+                .collaborations()
+                .flat_map(|c| &c.flows)
                 .find(|flow| &flow.id.selector() == id)
         })
         .or_else(|| {
@@ -285,6 +303,26 @@ pub fn find_flow<'a>(document: &'a BpmnDocument, id: &ElementSelector) -> Option
                     .chain(&choreography.sequence_flows)
                     .find(|flow| &flow.id.selector() == id)
             })
+        })
+        .or_else(|| {
+            document
+                .collaborations()
+                .filter_map(|c| c.extras.as_ref())
+                .chain(
+                    document
+                        .choreographies
+                        .iter()
+                        .filter_map(|c| c.extras.as_ref()),
+                )
+                .flat_map(|extras| &extras.artifacts)
+                .find_map(|artifact| match artifact {
+                    crate::bpmn_collaboration::CollaborationArtifact::Association(flow)
+                        if &flow.id.selector() == id =>
+                    {
+                        Some(flow.as_ref())
+                    }
+                    _ => None,
+                })
         })
 }
 pub fn element_name<'a>(document: &'a BpmnDocument, id: &ElementSelector) -> Option<&'a str> {
@@ -302,6 +340,24 @@ pub fn element_name<'a>(document: &'a BpmnDocument, id: &ElementSelector) -> Opt
             .is_some_and(|identity| &identity.selector() == id)
     }) {
         return Some(property.name.as_deref().unwrap_or(""));
+    }
+    if let Some(partner) = document.partner_entities.iter().find(|p| {
+        p.id.as_ref()
+            .is_some_and(|identity| &identity.selector() == id)
+    }) {
+        return Some(partner.name.as_deref().unwrap_or(""));
+    }
+    if let Some(partner) = document.partner_roles.iter().find(|p| {
+        p.id.as_ref()
+            .is_some_and(|identity| &identity.selector() == id)
+    }) {
+        return Some(partner.name.as_deref().unwrap_or(""));
+    }
+    if document.endpoints.iter().any(|p| {
+        p.id.as_ref()
+            .is_some_and(|identity| &identity.selector() == id)
+    }) {
+        return Some("");
     }
     for scope in scopes(document) {
         if &scope.id.selector() == id {
@@ -327,6 +383,20 @@ pub fn element_name<'a>(document: &'a BpmnDocument, id: &ElementSelector) -> Opt
         if &choreography.id.selector() == id {
             return Some(choreography.name.as_deref().unwrap_or(""));
         }
+        if let Some(node) = choreography
+            .conversation_nodes
+            .iter()
+            .find(|n| &n.id.selector() == id)
+        {
+            return Some(node.name.as_deref().unwrap_or(""));
+        }
+        if let Some(link) = choreography
+            .conversation_links
+            .iter()
+            .find(|n| &n.id.selector() == id)
+        {
+            return Some(link.name.as_deref().unwrap_or(""));
+        }
         if let Some(participant) = choreography
             .participants
             .iter()
@@ -350,7 +420,7 @@ pub fn element_name<'a>(document: &'a BpmnDocument, id: &ElementSelector) -> Opt
             return Some(flow.name.as_deref().unwrap_or(""));
         }
     }
-    if let Some(collaboration) = &document.collaboration {
+    for collaboration in document.collaborations() {
         if &collaboration.id.selector() == id {
             return Some(collaboration.name.as_deref().unwrap_or(""));
         }
@@ -369,7 +439,13 @@ pub fn element_name<'a>(document: &'a BpmnDocument, id: &ElementSelector) -> Opt
             return Some(link.name.as_deref().unwrap_or(""));
         }
     }
-    document.collaboration.as_ref().and_then(|c| {
+    if let Some(node) = find_node(document, id) {
+        return Some(node.name.as_deref().unwrap_or(""));
+    }
+    if let Some(flow) = find_flow(document, id) {
+        return Some(flow.name.as_deref().unwrap_or(""));
+    }
+    document.collaborations().find_map(|c| {
         c.participants
             .iter()
             .find(|p| &p.id.selector() == id)
@@ -388,10 +464,14 @@ pub fn find_conversation_node<'a>(
     id: &ElementSelector,
 ) -> Option<&'a crate::bpmn_collaboration::ConversationNode> {
     document
-        .collaboration
-        .as_ref()?
-        .conversation_nodes
-        .iter()
+        .collaborations()
+        .flat_map(|c| &c.conversation_nodes)
+        .chain(
+            document
+                .choreographies
+                .iter()
+                .flat_map(|c| &c.conversation_nodes),
+        )
         .find(|node| &node.id.selector() == id)
 }
 pub fn find_conversation_link<'a>(
@@ -399,10 +479,14 @@ pub fn find_conversation_link<'a>(
     id: &ElementSelector,
 ) -> Option<&'a crate::bpmn_collaboration::ConversationLink> {
     document
-        .collaboration
-        .as_ref()?
-        .conversation_links
-        .iter()
+        .collaborations()
+        .flat_map(|c| &c.conversation_links)
+        .chain(
+            document
+                .choreographies
+                .iter()
+                .flat_map(|c| &c.conversation_links),
+        )
         .find(|link| &link.id.selector() == id)
 }
 /// Resolve a choreography or task without crossing its owning document/scope.
@@ -526,6 +610,13 @@ pub fn activity_table(
     let p = scopes(d)
         .into_iter()
         .find(|p| &p.id.selector() == process_id)?;
+    let index = crate::reference_resolution::ReferenceIndex::new(d);
+    let resolve = |r: &Option<crate::bpmn_activity::ModelReference>| {
+        r.as_ref().and_then(|r| match index.resolve(r) {
+            crate::reference_resolution::ReferenceResolution::Resolved(id) => Some(id),
+            _ => None,
+        })
+    };
     let mut rows = Vec::new();
     for n in p.nodes {
         if !n.kind.is_activity() {
@@ -554,11 +645,16 @@ pub fn activity_table(
         let outgoing = p
             .flows
             .iter()
-            .filter(|f| f.kind == FlowKind::Sequence && f.source == n.id.selector())
-            .map(|f| TableFlow {
-                id: f.id.selector(),
-                target: f.target.clone(),
-                condition: f.condition.clone(),
+            .filter(|f| {
+                f.kind == FlowKind::Sequence
+                    && resolve(&f.source).as_ref() == Some(&n.id.selector())
+            })
+            .filter_map(|f| {
+                Some(TableFlow {
+                    id: f.id.selector(),
+                    target: resolve(&f.target)?,
+                    condition: f.condition.clone(),
+                })
             })
             .collect();
         rows.push(ActivityRow {

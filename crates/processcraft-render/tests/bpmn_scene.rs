@@ -196,8 +196,12 @@ fn named_flow_without_di_label_is_visible() {
         association_direction: None,
         id: id("flow"),
         kind: processcraft_core::model::FlowKind::Sequence,
-        source: id("task"),
-        target: id("task"),
+        source: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+            "task",
+        ))),
+        target: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+            "task",
+        ))),
         name: Some("Approved".into()),
         documentation: String::new().into(),
         base_extras: None,
@@ -267,8 +271,12 @@ fn many_dashed_edges_fit_path_budget() {
             association_direction: None,
             id: key.clone(),
             kind: processcraft_core::model::FlowKind::Association,
-            source: id("task"),
-            target: id("task"),
+            source: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+                "task",
+            ))),
+            target: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+                "task",
+            ))),
             name: Some(String::new()),
             documentation: String::new().into(),
             base_extras: None,
@@ -293,7 +301,7 @@ fn many_dashed_edges_fit_path_budget() {
             style: None,
         });
     }
-    assert_eq!(build(&d, Appearance::Light).hits.len(), 251);
+    assert_eq!(build(&d, Appearance::Light).hits.len(), 252);
 }
 #[test]
 fn viewport_rebases_far_coordinates_before_float_conversion() {
@@ -353,8 +361,12 @@ fn viewport_clips_polyline_without_intermediate_arrows_or_duplicate_label() {
         association_direction: None,
         id: id("f"),
         kind: FlowKind::Sequence,
-        source: id("task"),
-        target: id("task"),
+        source: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+            "task",
+        ))),
+        target: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+            "task",
+        ))),
         name: Some("A very long label".into()),
         documentation: String::new().into(),
         base_extras: None,
@@ -535,8 +547,12 @@ fn viewport_displays_explicit_edge_label_when_edge_is_offscreen() {
         association_direction: None,
         id: id("f"),
         kind: FlowKind::Sequence,
-        source: id("task"),
-        target: id("task"),
+        source: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+            "task",
+        ))),
+        target: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+            "task",
+        ))),
         name: Some("Visible".into()),
         documentation: String::new().into(),
         base_extras: None,
@@ -910,8 +926,12 @@ fn nested_flow_and_called_activity_use_semantic_ids() {
         association_direction: None,
         id: id("inner_flow"),
         kind: FlowKind::Sequence,
-        source: id("nested_a"),
-        target: id("nested_b"),
+        source: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+            "nested_a",
+        ))),
+        target: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+            "nested_b",
+        ))),
         name: Some("Inner".into()),
         documentation: String::new().into(),
         base_extras: None,
@@ -1030,35 +1050,49 @@ fn conversation_hexagons_and_links_render_with_semantic_hits() {
     use processcraft_render::{BpmnViewport, Viewport};
     let mut d = fixture();
     d.collaboration = Some(Collaboration {
+        kind: None,
+        extras: None,
         correlation_keys: vec![],
         base: None,
         name: None,
         id: id("collab"),
         participants: vec![Participant {
+            interface_refs: vec![],
+            endpoint_refs: vec![],
             multiplicity: None,
             base: None,
             id: id("participant"),
             name: Some("Buyer".into()),
-            process: Some(id("process")),
+            process: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+                "process",
+            ))),
         }],
         flows: vec![],
         conversation_nodes: vec![
             ConversationNode {
+                message_flow_refs: vec![],
+                call: None,
                 correlation_keys: vec![],
                 base: None,
                 id: id("conversation"),
                 name: Some("Order".into()),
                 kind: ConversationKind::SubConversation,
-                participant_refs: vec![id("participant")],
+                participant_refs: vec![processcraft_core::bpmn_activity::ModelReference::Local(
+                    id("participant"),
+                )],
                 parent: None,
             },
             ConversationNode {
+                message_flow_refs: vec![],
+                call: None,
                 correlation_keys: vec![],
                 base: None,
                 id: id("inner"),
                 name: Some("Inner".into()),
                 kind: ConversationKind::Conversation,
-                participant_refs: vec![id("participant")],
+                participant_refs: vec![processcraft_core::bpmn_activity::ModelReference::Local(
+                    id("participant"),
+                )],
                 parent: Some(id("conversation")),
             },
         ],
@@ -1066,8 +1100,12 @@ fn conversation_hexagons_and_links_render_with_semantic_hits() {
             base: None,
             id: id("link"),
             name: Some("Coordination".into()),
-            source: id("participant"),
-            target: id("conversation"),
+            source: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+                "participant",
+            ))),
+            target: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+                "conversation",
+            ))),
         }],
     });
     let diagram = &mut d.diagrams[0];
@@ -1128,11 +1166,15 @@ fn conversation_hexagons_and_links_render_with_semantic_hits() {
     let scene = build(&d, Appearance::Light);
     assert!(!scene.diagnostics.iter().any(|v| v.contains("Unknown")));
     assert!(scene.scene.to_svg().contains("Coordination"));
-    assert!(scene.hit_test(50.0, 50.0, 0.0).is_none());
-    assert_eq!(
-        scene.hit_test(140.0, 100.0, 0.0).unwrap().key.xml_id,
-        id::<processcraft_core::ids::ElementSelector>("conversation")
+    assert!(
+        !scene
+            .hits
+            .iter()
+            .any(|h| !h.is_label && h.contains(50.0, 50.0, 0.0))
     );
+    assert!(scene.hits.iter().any(|h| !h.is_label
+        && h.key.xml_id == id::<processcraft_core::ids::ElementSelector>("conversation")
+        && h.contains(140.0, 100.0, 0.0)));
     assert!(
         scene
             .hits
@@ -1178,6 +1220,45 @@ fn conversation_hexagons_and_links_render_with_semantic_hits() {
             .iter()
             .any(|h| h.key.xml_id == id::<processcraft_core::ids::ElementSelector>("inner"))
     );
+    let collaboration = d.collaboration.take().unwrap();
+    d.additional_collaborations.push(collaboration);
+    let mut pool = d.diagrams[0].shapes[0].clone();
+    pool.id = id("participant_di");
+    pool.element = id("participant");
+    pool.bounds.x = 300.0;
+    d.diagrams[0].shapes.push(pool);
+    let additional = build(&d, Appearance::Light);
+    assert!(
+        additional
+            .hits
+            .iter()
+            .any(|h| h.key.xml_id == id::<processcraft_core::ids::ElementSelector>("participant"))
+    );
+    assert!(
+        additional
+            .hits
+            .iter()
+            .any(|h| h.key.xml_id == id::<processcraft_core::ids::ElementSelector>("conversation"))
+    );
+    assert!(
+        additional
+            .hits
+            .iter()
+            .any(|h| h.key.xml_id == id::<processcraft_core::ids::ElementSelector>("link"))
+    );
+    d.additional_collaborations[0].conversation_nodes[0].kind = ConversationKind::Conversation;
+    let ordinary = build(&d, Appearance::Light);
+    d.additional_collaborations[0].conversation_nodes[0].kind = ConversationKind::CallConversation;
+    let call = build(&d, Appearance::Light);
+    let outline_width = |scene: &BpmnScene| {
+        scene
+            .scene
+            .paths()
+            .filter(|p| p.color == [26, 37, 52] && p.path.bounds().height() > 95.0)
+            .map(|p| p.path.bounds().width())
+            .fold(0.0_f32, f32::max)
+    };
+    assert!(outline_width(&call) > outline_width(&ordinary) + 1.0);
 }
 #[test]
 fn data_store_and_association_are_drawn_in_scene_and_viewport() {
@@ -1248,11 +1329,17 @@ fn choreography_task_shows_participant_bands_and_sequence_flow() {
     };
     let mut d = fixture();
     d.choreographies.push(Choreography {
+        extras: None,
+        conversation_nodes: vec![],
+        conversation_links: vec![],
+        correlation_keys: vec![],
         base: None,
         id: id("choreo"),
         name: Some("Choreography".into()),
         participants: vec![
             Participant {
+                interface_refs: vec![],
+                endpoint_refs: vec![],
                 multiplicity: None,
                 base: None,
                 id: id("buyer"),
@@ -1260,6 +1347,8 @@ fn choreography_task_shows_participant_bands_and_sequence_flow() {
                 process: None,
             },
             Participant {
+                interface_refs: vec![],
+                endpoint_refs: vec![],
                 multiplicity: None,
                 base: None,
                 id: id("seller"),
@@ -1284,8 +1373,12 @@ fn choreography_task_shows_participant_bands_and_sequence_flow() {
             association_direction: None,
             id: id("seq"),
             kind: FlowKind::Sequence,
-            source: id("exchange"),
-            target: id("exchange"),
+            source: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+                "exchange",
+            ))),
+            target: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+                "exchange",
+            ))),
             name: Some(String::new()),
             documentation: String::new().into(),
             base_extras: None,
@@ -1319,6 +1412,29 @@ fn choreography_task_shows_participant_bands_and_sequence_flow() {
     for name in ["Buyer", "Seller", "Exchange"] {
         assert!(svg.contains(name), "{name}");
     }
+    let title = scene
+        .scene
+        .labels()
+        .iter()
+        .find(|label| label.layout.text() == "Exchange")
+        .unwrap();
+    let left = title
+        .layout
+        .glyphs()
+        .iter()
+        .filter_map(|g| g.outline.as_ref())
+        .map(|p| p.bounds().left())
+        .fold(f32::INFINITY, f32::min)
+        + title.x;
+    let right = title
+        .layout
+        .glyphs()
+        .iter()
+        .filter_map(|g| g.outline.as_ref())
+        .map(|p| p.bounds().right())
+        .fold(f32::NEG_INFINITY, f32::max)
+        + title.x;
+    assert!(((left + right) / 2.0 - (130.0 - scene.origin.0) as f32).abs() < 5.0);
     assert!(
         scene
             .hits
@@ -1485,8 +1601,12 @@ fn choreography_task_shows_participant_bands_and_sequence_flow() {
     let mut response = d.choreographies[0].sequence_flows[0].clone();
     response.id = id("response");
     response.kind = FlowKind::Message;
-    response.source = id("seller");
-    response.target = id("buyer");
+    response.source = Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+        "seller",
+    )));
+    response.target = Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+        "buyer",
+    )));
     d.choreographies[0].message_flows.push(response);
     d.choreographies[0].activities[0]
         .message_flow_refs
@@ -1629,7 +1749,9 @@ fn choreography_task_shows_participant_bands_and_sequence_flow() {
             .color,
         [255, 255, 255]
     );
-    d.choreographies[0].message_flows[0].source = id("buyer");
+    d.choreographies[0].message_flows[0].source = Some(
+        processcraft_core::bpmn_activity::ModelReference::Local(id("buyer")),
+    );
     let wrong_sender = build(&d, Appearance::Light);
     assert!(
         wrong_sender
@@ -1693,8 +1815,12 @@ fn gateway_default_flow_marker_uses_semantic_owner_and_shared_exports() {
         association_direction: None,
         id: id("default"),
         kind: FlowKind::Sequence,
-        source: id("task"),
-        target: id("task"),
+        source: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+            "task",
+        ))),
+        target: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+            "task",
+        ))),
         name: Some(String::new()),
         documentation: String::new().into(),
         base_extras: None,
@@ -1868,8 +1994,12 @@ fn association_directions_change_shared_vector_markers() {
         association_direction: None,
         id: id("assoc"),
         kind: FlowKind::Association,
-        source: id("task"),
-        target: id("task"),
+        source: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+            "task",
+        ))),
+        target: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+            "task",
+        ))),
         name: Some(String::new()),
         documentation: String::new().into(),
         base_extras: None,
@@ -1917,7 +2047,9 @@ fn group_category_label_uses_di_bounds_style_and_viewport_hit() {
     d.processes[0].groups.push(Group {
         base: None,
         id: id("group"),
-        category_value_ref: Some(id("value")),
+        category_value_ref: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+            "value",
+        ))),
     });
     d.diagrams[0].shapes.push(Shape {
         di_metadata: None,
@@ -2015,6 +2147,24 @@ fn group_category_label_uses_di_bounds_style_and_viewport_hit() {
             .iter()
             .any(|d| d.contains("label overlaps another shape"))
     );
+    d.processes[0].groups[0].category_value_ref =
+        Some(processcraft_core::bpmn_activity::ModelReference::Qualified(
+            processcraft_core::bpmn_model::QNameRef {
+                namespace: "urn:external".into(),
+                local: id("value"),
+            },
+        ));
+    let foreign = build(&d, Appearance::Light);
+    assert!(
+        foreign
+            .diagnostics
+            .iter()
+            .any(|message| message.contains("unresolved category value"))
+    );
+    assert!(!foreign.scene.to_svg().contains("Compliance"));
+    d.processes[0].groups[0].category_value_ref = Some(
+        processcraft_core::bpmn_activity::ModelReference::Local(id("value")),
+    );
     d.categories[0].values[0].value = None;
     assert!(
         !build(&d, Appearance::Light)
@@ -2040,8 +2190,12 @@ fn activity_properties_change_shared_vectors_and_viewport() {
         association_direction: None,
         id: id("default_flow"),
         kind: FlowKind::Sequence,
-        source: id("task"),
-        target: id("task"),
+        source: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+            "task",
+        ))),
+        target: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+            "task",
+        ))),
         name: Some(String::new()),
         documentation: String::new().into(),
         base_extras: None,
@@ -2309,7 +2463,12 @@ fn data_reference_state_and_collection_share_scene_and_viewport() {
     let scene = build(&d, Appearance::Light);
     let svg = scene.scene.to_svg();
     assert!(svg.contains("Order") && svg.contains("Approved"));
-    assert!(scene.hit_test(99.0, 1.0, 0.0).is_none());
+    assert!(
+        !scene
+            .hits
+            .iter()
+            .any(|h| !h.is_label && h.contains(99.0, 1.0, 0.0))
+    );
     assert!(scene.hit_test(50.0, 40.0, 0.0).is_some());
     let viewport = BpmnViewport::build(
         &d,
@@ -2326,7 +2485,12 @@ fn data_reference_state_and_collection_share_scene_and_viewport() {
         },
     )
     .unwrap();
-    assert!(viewport.hit_test(99.0, 1.0, 0.0).is_none());
+    assert!(
+        !viewport
+            .hits
+            .iter()
+            .any(|h| !h.is_label && h.contains(99.0, 1.0, 0.0))
+    );
     assert!(viewport.hit_test(50.0, 40.0, 0.0).is_some());
     d.processes[0].nodes[0].item_aware = None;
     let no_state = BpmnViewport::build(
@@ -2393,7 +2557,12 @@ fn process_data_ports_render_direction_collection_state_and_hits() {
     let input = build(&d, Appearance::Light);
     let svg = input.scene.to_svg();
     assert!(svg.contains("input") && svg.contains("Ready"));
-    assert!(input.hit_test(99.0, 1.0, 0.0).is_none());
+    assert!(
+        !input
+            .hits
+            .iter()
+            .any(|h| !h.is_label && h.contains(99.0, 1.0, 0.0))
+    );
     let viewport = BpmnViewport::build(
         &d,
         &id("diagram"),
@@ -2410,7 +2579,12 @@ fn process_data_ports_render_direction_collection_state_and_hits() {
     )
     .unwrap();
     assert!(viewport.hit_test(50.0, 40.0, 0.0).is_some());
-    assert!(viewport.hit_test(99.0, 1.0, 0.0).is_none());
+    assert!(
+        !viewport
+            .hits
+            .iter()
+            .any(|h| !h.is_label && h.contains(99.0, 1.0, 0.0))
+    );
     d.processes[0].io_specification.as_mut().unwrap().outputs[0].name = Some("input".into());
     d.diagrams[0].shapes[0].element = id("output");
     assert_valid_event_document(&d);
@@ -2450,7 +2624,12 @@ fn global_data_store_shape_uses_cylinder_state_and_viewport_hits() {
     assert!(scene.diagnostics.iter().all(|d| !d.contains("Unknown")));
     let svg = scene.scene.to_svg();
     assert!(svg.contains("Archive") && svg.contains("Ready"));
-    assert!(scene.hit_test(0.0, 0.0, 0.0).is_none());
+    assert!(
+        !scene
+            .hits
+            .iter()
+            .any(|h| !h.is_label && h.contains(0.0, 0.0, 0.0))
+    );
     assert!(scene.hit_test(50.0, 40.0, 0.0).is_some());
     let viewport = BpmnViewport::build(
         &d,
@@ -2467,7 +2646,12 @@ fn global_data_store_shape_uses_cylinder_state_and_viewport_hits() {
         },
     )
     .unwrap();
-    assert!(viewport.hit_test(0.0, 0.0, 0.0).is_none());
+    assert!(
+        !viewport
+            .hits
+            .iter()
+            .any(|h| !h.is_label && h.contains(0.0, 0.0, 0.0))
+    );
     assert!(viewport.hit_test(50.0, 40.0, 0.0).is_some());
 }
 
@@ -2716,8 +2900,12 @@ fn conditional_source_marker_only_appears_for_nongateway_source() {
         flow_metadata: None,
         id: id("conditional"),
         kind: FlowKind::Sequence,
-        source: id("task"),
-        target: id("task"),
+        source: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+            "task",
+        ))),
+        target: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+            "task",
+        ))),
         name: None,
         documentation: String::new().into(),
         base_extras: None,
@@ -3198,6 +3386,31 @@ fn explicit_external_label_hit_keeps_independent_identity_in_scene_and_viewport(
     assert!(anonymous.is_label);
     assert!(anonymous.label_id.is_none());
     assert!(!scene.hit_test(0.0, 35.0, 0.0).unwrap().is_label);
+    d.diagrams[0].shapes[0].label = None;
+    d.diagrams[0].shapes[0].label_visibility = None;
+    let implicit = build(&d, Appearance::Light);
+    assert!(implicit.hits.iter().any(|hit| hit.is_label
+        && hit.label_id.is_none()
+        && hit.diagram_element_id == id::<processcraft_core::ids::ElementSelector>("shape")));
+    let implicit_view = BpmnViewport::build(
+        &d,
+        &id("diagram"),
+        Appearance::Light,
+        &mut TextEngine::new(),
+        "Noto Sans",
+        Viewport {
+            x: -40.0,
+            y: 0.0,
+            width: 160.0,
+            height: 110.0,
+            zoom: 1.0,
+        },
+    )
+    .unwrap();
+    assert!(implicit_view.hits.iter().any(|hit| hit.is_label
+        && hit.label_id.is_none()
+        && hit.diagram_element_id == id::<processcraft_core::ids::ElementSelector>("shape")));
+    assert!(d.diagrams[0].shapes[0].label.is_none());
 }
 
 #[test]
@@ -3304,8 +3517,12 @@ fn explicit_absent_flow_label_is_hidden_but_legacy_implicit_is_visible() {
         id: id("flow"),
         base_extras: None,
         kind: FlowKind::Sequence,
-        source: id("task"),
-        target: id("task"),
+        source: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+            "task",
+        ))),
+        target: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+            "task",
+        ))),
         name: Some("Flow label".into()),
         documentation: String::new().into(),
         condition: None,

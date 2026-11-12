@@ -169,7 +169,7 @@ impl ProcessCraft {
                 let incoming = choreography
                     .sequence_flows
                     .iter()
-                    .filter(|f| f.target == activity.id)
+                    .filter(|f| matches!(&f.target, Some(processcraft_core::bpmn_activity::ModelReference::Local(id)) if activity.id == *id))
                     .enumerate()
                     .map(|(i, f)| {
                         (
@@ -181,7 +181,7 @@ impl ProcessCraft {
                 let outgoing = choreography
                     .sequence_flows
                     .iter()
-                    .filter(|f| f.source == activity.id)
+                    .filter(|f| matches!(&f.source, Some(processcraft_core::bpmn_activity::ModelReference::Local(id)) if activity.id == *id))
                     .enumerate()
                     .map(|(i, f)| {
                         (
@@ -246,8 +246,12 @@ mod tests {
             message_ref: None,
             id: "Flow".parse().unwrap(),
             kind: FlowKind::Sequence,
-            source: "Source".parse().unwrap(),
-            target: "Target".parse().unwrap(),
+            source: Some(processcraft_core::bpmn_activity::ModelReference::Local(
+                "Source".parse().unwrap(),
+            )),
+            target: Some(processcraft_core::bpmn_activity::ModelReference::Local(
+                "Target".parse().unwrap(),
+            )),
             name: None,
             documentation: String::new().into(),
             base_extras: None,

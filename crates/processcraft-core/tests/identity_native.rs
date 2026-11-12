@@ -54,8 +54,8 @@ fn native_graph_identity_is_stable_and_duplicate_xml_ids_are_rejected() {
             flow_metadata: None,
             base_extras: None,
             id: flow_id,
-            source: a.selector(),
-            target: b.selector(),
+            source: Some(a.selector().into()),
+            target: Some(b.selector().into()),
             name: None,
             kind: FlowKind::Sequence,
             documentation: String::new().into(),
@@ -161,6 +161,8 @@ fn empty_definitions_namespace_is_valid_model_data() {
 fn new_diagram_and_collaboration_names_require_native_capability() {
     let mut doc = BpmnDocument::new("doc".into(), xid("defs").into());
     doc.collaboration = Some(Collaboration {
+        kind: None,
+        extras: None,
         correlation_keys: vec![],
         base: None,
         id: xid("collab").into(),
@@ -301,11 +303,15 @@ fn each_di_representation_field_sets_capability() {
         .di_metadata = Some(DiElementMetadata::default());
     assert!(changed.has_di_choreography_features());
     document.collaboration = Some(Collaboration {
+        kind: None,
+        extras: None,
         id: "collab".parse().unwrap(),
         name: None,
         base: None,
         correlation_keys: vec![],
         participants: vec![Participant {
+            interface_refs: vec![],
+            endpoint_refs: vec![],
             id: "participant".parse().unwrap(),
             name: None,
             process: None,
@@ -315,8 +321,12 @@ fn each_di_representation_field_sets_capability() {
         flows: vec![Flow {
             id: "flow".parse().unwrap(),
             kind: FlowKind::Message,
-            source: "a".parse().unwrap(),
-            target: "b".parse().unwrap(),
+            source: Some(processcraft_core::bpmn_activity::ModelReference::Local(
+                "a".parse().unwrap(),
+            )),
+            target: Some(processcraft_core::bpmn_activity::ModelReference::Local(
+                "b".parse().unwrap(),
+            )),
             name: None,
             documentation: "".into(),
             base_extras: None,

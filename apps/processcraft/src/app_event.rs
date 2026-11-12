@@ -50,51 +50,56 @@ pub(super) fn ref_ui(
     value: &mut Option<ReferenceDraft>,
     choices: &[(ElementSelector, String)],
 ) {
-    let mut present = value.is_some();
-    ui.checkbox(&mut present, label);
-    if !present {
-        *value = None;
-        return;
-    }
-    let value = value.get_or_insert_with(|| ReferenceDraft::Local(None));
-    let mut qualified = matches!(value, ReferenceDraft::Qualified(_));
-    if ui
-        .checkbox(&mut qualified, "External or qualified reference")
-        .changed()
-    {
-        *value = if qualified {
-            ReferenceDraft::Qualified(QNameDraft::default())
-        } else {
-            ReferenceDraft::Local(None)
-        };
-    }
-    match value {
-        ReferenceDraft::Local(target) => {
-            egui::ComboBox::from_label("Local target")
-                .selected_text(target.as_ref().map_or_else(
-                    || "Select target".to_owned(),
-                    |id| {
-                        choices
-                            .iter()
-                            .find(|(candidate, _)| candidate == id)
-                            .map_or_else(|| unavailable_target_label(id), |(_, name)| name.clone())
-                    },
-                ))
-                .show_ui(ui, |ui| {
-                    for (id, name) in choices {
-                        ui.selectable_value(target, Some(id.clone()), name);
-                    }
-                });
+    ui.push_id(label, |ui| {
+        let mut present = value.is_some();
+        ui.checkbox(&mut present, label);
+        if !present {
+            *value = None;
+            return;
         }
-        ReferenceDraft::Qualified(qname) => {
-            let label = ui.label("Namespace");
-            ui.text_edit_singleline(&mut qname.namespace)
-                .labelled_by(label.id);
-            let label = ui.label("Local name");
-            ui.text_edit_singleline(&mut qname.local)
-                .labelled_by(label.id);
+        let value = value.get_or_insert_with(|| ReferenceDraft::Local(None));
+        let mut qualified = matches!(value, ReferenceDraft::Qualified(_));
+        if ui
+            .checkbox(&mut qualified, "External or qualified reference")
+            .changed()
+        {
+            *value = if qualified {
+                ReferenceDraft::Qualified(QNameDraft::default())
+            } else {
+                ReferenceDraft::Local(None)
+            };
         }
-    }
+        match value {
+            ReferenceDraft::Local(target) => {
+                egui::ComboBox::from_label("Local target")
+                    .selected_text(target.as_ref().map_or_else(
+                        || "Select target".to_owned(),
+                        |id| {
+                            choices
+                                .iter()
+                                .find(|(candidate, _)| candidate == id)
+                                .map_or_else(
+                                    || unavailable_target_label(id),
+                                    |(_, name)| name.clone(),
+                                )
+                        },
+                    ))
+                    .show_ui(ui, |ui| {
+                        for (id, name) in choices {
+                            ui.selectable_value(target, Some(id.clone()), name);
+                        }
+                    });
+            }
+            ReferenceDraft::Qualified(qname) => {
+                let label = ui.label("Namespace");
+                ui.text_edit_singleline(&mut qname.namespace)
+                    .labelled_by(label.id);
+                let label = ui.label("Local name");
+                ui.text_edit_singleline(&mut qname.local)
+                    .labelled_by(label.id);
+            }
+        }
+    });
 }
 pub(super) fn build_ref(value: &Option<ReferenceDraft>) -> Result<Option<R>, String> {
     value.as_ref().map(ReferenceDraft::build).transpose()

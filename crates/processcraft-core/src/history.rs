@@ -234,6 +234,14 @@ impl IdCost for ElementIdentity {
         self.xml_id().map_or(0, xml)
     }
 }
+impl IdCost for crate::bpmn_model::EventReference {
+    fn id_cost(&self) -> usize {
+        match self {
+            Self::Local(id) => xml(id),
+            Self::Qualified(qname) => qname.namespace.len() + xml(&qname.local),
+        }
+    }
+}
 fn xml(id: &impl IdCost) -> usize {
     id.id_cost()
 }
@@ -252,8 +260,8 @@ fn label(l: &Option<Label>) -> usize {
 }
 fn flow(f: &Flow) -> usize {
     xml(&f.id)
-        + xml(&f.source)
-        + xml(&f.target)
+        + opt_xml(&f.source)
+        + opt_xml(&f.target)
         + string(&f.name)
         + string(&f.documentation)
         + f.condition

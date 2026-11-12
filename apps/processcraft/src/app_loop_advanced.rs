@@ -563,7 +563,7 @@ impl LoopAdvancedDraft {
                         });
                     let incoming = flows
                         .iter()
-                        .filter(|flow| event_id.as_ref().is_some_and(|id| flow.target == *id))
+                        .filter(|flow| event_id.as_ref().is_some_and(|id| matches!(&flow.target, Some(processcraft_core::bpmn_activity::ModelReference::Local(target)) if target == id)))
                         .enumerate()
                         .map(|(j, flow)| {
                             (
@@ -579,7 +579,7 @@ impl LoopAdvancedDraft {
                         .collect::<Vec<_>>();
                     let outgoing = flows
                         .iter()
-                        .filter(|flow| event_id.as_ref().is_some_and(|id| flow.source == *id))
+                        .filter(|flow| event_id.as_ref().is_some_and(|id| matches!(&flow.source, Some(processcraft_core::bpmn_activity::ModelReference::Local(target)) if target == id)))
                         .enumerate()
                         .map(|(j, flow)| {
                             (

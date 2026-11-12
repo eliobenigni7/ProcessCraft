@@ -30,6 +30,513 @@ fn project() -> Session {
     Session::new(ProjectData::new("Project".into())).unwrap()
 }
 #[test]
+fn additional_collaboration_crud_does_not_retarget_legacy_first_root() {
+    use processcraft_core::bpmn_collaboration::CollaborationRootKind;
+    let mut session = project();
+    fixture(&mut session);
+    let root = |name: &str, kind| Collaboration {
+        id: id(name),
+        kind,
+        extras: None,
+        base: None,
+        name: Some(name.into()),
+        correlation_keys: vec![],
+        participants: vec![],
+        flows: vec![],
+        conversation_nodes: vec![],
+        conversation_links: vec![],
+    };
+    apply(
+        &mut session,
+        batch(vec![
+            Mutation::SetCollaborationRoot {
+                document_id: docid(),
+                collaboration: root("first", None),
+            },
+            Mutation::SetCollaborationRoot {
+                document_id: docid(),
+                collaboration: root("second", Some(CollaborationRootKind::GlobalConversation)),
+            },
+        ]),
+    )
+    .unwrap();
+    let before = session.snapshot().content_id;
+    apply(
+        &mut session,
+        batch(vec![Mutation::DeleteCollaborationRoot {
+            document_id: docid(),
+            collaboration_id: id("first"),
+        }]),
+    )
+    .unwrap();
+    let snapshot = session.snapshot();
+    assert!(snapshot.project.documents[0].collaboration.is_none());
+    assert_eq!(
+        snapshot.project.documents[0]
+            .additional_collaborations
+            .len(),
+        1
+    );
+    assert!(
+        apply(
+            &mut session,
+            batch(vec![Mutation::SetCollaborationName {
+                document_id: docid(),
+                name: Some("wrong root".into())
+            }])
+        )
+        .is_err()
+    );
+    apply(&mut session, Request::Undo).unwrap();
+    assert_eq!(session.snapshot().content_id, before);
+}
+#[test]
+fn additional_collaboration_annotation_edits_and_deletes_atomically() {
+    use processcraft_core::{
+        bpmn_collaboration::{CollaborationArtifact, CollaborationExtras},
+        bpmn_model::NodeDetails,
+        bpmn_xml::MixedXml,
+    };
+    let mut session = project();
+    fixture(&mut session);
+    let snapshot = session.snapshot();
+    let mut annotation = snapshot.project.documents[0].processes[0].nodes[0].clone();
+    annotation.id = id("extra_annotation");
+    annotation.kind = NodeKind::TextAnnotation;
+    annotation.name = None;
+    annotation.details = Some(NodeDetails::TextAnnotation {
+        text_format: None,
+        text: None,
+    });
+    annotation.activity = None;
+    annotation.loop_characteristics = None;
+    annotation.io_specification = None;
+    let root = Collaboration {
+        id: id("artifact_root"),
+        kind: None,
+        extras: Some(CollaborationExtras {
+            artifacts: vec![CollaborationArtifact::TextAnnotation(Box::new(annotation))],
+            ..Default::default()
+        }),
+        base: None,
+        name: None,
+        correlation_keys: vec![],
+        participants: vec![],
+        flows: vec![],
+        conversation_nodes: vec![],
+        conversation_links: vec![],
+    };
+    let first = Collaboration {
+        id: id("first_root"),
+        extras: None,
+        ..root.clone()
+    };
+    apply(
+        &mut session,
+        batch(vec![
+            Mutation::SetCollaborationRoot {
+                document_id: docid(),
+                collaboration: first,
+            },
+            Mutation::SetCollaborationRoot {
+                document_id: docid(),
+                collaboration: root,
+            },
+        ]),
+    )
+    .unwrap();
+    let before = session.snapshot().content_id;
+    apply(
+        &mut session,
+        batch(vec![
+            Mutation::SetAnnotationBody {
+                document_id: docid(),
+                element_id: id("extra_annotation"),
+                body: Some(MixedXml::Text("body".into())),
+            },
+            Mutation::Documentation {
+                document_id: docid(),
+                element_id: id("extra_annotation"),
+                documentation: "documentation".into(),
+            },
+        ]),
+    )
+    .unwrap();
+    let after = session.snapshot().content_id;
+    assert!(
+        apply(
+            &mut session,
+            batch(vec![Mutation::Rename {
+                document_id: docid(),
+                element_id: id("extra_annotation"),
+                name: Some("not a name".into())
+            }])
+        )
+        .is_err()
+    );
+    apply(&mut session, Request::Undo).unwrap();
+    assert_eq!(session.snapshot().content_id, before);
+    apply(&mut session, Request::Redo).unwrap();
+    assert_eq!(session.snapshot().content_id, after);
+    apply(
+        &mut session,
+        batch(vec![Mutation::Delete {
+            document_id: docid(),
+            element_id: id("extra_annotation"),
+        }]),
+    )
+    .unwrap();
+    assert!(
+        session.snapshot().project.documents[0].additional_collaborations[0]
+            .extras
+            .as_ref()
+            .unwrap()
+            .artifacts
+            .is_empty()
+    );
+    apply(&mut session, Request::Undo).unwrap();
+    assert_eq!(session.snapshot().content_id, after);
+}
+#[test]
+fn additional_collaboration_local_qname_tracks_process_identity() {
+    use processcraft_core::bpmn_model::{EventReference, QNameRef};
+    let mut session = project();
+    fixture(&mut session);
+    let participant = |name: &str, namespace: &str| Participant {
+        id: id(name),
+        base: None,
+        name: Some(name.into()),
+        interface_refs: vec![],
+        endpoint_refs: vec![],
+        multiplicity: None,
+        process: Some(EventReference::Qualified(QNameRef {
+            namespace: namespace.into(),
+            local: id("procurement"),
+        })),
+    };
+    let first = Collaboration {
+        id: id("first_root"),
+        kind: None,
+        extras: None,
+        base: None,
+        name: None,
+        correlation_keys: vec![],
+        participants: vec![],
+        flows: vec![],
+        conversation_nodes: vec![],
+        conversation_links: vec![],
+    };
+    let second = Collaboration {
+        id: id("second_root"),
+        participants: vec![
+            participant("local_participant", GENERATED_TARGET_NAMESPACE),
+            participant("external_participant", "urn:external"),
+        ],
+        ..first.clone()
+    };
+    apply(
+        &mut session,
+        batch(vec![
+            Mutation::SetCollaborationRoot {
+                document_id: docid(),
+                collaboration: first,
+            },
+            Mutation::SetCollaborationRoot {
+                document_id: docid(),
+                collaboration: second,
+            },
+        ]),
+    )
+    .unwrap();
+    let before = session.snapshot().content_id;
+    apply(
+        &mut session,
+        batch(vec![Mutation::SetElementXmlId {
+            document_id: docid(),
+            element_id: id("procurement"),
+            xml_id: Some(id("renamed_process")),
+        }]),
+    )
+    .unwrap();
+    let snapshot = session.snapshot();
+    let root = &snapshot.project.documents[0].additional_collaborations[0];
+    assert!(
+        matches!(&root.participants[0].process, Some(EventReference::Qualified(q)) if q.local == id::<processcraft_core::ids::XmlId>("renamed_process"))
+    );
+    assert!(
+        matches!(&root.participants[1].process, Some(EventReference::Qualified(q)) if q.local == id::<processcraft_core::ids::XmlId>("procurement"))
+    );
+    apply(&mut session, Request::Undo).unwrap();
+    assert_eq!(session.snapshot().content_id, before);
+}
+#[test]
+fn promote_nested_call_association_returns_native_identity() {
+    use processcraft_core::bpmn_collaboration::{
+        CallConversationData, ConversationKind, ConversationNode, ParticipantAssociation,
+    };
+    let mut session = project();
+    fixture(&mut session);
+    let root = Collaboration {
+        id: id("first"),
+        kind: None,
+        extras: None,
+        base: None,
+        name: None,
+        correlation_keys: vec![],
+        participants: vec![],
+        flows: vec![],
+        conversation_nodes: vec![],
+        conversation_links: vec![],
+    };
+    let additional = Collaboration {
+        id: id("additional"),
+        conversation_nodes: vec![ConversationNode {
+            id: id("call"),
+            name: None,
+            kind: ConversationKind::CallConversation,
+            base: None,
+            participant_refs: vec![],
+            message_flow_refs: vec![],
+            correlation_keys: vec![],
+            parent: None,
+            call: Some(CallConversationData {
+                called_collaboration_ref: None,
+                participant_associations: vec![ParticipantAssociation {
+                    id: None,
+                    base: None,
+                    inner: None,
+                    outer: None,
+                }],
+            }),
+        }],
+        ..root.clone()
+    };
+    apply(
+        &mut session,
+        batch(vec![
+            Mutation::SetCollaborationRoot {
+                document_id: docid(),
+                collaboration: root,
+            },
+            Mutation::SetCollaborationRoot {
+                document_id: docid(),
+                collaboration: additional,
+            },
+        ]),
+    )
+    .unwrap();
+    let before = session.snapshot().content_id;
+    let path =
+        "/additional_collaborations/0/conversation_nodes/0/call/participant_associations/0/id";
+    let mut envelope = env(&session);
+    envelope.expected_generation = Some(session.snapshot().generation);
+    let changes = session
+        .apply(
+            envelope,
+            batch(vec![Mutation::PromoteElementIdentity {
+                document_id: docid(),
+                model_path: path.into(),
+                xml_id: None,
+            }]),
+        )
+        .unwrap();
+    assert_eq!(changes.promoted_identities[0].model_path, path);
+    let snapshot = session.snapshot();
+    let association = &snapshot.project.documents[0].additional_collaborations[0]
+        .conversation_nodes[0]
+        .call
+        .as_ref()
+        .unwrap()
+        .participant_associations[0];
+    assert_eq!(
+        association.id.as_ref().unwrap().selector(),
+        changes.promoted_identities[0].selector
+    );
+    assert!(association.id.as_ref().unwrap().xml_id().is_none());
+    apply(&mut session, Request::Undo).unwrap();
+    assert_eq!(session.snapshot().content_id, before);
+}
+#[test]
+fn group_category_qnames_rewrite_only_local_target() {
+    use processcraft_core::bpmn_model::{Category, CategoryValue, EventReference, Group, QNameRef};
+    let mut session = project();
+    fixture(&mut session);
+    let group = |id_value: &str, namespace: &str| Group {
+        id: id(id_value),
+        base: None,
+        category_value_ref: Some(EventReference::Qualified(QNameRef {
+            namespace: namespace.into(),
+            local: id("category_value"),
+        })),
+    };
+    apply(
+        &mut session,
+        batch(vec![
+            Mutation::CreateCategory {
+                document_id: docid(),
+                category: Category {
+                    id: id("category"),
+                    base: None,
+                    name: Some("Category".into()),
+                    values: vec![CategoryValue {
+                        id: id("category_value"),
+                        base: None,
+                        value: Some("Value".into()),
+                    }],
+                },
+            },
+            Mutation::CreateGroup {
+                document_id: docid(),
+                scope_id: id("procurement"),
+                group: group("local_group", GENERATED_TARGET_NAMESPACE),
+            },
+            Mutation::CreateGroup {
+                document_id: docid(),
+                scope_id: id("procurement"),
+                group: group("external_group", "urn:external"),
+            },
+        ]),
+    )
+    .unwrap();
+    let before = session.snapshot().content_id;
+    apply(
+        &mut session,
+        batch(vec![Mutation::SetElementXmlId {
+            document_id: docid(),
+            element_id: id("category_value"),
+            xml_id: Some(id("new_value")),
+        }]),
+    )
+    .unwrap();
+    let snapshot = session.snapshot();
+    let groups = &snapshot.project.documents[0].processes[0].groups;
+    assert!(
+        matches!(&groups[0].category_value_ref, Some(EventReference::Qualified(q)) if q.local == id::<processcraft_core::ids::XmlId>("new_value"))
+    );
+    assert!(
+        matches!(&groups[1].category_value_ref, Some(EventReference::Qualified(q)) if q.local == id::<processcraft_core::ids::XmlId>("category_value"))
+    );
+    apply(&mut session, Request::Undo).unwrap();
+    assert_eq!(session.snapshot().content_id, before);
+}
+#[test]
+fn initialize_root_order_promotes_anonymous_roots_with_generation_guard() {
+    use processcraft_core::bpmn_collaboration::{PartnerEntity, PartnerRole};
+    let mut initial = project();
+    fixture(&mut initial);
+    let mut data = (*initial.snapshot().project).clone();
+    Arc::make_mut(&mut data.documents[0])
+        .partner_entities
+        .push(PartnerEntity {
+            id: None,
+            base: None,
+            name: Some("Partner".into()),
+            participant_refs: vec![],
+        });
+    let mut session = Session::new(data).unwrap();
+    let before = session.snapshot().content_id;
+    assert!(
+        apply(
+            &mut session,
+            batch(vec![Mutation::InitializeDocumentRootOrder {
+                document_id: docid()
+            }])
+        )
+        .is_err()
+    );
+    assert_eq!(session.snapshot().content_id, before);
+    let mut envelope = env(&session);
+    envelope.expected_generation = Some(session.snapshot().generation);
+    let changes = session
+        .apply(
+            envelope,
+            batch(vec![Mutation::InitializeDocumentRootOrder {
+                document_id: docid(),
+            }]),
+        )
+        .unwrap();
+    assert_eq!(changes.promoted_identities.len(), 1);
+    assert_eq!(
+        changes.promoted_identities[0].model_path,
+        "/partner_entities/0/id"
+    );
+    let selector = changes.promoted_identities[0].selector.clone();
+    let snapshot = session.snapshot();
+    let document = &snapshot.project.documents[0];
+    assert!(
+        document.partner_entities[0]
+            .id
+            .as_ref()
+            .unwrap()
+            .xml_id()
+            .is_none()
+    );
+    assert!(document.root_order.as_ref().unwrap().contains(&selector));
+    let initialized = snapshot.content_id;
+    let mut invalid_order = document.root_order.clone().unwrap();
+    invalid_order.push(selector.clone());
+    assert!(
+        apply(
+            &mut session,
+            batch(vec![Mutation::SetDocumentRootOrder {
+                document_id: docid(),
+                order: Some(invalid_order)
+            }])
+        )
+        .is_err()
+    );
+    assert_eq!(session.snapshot().content_id, initialized);
+    let partners = document.partner_entities.clone();
+    apply(
+        &mut session,
+        batch(vec![Mutation::SetPartnerCatalog {
+            document_id: docid(),
+            partner_entities: partners,
+            partner_roles: vec![PartnerRole {
+                id: Some(id("role")),
+                base: None,
+                name: Some("Role".into()),
+                participant_refs: vec![],
+            }],
+            endpoints: vec![],
+        }]),
+    )
+    .unwrap();
+    assert_eq!(
+        session.snapshot().project.documents[0]
+            .root_order
+            .as_ref()
+            .unwrap()
+            .last(),
+        Some(&id("role"))
+    );
+    let added = session.snapshot().content_id;
+    let renamed = apply(
+        &mut session,
+        batch(vec![Mutation::SetElementXmlId {
+            document_id: docid(),
+            element_id: id("role"),
+            xml_id: Some(id("renamed_role")),
+        }]),
+    )
+    .unwrap();
+    assert!(
+        session.snapshot().project.documents[0]
+            .root_order
+            .as_ref()
+            .unwrap()
+            .contains(&renamed.selector_mappings[0].to)
+    );
+    apply(&mut session, Request::Undo).unwrap();
+    assert_eq!(session.snapshot().content_id, added);
+    apply(&mut session, Request::Undo).unwrap();
+    assert_eq!(session.snapshot().content_id, initialized);
+    apply(&mut session, Request::Undo).unwrap();
+    assert_eq!(session.snapshot().content_id, before);
+    apply(&mut session, Request::Redo).unwrap();
+    assert_eq!(session.snapshot().content_id, initialized);
+}
+#[test]
 fn explicit_order_does_not_block_other_diagram_cleanup_after_rename() {
     let mut session = project();
     fixture(&mut session);
@@ -158,6 +665,8 @@ fn clearing_multiplicity_removes_documentation_navigation_and_keeps_comment() {
     fixture(&mut initial);
     let mut data = (*initial.snapshot().project).clone();
     Arc::make_mut(&mut data.documents[0]).collaboration = Some(Collaboration {
+        kind: None,
+        extras: None,
         id: id("collaboration"),
         base: None,
         name: None,
@@ -166,6 +675,8 @@ fn clearing_multiplicity_removes_documentation_navigation_and_keeps_comment() {
         conversation_nodes: vec![],
         conversation_links: vec![],
         participants: vec![Participant {
+            interface_refs: vec![],
+            endpoint_refs: vec![],
             id: id("participant"),
             base: None,
             name: Some("Participant".into()),
@@ -408,8 +919,14 @@ fn deleting_activity_cleans_navigation_from_nested_resource_role() {
         ..Default::default()
     });
     doc.processes[0].flows.retain(|f| {
-        f.source != id::<processcraft_core::ids::ElementSelector>("review")
-            && f.target != id::<processcraft_core::ids::ElementSelector>("review")
+        f.source
+            != Some(processcraft_core::bpmn_model::EventReference::Local(id(
+                "review",
+            )))
+            && f.target
+                != Some(processcraft_core::bpmn_model::EventReference::Local(id(
+                    "review",
+                )))
     });
     for diagram in &mut doc.diagrams {
         diagram
@@ -683,6 +1200,8 @@ fn choreography_sequence_flow_metadata_is_undoable_and_message_flow_rejected() {
     let participants = ["buyer", "seller"]
         .into_iter()
         .map(|name| Participant {
+            interface_refs: vec![],
+            endpoint_refs: vec![],
             multiplicity: None,
             id: id(name),
             base: None,
@@ -704,8 +1223,12 @@ fn choreography_sequence_flow_metadata_is_undoable_and_message_flow_rejected() {
         message_ref: None,
         id: id(name),
         kind,
-        source: id(source),
-        target: id(target),
+        source: Some(processcraft_core::bpmn_model::EventReference::Local(id(
+            source,
+        ))),
+        target: Some(processcraft_core::bpmn_model::EventReference::Local(id(
+            target,
+        ))),
         name: Some(name.into()),
         documentation: String::new().into(),
         base_extras: None,
@@ -716,6 +1239,10 @@ fn choreography_sequence_flow_metadata_is_undoable_and_message_flow_rejected() {
     Arc::make_mut(&mut data.documents[0])
         .choreographies
         .push(Choreography {
+            extras: None,
+            conversation_nodes: vec![],
+            conversation_links: vec![],
+            correlation_keys: vec![],
             id: id("choreo"),
             base: None,
             name: None,
@@ -1888,8 +2415,12 @@ fn failed_batch_preserves_state_and_history() {
             association_direction: None,
             id: id("bad"),
             kind: FlowKind::Sequence,
-            source: id("review"),
-            target: id("missing"),
+            source: Some(processcraft_core::bpmn_model::EventReference::Local(id(
+                "review",
+            ))),
+            target: Some(processcraft_core::bpmn_model::EventReference::Local(id(
+                "missing",
+            ))),
             name: Some(String::new()),
             documentation: String::new().into(),
             condition: None,
@@ -2248,6 +2779,11 @@ fn flow_condition_changes_identity_and_protected_document_rejects_it() {
 fn descriptors_match_protocol_tags() {
     let descriptors = processcraft_core::commands::command_descriptors();
     let expected = [
+        "setCollaborationRoot",
+        "deleteCollaborationRoot",
+        "setPartnerCatalog",
+        "setDocumentRootOrder",
+        "initializeDocumentRootOrder",
         "setDiagramPlaneMetadata",
         "setDiagramPlaneOrder",
         "setShapeRepresentationMetadata",
@@ -2430,7 +2966,10 @@ fn clearing_connected_id_promotes_selection_and_undo_restores_it() {
     assert_eq!(&s.snapshot().selection[0].xml_id, promoted);
     let snap = s.snapshot();
     let process = &snap.project.documents[0].processes[0];
-    assert!(process.flows.iter().any(|flow| &flow.target == promoted));
+    assert!(process.flows.iter().any(|flow| flow.target
+        == Some(processcraft_core::bpmn_model::EventReference::Local(
+            promoted.clone()
+        ))));
     assert!(
         snap.project.documents[0]
             .diagrams
@@ -2965,8 +3504,14 @@ fn deleting_event_cleans_navigation_from_owned_property() {
     // Remove connected flows and diagram representations so deleting this event is otherwise valid.
     let doc = Arc::make_mut(&mut p.documents[0]);
     doc.processes[0].flows.retain(|flow| {
-        flow.source != id::<processcraft_core::ids::ElementSelector>("start")
-            && flow.target != id::<processcraft_core::ids::ElementSelector>("start")
+        flow.source
+            != Some(processcraft_core::bpmn_model::EventReference::Local(id(
+                "start",
+            )))
+            && flow.target
+                != Some(processcraft_core::bpmn_model::EventReference::Local(id(
+                    "start",
+                )))
     });
     for diagram in &mut doc.diagrams {
         diagram.shapes.retain(|shape| {
@@ -3046,8 +3591,14 @@ fn deleting_event_cascades_its_data_association_and_undo_restores_it() {
         assignments: vec![],
     });
     process.flows.retain(|flow| {
-        flow.source != id::<processcraft_core::ids::ElementSelector>("start")
-            && flow.target != id::<processcraft_core::ids::ElementSelector>("start")
+        flow.source
+            != Some(processcraft_core::bpmn_model::EventReference::Local(id(
+                "start",
+            )))
+            && flow.target
+                != Some(processcraft_core::bpmn_model::EventReference::Local(id(
+                    "start",
+                )))
     });
     for diagram in &mut doc.diagrams {
         diagram.shapes.retain(|shape| {
@@ -3651,8 +4202,14 @@ fn deleting_node_removes_navigation_from_its_documentation() {
         content: MixedXml::Text("context".into()),
     }]);
     doc.processes[0].flows.retain(|flow| {
-        flow.source != id::<processcraft_core::ids::ElementSelector>("start")
-            && flow.target != id::<processcraft_core::ids::ElementSelector>("start")
+        flow.source
+            != Some(processcraft_core::bpmn_model::EventReference::Local(id(
+                "start",
+            )))
+            && flow.target
+                != Some(processcraft_core::bpmn_model::EventReference::Local(id(
+                    "start",
+                )))
     });
     for diagram in &mut doc.diagrams {
         diagram.shapes.retain(|shape| {

@@ -225,12 +225,21 @@ pub fn propose_layout(
     {
         return Err(err("unsupported", "Unsupported node or flow"));
     }
+    if !document.additional_collaborations.is_empty() {
+        return Err(err(
+            "unsupported",
+            "Multiple collaboration roots are outside the layout profile",
+        ));
+    }
     let pool = if let Some(c) = &document.collaboration {
         if c.participants.len() != 1
             || !c.flows.is_empty()
             || !c.conversation_nodes.is_empty()
             || !c.conversation_links.is_empty()
-            || c.participants[0].process.as_ref() != Some(&process.id.selector())
+            || c.participants[0].process.as_ref()
+                != Some(&crate::bpmn_model::EventReference::Local(
+                    process.id.selector(),
+                ))
         {
             return Err(err("unsupported", "Multiple pools or collaboration flows"));
         }
@@ -331,7 +340,14 @@ pub fn propose_layout(
     let mut graph = vec![Vec::new(); n];
     let mut reverse = vec![Vec::new(); n];
     for f in flows.values() {
-        let (Some(&a), Some(&b)) = (indices.get(&f.source), indices.get(&f.target)) else {
+        let (
+            Some(crate::bpmn_model::EventReference::Local(source)),
+            Some(crate::bpmn_model::EventReference::Local(target)),
+        ) = (&f.source, &f.target)
+        else {
+            return Err(err("invalid_di", "Flow endpoint is missing or external"));
+        };
+        let (Some(&a), Some(&b)) = (indices.get(source), indices.get(target)) else {
             return Err(err("invalid_di", "Flow endpoint is missing"));
         };
         graph[a].push(b);
@@ -513,12 +529,19 @@ pub fn propose_layout(
     let mut outgoing = BTreeMap::<ElementSelector, Vec<ElementSelector>>::new();
     let mut incoming = BTreeMap::<ElementSelector, Vec<ElementSelector>>::new();
     for flow in flows.values() {
+        let (
+            Some(crate::bpmn_model::EventReference::Local(source_id)),
+            Some(crate::bpmn_model::EventReference::Local(target_id)),
+        ) = (&flow.source, &flow.target)
+        else {
+            return Err(err("invalid_di", "Flow endpoint is missing or external"));
+        };
         outgoing
-            .entry(flow.source.clone())
+            .entry(source_id.clone())
             .or_default()
             .push(flow.id.selector());
         incoming
-            .entry(flow.target.clone())
+            .entry(target_id.clone())
             .or_default()
             .push(flow.id.selector());
     }
@@ -526,10 +549,17 @@ pub fn propose_layout(
     const ROUTE_WORK_LIMIT: usize = 500_000;
     for (number, flow) in flows.values().enumerate() {
         cancelled(cancel)?;
+        let (
+            Some(crate::bpmn_model::EventReference::Local(source_id)),
+            Some(crate::bpmn_model::EventReference::Local(target_id)),
+        ) = (&flow.source, &flow.target)
+        else {
+            return Err(err("invalid_di", "Flow endpoint is missing or external"));
+        };
         let source =
-            &result.shapes[index[&d.shapes[shape_by_element[&flow.source]].id.selector()]].bounds;
+            &result.shapes[index[&d.shapes[shape_by_element[source_id]].id.selector()]].bounds;
         let target =
-            &result.shapes[index[&d.shapes[shape_by_element[&flow.target]].id.selector()]].bounds;
+            &result.shapes[index[&d.shapes[shape_by_element[target_id]].id.selector()]].bounds;
         let port_y = |id: &ElementSelector, bounds: &Bounds, list: &[ElementSelector]| {
             if matches!(
                 nodes[id].kind,
@@ -583,9 +613,9 @@ pub fn propose_layout(
                     }
                 }
             };
-        let start = port(&flow.source, source, &outgoing[&flow.source], true);
-        let end = port(&flow.target, target, &incoming[&flow.target], false);
-        let points = if flow.source == flow.target {
+        let start = port(source_id, source, &outgoing[source_id], true);
+        let end = port(target_id, target, &incoming[target_id], false);
+        let points = if source_id == target_id {
             let gap = 40.0 + number as f64 * 2.0;
             vec![
                 start.clone(),
@@ -607,8 +637,8 @@ pub fn propose_layout(
                 },
                 end.clone(),
             ]
-        } else if rank[component[indices[&flow.source]]] >= rank[component[indices[&flow.target]]]
-            && flow.source > flow.target
+        } else if rank[component[indices[source_id]]] >= rank[component[indices[target_id]]]
+            && source_id > target_id
         {
             let gap = 40.0 + number as f64 * 16.0;
             let channel_y = -gap;
@@ -635,7 +665,7 @@ pub fn propose_layout(
         } else {
             let mut obstacles: Vec<_> = ids
                 .iter()
-                .filter(|id| **id != flow.source && **id != flow.target)
+                .filter(|id| *id != source_id && *id != target_id)
                 .map(|id| {
                     result.shapes[index[&d.shapes[shape_by_element[id]].id.selector()]]
                         .bounds
@@ -760,14 +790,21 @@ pub fn propose_layout(
         }
     }
     for flow in flows.values() {
+        let (
+            Some(crate::bpmn_model::EventReference::Local(source_id)),
+            Some(crate::bpmn_model::EventReference::Local(target_id)),
+        ) = (&flow.source, &flow.target)
+        else {
+            return Err(err("invalid_di", "Flow endpoint is missing or external"));
+        };
         let edge = &proposal.proposed.edges
             [edge_index[&edge_by_element[&flow.id.selector()].id.selector()]];
         for (segment_index, segment) in edge.waypoints.windows(2).enumerate() {
             let source = &proposal.proposed.shapes
-                [index[&d.shapes[shape_by_element[&flow.source]].id.selector()]]
+                [index[&d.shapes[shape_by_element[source_id]].id.selector()]]
                 .bounds;
             let target = &proposal.proposed.shapes
-                [index[&d.shapes[shape_by_element[&flow.target]].id.selector()]]
+                [index[&d.shapes[shape_by_element[target_id]].id.selector()]]
                 .bounds;
             if (segment_index > 0 && segment_hits(&segment[0], &segment[1], source))
                 || (segment_index + 2 < edge.waypoints.len()
@@ -777,7 +814,7 @@ pub fn propose_layout(
             }
             if ids
                 .iter()
-                .filter(|id| **id != flow.source && **id != flow.target)
+                .filter(|id| *id != source_id && *id != target_id)
                 .any(|id| {
                     segment_hits(
                         &segment[0],

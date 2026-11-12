@@ -1,6 +1,103 @@
 use super::*;
 use processcraft_core::bpmn_collaboration::{ConversationKind, ConversationLink, ConversationNode};
 
+pub(super) fn update_root(document: &BpmnDocument, root: Collaboration) -> Mutation {
+    if let Some(existing) = document
+        .choreographies
+        .iter()
+        .find(|choreography| choreography.id == root.id)
+    {
+        let mut choreography = existing.clone();
+        choreography.name = root.name;
+        choreography.base = root.base;
+        choreography.participants = root.participants;
+        choreography.message_flows = root.flows;
+        choreography.conversation_nodes = root.conversation_nodes;
+        choreography.conversation_links = root.conversation_links;
+        choreography.correlation_keys = root.correlation_keys;
+        choreography.extras = root.extras;
+        Mutation::UpdateChoreography {
+            document_id: document.id,
+            choreography,
+        }
+    } else {
+        Mutation::SetCollaborationRoot {
+            document_id: document.id,
+            collaboration: root,
+        }
+    }
+}
+pub(super) fn choreography_view(
+    value: &processcraft_core::bpmn_collaboration::Choreography,
+) -> Collaboration {
+    Collaboration {
+        kind: None,
+        extras: value.extras.clone(),
+        correlation_keys: value.correlation_keys.clone(),
+        base: value.base.clone(),
+        name: value.name.clone(),
+        id: value.id.clone(),
+        participants: value.participants.clone(),
+        flows: value.message_flows.clone(),
+        conversation_nodes: value.conversation_nodes.clone(),
+        conversation_links: value.conversation_links.clone(),
+    }
+}
+
+fn conversation_rows(nodes: &[ConversationNode]) -> Vec<(usize, &ConversationNode)> {
+    fn visit<'a>(
+        nodes: &'a [ConversationNode],
+        parent: Option<&ElementSelector>,
+        depth: usize,
+        seen: &mut std::collections::HashSet<ElementSelector>,
+        out: &mut Vec<(usize, &'a ConversationNode)>,
+    ) {
+        if depth >= 256 {
+            return;
+        }
+        for node in nodes.iter().filter(|node| node.parent.as_ref() == parent) {
+            let id = node.id.selector();
+            if seen.insert(id.clone()) {
+                out.push((depth, node));
+                visit(nodes, Some(&id), depth.saturating_add(1), seen, out);
+            }
+        }
+    }
+    let mut out = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    visit(nodes, None, 0, &mut seen, &mut out);
+    for node in nodes {
+        if seen.insert(node.id.selector()) {
+            out.push((0, node));
+        }
+    }
+    out
+}
+
+fn valid_conversation_parent(
+    nodes: &[ConversationNode],
+    current: Option<&ElementSelector>,
+    candidate: &ConversationNode,
+) -> bool {
+    let Some(current) = current else {
+        return true;
+    };
+    let mut cursor = Some(candidate.id.selector());
+    for _ in 0..=nodes.len() {
+        let Some(id) = cursor else {
+            return true;
+        };
+        if &id == current {
+            return false;
+        }
+        cursor = nodes
+            .iter()
+            .find(|node| node.id == id)
+            .and_then(|node| node.parent.clone());
+    }
+    false
+}
+
 fn choreography_task_shapes(
     task: ElementSelector,
     initiating: ElementSelector,
@@ -59,17 +156,31 @@ fn choreography_task_shapes(
 pub(super) struct State {
     session: String,
     open: bool,
-    document: Option<processcraft_core::ids::DocumentId>,
+    pub(super) partner_catalog: Option<super::partners::PartnerCatalogDraft>,
+    pub(super) conversation_details: Option<super::conversation_details::ConversationDetailsDraft>,
+    pub(super) associations: Option<super::collaboration_associations::AssociationsDraft>,
+    pub(super) participant: Option<super::collaboration_participant::ParticipantDraft>,
+    pub(super) connection: Option<super::collaboration_connection::ConnectionDraft>,
+    pub(super) artifacts: Option<super::collaboration_artifacts::ArtifactsDraft>,
+    pub(super) document: Option<processcraft_core::ids::DocumentId>,
+    pub(super) root: Option<ElementSelector>,
+    pub(super) root_details: Option<super::collaboration_root::RootDraft>,
+    pub(super) root_order: Option<super::collaboration_root::RootOrderDraft>,
     node_id: Option<ElementSelector>,
     name: String,
     name_present: bool,
     is_subconversation: bool,
+    original_kind: Option<ConversationKind>,
+    kind_changed: bool,
     parent: Option<ElementSelector>,
     participants: Vec<ElementSelector>,
+    original_participants: Vec<processcraft_core::bpmn_activity::ModelReference>,
     link_participant: Option<ElementSelector>,
     link_conversation: Option<ElementSelector>,
     dirty: bool,
+    draft_generation: Option<u64>,
     link_dirty: bool,
+    link_generation: Option<u64>,
     data_name: String,
     data_store: bool,
     data_dirty: bool,
@@ -107,6 +218,7 @@ impl State {
             .filter(|mapping| Some(mapping.document_id) == self.document)
         {
             for selector in [
+                &mut self.root,
                 &mut self.node_id,
                 &mut self.parent,
                 &mut self.link_participant,
@@ -130,7 +242,15 @@ impl State {
         }
     }
     pub(super) fn has_draft(&self) -> bool {
-        self.dirty
+        self.partner_catalog.is_some()
+            || self.conversation_details.is_some()
+            || self.associations.is_some()
+            || self.participant.is_some()
+            || self.connection.is_some()
+            || self.artifacts.is_some()
+            || self.root_details.is_some()
+            || self.root_order.is_some()
+            || self.dirty
             || self.link_dirty
             || self.data_dirty
             || self.reference_dirty
@@ -139,20 +259,33 @@ impl State {
             || self.root_dirty
             || self.group_dirty
     }
-    fn clear_node(&mut self) {
+    pub(super) fn clear_node(&mut self) {
         self.node_id = None;
         self.name.clear();
         self.name_present = false;
         self.is_subconversation = false;
+        self.original_kind = None;
+        self.kind_changed = false;
         self.parent = None;
         self.participants.clear();
+        self.original_participants.clear();
         self.dirty = false;
+        self.draft_generation = None;
     }
     fn clear(&mut self) {
         self.clear_node();
+        self.partner_catalog = None;
+        self.conversation_details = None;
+        self.associations = None;
+        self.participant = None;
+        self.connection = None;
+        self.artifacts = None;
+        self.root_details = None;
+        self.root_order = None;
         self.link_participant = None;
         self.link_conversation = None;
         self.link_dirty = false;
+        self.link_generation = None;
         self.data_name.clear();
         self.data_dirty = false;
         self.reference_name.clear();
@@ -228,32 +361,97 @@ impl ProcessCraft {
             ui.label("This model does not permit structural editing.");
             return;
         }
+        self.partner_catalog_ui(ui, doc, snap.generation);
         self.collaboration_data(ui, doc);
         self.collaboration_groups(ui, doc);
         self.collaboration_choreography(ui, doc);
         ui.separator();
-        let Some(collaboration) = &doc.collaboration else {
-            ui.label(
-                "Create a collaboration, then add participants using the model's pool controls.",
+        let roots: Vec<_> = doc
+            .collaboration
+            .iter()
+            .chain(doc.additional_collaborations.iter())
+            .cloned()
+            .chain(doc.choreographies.iter().map(choreography_view))
+            .collect();
+        if self
+            .collaboration
+            .root
+            .as_ref()
+            .is_none_or(|selected| !roots.iter().any(|root| root.id == *selected))
+        {
+            self.collaboration.root = roots.first().map(|root| root.id.selector());
+        }
+        let label = |root: &Collaboration, index: usize| {
+            let kind = if doc
+                .choreographies
+                .iter()
+                .any(|choreography| choreography.id == root.id)
+            {
+                "Choreography"
+            } else if root.kind.is_some() {
+                "Global conversation"
+            } else {
+                "Collaboration"
+            };
+            super::event::local_choice_label(root.name.as_deref(), kind, &root.id, index + 1)
+        };
+        let selected_name = roots
+            .iter()
+            .enumerate()
+            .find(|(_, root)| {
+                self.collaboration
+                    .root
+                    .as_ref()
+                    .is_some_and(|id| root.id == *id)
+            })
+            .map_or_else(
+                || "Select a collaboration".to_owned(),
+                |(index, root)| label(root, index),
             );
-            if ui.button("Create collaboration").clicked() && self.commit_draft() {
-                self.ctl.mutate(vec![Mutation::CreateCollaboration {
-                    document_id: id,
-                    collaboration: Collaboration {
-                        correlation_keys: Vec::new(),
-                        base: None,
-                        name: None,
-                        id: controller::id("Collaboration").into(),
-                        participants: vec![],
-                        flows: vec![],
-                        conversation_nodes: vec![],
-                        conversation_links: vec![],
-                    },
-                }]);
+        let mut chosen = self.collaboration.root.clone();
+        egui::ComboBox::from_label("Collaboration")
+            .selected_text(selected_name)
+            .show_ui(ui, |ui| {
+                for (index, root) in roots.iter().enumerate() {
+                    ui.selectable_value(&mut chosen, Some(root.id.selector()), label(root, index));
+                }
+            });
+        if chosen != self.collaboration.root {
+            if self.collaboration.has_draft() {
+                self.ctl.error =
+                    "Apply or discard the current draft before switching collaboration.".into();
+            } else {
+                self.collaboration.clear_node();
+                self.collaboration.root = chosen;
             }
+        }
+        ui.horizontal_wrapped(|ui| {
+            for (name, kind) in [("Create collaboration", None), ("Create global conversation", Some(processcraft_core::bpmn_collaboration::CollaborationRootKind::GlobalConversation))] {
+                if ui.add_enabled(!self.collaboration.has_draft(), egui::Button::new(name)).clicked() && self.commit_draft() {
+                    let identity = processcraft_core::ids::ElementIdentity::anonymous();
+                    let root = Collaboration { kind, extras: None, correlation_keys: vec![], base: None, name: None, id: identity.clone(), participants: vec![], flows: vec![], conversation_nodes: vec![], conversation_links: vec![] };
+                    if self.ctl.mutate(vec![Mutation::SetCollaborationRoot { document_id: id, collaboration: root }]) { self.collaboration.root = Some(identity.selector()); }
+                }
+            }
+        });
+        let Some(collaboration) = roots.iter().find(|root| {
+            self.collaboration
+                .root
+                .as_ref()
+                .is_some_and(|selected| root.id == *selected)
+        }) else {
+            ui.label("Create a collaboration to manage conversations.");
             return;
         };
+        self.collaboration_root_ui(ui, doc, collaboration, snap.generation);
+        self.collaboration_participants_ui(ui, doc, collaboration, snap.generation);
+        self.collaboration_associations_ui(ui, doc, collaboration, snap.generation);
+        self.collaboration_connections_ui(ui, doc, collaboration, snap.generation);
+        self.collaboration_artifacts_ui(ui, doc, collaboration, snap.generation);
         ui.label("Conversations");
+        if collaboration.kind.is_some() {
+            ui.label("Global conversations do not contain conversation nodes; such entries must be removed before BPMN export.");
+        }
         if collaboration.participants.is_empty() {
             ui.label("Add a pool to create a participant.");
         }
@@ -261,20 +459,30 @@ impl ProcessCraft {
             .id_salt("conversation_list")
             .max_height(130.0)
             .show(ui, |ui| {
-                for node in &collaboration.conversation_nodes {
-                    let label = node
+                for (depth, node) in conversation_rows(&collaboration.conversation_nodes) {
+                    let name = node
                         .name
                         .as_deref()
                         .filter(|name| !name.is_empty())
                         .unwrap_or("Unnamed conversation");
+                    let kind = match node.kind {
+                        ConversationKind::Conversation => "Conversation",
+                        ConversationKind::SubConversation => "Sub-conversation",
+                        ConversationKind::CallConversation => "Call conversation",
+                    };
+                    let label = format!("{}{} · {}", "  ".repeat(depth.min(8)), name, kind);
                     if ui
                         .selectable_label(
                             self.collaboration.node_id.as_ref() == Some(&node.id.selector()),
                             label,
                         )
-                        .on_hover_text(node.id.to_string())
+                        .on_hover_text(
+                            node.id
+                                .xml_id()
+                                .map_or_else(|| "No XML ID".to_owned(), ToString::to_string),
+                        )
                         .clicked()
-                        && !self.collaboration.dirty
+                        && !self.collaboration.has_draft()
                     {
                         self.collaboration.document = Some(id);
                         self.collaboration.node_id = Some(node.id.selector());
@@ -282,8 +490,20 @@ impl ProcessCraft {
                         self.collaboration.name = node.name.clone().unwrap_or_default();
                         self.collaboration.is_subconversation =
                             matches!(node.kind, ConversationKind::SubConversation);
+                        self.collaboration.original_kind = Some(node.kind);
+                        self.collaboration.kind_changed = false;
                         self.collaboration.parent = node.parent.clone();
-                        self.collaboration.participants = node.participant_refs.clone();
+                        self.collaboration.participants = node
+                            .participant_refs
+                            .iter()
+                            .filter_map(|r| match r {
+                                processcraft_core::bpmn_activity::ModelReference::Local(id) => {
+                                    Some(id.clone())
+                                }
+                                _ => None,
+                            })
+                            .collect();
+                        self.collaboration.original_participants = node.participant_refs.clone();
                     }
                 }
             });
@@ -316,6 +536,7 @@ impl ProcessCraft {
             .changed()
         {
             self.collaboration.dirty = true;
+            self.collaboration.kind_changed = true;
             self.collaboration.document = Some(id);
         }
         let current_parent = self
@@ -341,7 +562,11 @@ impl ProcessCraft {
                 }
                 for parent in collaboration.conversation_nodes.iter().filter(|n| {
                     matches!(n.kind, ConversationKind::SubConversation)
-                        && self.collaboration.node_id.as_ref() != Some(&n.id.selector())
+                        && valid_conversation_parent(
+                            &collaboration.conversation_nodes,
+                            self.collaboration.node_id.as_ref(),
+                            n,
+                        )
                 }) {
                     if ui
                         .selectable_value(
@@ -385,32 +610,25 @@ impl ProcessCraft {
         if self.collaboration.node_id.is_none() {
             ui.checkbox(&mut self.collaboration.draw, "Add to current diagram");
         }
+        if self.collaboration.dirty && self.collaboration.draft_generation.is_none() {
+            self.collaboration.draft_generation = Some(snap.generation);
+        }
         ui.horizontal_wrapped(|ui| {
             if ui.button("Save conversation").clicked() {
-                let node_id = self
-                    .collaboration
-                    .node_id
-                    .clone()
-                    .unwrap_or_else(|| controller::id("Conversation").into());
-                let identity = if let Some(node) = collaboration
+                if self.collaboration.draft_generation.is_some_and(|generation| generation != self.ctl.session.snapshot().generation) { self.ctl.error = "The model changed while this draft was open. Discard it and reopen the editor.".into(); return; }
+                let identity = if let Some(id) = &self.collaboration.node_id {
+                    let Some(node) = collaboration.conversation_nodes.iter().find(|node| node.id == *id) else { self.ctl.error = "The conversation no longer exists.".into(); return; };
+                    node.id.clone()
+                } else { processcraft_core::ids::ElementIdentity::anonymous() };
+                let node_id = identity.selector();
+                let existing = collaboration
                     .conversation_nodes
                     .iter()
-                    .find(|node| node.id.selector() == node_id)
-                {
-                    node.id.clone()
-                } else if self.collaboration.node_id.is_none() {
-                    match &node_id {
-                        ElementSelector::Xml(id) => id.clone().into(),
-                        ElementSelector::Native { .. } => {
-                            self.ctl.error = "The conversation identity is unavailable.".into();
-                            return;
-                        }
-                    }
-                } else {
-                    self.ctl.error = "The conversation no longer exists.".into();
-                    return;
-                };
+                    .find(|node| node.id.selector() == node_id);
                 let node = ConversationNode {
+                    message_flow_refs: existing
+                        .map_or_else(Vec::new, |node| node.message_flow_refs.clone()),
+                    call: existing.and_then(|node| node.call.clone()),
                     correlation_keys: collaboration
                         .conversation_nodes
                         .iter()
@@ -426,25 +644,42 @@ impl ProcessCraft {
                         .collaboration
                         .name_present
                         .then(|| self.collaboration.name.clone()),
-                    kind: if self.collaboration.is_subconversation {
+                    kind: if !self.collaboration.kind_changed {
+                        self.collaboration
+                            .original_kind
+                            .unwrap_or(ConversationKind::Conversation)
+                    } else if self.collaboration.is_subconversation {
                         ConversationKind::SubConversation
                     } else {
                         ConversationKind::Conversation
                     },
-                    participant_refs: self.collaboration.participants.clone(),
+                    participant_refs: {
+                        use processcraft_core::bpmn_activity::ModelReference;
+                        let mut refs: Vec<_> = self
+                            .collaboration
+                            .original_participants
+                            .iter()
+                            .filter(|r| match r {
+                                ModelReference::Local(id) => {
+                                    self.collaboration.participants.contains(id)
+                                }
+                                ModelReference::Qualified(_) => true,
+                            })
+                            .cloned()
+                            .collect();
+                        for id in &self.collaboration.participants {
+                            let item = ModelReference::Local(id.clone());
+                            if !refs.contains(&item) {
+                                refs.push(item);
+                            }
+                        }
+                        refs
+                    },
                     parent: self.collaboration.parent.clone(),
                 };
-                let mut mutations = vec![if self.collaboration.node_id.is_some() {
-                    Mutation::UpdateConversationNode {
-                        document_id: id,
-                        node,
-                    }
-                } else {
-                    Mutation::CreateConversationNode {
-                        document_id: id,
-                        node,
-                    }
-                }];
+                let mut updated = collaboration.clone();
+                if let Some(existing) = updated.conversation_nodes.iter_mut().find(|existing| existing.id.selector() == node_id) { *existing = node; } else { updated.conversation_nodes.push(node); }
+                let mut mutations = vec![update_root(doc, updated)];
                 if self.collaboration.node_id.is_none() && self.collaboration.draw {
                     let Some(diagram) = doc.diagrams.iter().find(|d| {
                         self.diagram_id
@@ -455,11 +690,8 @@ impl ProcessCraft {
                         return;
                     };
                     if diagram.plane != collaboration.id {
-                        mutations.push(Mutation::SetDiagramPlane {
-                            document_id: id,
-                            diagram_id: diagram.id.selector(),
-                            plane: collaboration.id.selector(),
-                        });
+                        self.ctl.error = "Choose a diagram for this collaboration before adding a representation.".into();
+                        return;
                     }
                     let count = collaboration.conversation_nodes.len() as f64;
                     mutations.push(Mutation::CreateShape {
@@ -491,6 +723,7 @@ impl ProcessCraft {
                     self.collaboration.node_id = Some(node_id);
                     self.collaboration.document = Some(id);
                     self.collaboration.dirty = false;
+                    self.collaboration.draft_generation = None;
                 }
             }
             if ui.button("Discard draft").clicked() {
@@ -500,14 +733,29 @@ impl ProcessCraft {
             if let Some(node_id) = &self.collaboration.node_id
                 && !self.collaboration.has_draft()
                 && ui.button("Delete conversation").clicked()
-                && self.ctl.mutate(vec![Mutation::DeleteConversationNode {
-                    document_id: id,
-                    node_id: node_id.clone(),
-                }])
+                && { let mut updated = collaboration.clone(); updated.conversation_nodes.retain(|node| node.id != *node_id); self.ctl.mutate(vec![update_root(doc, updated)]) }
             {
                 self.collaboration.clear_node();
             }
         });
+        if let Some(node) = self.collaboration.node_id.as_ref().and_then(|id| {
+            collaboration
+                .conversation_nodes
+                .iter()
+                .find(|node| node.id == *id)
+        }) {
+            if ui
+                .add_enabled(
+                    !self.collaboration.has_draft(),
+                    egui::Button::new("Select conversation properties"),
+                )
+                .clicked()
+                && self.commit_draft()
+            {
+                self.select(Some(node.id.selector()));
+            }
+            self.conversation_details_ui(ui, doc, collaboration, node, snap.generation);
+        }
         ui.separator();
         ui.strong("Conversation links");
         ui.checkbox(&mut self.collaboration.draw, "Add links to current diagram");
@@ -515,24 +763,57 @@ impl ProcessCraft {
             let participant = collaboration
                 .participants
                 .iter()
-                .find(|p| p.id == link.source || p.id == link.target)
+                .find(|p| {
+                    link.source.as_ref().is_some_and(|reference| {
+                        reference.matches_identity(
+                            &p.id,
+                            doc.definitions
+                                .as_ref()
+                                .map(|d| d.target_namespace.as_str()),
+                        )
+                    }) || link.target.as_ref().is_some_and(|reference| {
+                        reference.matches_identity(
+                            &p.id,
+                            doc.definitions
+                                .as_ref()
+                                .map(|d| d.target_namespace.as_str()),
+                        )
+                    })
+                })
                 .map_or("Unknown participant", |p| {
                     p.name.as_deref().unwrap_or("Unnamed")
                 });
             let node = collaboration
                 .conversation_nodes
                 .iter()
-                .find(|n| n.id == link.source || n.id == link.target)
+                .find(|n| {
+                    link.source.as_ref().is_some_and(|reference| {
+                        reference.matches_identity(
+                            &n.id,
+                            doc.definitions
+                                .as_ref()
+                                .map(|d| d.target_namespace.as_str()),
+                        )
+                    }) || link.target.as_ref().is_some_and(|reference| {
+                        reference.matches_identity(
+                            &n.id,
+                            doc.definitions
+                                .as_ref()
+                                .map(|d| d.target_namespace.as_str()),
+                        )
+                    })
+                })
                 .map_or("Unknown conversation", |n| {
                     n.name.as_deref().unwrap_or("Unnamed")
                 });
             ui.horizontal(|ui| {
                 ui.label(format!("{participant} / {node}"));
                 if !self.collaboration.has_draft() && ui.button("Delete link").clicked() {
-                    self.ctl.mutate(vec![Mutation::DeleteConversationLink {
-                        document_id: id,
-                        link_id: link.id.selector(),
-                    }]);
+                    let mut updated = collaboration.clone();
+                    updated
+                        .conversation_links
+                        .retain(|candidate| candidate.id != link.id);
+                    self.ctl.mutate(vec![update_root(doc, updated)]);
                 }
             });
         }
@@ -591,12 +872,24 @@ impl ProcessCraft {
                     }
                 }
             });
+        if self.collaboration.link_dirty && self.collaboration.link_generation.is_none() {
+            self.collaboration.link_generation = Some(snap.generation);
+        }
         if self.collaboration.link_dirty && ui.button("Discard link draft").clicked() {
             self.collaboration.link_participant = None;
             self.collaboration.link_conversation = None;
             self.collaboration.link_dirty = false;
+            self.collaboration.link_generation = None;
         }
         if ui.button("Create link").clicked() && !self.collaboration.dirty {
+            if self
+                .collaboration
+                .link_generation
+                .is_some_and(|generation| generation != self.ctl.session.snapshot().generation)
+            {
+                self.ctl.error = "The model changed while this draft was open. Discard it and reopen the editor.".into();
+                return;
+            }
             let (Some(participant), Some(node)) = (
                 self.collaboration.link_participant.clone(),
                 self.collaboration.link_conversation.clone(),
@@ -604,17 +897,20 @@ impl ProcessCraft {
                 self.ctl.error = "Select a participant and conversation.".into();
                 return;
             };
-            let link_id = controller::id("ConversationLink");
-            let mut mutations = vec![Mutation::CreateConversationLink {
-                document_id: id,
-                link: ConversationLink {
-                    base: None,
-                    id: link_id.clone().into(),
-                    name: Some(String::new()),
-                    source: participant.clone(),
-                    target: node.clone(),
-                },
-            }];
+            let link_id = processcraft_core::ids::ElementIdentity::anonymous();
+            let mut updated = collaboration.clone();
+            updated.conversation_links.push(ConversationLink {
+                base: None,
+                id: link_id.clone(),
+                name: Some(String::new()),
+                source: Some(processcraft_core::bpmn_activity::ModelReference::Local(
+                    participant.clone(),
+                )),
+                target: Some(processcraft_core::bpmn_activity::ModelReference::Local(
+                    node.clone(),
+                )),
+            });
+            let mut mutations = vec![update_root(doc, updated)];
             if self.collaboration.draw {
                 let Some(diagram) = doc.diagrams.iter().find(|d| {
                     self.diagram_id
@@ -634,11 +930,10 @@ impl ProcessCraft {
                     return;
                 };
                 if diagram.plane != collaboration.id {
-                    mutations.push(Mutation::SetDiagramPlane {
-                        document_id: id,
-                        diagram_id: diagram.id.selector(),
-                        plane: collaboration.id.selector(),
-                    });
+                    self.ctl.error =
+                        "Choose a diagram for this collaboration before adding a representation."
+                            .into();
+                    return;
                 }
                 mutations.push(Mutation::CreateEdge {
                     document_id: id,
@@ -650,7 +945,7 @@ impl ProcessCraft {
                         source_element: None,
                         target_element: None,
                         id: controller::id("ConversationEdge").into(),
-                        element: link_id.into(),
+                        element: link_id.selector(),
                         waypoints: vec![
                             Point {
                                 x: a.bounds.x + a.bounds.width / 2.0,
@@ -670,6 +965,7 @@ impl ProcessCraft {
                 self.collaboration.link_participant = None;
                 self.collaboration.link_conversation = None;
                 self.collaboration.link_dirty = false;
+                self.collaboration.link_generation = None;
             }
         }
     }
@@ -681,12 +977,12 @@ impl ProcessCraft {
             if let Some(scope) = scope { ui.label(format!("Scope: {}", if scope.name.is_empty() { "Unnamed scope" } else { scope.name })); }
             for store in &doc.data_stores {
                 ui.label(format!("Store: {}", store.name.as_deref().unwrap_or("Unnamed")))
-                    .on_hover_text(store.id.as_ref().map_or("No ID".into(), ToString::to_string));
+                    .on_hover_text(store.id.as_ref().and_then(|id| id.xml_id()).map_or_else(|| "No XML ID".into(), ToString::to_string));
             }
             if let Some(scope) = scope {
                 for object in scope.data_objects {
                     ui.label(format!("Object: {}", object.name.as_deref().unwrap_or("Unnamed")))
-                        .on_hover_text(object.id.as_ref().map_or("No ID".into(), ToString::to_string));
+                        .on_hover_text(object.id.as_ref().and_then(|id| id.xml_id()).map_or_else(|| "No XML ID".into(), ToString::to_string));
                 }
             }
             let label = ui.label("Definition name");
@@ -1086,15 +1382,24 @@ impl ProcessCraft {
                         .category_value_ref
                         .as_ref()
                         .and_then(|id| {
-                            doc.categories
-                                .iter()
-                                .flat_map(|c| &c.values)
-                                .find(|v| &v.id == id)
+                            doc.categories.iter().flat_map(|c| &c.values).find(|v| {
+                                id.matches_identity(
+                                    &v.id,
+                                    doc.definitions
+                                        .as_ref()
+                                        .map(|definitions| definitions.target_namespace.as_str()),
+                                )
+                            })
                         })
                         .and_then(|v| v.value.as_deref())
                         .unwrap_or("Uncategorised group");
                     ui.horizontal(|ui| {
-                        ui.label(value).on_hover_text(group.id.to_string());
+                        ui.label(value).on_hover_text(
+                            group
+                                .id
+                                .xml_id()
+                                .map_or_else(|| "No XML ID".into(), ToString::to_string),
+                        );
                         if !self.collaboration.has_draft() && ui.button("Delete group").clicked() {
                             self.ctl.mutate(vec![Mutation::DeleteGroup {
                                 document_id: doc.id,
@@ -1149,7 +1454,11 @@ impl ProcessCraft {
                                 group: processcraft_core::bpmn_model::Group {
                                     base: None,
                                     id: group_id.clone().into(),
-                                    category_value_ref: Some(value_id.into()),
+                                    category_value_ref: Some(
+                                        processcraft_core::bpmn_activity::ModelReference::Local(
+                                            value_id.into(),
+                                        ),
+                                    ),
                                 },
                             },
                         ];
@@ -1237,11 +1546,17 @@ impl ProcessCraft {
                         let first = controller::id("Participant");
                         let second = controller::id("Participant");
                         let choreography = processcraft_core::bpmn_collaboration::Choreography {
+                            extras: None,
+                            conversation_nodes: vec![],
+                            conversation_links: vec![],
+                            correlation_keys: vec![],
                             base: None,
                             id: root.clone().into(),
                             name: Some(self.collaboration.root_name.clone()),
                             participants: vec![
                                 Participant {
+                                    interface_refs: vec![],
+                                    endpoint_refs: vec![],
                                     multiplicity: None,
                                     base: None,
                                     id: first.clone().into(),
@@ -1249,6 +1564,8 @@ impl ProcessCraft {
                                     process: None,
                                 },
                                 Participant {
+                                    interface_refs: vec![],
+                                    endpoint_refs: vec![],
                                     multiplicity: None,
                                     base: None,
                                     id: second.clone().into(),
@@ -1377,7 +1694,12 @@ impl ProcessCraft {
             };
             for activity in &choreo.activities {
                 ui.label(activity.name.as_deref().unwrap_or("Unnamed"))
-                    .on_hover_text(activity.id.to_string());
+                    .on_hover_text(
+                        activity
+                            .id
+                            .xml_id()
+                            .map_or_else(|| "No XML ID".into(), ToString::to_string),
+                    );
             }
             let name_label = ui.label("Task name");
             if ui
@@ -1523,6 +1845,8 @@ mod tests {
         let mut app = ProcessCraft::default();
         let document_id = app.ctl.session.snapshot().project.documents[0].id;
         let participant = |id: &str| Participant {
+            interface_refs: vec![],
+            endpoint_refs: vec![],
             id: id.parse().unwrap(),
             name: Some(id.into()),
             base: None,
@@ -1532,8 +1856,12 @@ mod tests {
         let message = Flow {
             id: "MessageFlow".parse().unwrap(),
             kind: FlowKind::Message,
-            source: "Buyer".parse().unwrap(),
-            target: "Seller".parse().unwrap(),
+            source: Some(processcraft_core::bpmn_activity::ModelReference::Local(
+                "Buyer".parse().unwrap(),
+            )),
+            target: Some(processcraft_core::bpmn_activity::ModelReference::Local(
+                "Seller".parse().unwrap(),
+            )),
             name: None,
             documentation: String::new().into(),
             base_extras: None,
@@ -1543,6 +1871,10 @@ mod tests {
             message_ref: None,
         };
         let choreography = Choreography {
+            extras: None,
+            conversation_nodes: vec![],
+            conversation_links: vec![],
+            correlation_keys: vec![],
             id: "Choreography".parse().unwrap(),
             name: Some("Orders".into()),
             base: None,
@@ -1732,5 +2064,126 @@ mod tests {
         });
         output.textures_delta.clear();
         assert!(!app.collaboration.has_draft());
+    }
+}
+
+#[cfg(test)]
+mod collaboration_scope_tests {
+    use super::*;
+    use processcraft_core::bpmn_collaboration::{
+        Choreography, CollaborationExtras, CollaborationRootKind,
+    };
+    #[test]
+    fn inherited_choreography_update_preserves_own_graph_and_history() {
+        let mut app = ProcessCraft::default();
+        let document_id = app.ctl.session.snapshot().project.documents[0].id;
+        let choreography = Choreography {
+            id: "Choreography".parse().unwrap(),
+            name: None,
+            base: None,
+            extras: None,
+            conversation_nodes: vec![],
+            conversation_links: vec![],
+            correlation_keys: vec![],
+            participants: vec![],
+            message_flows: vec![],
+            activities: vec![],
+            sequence_flows: vec![],
+        };
+        assert!(app.ctl.mutate(vec![Mutation::CreateChoreography {
+            document_id,
+            choreography
+        }]));
+        let snapshot = app.ctl.session.snapshot();
+        let document = &snapshot.project.documents[0];
+        let mut root = choreography_view(&document.choreographies[0]);
+        root.name = Some("Distribution".into());
+        root.extras = Some(CollaborationExtras {
+            is_closed: Some(false),
+            ..Default::default()
+        });
+        assert!(app.ctl.mutate(vec![update_root(document, root)]));
+        let snapshot = app.ctl.session.snapshot();
+        let stored = &snapshot.project.documents[0].choreographies[0];
+        assert_eq!(stored.name.as_deref(), Some("Distribution"));
+        assert_eq!(stored.extras.as_ref().unwrap().is_closed, Some(false));
+        assert!(stored.activities.is_empty());
+        app.history(Request::Undo);
+        assert!(
+            app.ctl.session.snapshot().project.documents[0].choreographies[0]
+                .extras
+                .is_none()
+        );
+        app.history(Request::Redo);
+        assert_eq!(
+            app.ctl.session.snapshot().project.documents[0].choreographies[0]
+                .extras
+                .as_ref()
+                .unwrap()
+                .is_closed,
+            Some(false)
+        );
+    }
+    #[test]
+    fn global_collaboration_updates_the_selected_root_only() {
+        let mut app = ProcessCraft::default();
+        let document_id = app.ctl.session.snapshot().project.documents[0].id;
+        let make = |id: &str, kind| Collaboration {
+            kind,
+            extras: None,
+            correlation_keys: vec![],
+            base: None,
+            name: None,
+            id: id.parse().unwrap(),
+            participants: vec![],
+            flows: vec![],
+            conversation_nodes: vec![],
+            conversation_links: vec![],
+        };
+        assert!(app.ctl.mutate(vec![
+            Mutation::SetCollaborationRoot {
+                document_id,
+                collaboration: make("First", None)
+            },
+            Mutation::SetCollaborationRoot {
+                document_id,
+                collaboration: make("Second", Some(CollaborationRootKind::GlobalConversation))
+            }
+        ]));
+        let snapshot = app.ctl.session.snapshot();
+        let mut second = snapshot.project.documents[0].additional_collaborations[0].clone();
+        second.name = Some("Conversations".into());
+        assert!(app.ctl.mutate(vec![Mutation::SetCollaborationRoot {
+            document_id,
+            collaboration: second
+        }]));
+        let snapshot = app.ctl.session.snapshot();
+        assert!(
+            snapshot.project.documents[0]
+                .collaboration
+                .as_ref()
+                .unwrap()
+                .name
+                .is_none()
+        );
+        assert_eq!(
+            snapshot.project.documents[0].additional_collaborations[0]
+                .name
+                .as_deref(),
+            Some("Conversations")
+        );
+        app.history(Request::Undo);
+        assert!(
+            app.ctl.session.snapshot().project.documents[0].additional_collaborations[0]
+                .name
+                .is_none()
+        );
+        app.history(Request::Redo);
+        assert_eq!(
+            app.ctl.session.snapshot().project.documents[0].additional_collaborations[0]
+                .name
+                .as_deref(),
+            Some("Conversations")
+        );
     }
 }

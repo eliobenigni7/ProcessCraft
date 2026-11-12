@@ -172,6 +172,16 @@ pub struct BpmnDocument {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub definitions: Option<DefinitionsMetadata>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub additional_collaborations: Vec<Collaboration>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub partner_entities: Vec<crate::bpmn_collaboration::PartnerEntity>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub partner_roles: Vec<crate::bpmn_collaboration::PartnerRole>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub endpoints: Vec<crate::bpmn_collaboration::EndPoint>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub root_order: Option<Vec<crate::ids::ElementSelector>>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub global_tasks: Vec<crate::bpmn_activity::GlobalTask>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub correlation_properties: Vec<crate::bpmn_activity::CorrelationProperty>,
@@ -201,6 +211,154 @@ pub struct BpmnDocument {
     pub capability: Capability,
 }
 impl BpmnDocument {
+    /// All collaboration roots; the legacy first root retains its existing wire field.
+    pub fn collaborations(&self) -> impl Iterator<Item = &Collaboration> {
+        self.collaboration
+            .iter()
+            .chain(&self.additional_collaborations)
+    }
+    /// Modeled rootElement identities in stable family order. None preserves legacy anonymous roots.
+    pub fn root_element_identities(&self) -> Vec<Option<&crate::ids::ElementIdentity>> {
+        use crate::bpmn_model::EventResource;
+        let mut roots = Vec::new();
+        roots.extend(self.catalog.item_definitions.iter().map(|v| v.id.as_ref()));
+        roots.extend(self.catalog.interfaces.iter().map(|v| v.id.as_ref()));
+        roots.extend(self.catalog.resources.iter().map(|v| v.id.as_ref()));
+        roots.extend(self.global_tasks.iter().map(|v| v.id.as_ref()));
+        roots.extend(self.correlation_properties.iter().map(|v| v.id.as_ref()));
+        roots.extend(self.categories.iter().map(|v| Some(&v.id)));
+        roots.extend(self.data_stores.iter().map(|v| v.id.as_ref()));
+        roots.extend(self.event_resources.iter().map(|v| {
+            Some(match v {
+                EventResource::Signal { id, .. }
+                | EventResource::Message { id, .. }
+                | EventResource::Error { id, .. }
+                | EventResource::Escalation { id, .. } => id,
+            })
+        }));
+        roots.extend(self.root_event_definitions.iter().map(|v| v.id()));
+        roots.extend(self.partner_entities.iter().map(|v| v.id.as_ref()));
+        roots.extend(self.partner_roles.iter().map(|v| v.id.as_ref()));
+        roots.extend(self.endpoints.iter().map(|v| v.id.as_ref()));
+        roots.extend(self.choreographies.iter().map(|v| Some(&v.id)));
+        roots.extend(self.collaboration.iter().map(|v| Some(&v.id)));
+        roots.extend(self.additional_collaborations.iter().map(|v| Some(&v.id)));
+        roots.extend(self.processes.iter().map(|v| Some(&v.id)));
+        roots
+    }
+    /// Visit optional root identities and their JSON-pointer paths for explicit promotion.
+    /// Paths are transient and must never serve as persisted identities.
+    pub fn visit_optional_root_identities_with_path_mut(
+        &mut self,
+        mut visit: impl FnMut(&str, &mut Option<crate::ids::ElementIdentity>),
+    ) {
+        for (i, v) in self.catalog.item_definitions.iter_mut().enumerate() {
+            visit(&format!("/catalog/item_definitions/{i}/id"), &mut v.id);
+        }
+        for (i, v) in self.catalog.interfaces.iter_mut().enumerate() {
+            visit(&format!("/catalog/interfaces/{i}/id"), &mut v.id);
+        }
+        for (i, v) in self.catalog.resources.iter_mut().enumerate() {
+            visit(&format!("/catalog/resources/{i}/id"), &mut v.id);
+        }
+        for (i, v) in self.root_event_definitions.iter_mut().enumerate() {
+            match v {
+                crate::bpmn_model::EventDefinition::Message { id, .. }
+                | crate::bpmn_model::EventDefinition::Signal { id, .. }
+                | crate::bpmn_model::EventDefinition::Error { id, .. }
+                | crate::bpmn_model::EventDefinition::Escalation { id, .. }
+                | crate::bpmn_model::EventDefinition::Conditional { id, .. }
+                | crate::bpmn_model::EventDefinition::Link { id, .. }
+                | crate::bpmn_model::EventDefinition::Cancel { id, .. }
+                | crate::bpmn_model::EventDefinition::Compensate { id, .. }
+                | crate::bpmn_model::EventDefinition::Terminate { id, .. }
+                | crate::bpmn_model::EventDefinition::Timer { id, .. } => {
+                    visit(&format!("/root_event_definitions/{i}/id"), id)
+                }
+            }
+        }
+        for (i, v) in self.data_stores.iter_mut().enumerate() {
+            visit(&format!("/data_stores/{i}/id"), &mut v.id);
+        }
+        for (i, v) in self.global_tasks.iter_mut().enumerate() {
+            visit(&format!("/global_tasks/{i}/id"), &mut v.id);
+        }
+        for (i, v) in self.correlation_properties.iter_mut().enumerate() {
+            visit(&format!("/correlation_properties/{i}/id"), &mut v.id);
+        }
+        for (i, v) in self.partner_entities.iter_mut().enumerate() {
+            visit(&format!("/partner_entities/{i}/id"), &mut v.id);
+        }
+        for (i, v) in self.partner_roles.iter_mut().enumerate() {
+            visit(&format!("/partner_roles/{i}/id"), &mut v.id);
+        }
+        for (i, v) in self.endpoints.iter_mut().enumerate() {
+            visit(&format!("/endpoints/{i}/id"), &mut v.id);
+        }
+    }
+    pub fn visit_optional_root_identities_mut(
+        &mut self,
+        mut visit: impl FnMut(&mut Option<crate::ids::ElementIdentity>),
+    ) {
+        self.visit_optional_root_identities_with_path_mut(|_, id| visit(id));
+    }
+    /// Wire features requiring a collaboration-aware native reader.
+    pub fn has_expanded_collaboration(&self) -> bool {
+        use crate::bpmn_activity::ModelReference;
+        let expanded = |r: &Option<ModelReference>| !matches!(r, Some(ModelReference::Local(_)));
+        let changed_flow = |f: &Flow| expanded(&f.source) || expanded(&f.target);
+        let participant = |p: &Participant| {
+            p.process
+                .as_ref()
+                .is_some_and(|r| matches!(r, ModelReference::Qualified(_)))
+                || !p.interface_refs.is_empty()
+                || !p.endpoint_refs.is_empty()
+        };
+        let conversation = |n: &crate::bpmn_collaboration::ConversationNode| {
+            n.call.is_some()
+                || matches!(
+                    n.kind,
+                    crate::bpmn_collaboration::ConversationKind::CallConversation
+                )
+                || !n.message_flow_refs.is_empty()
+                || n.participant_refs
+                    .iter()
+                    .any(|r| matches!(r, ModelReference::Qualified(_)))
+        };
+        let link = |l: &crate::bpmn_collaboration::ConversationLink| {
+            expanded(&l.source) || expanded(&l.target)
+        };
+        self.root_order.is_some()
+            || !self.additional_collaborations.is_empty()
+            || !self.partner_entities.is_empty()
+            || !self.partner_roles.is_empty()
+            || !self.endpoints.is_empty()
+            || self.collaboration.iter().any(|c| {
+                c.kind.is_some()
+                    || c.extras.is_some()
+                    || c.participants.iter().any(participant)
+                    || c.flows.iter().any(changed_flow)
+                    || c.conversation_nodes.iter().any(conversation)
+                    || c.conversation_links.iter().any(link)
+            })
+            || self.choreographies.iter().any(|c| {
+                c.extras.is_some()
+                    || !c.conversation_nodes.is_empty()
+                    || !c.conversation_links.is_empty()
+                    || !c.correlation_keys.is_empty()
+                    || c.participants.iter().any(participant)
+                    || c.message_flows
+                        .iter()
+                        .chain(&c.sequence_flows)
+                        .any(changed_flow)
+            })
+            || crate::queries::scopes(self).iter().any(|scope| {
+                scope.flows.iter().any(changed_flow)
+                    || scope.groups.iter().any(|group| {
+                        matches!(group.category_value_ref, Some(ModelReference::Qualified(_)))
+                    })
+            })
+    }
     /// All modeled semantic and diagram identities, including optional child IDs.
     pub fn element_identities(&self) -> Vec<&crate::ids::ElementIdentity> {
         use crate::bpmn_model::{EventDefinition, EventResource, Expression, NodeDetails};
@@ -220,6 +378,20 @@ impl BpmnDocument {
             }
         }
         let mut out = vec![&self.definitions_id];
+        let collaboration = crate::collaboration_read::collaboration_read(self);
+        out.extend(collaboration.ids);
+        for docs in collaboration.docs {
+            if let crate::bpmn_metadata::DocumentationSet::Structured(docs) = docs {
+                for doc in docs {
+                    out.extend(doc.id.iter());
+                }
+            }
+        }
+        for base in collaboration.bases {
+            for documentation in &base.documentation {
+                out.extend(documentation.id.iter());
+            }
+        }
         let activity = crate::activity_read::activity_read(self);
         out.extend(activity.ids);
         for base in activity.bases {
@@ -488,7 +660,7 @@ impl BpmnDocument {
     }
     /// Features requiring a DI/choreography-aware native reader.
     pub fn has_di_choreography_features(&self) -> bool {
-        self.collaboration.as_ref().is_some_and(|c| {
+        self.collaborations().any(|c| {
             c.participants.iter().any(|p| p.multiplicity.is_some())
                 || c.flows.iter().any(|f| f.message_ref.is_some())
         }) || self.choreographies.iter().any(|c| {
@@ -526,7 +698,7 @@ impl BpmnDocument {
                     Some(DiReference::Qualified(_))
                 )
             })
-        }) || self.collaboration.as_ref().is_some_and(|c| {
+        }) || self.collaborations().any(|c| {
             c.flows.iter().any(|f| {
                 matches!(
                     f.message_ref,
@@ -557,6 +729,14 @@ impl BpmnDocument {
     }
     pub fn has_native_identity_features(&self) -> bool {
         use crate::ids::ElementIdentity;
+        if self
+            .root_order
+            .as_ref()
+            .is_some_and(|order| order.iter().any(|id| id.is_native()))
+            || self.has_collaboration_native_refs()
+        {
+            return true;
+        }
         if crate::activity_read::activity_read(self).native_references {
             return true;
         }
@@ -586,8 +766,8 @@ impl BpmnDocument {
                 l.parent.as_ref().is_some_and(|r| r.is_native())
                     || l.members.iter().any(|r| r.is_native())
             }) || scope.flows.iter().any(|f| {
-                f.source.is_native()
-                    || f.target.is_native()
+                f.source.as_ref().is_some_and(|r| r.is_native())
+                    || f.target.as_ref().is_some_and(|r| r.is_native())
                     || f.message_ref.as_ref().is_some_and(|r| r.is_native())
             }) || scope.data_associations.iter().any(|a| {
                 a.owner.is_native()
@@ -749,22 +929,23 @@ impl BpmnDocument {
         {
             return true;
         }
-        if self.collaboration.as_ref().is_some_and(|c| {
+        if self.collaborations().any(|c| {
             c.participants
                 .iter()
                 .any(|p| p.process.as_ref().is_some_and(|r| r.is_native()))
                 || c.flows.iter().any(|f| {
-                    f.source.is_native()
-                        || f.target.is_native()
+                    f.source.as_ref().is_some_and(|r| r.is_native())
+                        || f.target.as_ref().is_some_and(|r| r.is_native())
                         || f.message_ref.as_ref().is_some_and(|r| r.is_native())
                 })
                 || c.conversation_nodes.iter().any(|n| {
                     n.parent.as_ref().is_some_and(|r| r.is_native())
                         || n.participant_refs.iter().any(|r| r.is_native())
                 })
-                || c.conversation_links
-                    .iter()
-                    .any(|l| l.source.is_native() || l.target.is_native())
+                || c.conversation_links.iter().any(|l| {
+                    l.source.as_ref().is_some_and(|r| r.is_native())
+                        || l.target.as_ref().is_some_and(|r| r.is_native())
+                })
         }) {
             return true;
         }
@@ -773,8 +954,8 @@ impl BpmnDocument {
                 .iter()
                 .any(|p| p.process.as_ref().is_some_and(|r| r.is_native()))
                 || c.message_flows.iter().chain(&c.sequence_flows).any(|f| {
-                    f.source.is_native()
-                        || f.target.is_native()
+                    f.source.as_ref().is_some_and(|r| r.is_native())
+                        || f.target.as_ref().is_some_and(|r| r.is_native())
                         || f.message_ref.as_ref().is_some_and(|r| r.is_native())
                 })
                 || c.activities.iter().any(|a| {
@@ -799,7 +980,7 @@ impl BpmnDocument {
         }) {
             return true;
         }
-        if self.collaboration.as_ref().is_some_and(|c| {
+        if self.collaborations().any(|c| {
             c.name.is_some()
                 || c.participants.iter().any(|p| p.name.is_none())
                 || c.flows.iter().any(|f| f.name.is_none())
@@ -831,6 +1012,11 @@ impl BpmnDocument {
             folder: None,
             definitions_id,
             definitions: None,
+            additional_collaborations: vec![],
+            partner_entities: vec![],
+            partner_roles: vec![],
+            endpoints: vec![],
+            root_order: None,
             global_tasks: vec![],
             correlation_properties: vec![],
             extensions: vec![],
@@ -929,6 +1115,7 @@ impl BpmnDocument {
                     .filter_map(|f| f.condition.as_ref()),
             );
         }
+        result.extend(crate::collaboration_read::collaboration_read(self).expressions);
         result.extend(crate::activity_read::activity_read(self).expressions);
         result
     }
@@ -1352,6 +1539,10 @@ pub struct Lane {
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Collaboration {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<crate::bpmn_collaboration::CollaborationRootKind>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extras: Option<crate::bpmn_collaboration::CollaborationExtras>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub correlation_keys: Vec<crate::bpmn_activity::CorrelationKey>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1370,6 +1561,10 @@ pub struct Collaboration {
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Participant {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub interface_refs: Vec<crate::bpmn_activity::ModelReference>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub endpoint_refs: Vec<crate::bpmn_activity::ModelReference>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub multiplicity: Option<ParticipantMultiplicity>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1377,7 +1572,7 @@ pub struct Participant {
 
     pub id: crate::ids::ElementIdentity,
     pub name: Option<String>,
-    pub process: Option<crate::ids::ElementSelector>,
+    pub process: Option<crate::bpmn_activity::ModelReference>,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -1390,8 +1585,8 @@ pub struct Flow {
     pub association_direction: Option<crate::bpmn_model::AssociationDirection>,
     pub id: crate::ids::ElementIdentity,
     pub kind: FlowKind,
-    pub source: crate::ids::ElementSelector,
-    pub target: crate::ids::ElementSelector,
+    pub source: Option<crate::bpmn_activity::ModelReference>,
+    pub target: Option<crate::bpmn_activity::ModelReference>,
     pub name: Option<String>,
     pub documentation: crate::bpmn_metadata::DocumentationSet,
     #[serde(default, skip_serializing_if = "Option::is_none")]

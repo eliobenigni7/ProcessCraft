@@ -94,8 +94,8 @@ fn flow(d: &mut BpmnDocument, name: &str, a: &str, b: &str) {
         association_direction: None,
         id: id(name),
         kind: FlowKind::Sequence,
-        source: id(a),
-        target: id(b),
+        source: Some(processcraft_core::bpmn_model::EventReference::Local(id(a))),
+        target: Some(processcraft_core::bpmn_model::EventReference::Local(id(b))),
         name: Some(String::new()),
         documentation: String::new().into(),
         condition: None,
@@ -166,6 +166,25 @@ fn cancellation_and_unsupported_leave_document_unchanged() {
     assert_eq!(before, serde_json::to_vec(&d).unwrap());
     d.processes[0].nodes[0].kind = NodeKind::TextAnnotation;
     assert!(propose_layout(&d, &id("diagram"), "s", 0, &AtomicBool::new(false)).is_err());
+}
+#[test]
+fn layout_refuses_missing_or_external_sequence_endpoints_without_mutation() {
+    let mut doc = fixture();
+    flow(&mut doc, "ab", "a", "b");
+    doc.processes[0].flows[0].target = None;
+    let before = serde_json::to_vec(&doc).unwrap();
+    assert!(propose_layout(&doc, &id("diagram"), "s", 0, &AtomicBool::new(false)).is_err());
+    assert_eq!(before, serde_json::to_vec(&doc).unwrap());
+    doc.processes[0].flows[0].target =
+        Some(processcraft_core::bpmn_model::EventReference::Qualified(
+            processcraft_core::bpmn_model::QNameRef {
+                namespace: "urn:foreign".into(),
+                local: id("b"),
+            },
+        ));
+    let before = serde_json::to_vec(&doc).unwrap();
+    assert!(propose_layout(&doc, &id("diagram"), "s", 0, &AtomicBool::new(false)).is_err());
+    assert_eq!(before, serde_json::to_vec(&doc).unwrap());
 }
 #[test]
 fn cycles_and_self_loops_are_bounded() {
@@ -486,6 +505,8 @@ fn one_pool_contains_lanes_and_unlaned_band() {
         members: vec![id("a")],
     });
     d.collaboration = Some(Collaboration {
+        kind: None,
+        extras: None,
         correlation_keys: vec![],
         base: None,
         name: None,
@@ -493,11 +514,15 @@ fn one_pool_contains_lanes_and_unlaned_band() {
         conversation_nodes: vec![],
         conversation_links: vec![],
         participants: vec![Participant {
+            interface_refs: vec![],
+            endpoint_refs: vec![],
             multiplicity: None,
             base: None,
             id: id("pool"),
             name: Some(String::new()),
-            process: Some(id("p")),
+            process: Some(processcraft_core::bpmn_model::EventReference::Local(id(
+                "p",
+            ))),
         }],
         flows: vec![],
     });

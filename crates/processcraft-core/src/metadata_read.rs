@@ -261,7 +261,14 @@ impl BpmnDocument {
         use crate::bpmn_metadata::DocumentationSet;
         use crate::bpmn_model::{Expression, ExpressionBody, NodeDetails};
         use crate::bpmn_xml::MixedXml;
-        let mut found = !crate::activity_read::activity_read(self).bases.is_empty();
+        let collaboration = crate::collaboration_read::collaboration_read(self);
+        let mut found = !crate::activity_read::activity_read(self).bases.is_empty()
+            || !collaboration.bases.is_empty()
+            || !collaboration.extras.is_empty()
+            || collaboration
+                .docs
+                .iter()
+                .any(|docs| matches!(docs, DocumentationSet::Structured(_)));
         found |= self.global_tasks.iter().any(|task| {
             matches!(
                 &task.kind,
@@ -363,6 +370,31 @@ impl BpmnDocument {
                             .is_some_and(|label| opaque(&label.di_metadata))
                 })
         });
+        let collaboration = crate::collaboration_read::collaboration_read(self);
+        for body in collaboration.bodies {
+            found |= opaque_body(body);
+        }
+        for base in collaboration.bases {
+            found |= !base.foreign_attributes.is_empty()
+                || base
+                    .extension_elements
+                    .as_ref()
+                    .is_some_and(|e| opaque_content(&e.content))
+                || base
+                    .documentation
+                    .iter()
+                    .any(|doc| opaque_body(&doc.content));
+        }
+        for extras in collaboration.extras {
+            found |= !extras.foreign_attributes.is_empty()
+                || extras
+                    .extension_elements
+                    .as_ref()
+                    .is_some_and(|e| opaque_content(&e.content));
+        }
+        for docs in collaboration.docs {
+            found |= matches!(docs, DocumentationSet::Structured(docs) if docs.iter().any(|doc| opaque_body(&doc.content)));
+        }
         for base in crate::activity_read::activity_read(self).bases {
             found |= !base.foreign_attributes.is_empty()
                 || base
@@ -460,6 +492,20 @@ impl BpmnDocument {
                 });
             }
         });
+        let collaboration = crate::collaboration_read::collaboration_read(self);
+        for (owner, base) in collaboration.base_owners {
+            if owner == selector {
+                result = Some(OwnerMetadata::Base(base.clone()));
+            }
+        }
+        for (owner, documentation, extras) in collaboration.legacy_owners {
+            if owner == selector {
+                result = Some(OwnerMetadata::Legacy {
+                    documentation: documentation.clone(),
+                    extras: extras.clone(),
+                });
+            }
+        }
         result
     }
 }
@@ -584,6 +630,56 @@ mod tests {
             }
         });
         assert_eq!(removed, 5);
+        assert!(!doc.has_semantic_common_metadata_features());
+    }
+    #[test]
+    fn additional_collaboration_metadata_visit_is_symmetric() {
+        use crate::bpmn_collaboration::*;
+        let mut doc = BpmnDocument::new("d".into(), "defs".parse().unwrap());
+        doc.partner_entities.push(PartnerEntity {
+            id: Some("partner".parse().unwrap()),
+            base: Some(BaseMetadata::default()),
+            name: None,
+            participant_refs: vec![],
+        });
+        doc.additional_collaborations.push(Collaboration {
+            id: "collab".parse().unwrap(),
+            name: None,
+            base: Some(BaseMetadata::default()),
+            kind: Some(CollaborationRootKind::GlobalConversation),
+            extras: None,
+            correlation_keys: vec![],
+            participants: vec![],
+            flows: vec![],
+            conversation_links: vec![],
+            conversation_nodes: vec![ConversationNode {
+                id: "conversation".parse().unwrap(),
+                base: Some(BaseMetadata::default()),
+                name: None,
+                kind: ConversationKind::CallConversation,
+                parent: None,
+                participant_refs: vec![],
+                message_flow_refs: vec![],
+                correlation_keys: vec![],
+                call: Some(CallConversationData {
+                    called_collaboration_ref: None,
+                    participant_associations: vec![ParticipantAssociation {
+                        id: None,
+                        base: Some(BaseMetadata::default()),
+                        inner: None,
+                        outer: None,
+                    }],
+                }),
+            }],
+        });
+        assert!(doc.has_semantic_common_metadata_features());
+        let mut removed = 0;
+        crate::metadata_visit::visit_base_metadata_mut(&mut doc, |_, base| {
+            if base.take().is_some() {
+                removed += 1
+            }
+        });
+        assert_eq!(removed, 4);
         assert!(!doc.has_semantic_common_metadata_features());
     }
 }

@@ -965,7 +965,9 @@ impl ProcessCraft {
                 association_direction: None,
                 id: new_flow_id.clone().into(),
                 kind: FlowKind::Sequence,
-                source: node_id.clone().into(),
+                source: Some(processcraft_core::bpmn_activity::ModelReference::Local(
+                    node_id.clone().into(),
+                )),
                 target: flow.target.clone(),
                 name: Some(String::new()),
                 documentation: String::new().into(),
@@ -1340,8 +1342,12 @@ mod tests {
             association_direction: None,
             id: flow.clone().into(),
             kind: FlowKind::Sequence,
-            source: node.clone().into(),
-            target: target.clone().into(),
+            source: Some(processcraft_core::bpmn_activity::ModelReference::Local(
+                node.clone().into(),
+            )),
+            target: Some(processcraft_core::bpmn_activity::ModelReference::Local(
+                target.clone().into(),
+            )),
             name: Some(String::new()),
             documentation: String::new().into(),
             condition: None,

@@ -233,6 +233,116 @@ fn activity_commands_use_real_stdio_pages_and_exact_history() {
             expected["result"]["structuredContent"]["contentId"]
         );
     }
+    assert!(apply["inputSchema"]["$defs"]["PartnerEntity"].is_object());
+    assert!(apply["inputSchema"]["$defs"]["Flow"]["properties"]["source"]["anyOf"].is_array());
+    // The earlier DI fixture deliberately contains opaque foreign metadata.
+    // Exercise independent root authoring in a new document, retaining its guard.
+    let root_document =
+        BpmnDocument::new("Collaboration draft".into(), ElementIdentity::anonymous());
+    let root_document_id = root_document.id;
+    let collaboration = ElementIdentity::anonymous();
+    let message_flow = ElementIdentity::anonymous();
+    let expanded = call(envelope(
+        4000,
+        "collaboration-draft",
+        8,
+        json!({
+            "type":"batch","mutations":[
+                {"type":"createDocument","document":root_document},
+                {"type":"setCollaborationRoot","document_id":root_document_id,"collaboration":{
+                    "id":collaboration,"name":"Reusable conversation","kind":"GlobalConversation",
+                    "participants":[],"flows":[{"id":message_flow,"kind":"Message",
+                        "source":null,"target":{"namespace":"urn:external","local":"Actor"},
+                        "name":null,"documentation":"","condition":null}],
+                    "conversation_nodes":[],"conversation_links":[]
+                }},
+                {"type":"setPartnerCatalog","document_id":root_document_id,
+                    "partner_entities":[{"id":null,"base":null,"name":"Customers","participant_refs":[]}],
+                    "partner_roles":[],"endpoints":[]}
+            ]
+        }),
+    ));
+    assert_eq!(
+        expanded["result"]["structuredContent"]["ok"], true,
+        "{expanded}"
+    );
+    let before_order = call(inspect(4001));
+    let initialized = call(envelope(
+        4002,
+        "initialize-roots",
+        9,
+        json!({
+            "type":"batch","mutations":[{"type":"initializeDocumentRootOrder","document_id":root_document_id}]
+        }),
+    ));
+    assert_eq!(
+        initialized["result"]["structuredContent"]["ok"], true,
+        "{initialized}"
+    );
+    let after_order = call(inspect(4003));
+    let mut fields = std::collections::BTreeMap::new();
+    let mut offset = 0;
+    loop {
+        let response = call(
+            json!({"jsonrpc":"2.0","id":4100+offset,"method":"tools/call",
+            "params":{"name":"query","arguments":{"kind":"model","document_id":root_document_id,
+                "offset":offset,"limit":7}}}),
+        );
+        let page = &response["result"]["structuredContent"];
+        assert_eq!(page["generation"], 10);
+        assert_eq!(
+            page["contentId"],
+            after_order["result"]["structuredContent"]["contentId"]
+        );
+        let items = page["items"].as_array().unwrap();
+        assert!(items.len() <= 7);
+        for row in items {
+            assert!(
+                fields
+                    .insert(
+                        row["path"].as_str().unwrap().to_owned(),
+                        row["value"].clone()
+                    )
+                    .is_none()
+            );
+        }
+        if let Some(next) = page["nextOffset"].as_u64() {
+            assert!(next as usize > offset);
+            offset = next as usize;
+        } else {
+            assert_eq!(page["total"], fields.len());
+            break;
+        }
+    }
+    let promoted = &fields["/partner_entities/0/id/native_id"];
+    assert!(promoted.is_string());
+    assert_eq!(fields["/partner_entities/0/id/xml_id"], Value::Null);
+    assert_eq!(fields["/collaboration/flows/0/source"], Value::Null);
+    assert_eq!(
+        fields["/collaboration/flows/0/target/namespace"],
+        "urn:external"
+    );
+    assert!(
+        fields
+            .iter()
+            .any(|(path, value)| path.starts_with("/root_order/") && value == promoted)
+    );
+    for (id, generation, kind, expected) in [
+        (5000, 10, "undo", before_order),
+        (5002, 11, "redo", after_order),
+    ] {
+        let response = call(envelope(
+            id,
+            &format!("{kind}-root-order"),
+            generation,
+            json!({"type":kind}),
+        ));
+        assert_eq!(response["result"]["structuredContent"]["ok"], true);
+        assert_eq!(
+            call(inspect(id + 1))["result"]["structuredContent"]["contentId"],
+            expected["result"]["structuredContent"]["contentId"]
+        );
+    }
 }
 
 #[test]

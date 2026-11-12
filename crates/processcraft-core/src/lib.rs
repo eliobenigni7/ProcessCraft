@@ -7,6 +7,7 @@ pub mod metadata_read;
 pub mod metadata_visit;
 pub mod model;
 pub mod queries;
+pub mod reference_resolution;
 pub use ids::{DictionaryEntryId, DocumentId, InvalidId, ProjectId};
 
 pub mod commands;
@@ -30,4 +31,6 @@ pub mod bpmn_collaboration;
 pub mod bpmn_data;
 
 mod activity_read;
+mod base_identity;
 pub mod bpmn_activity;
+mod collaboration_read;

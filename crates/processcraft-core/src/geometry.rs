@@ -611,18 +611,59 @@ pub fn prepare_move(
         ));
     }
     let scopes = crate::queries::scopes(document);
+    let references = crate::reference_resolution::ReferenceIndex::new(document);
+    let resolve = |reference: &Option<crate::bpmn_activity::ModelReference>| {
+        reference
+            .as_ref()
+            .and_then(|reference| match references.resolve(reference) {
+                crate::reference_resolution::ReferenceResolution::Resolved(id) => Some(id),
+                _ => None,
+            })
+    };
+    let artifact_flows: Vec<_> = document
+        .collaboration
+        .iter()
+        .chain(&document.additional_collaborations)
+        .filter_map(|c| c.extras.as_ref())
+        .chain(
+            document
+                .choreographies
+                .iter()
+                .filter_map(|c| c.extras.as_ref()),
+        )
+        .flat_map(|extras| extras.artifacts.iter())
+        .filter_map(|artifact| match artifact {
+            crate::bpmn_collaboration::CollaborationArtifact::Association(flow) => {
+                Some(flow.as_ref())
+            }
+            _ => None,
+        })
+        .collect();
     // Normalize the qualified binary edge families to their visible endpoints.
     let mut connections: Vec<(ElementSelector, ElementSelector, ElementSelector)> = scopes
         .iter()
         .flat_map(|scope| scope.flows.iter())
-        .chain(document.collaboration.iter().flat_map(|c| c.flows.iter()))
+        .chain(
+            document
+                .collaboration
+                .iter()
+                .chain(&document.additional_collaborations)
+                .flat_map(|c| c.flows.iter()),
+        )
         .chain(
             document
                 .choreographies
                 .iter()
                 .flat_map(|c| c.sequence_flows.iter().chain(c.message_flows.iter())),
         )
-        .map(|flow| (flow.id.selector(), flow.source.clone(), flow.target.clone()))
+        .chain(artifact_flows.iter().copied())
+        .filter_map(|flow| {
+            Some((
+                flow.id.selector(),
+                resolve(&flow.source)?,
+                resolve(&flow.target)?,
+            ))
+        })
         .collect();
     for scope in &scopes {
         for association in scope.data_associations {
@@ -720,14 +761,80 @@ pub fn prepare_move(
             connections.push((association_id.selector(), source.clone(), target.clone()));
         }
     }
-    if let Some(collaboration) = &document.collaboration {
-        connections.extend(
-            collaboration
-                .conversation_links
-                .iter()
-                .map(|link| (link.id.selector(), link.source.clone(), link.target.clone())),
-        );
+    for collaboration in document
+        .collaboration
+        .iter()
+        .chain(&document.additional_collaborations)
+    {
+        connections.extend(collaboration.conversation_links.iter().filter_map(|link| {
+            Some((
+                link.id.selector(),
+                resolve(&link.source)?,
+                resolve(&link.target)?,
+            ))
+        }));
     }
+    for choreography in &document.choreographies {
+        connections.extend(choreography.conversation_links.iter().filter_map(|link| {
+            Some((
+                link.id.selector(),
+                resolve(&link.source)?,
+                resolve(&link.target)?,
+            ))
+        }));
+    }
+    let partial_connections: Vec<_> = scopes
+        .iter()
+        .flat_map(|scope| scope.flows.iter())
+        .chain(
+            document
+                .collaboration
+                .iter()
+                .chain(&document.additional_collaborations)
+                .flat_map(|c| c.flows.iter()),
+        )
+        .chain(
+            document
+                .choreographies
+                .iter()
+                .flat_map(|c| c.sequence_flows.iter().chain(c.message_flows.iter())),
+        )
+        .chain(artifact_flows.iter().copied())
+        .map(|flow| {
+            (
+                flow.id.selector(),
+                resolve(&flow.source),
+                resolve(&flow.target),
+            )
+        })
+        .chain(
+            document
+                .collaboration
+                .iter()
+                .chain(&document.additional_collaborations)
+                .flat_map(|c| c.conversation_links.iter())
+                .map(|link| {
+                    (
+                        link.id.selector(),
+                        resolve(&link.source),
+                        resolve(&link.target),
+                    )
+                }),
+        )
+        .chain(
+            document
+                .choreographies
+                .iter()
+                .flat_map(|c| c.conversation_links.iter())
+                .map(|link| {
+                    (
+                        link.id.selector(),
+                        resolve(&link.source),
+                        resolve(&link.target),
+                    )
+                }),
+        )
+        .collect();
     let mut routes: Vec<(ElementSelector, ElementSelector, Vec<Point>)> = Vec::new();
     let mut label_moves = Vec::new();
     let mut warnings = Vec::new();
@@ -738,7 +845,38 @@ pub fn prepare_move(
     for edge in &diagram.edges {
         let Some((_, source, target)) = connections.iter().find(|(id, _, _)| *id == edge.element)
         else {
-            return Err("cannot repair dependent edge with unsupported semantics");
+            // Preserve unrelated incomplete/external edges. Explicitly attached
+            // moved DI shapes require a route we cannot resolve safely.
+            let Some((_, partial_source, partial_target)) = partial_connections
+                .iter()
+                .find(|(id, _, _)| id == &edge.element)
+            else {
+                return Err("cannot repair dependent edge with unsupported semantics");
+            };
+            let known_endpoint_moved = {
+                let (source, target) = (partial_source, partial_target);
+                [source.as_ref(), target.as_ref()]
+                    .into_iter()
+                    .flatten()
+                    .any(|semantic| {
+                        moved
+                            .iter()
+                            .any(|(_, id, dx, dy)| *id == semantic && (*dx != 0.0 || *dy != 0.0))
+                    })
+            };
+            if known_endpoint_moved
+                || [edge.source_element.as_ref(), edge.target_element.as_ref()]
+                    .into_iter()
+                    .flatten()
+                    .any(|rep| {
+                        moved
+                            .iter()
+                            .any(|(id, _, dx, dy)| *id == rep && (*dx != 0.0 || *dy != 0.0))
+                    })
+            {
+                return Err("cannot repair dependent edge with unresolved semantics");
+            }
+            continue;
         };
         let moved_endpoint =
             |semantic: &ElementSelector, representation: Option<&ElementSelector>| {
@@ -937,23 +1075,27 @@ pub fn prepare_move(
                     }
                     false
                 };
-                let contains =
-                    |target: &ElementSelector| {
-                        is_scope_ancestor(&s.element, target)
-                            || scopes.iter().any(|scope| {
-                                scope.lanes.iter().any(|lane| {
-                                    lane.id == s.element && lane.members.contains(target)
-                                })
-                            })
-                            || document.collaboration.as_ref().is_some_and(|c| {
+                let contains = |target: &ElementSelector| {
+                    is_scope_ancestor(&s.element, target)
+                        || scopes.iter().any(|scope| {
+                            scope
+                                .lanes
+                                .iter()
+                                .any(|lane| lane.id == s.element && lane.members.contains(target))
+                        })
+                        || document
+                            .collaboration
+                            .iter()
+                            .chain(&document.additional_collaborations)
+                            .any(|c| {
                                 c.participants.iter().any(|participant| {
                                     participant.id == s.element
-                                        && participant.process.as_ref().is_some_and(|process| {
-                                            is_scope_ancestor(process, target)
+                                        && resolve(&participant.process).is_some_and(|process| {
+                                            is_scope_ancestor(&process, target)
                                         })
                                 })
                             })
-                    };
+                };
                 let owns_port = |target: &ElementSelector| {
                     scopes
                         .iter()

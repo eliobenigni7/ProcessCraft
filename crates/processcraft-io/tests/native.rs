@@ -18,6 +18,161 @@ fn project() -> ProjectData {
     ));
     p
 }
+#[test]
+fn expanded_collaboration_capability_covers_live_and_checkpoint_catalog() {
+    use processcraft_core::{
+        bpmn_collaboration::PartnerEntity,
+        ids::CheckpointId,
+        model::{BpmnDocument, Checkpoint, FrozenProject},
+    };
+    let mut project = project();
+    let mut document = BpmnDocument::new("document".into(), "defs".parse().unwrap());
+    document.partner_entities.push(PartnerEntity {
+        id: None,
+        base: None,
+        name: Some("Partner".into()),
+        participant_refs: vec![],
+    });
+    project.documents.push(Arc::new(document));
+    let frozen = FrozenProject::capture(&project);
+    for checkpoint_only in [false, true] {
+        if checkpoint_only {
+            Arc::make_mut(&mut project.documents[0])
+                .partner_entities
+                .clear();
+            project.checkpoints.push(Checkpoint {
+                id: CheckpointId::new(),
+                name: "snapshot".into(),
+                created_unix_ms: 0,
+                content: frozen.clone(),
+            });
+        }
+        let bytes = write_bytes(&project).unwrap();
+        let mut contents = entries(&bytes);
+        let manifest: serde_json::Value = serde_json::from_slice(
+            &contents
+                .iter()
+                .find(|(name, _)| name == "manifest.json")
+                .unwrap()
+                .1,
+        )
+        .unwrap();
+        assert!(
+            manifest["required_capabilities"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|capability| capability == "bpmn-expanded-collaboration-v1")
+        );
+        assert_eq!(
+            load_bytes(&bytes)
+                .unwrap()
+                .project
+                .content_identity()
+                .unwrap(),
+            project.content_identity().unwrap()
+        );
+        edit_json(&mut contents, "manifest.json", |manifest| {
+            manifest["required_capabilities"]
+                .as_array_mut()
+                .unwrap()
+                .retain(|capability| capability != "bpmn-expanded-collaboration-v1")
+        });
+        assert!(
+            load_bytes(&archive(&contents))
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("expanded collaboration requires capability")
+        );
+    }
+}
+#[test]
+fn group_category_reference_preserves_legacy_wire_and_gates_qualified() {
+    use processcraft_core::bpmn_model::{Category, CategoryValue, EventReference, Group, QNameRef};
+    let baseline =
+        include_bytes!("../../../tests/fixtures/native/identity-baseline-2f0f770.processcraft");
+    let mut project = load_bytes(baseline).unwrap().project;
+    let document = Arc::make_mut(&mut project.documents[0]);
+    document.categories.push(Category {
+        id: "category".parse().unwrap(),
+        base: None,
+        name: None,
+        values: vec![CategoryValue {
+            id: "category_value".parse().unwrap(),
+            base: None,
+            value: None,
+        }],
+    });
+    document.processes[0].groups.push(Group {
+        id: "group".parse().unwrap(),
+        base: None,
+        category_value_ref: Some(EventReference::Local("category_value".parse().unwrap())),
+    });
+    assert_eq!(
+        serde_json::to_value(&document.processes[0].groups[0]).unwrap()["category_value_ref"],
+        "category_value"
+    );
+    let bytes = write_bytes(&project).unwrap();
+    let manifest: serde_json::Value = serde_json::from_slice(
+        &entries(&bytes)
+            .iter()
+            .find(|(name, _)| name == "manifest.json")
+            .unwrap()
+            .1,
+    )
+    .unwrap();
+    assert!(
+        !manifest["required_capabilities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|capability| capability == "bpmn-expanded-collaboration-v1")
+    );
+    assert_eq!(
+        load_bytes(&bytes)
+            .unwrap()
+            .project
+            .content_identity()
+            .unwrap(),
+        project.content_identity().unwrap()
+    );
+    Arc::make_mut(&mut project.documents[0]).processes[0].groups[0].category_value_ref =
+        Some(EventReference::Qualified(QNameRef {
+            namespace: "urn:external".into(),
+            local: "category_value".parse().unwrap(),
+        }));
+    let bytes = write_bytes(&project).unwrap();
+    let mut contents = entries(&bytes);
+    let manifest: serde_json::Value = serde_json::from_slice(
+        &contents
+            .iter()
+            .find(|(name, _)| name == "manifest.json")
+            .unwrap()
+            .1,
+    )
+    .unwrap();
+    assert!(
+        manifest["required_capabilities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|capability| capability == "bpmn-expanded-collaboration-v1")
+    );
+    edit_json(&mut contents, "manifest.json", |manifest| {
+        manifest["required_capabilities"]
+            .as_array_mut()
+            .unwrap()
+            .retain(|capability| capability != "bpmn-expanded-collaboration-v1")
+    });
+    assert!(
+        load_bytes(&archive(&contents))
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("expanded collaboration requires capability")
+    );
+}
 
 #[test]
 fn di_choreography_capability_covers_live_and_checkpoint_planes() {
@@ -848,8 +1003,12 @@ fn structured_expression_capability_covers_live_and_checkpoint_documents() {
             base_extras: None,
             id: "flow".parse().unwrap(),
             kind: FlowKind::Sequence,
-            source: "a".parse().unwrap(),
-            target: "b".parse().unwrap(),
+            source: Some(processcraft_core::bpmn_model::EventReference::Local(
+                "a".parse().unwrap(),
+            )),
+            target: Some(processcraft_core::bpmn_model::EventReference::Local(
+                "b".parse().unwrap(),
+            )),
             name: Some(String::new()),
             documentation: String::new().into(),
             association_direction: None,
@@ -1637,6 +1796,8 @@ fn identity_capability_covers_independent_new_fields() {
             }),
             4 => {
                 Arc::make_mut(&mut p.documents[0]).collaboration = Some(Collaboration {
+                    kind: None,
+                    extras: None,
                     correlation_keys: vec![],
                     base: None,
                     id: "collaboration".parse().unwrap(),

@@ -669,6 +669,16 @@ fn activity_qname_text_reference(parent: Option<&str>, element: &str) -> bool {
         | (Some("multiInstanceLoopCharacteristics"), "loopDataInputRef" | "loopDataOutputRef") => {
             true
         }
+        (Some("participant"), "interfaceRef" | "endPointRef")
+        | (Some("participantAssociation"), "innerParticipantRef" | "outerParticipantRef")
+        | (
+            Some("conversation" | "subConversation" | "callConversation"),
+            "participantRef" | "messageFlowRef",
+        )
+        | (Some("partnerEntity" | "partnerRole"), "participantRef")
+        | (Some("collaboration" | "globalConversation" | "choreography"), "choreographyRef") => {
+            true
+        }
         (Some(parent), "categoryValueRef") => flow_element_name(parent),
         _ => false,
     }
@@ -735,7 +745,17 @@ fn known_reference(ns: Option<&str>, element: &str, attr: &str) -> bool {
             (
                 "sequenceFlow" | "messageFlow" | "association",
                 "sourceRef" | "targetRef"
-            ) | ("participant", "processRef")
+            ) | ("conversationLink", "sourceRef" | "targetRef")
+                | ("callConversation", "calledCollaborationRef")
+                | (
+                    "conversationAssociation",
+                    "innerConversationNodeRef" | "outerConversationNodeRef"
+                )
+                | (
+                    "messageFlowAssociation",
+                    "innerMessageFlowRef" | "outerMessageFlowRef"
+                )
+                | ("participant", "processRef")
                 | ("callActivity", "calledElement")
                 | ("process", "definitionalCollaborationRef")
                 | ("correlationSubscription", "correlationKeyRef")

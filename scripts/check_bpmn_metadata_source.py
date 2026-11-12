@@ -56,6 +56,26 @@ QNAME_TEXT_PARENTS = {
         "startEvent", "endEvent", "boundaryEvent", "intermediateCatchEvent", "intermediateThrowEvent",
         "choreographyTask", "callChoreography", "subChoreography"},
 }
+COLLABORATION_OWNERS = {
+    "collaboration", "globalConversation", "choreography", "participant",
+    "participantMultiplicity", "conversation", "subConversation", "callConversation",
+    "conversationLink", "conversationAssociation", "participantAssociation",
+    "messageFlowAssociation", "messageFlow", "association", "partnerEntity",
+    "partnerRole", "endPoint", "group", "textAnnotation",
+}
+COLLABORATION_QNAME_ATTRIBUTES = {
+    "processRef", "sourceRef", "targetRef", "messageRef", "calledCollaborationRef",
+    "innerConversationNodeRef", "outerConversationNodeRef", "innerParticipantRef",
+    "outerParticipantRef", "innerMessageFlowRef", "outerMessageFlowRef", "categoryValueRef",
+}
+COLLABORATION_QNAME_CHILDREN = {
+    "interfaceRef": {"participant"}, "endPointRef": {"participant"},
+    "participantRef": {"conversation", "subConversation", "callConversation", "partnerEntity", "partnerRole"},
+    "messageFlowRef": {"conversation", "subConversation", "callConversation"},
+    "choreographyRef": {"collaboration", "globalConversation", "choreography"},
+    "innerParticipantRef": {"participantAssociation"},
+    "outerParticipantRef": {"participantAssociation"},
+}
 
 
 def expanded_qname(element, value):
@@ -131,7 +151,7 @@ def body(element):
             "children": [{"node": body(child), "tail": child.tail or ""} for child in element]}
 
 
-def records(tree, activity_fields=False, diagram_fields=False):
+def records(tree, activity_fields=False, diagram_fields=False, collaboration_fields=False):
     result = {}
 
     def visit(element, path, opaque):
@@ -161,6 +181,30 @@ def records(tree, activity_fields=False, diagram_fields=False):
             result[path + "/xmlIdentity"] = {"idPresent": "id" in element.attrib,
                                               "id": element.get("id")}
         if semantic:
+            if collaboration_fields:
+                if tag.localname in COLLABORATION_OWNERS:
+                    values = attributes(element)
+                    for name, value in values.items():
+                        if name in COLLABORATION_QNAME_ATTRIBUTES:
+                            values[name] = expanded_qname(element, value)
+                        elif name == "isClosed":
+                            values[name] = value.strip() in {"true", "1"}
+                        elif name in {"minimum", "maximum"}:
+                            values[name] = int(value)
+                    result[path + "/collaborationAttributes"] = values
+                parent = element.getparent()
+                if (parent is not None and parent.tag.startswith("{" + BPMN + "}")
+                        and E.QName(parent).localname in COLLABORATION_QNAME_CHILDREN.get(tag.localname, set())):
+                    result[path + "/collaborationQName"] = expanded_qname(element, element.text or "")
+                if tag.localname in {"definitions", "collaboration", "globalConversation", "choreography", "subConversation"}:
+                    # RootElement interleaving and artifact ordering are independent
+                    # source assertions, rather than a parser-derived model diff.
+                    result[path + "/collaborationChildren"] = [
+                        {"tag": child.tag, "idPresent": "id" in child.attrib, "id": child.get("id")}
+                        for child in element if isinstance(child.tag, str)
+                        and child.tag.startswith("{" + BPMN + "}")
+                        and E.QName(child).localname not in {"import", "extension", "documentation", "extensionElements", "relationship"}
+                    ]
             if activity_fields:
                 if activity_kind(element) in ACTIVITY_OWNERS:
                     result[path + "/activityAttributes"] = activity_attributes(element)
@@ -205,6 +249,8 @@ def main():
                         help="Also compare selected activity attributes and scoped QName text")
     parser.add_argument("--diagram-fields", action="store_true",
                         help="Also compare DI metadata, child order, geometry and participant/message fields")
+    parser.add_argument("--collaboration-fields", action="store_true",
+                        help="Also compare collaboration attributes, scoped QNames and root/artifact order")
     arguments = parser.parse_args()
     schema = E.XMLSchema(E.parse(str(ROOT / "tests/fixtures/bpmn20-schema/BPMN20.xsd")))
     trees = []
@@ -214,7 +260,8 @@ def main():
             parser.error("DTD content is not accepted")
         schema.assertValid(tree)
         trees.append(tree)
-    expected, actual = [records(tree, arguments.activity_fields, arguments.diagram_fields) for tree in trees]
+    expected, actual = [records(tree, arguments.activity_fields, arguments.diagram_fields,
+                               arguments.collaboration_fields) for tree in trees]
     differences = [{"path": path, "before": expected.get(path), "after": actual.get(path)}
                    for path in sorted(expected.keys() | actual.keys()) if expected.get(path) != actual.get(path)]
     print(json.dumps({"source": str(arguments.source), "output": str(arguments.output),
@@ -222,6 +269,7 @@ def main():
                       "standardElementIdentityRecords": sum(path.endswith("/xmlIdentity") for path in expected),
                       "activityFieldRecords": sum(path.endswith(("/activityAttributes", "/activityQName")) for path in expected),
                       "diagramFieldRecords": sum(path.endswith(("/diagramAttributes", "/diagramMetadata", "/planeChildren")) for path in expected),
+                      "collaborationFieldRecords": sum(path.endswith(("/collaborationAttributes", "/collaborationQName", "/collaborationChildren")) for path in expected),
                       "anonymousOwnerRecords": sum(path.endswith("/metadata") and not value["idPresent"]
                                                    for path, value in expected.items()),
                       "differences": differences}, indent=2))

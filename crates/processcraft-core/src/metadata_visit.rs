@@ -61,6 +61,40 @@ fn keys(
         metadata(value.id.as_ref(), &mut value.base, visit);
     }
 }
+fn collaboration_extras(
+    value: &mut Option<crate::bpmn_collaboration::CollaborationExtras>,
+    visit: &mut impl FnMut(Option<&ElementIdentity>, &mut Option<BaseMetadata>),
+) {
+    use crate::bpmn_collaboration::CollaborationArtifact;
+    if let Some(value) = value {
+        for a in &mut value.conversation_associations {
+            metadata(a.id.as_ref(), &mut a.base, visit);
+        }
+        for a in &mut value.participant_associations {
+            metadata(a.id.as_ref(), &mut a.base, visit);
+        }
+        for a in &mut value.message_flow_associations {
+            metadata(a.id.as_ref(), &mut a.base, visit);
+        }
+        for artifact in &mut value.artifacts {
+            if let CollaborationArtifact::Group(group) = artifact {
+                metadata(Some(&group.id), &mut group.base, visit);
+            }
+        }
+    }
+}
+fn conversation_node(
+    value: &mut crate::bpmn_collaboration::ConversationNode,
+    visit: &mut impl FnMut(Option<&ElementIdentity>, &mut Option<BaseMetadata>),
+) {
+    metadata(Some(&value.id), &mut value.base, visit);
+    keys(&mut value.correlation_keys, visit);
+    if let Some(call) = &mut value.call {
+        for a in &mut call.participant_associations {
+            metadata(a.id.as_ref(), &mut a.base, visit);
+        }
+    }
+}
 fn roles(
     values: &mut [crate::bpmn_activity::ResourceRole],
     visit: &mut impl FnMut(Option<&ElementIdentity>, &mut Option<BaseMetadata>),
@@ -242,6 +276,15 @@ pub fn visit_base_metadata_mut(
     mut visit: impl FnMut(Option<&ElementIdentity>, &mut Option<BaseMetadata>),
 ) {
     use crate::bpmn_model::EventResource;
+    for value in &mut d.partner_entities {
+        metadata(value.id.as_ref(), &mut value.base, &mut visit);
+    }
+    for value in &mut d.partner_roles {
+        metadata(value.id.as_ref(), &mut value.base, &mut visit);
+    }
+    for value in &mut d.endpoints {
+        metadata(value.id.as_ref(), &mut value.base, &mut visit);
+    }
     for property in &mut d.correlation_properties {
         metadata(property.id.as_ref(), &mut property.base, &mut visit);
         for retrieval in &mut property.retrieval_expressions {
@@ -338,6 +381,7 @@ pub fn visit_base_metadata_mut(
         );
     }
     if let Some(c) = &mut d.collaboration {
+        collaboration_extras(&mut c.extras, &mut visit);
         keys(&mut c.correlation_keys, &mut visit);
         for flow in &mut c.flows {
             flow_metadata(&mut flow.flow_metadata, &mut visit);
@@ -350,14 +394,41 @@ pub fn visit_base_metadata_mut(
             }
         }
         for n in &mut c.conversation_nodes {
-            keys(&mut n.correlation_keys, &mut visit);
-            metadata(Some(&n.id), &mut n.base, &mut visit);
+            conversation_node(n, &mut visit);
         }
         for l in &mut c.conversation_links {
             metadata(Some(&l.id), &mut l.base, &mut visit);
         }
     }
+    for c in &mut d.additional_collaborations {
+        metadata(Some(&c.id), &mut c.base, &mut visit);
+        collaboration_extras(&mut c.extras, &mut visit);
+        keys(&mut c.correlation_keys, &mut visit);
+        for p in &mut c.participants {
+            metadata(Some(&p.id), &mut p.base, &mut visit);
+            if let Some(m) = &mut p.multiplicity {
+                metadata(m.id.as_ref(), &mut m.base, &mut visit);
+            }
+        }
+        for flow in &mut c.flows {
+            flow_metadata(&mut flow.flow_metadata, &mut visit);
+        }
+        for node in &mut c.conversation_nodes {
+            conversation_node(node, &mut visit);
+        }
+        for link in &mut c.conversation_links {
+            metadata(Some(&link.id), &mut link.base, &mut visit);
+        }
+    }
     for c in &mut d.choreographies {
+        collaboration_extras(&mut c.extras, &mut visit);
+        keys(&mut c.correlation_keys, &mut visit);
+        for node in &mut c.conversation_nodes {
+            conversation_node(node, &mut visit);
+        }
+        for link in &mut c.conversation_links {
+            metadata(Some(&link.id), &mut link.base, &mut visit);
+        }
         metadata(Some(&c.id), &mut c.base, &mut visit);
         for p in &mut c.participants {
             metadata(Some(&p.id), &mut p.base, &mut visit);
@@ -390,6 +461,25 @@ fn scope_legacy(
         }
     }
 }
+fn extras_legacy(
+    extras: &mut Option<crate::bpmn_collaboration::CollaborationExtras>,
+    visit: &mut impl FnMut(&ElementIdentity, &mut DocumentationSet, &mut Option<BaseExtras>),
+) {
+    use crate::bpmn_collaboration::CollaborationArtifact;
+    if let Some(extras) = extras {
+        for artifact in &mut extras.artifacts {
+            match artifact {
+                CollaborationArtifact::TextAnnotation(node) => {
+                    visit(&node.id, &mut node.documentation, &mut node.base_extras)
+                }
+                CollaborationArtifact::Association(flow) => {
+                    visit(&flow.id, &mut flow.documentation, &mut flow.base_extras)
+                }
+                CollaborationArtifact::Group(_) => {}
+            }
+        }
+    }
+}
 pub fn visit_legacy_metadata_mut(
     d: &mut BpmnDocument,
     mut visit: impl FnMut(&ElementIdentity, &mut DocumentationSet, &mut Option<BaseExtras>),
@@ -403,11 +493,19 @@ pub fn visit_legacy_metadata_mut(
         scope_legacy(&mut process.nodes, &mut process.flows, &mut visit);
     }
     if let Some(c) = &mut d.collaboration {
+        extras_legacy(&mut c.extras, &mut visit);
+        for flow in &mut c.flows {
+            visit(&flow.id, &mut flow.documentation, &mut flow.base_extras);
+        }
+    }
+    for c in &mut d.additional_collaborations {
+        extras_legacy(&mut c.extras, &mut visit);
         for flow in &mut c.flows {
             visit(&flow.id, &mut flow.documentation, &mut flow.base_extras);
         }
     }
     for c in &mut d.choreographies {
+        extras_legacy(&mut c.extras, &mut visit);
         for flow in c.sequence_flows.iter_mut().chain(&mut c.message_flows) {
             visit(&flow.id, &mut flow.documentation, &mut flow.base_extras);
         }
@@ -577,6 +675,15 @@ pub fn visit_expressions_mut(
         );
     }
     if let Some(c) = &mut d.collaboration {
+        extras_expressions(&mut c.extras, &mut visit);
+        for flow in &mut c.flows {
+            if let Some(expression) = &mut flow.condition {
+                visit(expression);
+            }
+        }
+    }
+    for c in &mut d.additional_collaborations {
+        extras_expressions(&mut c.extras, &mut visit);
         for flow in &mut c.flows {
             if let Some(expression) = &mut flow.condition {
                 visit(expression);
@@ -584,8 +691,23 @@ pub fn visit_expressions_mut(
         }
     }
     for c in &mut d.choreographies {
+        extras_expressions(&mut c.extras, &mut visit);
         for flow in c.sequence_flows.iter_mut().chain(&mut c.message_flows) {
             if let Some(expression) = &mut flow.condition {
+                visit(expression);
+            }
+        }
+    }
+}
+fn extras_expressions(
+    extras: &mut Option<crate::bpmn_collaboration::CollaborationExtras>,
+    visit: &mut impl FnMut(&mut crate::bpmn_model::Expression),
+) {
+    if let Some(extras) = extras {
+        for artifact in &mut extras.artifacts {
+            if let crate::bpmn_collaboration::CollaborationArtifact::Association(flow) = artifact
+                && let Some(expression) = &mut flow.condition
+            {
                 visit(expression);
             }
         }
