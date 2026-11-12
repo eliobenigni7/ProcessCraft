@@ -4171,3 +4171,31 @@ fn sub_choreography_plane_admits_only_referenced_message_flows() {
     assert!(!parsed.report.editable);
     assert_eq!(export(&parsed).bytes, invalid.as_bytes());
 }
+
+#[test]
+fn fixture_manifest_expected_modes_match_actual_import() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures");
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(root.join("manifest.json")).unwrap()).unwrap();
+    let mut checked = 0;
+    for fixture in manifest["fixtures"].as_array().unwrap() {
+        let path = fixture["path"].as_str().unwrap();
+        if !path.ends_with(".bpmn") {
+            continue;
+        }
+        let bytes = std::fs::read(root.join(path)).unwrap();
+        let actual = match prepare_import(&bytes, path) {
+            Err(_) => "rejected",
+            Ok(parsed) if parsed.report.editable => "editable",
+            Ok(_) => "preserved-source",
+        };
+        assert_eq!(fixture["expected_mode"], actual, "{path}");
+        assert_eq!(
+            fixture["expected_semantic_edits"],
+            actual == "editable",
+            "{path}"
+        );
+        checked += 1;
+    }
+    assert!(checked >= 7);
+}

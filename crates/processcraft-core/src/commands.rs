@@ -1444,10 +1444,10 @@ fn reject_implicit_native_xml_id_changes(
 /// previous commit's "after" scan is the next commit's "before" scan.
 type ActivityScans = Vec<(
     Arc<BpmnDocument>,
-    (
+    Arc<(
         Vec<crate::validation::ActivityReferenceIssue>,
         Vec<crate::validation::ActivityReferenceResolution>,
-    ),
+    )>,
 )>;
 fn reject_new_activity_reference_issues(
     old: &ProjectData,
@@ -1462,7 +1462,7 @@ fn reject_new_activity_reference_issues(
             .chain(&fresh)
             .find(|(cached, _)| Arc::ptr_eq(cached, doc))
             .map(|(_, result)| result.clone())
-            .unwrap_or_else(|| crate::validation::activity_family_reference_scan(doc));
+            .unwrap_or_else(|| Arc::new(crate::validation::activity_family_reference_scan(doc)));
         fresh.push((doc.clone(), result.clone()));
         result
     };
@@ -1480,8 +1480,18 @@ fn reject_new_activity_reference_issues(
         if Arc::ptr_eq(before, after) {
             continue;
         }
-        let (mut previous, mut old_resolutions) = scan(before);
-        let (next, new_resolutions) = scan(after);
+        let (before_scan, after_scan) = (scan(before), scan(after));
+        // Unchanged references and no identity renames (e.g. a label edit): nothing
+        // new can be unresolved or retargeted.
+        if before_scan == after_scan
+            && !mappings
+                .iter()
+                .any(|mapping| mapping.document_id == after.id)
+        {
+            continue;
+        }
+        let (mut previous, mut old_resolutions) = (*before_scan).clone();
+        let (next, new_resolutions) = (*after_scan).clone();
         for issue in &mut previous {
             for mapping in mappings
                 .iter()

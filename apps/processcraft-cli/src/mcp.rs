@@ -991,27 +991,79 @@ fn serve(server: Server) -> Result<(), crate::run::Error> {
         .enable_all()
         .build()
         .map_err(|e| failure(e.to_string()))?;
-    rt.block_on(async move {
-        let (reader, writer) = tokio::io::duplex(8192);
-        tokio::spawn(filter_stdin(writer));
-        let transport = AsyncRwTransport::<RoleServer, _, _>::new(reader, tokio::io::stdout())
-            .with_max_line_length(4 * 1024 * 1024);
-        server
-            .serve(transport)
-            .await
-            .map_err(|e| failure(e.to_string()))?
-            .waiting()
-            .await
-            .map_err(|e| failure(e.to_string()))?;
-        Ok(())
-    })
+    rt.block_on(serve_lines(server, tokio::io::stdin(), tokio::io::stdout()))
+        .map_err(failure)
 }
 
-/// Apply the same duplicate-key policy as batch input before SDK deserialization.
-/// The SDK remains responsible for JSON-RPC parsing and protocol responses.
-async fn filter_stdin(mut output: tokio::io::DuplexStream) {
+/// Run the SDK over newline-delimited JSON-RPC. Lines the SDK would drop silently
+/// (malformed JSON, duplicate keys, over 4 MiB) are answered with a JSON-RPC error
+/// instead. Both the SDK's output and these errors reach `output` through one writer
+/// task, one complete line at a time, so an error never interleaves with a response.
+async fn serve_lines<I, O>(server: Server, input: I, output: O) -> Result<(), String>
+where
+    I: tokio::io::AsyncRead + Unpin + Send + 'static,
+    O: tokio::io::AsyncWrite + Unpin + Send + 'static,
+{
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+    let (lines, mut queue) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
+    let writer = tokio::spawn(async move {
+        let mut output = output;
+        // An empty line marks the end of the SDK's output; real lines are never empty.
+        while let Some(line) = queue.recv().await.filter(|line| !line.is_empty()) {
+            if output.write_all(&line).await.is_err() || output.flush().await.is_err() {
+                return;
+            }
+        }
+    });
+    let (sdk_input, filter_output) = tokio::io::duplex(8192);
+    tokio::spawn(filter_input(input, filter_output, lines.clone()));
+    let (sdk_output, pipe) = tokio::io::duplex(64 * 1024);
+    tokio::spawn(async move {
+        let mut pipe = tokio::io::BufReader::new(pipe);
+        loop {
+            let mut line = Vec::new();
+            match pipe.read_until(b'\n', &mut line).await {
+                Ok(0) | Err(_) => {
+                    let _ = lines.send(Vec::new()).await;
+                    return;
+                }
+                Ok(_) => {
+                    if lines.send(line).await.is_err() {
+                        return;
+                    }
+                }
+            }
+        }
+    });
+    let transport = AsyncRwTransport::<RoleServer, _, _>::new(sdk_input, sdk_output)
+        .with_max_line_length(4 * 1024 * 1024);
+    server
+        .serve(transport)
+        .await
+        .map_err(|e| e.to_string())?
+        .waiting()
+        .await
+        .map_err(|e| e.to_string())?;
+    // The SDK's writer is dropped: drain what it wrote before returning.
+    let _ = writer.await;
+    Ok(())
+}
+
+/// Apply the same duplicate-key policy as batch input before SDK deserialization;
+/// rejected lines are answered through `errors` (JSON-RPC, `id: null`).
+async fn filter_input<I: tokio::io::AsyncRead + Unpin>(
+    mut input: I,
+    mut output: tokio::io::DuplexStream,
+    errors: tokio::sync::mpsc::Sender<Vec<u8>>,
+) {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    let mut input = tokio::io::stdin();
+    let reject = |code: i32, message: &str| {
+        let mut line = json!({"jsonrpc":"2.0","id":null,"error":{"code":code,"message":message}})
+            .to_string()
+            .into_bytes();
+        line.push(b'\n');
+        line
+    };
     let mut chunk = [0_u8; 8192];
     let mut line = Vec::new();
     let mut oversized = false;
@@ -1021,12 +1073,31 @@ async fn filter_stdin(mut output: tokio::io::DuplexStream) {
         }
         for byte in &chunk[..count] {
             if *byte == b'\n' {
-                if !oversized
-                    && !processcraft_io::strict_json::has_duplicate_keys(&line)
-                    && (output.write_all(&line).await.is_err()
-                        || output.write_all(b"\n").await.is_err())
-                {
-                    return;
+                let rejection = if oversized {
+                    Some(reject(-32600, "Invalid Request: line exceeds 4 MiB"))
+                } else if line.trim_ascii().is_empty() {
+                    None
+                } else if serde_json::from_slice::<serde::de::IgnoredAny>(&line).is_err() {
+                    Some(reject(-32700, "Parse error"))
+                } else if processcraft_io::strict_json::has_duplicate_keys(&line) {
+                    Some(reject(-32600, "Invalid Request: duplicate JSON key"))
+                } else {
+                    None
+                };
+                match rejection {
+                    Some(error) => {
+                        if errors.send(error).await.is_err() {
+                            return;
+                        }
+                    }
+                    None if !line.trim_ascii().is_empty() => {
+                        if output.write_all(&line).await.is_err()
+                            || output.write_all(b"\n").await.is_err()
+                        {
+                            return;
+                        }
+                    }
+                    None => {}
                 }
                 line.clear();
                 oversized = false;
@@ -1225,6 +1296,52 @@ mod tests {
 mod budget_tests {
     use super::*;
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    #[test]
+    fn rejected_lines_get_json_rpc_errors_and_the_session_continues() {
+        let session = Session::new(ProjectData::new("test".into())).unwrap();
+        let id = session.id();
+        let server = Server {
+            state: Some(Arc::new(Mutex::new(State {
+                ledger: RequestLedger::new(id.clone(), 8),
+                reconcile_ledger: RequestLedger::new(id, 8),
+                session,
+                _read: vec![],
+                write: vec![],
+                file: None,
+                pending: None,
+                settled: None,
+            }))),
+            attach: None,
+        };
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            let (mut write, input) = tokio::io::duplex(8192);
+            let (output, read) = tokio::io::duplex(8192);
+            let task = tokio::spawn(serve_lines(server, input, output));
+            let mut read = BufReader::new(read);
+            let mut next = async |line: &[u8]| {
+                write.write_all(line).await.unwrap();
+                let mut reply = String::new();
+                read.read_line(&mut reply).await.unwrap();
+                serde_json::from_str::<Value>(&reply).unwrap()
+            };
+            let parse = next(b"{\"jsonrpc\":\"2.0\",\"id\":1,\n").await;
+            assert_eq!(parse["error"]["code"], -32700);
+            assert_eq!(parse["id"], Value::Null);
+            let duplicate = next(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"id\":2}\n").await;
+            assert_eq!(duplicate["error"]["code"], -32600);
+            let init = json!({"jsonrpc":"2.0","id":3,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"test","version":"1"}}});
+            let init = next(format!("\n{init}\n").as_bytes()).await;
+            assert_eq!(init["id"], 3);
+            assert!(init["result"].is_object(), "{init}");
+            drop(next);
+            drop(write);
+            task.await.unwrap().unwrap();
+        });
+    }
     #[test]
     fn exhausted_reconciliation_budget_blocks_file_effects_before_io() {
         let dir =

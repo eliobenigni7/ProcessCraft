@@ -1031,7 +1031,8 @@ fn call_activity_local_target_is_checked_without_resolving_external() {
     call.details = Some(NodeDetails::CallActivity {
         called_element: Some(QNameRef {
             namespace: processcraft_core::model::GENERATED_TARGET_NAMESPACE.into(),
-            local: id("missing"),
+            // Resolves locally, but to a task rather than a callable element.
+            local: id("call"),
         }),
     });
     let mut doc = BpmnDocument::new("d".into(), id("defs"));
@@ -1055,6 +1056,19 @@ fn call_activity_local_target_is_checked_without_resolving_external() {
     });
     assert!(
         processcraft_core::validation::activity_family_reference_issues(&doc)
+            .iter()
+            .any(|issue| issue.field == "callActivity.calledElement")
+    );
+    // A local QName naming nothing in the file is a callable defined elsewhere
+    // (e.g. a Camunda process key) and stays an external reference.
+    if let Some(NodeDetails::CallActivity {
+        called_element: Some(reference),
+    }) = &mut doc.processes[0].nodes[0].details
+    {
+        reference.local = id("missing");
+    }
+    assert!(
+        !processcraft_core::validation::activity_family_reference_issues(&doc)
             .iter()
             .any(|issue| issue.field == "callActivity.calledElement")
     );
