@@ -20,6 +20,8 @@ pub mod validation_flow;
 pub use validation::{Diagnostic, DiagnosticSeverity};
 
 pub mod layout;
+pub mod modeling;
+pub mod rules;
 
 pub mod bpmn_catalog;
 pub mod bpmn_metadata;

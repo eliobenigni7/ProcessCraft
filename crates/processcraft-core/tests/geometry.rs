@@ -51,6 +51,53 @@ fn connection_route_faces_shapes_and_avoids_obstacles() {
     assert_ne!(around.len(), 2);
 }
 #[test]
+fn preferred_layouts_shape_diagonal_connections() {
+    let a = rect(0.0, 0.0, 50.0, 50.0);
+    let b = rect(200.0, 200.0, 100.0, 80.0);
+    // Out of a gateway: down, then right into the target (v:h).
+    assert_eq!(
+        coords(&layout_route(&a, &b, &[], RouteLayout::FromGateway)),
+        vec![(25.0, 50.0), (25.0, 240.0), (200.0, 240.0)]
+    );
+    // Into a gateway: right, then down onto it (h:v).
+    assert_eq!(
+        coords(&layout_route(
+            &b,
+            &rect(400.0, 400.0, 50.0, 50.0),
+            &[],
+            RouteLayout::IntoGateway
+        )),
+        vec![(300.0, 240.0), (425.0, 240.0), (425.0, 400.0)]
+    );
+    // Sequence flows prefer h:h even when the vertical offset dominates.
+    let tall = rect(100.0, 400.0, 100.0, 80.0);
+    assert_eq!(
+        layout_route(&a, &tall, &[], RouteLayout::Sequence)[0],
+        p(50.0, 25.0)
+    );
+    assert_eq!(connection_route(&a, &tall, &[])[0], p(25.0, 50.0));
+    // Message flows: v:v when diagonal, straight when overlapping horizontally.
+    assert_eq!(
+        coords(&layout_route(&a, &b, &[], RouteLayout::Message)),
+        vec![(25.0, 50.0), (25.0, 125.0), (250.0, 125.0), (250.0, 200.0)]
+    );
+    assert_eq!(
+        coords(&layout_route(
+            &a,
+            &rect(20.0, 200.0, 100.0, 80.0),
+            &[],
+            RouteLayout::Message
+        )),
+        vec![(35.0, 50.0), (35.0, 200.0)]
+    );
+    // A bottom boundary event leaves downwards even towards a target on its right.
+    let boundary = rect(0.0, 0.0, 36.0, 36.0);
+    assert_eq!(
+        layout_route(&boundary, &b, &[], RouteLayout::FromBoundary(Side::Bottom))[0],
+        p(18.0, 36.0)
+    );
+}
+#[test]
 fn routing_is_deterministic() {
     let obstacle = rect(4.0, -1.0, 2.0, 2.0);
     let a = route(
