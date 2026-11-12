@@ -1,0 +1,8 @@
+{"family": "repair-artifacts", "cells": [
+  {"path": "/schema/complexType[@name=tArtifact]", "schema": "Semantic.xsd", "dimension": "import", "state": "verified",
+   "evidence": ["crates/processcraft-io/tests/m3_repair_artifacts.rs:artifact_kinds_import_with_typed_values", "tests/fixtures/bpmn/m3-artifacts/artifacts-all.bpmn"],
+   "note": "textAnnotation, association and group imported typed with asserted ids, endpoints, direction, textFormat, categoryValueRef."},
+  {"path": "/schema/element[@name=category]", "schema": "Semantic.xsd", "dimension": "export", "state": "verified",
+   "evidence": ["crates/processcraft-io/tests/m3_repair_artifacts.rs:artifacts_export_values_are_in_bytes_reimport_and_xsd_valid", "scripts/check_bpmn20_xsd.py"],
+   "note": "Asserts <category name=Stage> and <categoryValue value=Review> in bytes and after re-import; the test runs the XSD script on the exported file (XSD valid)."}
+]}

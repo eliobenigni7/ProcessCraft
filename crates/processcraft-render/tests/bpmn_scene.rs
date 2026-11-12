@@ -427,6 +427,17 @@ fn viewport_clips_polyline_without_intermediate_arrows_or_duplicate_label() {
     let pix = s.pixels.data();
     let i = (46 * 100 + 45) * 4;
     assert!(pix[i] > 230, "unexpected intermediate arrow");
+    // The polyline is drawn through its waypoints (x/y of each Point): a 1.5px
+    // line centred on an integer coordinate covers the two adjacent pixels.
+    let at = |x: usize, y: usize| pix[(y * 100 + x) * 4];
+    let dark = |x: usize, y: usize| at(x, y) < 140;
+    assert!(dark(30, 49) || dark(30, 50), "first segment at y=50");
+    assert!(dark(49, 70) || dark(50, 70), "vertical segment at x=50");
+    assert!(dark(80, 89) || dark(80, 90), "last segment at y=90");
+    assert!(
+        at(80, 20) > 230 && at(20, 80) > 230,
+        "no ink away from the path"
+    );
 }
 #[test]
 fn viewport_omits_giant_shape_but_keeps_local_node() {

@@ -182,8 +182,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3r2_edit-model-io.rs:export_writes_lane_set_names_and_partitions_and_reimports_equal",
-    "tests/fixtures/bpmn/m3-r2-edit-model-io/manifest.md"
+    "crates/processcraft-io/tests/m3_repair_process_collaboration.rs:export_writes_the_values_and_reimport_asserts_them_again",
+    "scripts/check_bpmn20_xsd.py"
    ]
   },
   {
@@ -302,8 +302,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3r2_edit-model-io.rs:export_writes_lane_set_names_and_partitions_and_reimports_equal",
-    "tests/fixtures/bpmn/m3-r2-edit-model-io/manifest.md"
+    "crates/processcraft-io/tests/m3_repair_process_collaboration.rs:export_writes_the_values_and_reimport_asserts_them_again",
+    "scripts/check_bpmn20_xsd.py"
    ]
   },
   {
@@ -340,8 +340,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3r2_edit-model-io.rs:export_writes_lane_set_names_and_partitions_and_reimports_equal",
-    "tests/fixtures/bpmn/m3-r2-edit-model-io/manifest.md"
+    "crates/processcraft-io/tests/m3_repair_process_collaboration.rs:export_writes_the_values_and_reimport_asserts_them_again",
+    "scripts/check_bpmn20_xsd.py"
    ]
   },
   {

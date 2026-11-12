@@ -16,7 +16,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m2.rs:activity_properties_validate_scope_and_kind_and_undo"
+    "crates/processcraft-core/tests/m3_repair_activities.rs:default_flow_must_be_outgoing_sequence_flow_of_the_activity"
    ]
   },
   {
@@ -79,7 +79,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m2.rs:activity_properties_validate_scope_and_kind_and_undo"
+    "crates/processcraft-core/tests/m3_repair_activities.rs:default_flow_must_be_outgoing_sequence_flow_of_the_activity"
    ]
   },
   {
@@ -134,7 +134,7 @@
    "dimension": "render",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-render/tests/bpmn_scene.rs:implicit_task_label_centers_each_line_in_shared_scene"
+    "crates/processcraft-render/tests/m3_repair_activities.rs:plain_task_is_one_rounded_rectangle_without_marker_and_hit_tests"
    ]
   },
   {
@@ -170,7 +170,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m2.rs:activity_properties_validate_scope_and_kind_and_undo"
+    "crates/processcraft-core/tests/m3_repair_activities.rs:trigger_by_event_is_stored_on_subprocess_and_refused_elsewhere"
    ]
   },
   {
@@ -179,8 +179,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m2.rs:activity_properties_validate_scope_and_kind_and_undo",
-    "crates/processcraft-core/tests/events_extended.rs:error_start_is_valid_only_in_event_subprocess_context"
+    "crates/processcraft-core/tests/m3_repair_activities.rs:trigger_by_event_is_stored_on_subprocess_and_refused_elsewhere"
    ]
   },
   {
@@ -235,7 +234,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/interchange.rs:nested_duplicate_ids_and_cross_scope_edges_are_rejected_by_core"
+    "crates/processcraft-core/tests/m3_repair_activities.rs:subprocess_scope_rejects_duplicate_ids_and_cross_scope_flows"
    ]
   },
   {
@@ -400,7 +399,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/commands.rs:activity_bindings_validate_new_local_refs_and_preserve_legacy"
+    "crates/processcraft-core/tests/m3_repair_activities.rs:send_task_message_ref_is_stored_cleared_and_undone"
    ]
   },
   {
@@ -409,7 +408,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/commands.rs:activity_bindings_validate_new_local_refs_and_preserve_legacy"
+    "crates/processcraft-core/tests/m3_repair_activities.rs:send_task_message_ref_is_stored_cleared_and_undone"
    ]
   },
   {
@@ -992,7 +991,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+    "crates/processcraft-core/tests/m3_repair_activities.rs:implementation_value_diagnostic_on_send_user_service_and_refusal_on_plain_task"
    ]
   },
   {
@@ -1087,7 +1086,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+    "crates/processcraft-core/tests/m3_repair_activities.rs:implementation_value_diagnostic_on_send_user_service_and_refusal_on_plain_task"
    ]
   },
   {
@@ -1231,7 +1230,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+    "crates/processcraft-core/tests/m3_repair_activities.rs:implementation_value_diagnostic_on_send_user_service_and_refusal_on_plain_task"
    ]
   },
   {

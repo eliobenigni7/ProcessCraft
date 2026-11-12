@@ -103,11 +103,20 @@ fn out_of_enum_choreography_loop_type_is_not_imported_as_editable() {
         .unwrap()
         .replace("loopType=\"MultiInstanceSequential\"", "loopType=\"Bogus\"");
     assert!(source.contains("Bogus"));
-    match prepare_import(source.as_bytes(), "bogus loop") {
-        Err(_) => {}
-        Ok(imported) => {
-            assert!(!imported.report.editable);
-            assert_eq!(&*imported.resources[0].bytes, source.as_bytes());
-        }
-    }
+    let imported = prepare_import(source.as_bytes(), "bogus loop").unwrap();
+    assert!(!imported.report.editable);
+    assert_eq!(&*imported.resources[0].bytes, source.as_bytes());
+    // The refusal names the attribute and the offending value.
+    assert!(
+        imported
+            .report
+            .limitations
+            .iter()
+            .any(|l| l.contains("loopType \"Bogus\"") && l.contains("tChoreographyLoopType")),
+        "{:?}",
+        imported.report.limitations
+    );
+    // The unmodified fixture is editable, so the refusal is attributable to the value.
+    let ok = prepare_import(VALUES, "values").unwrap();
+    assert!(ok.report.editable, "{:?}", ok.report.limitations);
 }

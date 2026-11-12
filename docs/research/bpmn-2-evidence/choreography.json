@@ -295,16 +295,6 @@
    ]
   },
   {
-   "path": "/schema/element[@name=subChoreography]",
-   "schema": "Semantic.xsd",
-   "dimension": "render",
-   "state": "verified",
-   "evidence": [
-    "crates/processcraft-render/tests/bpmn_scene.rs:choreography_task_shows_participant_bands_and_sequence_flow"
-   ],
-   "note": "expanded/collapsed sub-choreography section of the test"
-  },
-  {
    "path": "/schema/complexType[@name=tSubChoreography]",
    "schema": "Semantic.xsd",
    "dimension": "model",
@@ -343,7 +333,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/src/choreography_export.rs:incomplete_nested_draft_is_refused_without_native_changes"
+    "crates/processcraft-core/tests/m3_repair_choreography.rs:nested_participant_outside_sub_choreography_is_diagnosed"
    ]
   },
   {
@@ -493,9 +483,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/interchange.rs:global_choreography_initiator_presence_round_trips",
-    "scripts/qualify_choreography_graph.py",
-    "tests/fixtures/bpmn/choreography-graph/nested.bpmn"
+    "crates/processcraft-io/tests/m3_repair_choreography.rs:global_choreography_initiator_imports_exact_value_and_absence",
+    "tests/fixtures/bpmn/m3-choreography/values.bpmn"
    ]
   },
   {
@@ -1016,8 +1005,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_choreography.rs:out_of_enum_choreography_loop_type_is_not_imported_as_editable",
-    "tests/fixtures/bpmn/m3-choreography/values.bpmn"
+    "crates/processcraft-io/tests/m3_choreography.rs:out_of_enum_choreography_loop_type_is_not_imported_as_editable"
    ]
   },
   {
@@ -1035,8 +1023,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_choreography.rs:out_of_enum_choreography_loop_type_is_not_imported_as_editable",
-    "tests/fixtures/bpmn/m3-choreography/values.bpmn"
+    "crates/processcraft-io/tests/m3_choreography.rs:out_of_enum_choreography_loop_type_is_not_imported_as_editable"
    ]
   },
   {

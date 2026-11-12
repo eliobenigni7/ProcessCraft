@@ -148,3 +148,43 @@ fn call_choreography_uses_the_thick_border_notation() {
     assert!(call_svg.contains("Exchange"));
     assert!(!diagnostics.iter().any(|v| v.contains("Unknown")));
 }
+
+#[test]
+fn sub_choreography_collapsed_shows_plus_marker_and_expanded_does_not() {
+    use processcraft_core::bpmn_collaboration::ChoreographyGraph;
+    let sub = || ChoreographyActivityDetails::Sub {
+        graph: Box::new(ChoreographyGraph::default()),
+        artifacts: vec![],
+    };
+    let build = |expanded: Option<bool>| {
+        let mut d = document(None, Some(sub()));
+        d.diagrams[0].shapes[0].is_expanded = expanded;
+        d
+    };
+    let (_, task_paths, _) = render(&document(None, None));
+    let (collapsed_svg, collapsed_paths, collapsed_diag) = render(&build(Some(false)));
+    let (expanded_svg, expanded_paths, _) = render(&build(Some(true)));
+    // Collapsed draws the "+" sub-process marker; expanded does not.
+    assert!(
+        collapsed_paths > expanded_paths,
+        "collapsed {collapsed_paths} vs expanded {expanded_paths}"
+    );
+    assert_ne!(collapsed_svg, expanded_svg);
+    // The sub-choreography keeps the task geometry otherwise (same outline paths).
+    assert_eq!(expanded_paths, task_paths);
+    assert!(collapsed_svg.contains("Exchange"));
+    assert!(!collapsed_diag.iter().any(|v| v.contains("Unknown")));
+    // Hit-testing finds the activity inside its bounds.
+    let scene = BpmnScene::build(
+        &build(Some(false)),
+        &id("diagram"),
+        Appearance::Light,
+        &mut TextEngine::new(),
+        "Noto Sans",
+    )
+    .unwrap();
+    assert_eq!(
+        scene.hit_test(130.0, 70.0, 0.0).unwrap().key.xml_id,
+        id::<processcraft_core::ids::ElementSelector>("exchange")
+    );
+}

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:t="urn:pc-repair-collab" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" targetNamespace="urn:pc-repair-collab" id="Definitions">
+ <itemDefinition id="Item"/>
+ <message id="Msg" name="Invoice" itemRef="t:Item"/>
+ <collaboration id="Collab" name="Invoice exchange">
+  <participant id="Seller" name="Seller" processRef="t:Sell"/>
+  <participant id="Buyer" name="Buyer"/>
+  <messageFlow id="Inv" name="Invoice out" sourceRef="t:Seller" targetRef="t:Buyer" messageRef="t:Msg"/>
+ </collaboration>
+ <process id="Sell" name="Sell" isExecutable="false">
+  <laneSet id="TopSet" name="Top set">
+   <lane id="Parent" name="Operations">
+    <flowNodeRef>Start</flowNodeRef>
+    <childLaneSet id="ChildSet" name="Child set">
+     <lane id="Inner" name="Review"><flowNodeRef>Work</flowNodeRef><flowNodeRef>End</flowNodeRef></lane>
+    </childLaneSet>
+   </lane>
+  </laneSet>
+  <startEvent id="Start"/>
+  <task id="Work" name="Work"/>
+  <endEvent id="End"/>
+  <sequenceFlow id="F1" sourceRef="Start" targetRef="Work"><conditionExpression xsi:type="tFormalExpression">amount &gt; 10</conditionExpression></sequenceFlow>
+  <sequenceFlow id="F2" sourceRef="Work" targetRef="End"/>
+ </process>
+</definitions>

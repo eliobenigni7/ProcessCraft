@@ -48,8 +48,7 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
-    "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+    "crates/processcraft-io/tests/m3_repair_production.rs:band_kinds_message_visibility_and_activity_shape_import_export_and_xsd"
    ]
   },
   {
@@ -119,9 +118,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
-    "tests/fixtures/bpmn/di-choreography-representation.bpmn",
-    "crates/processcraft-io/tests/interchange.rs:all_participant_band_and_edge_message_visibility_values_roundtrip"
+    "crates/processcraft-io/tests/m3_repair_production.rs:band_kinds_message_visibility_and_activity_shape_import_export_and_xsd",
+    "scripts/check_bpmn20_xsd.py"
    ]
   },
   {
@@ -171,8 +169,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
-    "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+    "crates/processcraft-io/tests/m3_repair_production.rs:band_kinds_message_visibility_and_activity_shape_import_export_and_xsd",
+    "scripts/check_bpmn20_xsd.py"
    ],
    "note": "Fixture has both false and true; equality fails if the exporter drops it. Import value is not asserted."
   },
@@ -193,8 +191,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
-    "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+    "crates/processcraft-io/tests/m3_repair_di.rs:export_emits_di_values_and_reimports_exact",
+    "scripts/check_bpmn20_xsd.py"
    ],
    "note": "Export evidence: XSD-valid fixture, whole-document model equality after export and re-import."
   },
@@ -336,8 +334,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
-    "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+    "crates/processcraft-io/tests/m3_repair_di.rs:export_emits_di_values_and_reimports_exact",
+    "scripts/check_bpmn20_xsd.py"
    ],
    "note": "Export evidence: XSD-valid fixture, whole-document model equality after export and re-import."
   },
@@ -347,8 +345,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
-    "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+    "crates/processcraft-io/tests/m3_repair_di.rs:export_emits_di_values_and_reimports_exact",
+    "scripts/check_bpmn20_xsd.py"
    ],
    "note": "Export evidence: XSD-valid fixture, whole-document model equality after export and re-import."
   },
@@ -358,8 +356,9 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
-    "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+    "crates/processcraft-io/tests/m3_repair_di.rs:export_emits_di_values_and_reimports_exact",
+    "crates/processcraft-io/tests/m3_di.rs:di_values_import_and_export_reimport_equal",
+    "scripts/check_bpmn20_xsd.py"
    ],
    "note": "Export evidence: XSD-valid fixture, whole-document model equality after export and re-import."
   },
@@ -413,8 +412,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
-    "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+    "crates/processcraft-io/tests/m3_repair_di.rs:export_emits_di_values_and_reimports_exact",
+    "scripts/check_bpmn20_xsd.py"
    ],
    "note": "Export evidence: XSD-valid fixture, whole-document model equality after export and re-import."
   },
@@ -424,8 +423,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
-    "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+    "crates/processcraft-io/tests/m3_repair_di.rs:export_emits_di_values_and_reimports_exact",
+    "scripts/check_bpmn20_xsd.py"
    ],
    "note": "Export evidence: XSD-valid fixture, whole-document model equality after export and re-import."
   },
@@ -649,7 +648,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/geometry.rs:explicit_di_endpoints_track_only_the_named_shape_and_undo"
+    "crates/processcraft-core/tests/commands.rs:diagram_representation_id_promotion_remaps_edge_endpoint_and_undo"
    ]
   },
   {
@@ -658,7 +657,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/geometry.rs:explicit_di_endpoints_track_only_the_named_shape_and_undo"
+    "crates/processcraft-core/tests/m3_repair_production.rs:edge_source_and_target_elements_are_set_read_back_and_undone"
    ]
   },
   {
@@ -967,7 +966,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_di.rs:plane_order_with_missing_representation_is_a_reference_issue"
+    "crates/processcraft-core/tests/m3_repair_production.rs:dangling_plane_element_is_diagnosed_and_valid_planes_are_not"
    ]
   },
   {

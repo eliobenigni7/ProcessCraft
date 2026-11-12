@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:tns="urn:m3-repair-events" id="defs" targetNamespace="urn:m3-repair-events">
+  <message id="msg" name="Notice"/>
+  <signal id="sig" name="Alert"/>
+  <signalEventDefinition id="rootSig" signalRef="tns:sig"/>
+  <process id="process" isExecutable="false">
+    <startEvent id="s1"><signalEventDefinition id="sd1" signalRef="tns:sig"/></startEvent>
+    <task id="work" name="Work"/>
+    <boundaryEvent id="b1" attachedToRef="tns:work" cancelActivity="false"><messageEventDefinition id="md1" messageRef="tns:msg"/></boundaryEvent>
+    <intermediateThrowEvent id="t1"><signalEventDefinition id="sd2" signalRef="tns:sig"/></intermediateThrowEvent>
+    <endEvent id="e1"><eventDefinitionRef>tns:rootSig</eventDefinitionRef></endEvent>
+    <sequenceFlow id="f1" sourceRef="s1" targetRef="work"/>
+    <sequenceFlow id="f2" sourceRef="work" targetRef="t1"/>
+    <sequenceFlow id="f3" sourceRef="t1" targetRef="e1"/>
+  </process>
+</definitions>

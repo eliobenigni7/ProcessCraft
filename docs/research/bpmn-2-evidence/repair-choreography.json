@@ -1,0 +1,21 @@
+{
+ "family": "repair-choreography",
+ "cells": [
+  {
+   "path": "/schema/complexType[@name=tGlobalChoreographyTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_repair_choreography.rs:global_choreography_task_kind_and_initiator_are_typed"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tGlobalChoreographyTask]/complexContent/extension/attribute[@name=initiatingParticipantRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "not_applicable",
+   "note": "BPMN 2.0.2 §11.5.4 specifies no standalone notation for a Global Choreography Task; the renderer emits a diagnostic and omits it (crates/processcraft-render/src/bpmn.rs)."
+  }
+ ]
+}

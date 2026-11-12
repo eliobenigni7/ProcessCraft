@@ -68,7 +68,7 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/interchange.rs:structured_expression_metadata_roundtrips_across_loop_and_adhoc_owners"
+    "crates/processcraft-io/tests/m3_loops.rs:multi_instance_and_standard_loop_fields_import_with_values_and_survive_export"
    ],
    "note": "expression count 3 fails if loopCondition import breaks"
   },
@@ -246,7 +246,7 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/interchange.rs:structured_expression_metadata_roundtrips_across_loop_and_adhoc_owners"
+    "crates/processcraft-io/tests/m3_loops.rs:multi_instance_and_standard_loop_fields_import_with_values_and_survive_export"
    ],
    "note": "expression count 3 fails if completionCondition import breaks"
   },
@@ -355,7 +355,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/commands.rs:loop_identity_rename_preserves_checkpoint_and_undo_redo"
+    "crates/processcraft-core/tests/m3_repair_loops.rs:standard_loop_set_edit_clear_each_undo_to_previous_value_and_identity"
    ]
   },
   {
@@ -374,9 +374,9 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/interchange.rs:activity_loop_characteristics_round_trip",
-    "crates/processcraft-io/tests/interchange.rs:activity_correlation_and_callable_fixtures_roundtrip_with_values",
-    "scripts/qualify_activity_metadata.py"
+    "crates/processcraft-io/tests/m3_repair_loops.rs:standard_loop_export_writes_test_before_maximum_and_condition",
+    "crates/processcraft-io/tests/m3_repair_loops.rs:standard_loop_export_bytes_are_written_for_xsd_check",
+    "scripts/check_bpmn20_xsd.py"
    ]
   },
   {

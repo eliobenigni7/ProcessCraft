@@ -15308,8 +15308,8 @@
       ],
       "verified_evidence": {
         "export": [
-          "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
-          "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+          "crates/processcraft-io/tests/m3_repair_di.rs:export_emits_di_values_and_reimports_exact",
+          "scripts/check_bpmn20_xsd.py"
         ],
         "import": [
           "crates/processcraft-io/tests/interchange.rs:diagram_label_style_and_empty_label_roundtrip",
@@ -15665,7 +15665,7 @@
           "crates/processcraft-core/tests/m3_di.rs:di_fields_are_typed_and_survive_serde"
         ],
         "validate": [
-          "crates/processcraft-io/tests/m3_di.rs:plane_order_with_missing_representation_is_a_reference_issue"
+          "crates/processcraft-core/tests/m3_repair_production.rs:dangling_plane_element_is_diagnosed_and_valid_planes_are_not"
         ]
       },
       "verified_notes": {
@@ -15870,7 +15870,7 @@
           "tests/fixtures/bpmn/di-endpoints.bpmn"
         ],
         "model": [
-          "crates/processcraft-core/tests/geometry.rs:explicit_di_endpoints_track_only_the_named_shape_and_undo"
+          "crates/processcraft-core/tests/commands.rs:diagram_representation_id_promotion_remaps_edge_endpoint_and_undo"
         ]
       },
       "verified_notes": {
@@ -15923,7 +15923,7 @@
           "tests/fixtures/bpmn/di-endpoints.bpmn"
         ],
         "model": [
-          "crates/processcraft-core/tests/geometry.rs:explicit_di_endpoints_track_only_the_named_shape_and_undo"
+          "crates/processcraft-core/tests/m3_repair_production.rs:edge_source_and_target_elements_are_set_read_back_and_undone"
         ]
       },
       "verified_notes": {
@@ -16266,8 +16266,8 @@
       ],
       "verified_evidence": {
         "export": [
-          "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
-          "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+          "crates/processcraft-io/tests/m3_repair_production.rs:band_kinds_message_visibility_and_activity_shape_import_export_and_xsd",
+          "scripts/check_bpmn20_xsd.py"
         ],
         "import": [
           "crates/processcraft-io/tests/m3_di.rs:choreography_fixture_imports_message_visibility_values",
@@ -16316,9 +16316,8 @@
       ],
       "verified_evidence": {
         "export": [
-          "crates/processcraft-io/tests/interchange.rs:all_participant_band_and_edge_message_visibility_values_roundtrip",
-          "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
-          "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+          "crates/processcraft-io/tests/m3_repair_production.rs:band_kinds_message_visibility_and_activity_shape_import_export_and_xsd",
+          "scripts/check_bpmn20_xsd.py"
         ],
         "import": [
           "crates/processcraft-io/tests/interchange.rs:all_participant_band_and_edge_message_visibility_values_roundtrip",
@@ -16369,8 +16368,7 @@
           "tests/fixtures/bpmn/di-choreography-representation.bpmn"
         ],
         "import": [
-          "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
-          "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+          "crates/processcraft-io/tests/m3_repair_production.rs:band_kinds_message_visibility_and_activity_shape_import_export_and_xsd"
         ],
         "model": [
           "crates/processcraft-core/tests/geometry.rs:participant_band_follows_only_its_own_di_representation"
@@ -16619,8 +16617,9 @@
       ],
       "verified_evidence": {
         "export": [
-          "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
-          "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+          "crates/processcraft-io/tests/m3_di.rs:di_values_import_and_export_reimport_equal",
+          "crates/processcraft-io/tests/m3_repair_di.rs:export_emits_di_values_and_reimports_exact",
+          "scripts/check_bpmn20_xsd.py"
         ],
         "import": [
           "crates/processcraft-io/tests/m3_di.rs:di_values_import_and_export_reimport_equal",
@@ -16669,8 +16668,8 @@
       ],
       "verified_evidence": {
         "export": [
-          "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
-          "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+          "crates/processcraft-io/tests/m3_repair_di.rs:export_emits_di_values_and_reimports_exact",
+          "scripts/check_bpmn20_xsd.py"
         ],
         "import": [
           "crates/processcraft-io/tests/m3_di.rs:di_values_import_and_export_reimport_equal",
@@ -16861,7 +16860,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "I"
@@ -16874,8 +16873,8 @@
       ],
       "verified_evidence": {
         "export": [
-          "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
-          "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+          "crates/processcraft-io/tests/m3_repair_di.rs:export_emits_di_values_and_reimports_exact",
+          "scripts/check_bpmn20_xsd.py"
         ],
         "import": [
           "crates/processcraft-io/tests/m3_di.rs:di_values_import_and_export_reimport_equal",
@@ -16883,10 +16882,15 @@
         ],
         "model": [
           "crates/processcraft-core/tests/geometry.rs:drag_commits_once"
+        ],
+        "validate": [
+          "crates/processcraft-io/tests/m3_repair_di.rs:import_refuses_bad_bounds_and_points_with_geometry_message",
+          "crates/processcraft-io/tests/m3_repair_di.rs:point_validation_names_invalid_waypoint"
         ]
       },
       "verified_notes": {
-        "export": "Export evidence: XSD-valid fixture, whole-document model equality after export and re-import."
+        "export": "Export evidence: XSD-valid fixture, whole-document model equality after export and re-import.",
+        "validate": "NaN/infinite/out-of-range waypoints fail ProjectData::validate with the exact 'invalid waypoint' diagnostic."
       }
     },
     {
@@ -16921,8 +16925,8 @@
       ],
       "verified_evidence": {
         "export": [
-          "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
-          "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+          "crates/processcraft-io/tests/m3_repair_di.rs:export_emits_di_values_and_reimports_exact",
+          "scripts/check_bpmn20_xsd.py"
         ],
         "import": [
           "crates/processcraft-io/tests/m3_di.rs:di_values_import_and_export_reimport_equal",
@@ -16971,8 +16975,8 @@
       ],
       "verified_evidence": {
         "export": [
-          "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
-          "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+          "crates/processcraft-io/tests/m3_repair_di.rs:export_emits_di_values_and_reimports_exact",
+          "scripts/check_bpmn20_xsd.py"
         ],
         "import": [
           "crates/processcraft-io/tests/m3_di.rs:di_values_import_and_export_reimport_equal",
@@ -17008,7 +17012,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "I"
@@ -17031,10 +17035,15 @@
         "model": [
           "crates/processcraft-core/tests/geometry.rs:drag_commits_once",
           "crates/processcraft-core/tests/geometry.rs:nested_parent_move_translates_children_internal_route_and_label_in_one_undo"
+        ],
+        "validate": [
+          "crates/processcraft-io/tests/m3_repair_di.rs:bounds_validation_names_invalid_geometry",
+          "crates/processcraft-io/tests/m3_repair_di.rs:import_refuses_bad_bounds_and_points_with_geometry_message"
         ]
       },
       "verified_notes": {
-        "export": "Export evidence: XSD-valid fixture, whole-document model equality after export and re-import."
+        "export": "Export evidence: XSD-valid fixture, whole-document model equality after export and re-import.",
+        "validate": "Negative/NaN/infinite/out-of-range Bounds fail ProjectData::validate with the exact 'invalid geometry' diagnostic (shape and label bounds); import refuses the same values with a Geometry error."
       }
     },
     {
@@ -17925,7 +17934,7 @@
           "crates/processcraft-core/tests/m2.rs:activity_properties_validate_scope_and_kind_and_undo"
         ],
         "validate": [
-          "crates/processcraft-core/tests/m2.rs:activity_properties_validate_scope_and_kind_and_undo"
+          "crates/processcraft-core/tests/m3_repair_activities.rs:default_flow_must_be_outgoing_sequence_flow_of_the_activity"
         ]
       }
     },
@@ -18145,7 +18154,7 @@
           "crates/processcraft-render/tests/bpmn_scene.rs:activity_properties_change_shared_vectors_and_viewport"
         ],
         "validate": [
-          "crates/processcraft-core/tests/m2.rs:activity_properties_validate_scope_and_kind_and_undo"
+          "crates/processcraft-core/tests/m3_repair_activities.rs:default_flow_must_be_outgoing_sequence_flow_of_the_activity"
         ]
       }
     },
@@ -18326,7 +18335,7 @@
         "model": "verified",
         "edit": "unverified",
         "render": "unverified",
-        "import": "unverified",
+        "import": "verified",
         "export": "verified",
         "validate": "verified"
       },
@@ -18341,9 +18350,8 @@
       ],
       "verified_evidence": {
         "export": [
-          "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip",
-          "tests/fixtures/bpmn20-schema/artifacts.bpmn",
-          "tests/fixtures/bpmn20-schema/groups.bpmn"
+          "crates/processcraft-io/tests/m3_repair_artifacts.rs:artifacts_export_values_are_in_bytes_reimport_and_xsd_valid",
+          "scripts/check_bpmn20_xsd.py"
         ],
         "model": [
           "crates/processcraft-core/tests/collaboration_model.rs:group_category_reference_preserves_legacy_wire_and_external_namespace",
@@ -18352,7 +18360,14 @@
         "validate": [
           "crates/processcraft-core/tests/diagnostics.rs:choreography_graph_reports_bounded_semantics_without_matching_external_names",
           "crates/processcraft-core/tests/diagnostics.rs:participant_band_owner_resolves_to_same_diagram_activity_shape"
+        ],
+        "import": [
+          "crates/processcraft-io/tests/m3_repair_artifacts.rs:artifact_kinds_import_with_typed_values",
+          "tests/fixtures/bpmn/m3-artifacts/artifacts-all.bpmn"
         ]
+      },
+      "verified_notes": {
+        "import": "textAnnotation, association and group imported typed with asserted ids, endpoints, direction, textFormat, categoryValueRef."
       }
     },
     {
@@ -18553,7 +18568,8 @@
       ],
       "verified_evidence": {
         "export": [
-          "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip"
+          "crates/processcraft-io/tests/m3_repair_artifacts.rs:artifacts_export_values_are_in_bytes_reimport_and_xsd_valid",
+          "scripts/check_bpmn20_xsd.py"
         ],
         "import": [
           "crates/processcraft-io/tests/m3_artifacts.rs:artifacts_import_typed_association_category_and_annotation_fields",
@@ -18601,10 +18617,11 @@
       ],
       "verified_evidence": {
         "edit": [
-          "crates/processcraft-core/tests/m2.rs:descriptive_commands_validate_references_and_undo_atomically"
+          "crates/processcraft-core/tests/m3_repair_artifacts.rs:association_endpoints_are_created_read_back_and_undone"
         ],
         "export": [
-          "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip"
+          "crates/processcraft-io/tests/m3_repair_artifacts.rs:artifacts_export_values_are_in_bytes_reimport_and_xsd_valid",
+          "scripts/check_bpmn20_xsd.py"
         ],
         "import": [
           "crates/processcraft-io/tests/m3_artifacts.rs:artifacts_import_typed_association_category_and_annotation_fields",
@@ -18617,6 +18634,9 @@
         "validate": [
           "crates/processcraft-core/tests/m3_artifacts.rs:association_dangling_endpoints_report_source_and_target_diagnostics"
         ]
+      },
+      "verified_notes": {
+        "edit": "Endpoints are set by CreateFlow and undone; no retarget mutation exists."
       }
     },
     {
@@ -18652,10 +18672,11 @@
       ],
       "verified_evidence": {
         "edit": [
-          "crates/processcraft-core/tests/m2.rs:descriptive_commands_validate_references_and_undo_atomically"
+          "crates/processcraft-core/tests/m3_repair_artifacts.rs:association_endpoints_are_created_read_back_and_undone"
         ],
         "export": [
-          "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip"
+          "crates/processcraft-io/tests/m3_repair_artifacts.rs:artifacts_export_values_are_in_bytes_reimport_and_xsd_valid",
+          "scripts/check_bpmn20_xsd.py"
         ],
         "import": [
           "crates/processcraft-io/tests/m3_artifacts.rs:artifacts_import_typed_association_category_and_annotation_fields",
@@ -18668,6 +18689,9 @@
         "validate": [
           "crates/processcraft-core/tests/m3_artifacts.rs:association_dangling_endpoints_report_source_and_target_diagnostics"
         ]
+      },
+      "verified_notes": {
+        "edit": "Endpoints are set by CreateFlow and undone; no retarget mutation exists."
       }
     },
     {
@@ -18706,7 +18730,8 @@
           "crates/processcraft-core/tests/m2.rs:descriptive_commands_validate_references_and_undo_atomically"
         ],
         "export": [
-          "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip"
+          "crates/processcraft-io/tests/m3_repair_artifacts.rs:artifacts_export_values_are_in_bytes_reimport_and_xsd_valid",
+          "scripts/check_bpmn20_xsd.py"
         ],
         "import": [
           "crates/processcraft-io/tests/m3_artifacts.rs:artifacts_import_typed_association_category_and_annotation_fields",
@@ -18880,8 +18905,8 @@
           "crates/processcraft-io/tests/interchange.rs:identified_base_owner_metadata_roundtrips"
         ],
         "validate": [
-          "crates/processcraft-core/tests/commands.rs:opaque_metadata_blocks_identity_and_structural_edits_without_partial_changes",
-          "crates/processcraft-core/tests/identity_native.rs:native_graph_identity_is_stable_and_duplicate_xml_ids_are_rejected"
+          "crates/processcraft-core/tests/m3_repair_foundation.rs:base_element_id_is_read_back_renamed_and_collision_is_diagnosed",
+          "crates/processcraft-core/tests/m3_repair_foundation.rs:native_duplicate_xml_id_validate_names_the_rule"
         ]
       }
     },
@@ -18933,11 +18958,11 @@
           "crates/processcraft-io/tests/interchange.rs:anonymous_metadata_stays_on_its_typed_owner"
         ],
         "model": [
-          "crates/processcraft-core/tests/identity_native.rs:native_graph_identity_is_stable_and_duplicate_xml_ids_are_rejected"
+          "crates/processcraft-core/tests/m3_repair_foundation.rs:base_element_id_is_read_back_renamed_and_collision_is_diagnosed"
         ],
         "validate": [
-          "crates/processcraft-core/tests/commands.rs:documentation_id_rename_and_collision_are_atomic",
-          "crates/processcraft-core/tests/identity_native.rs:native_graph_identity_is_stable_and_duplicate_xml_ids_are_rejected"
+          "crates/processcraft-core/tests/m3_repair_foundation.rs:base_element_id_is_read_back_renamed_and_collision_is_diagnosed",
+          "crates/processcraft-core/tests/m3_repair_foundation.rs:native_duplicate_xml_id_validate_names_the_rule"
         ]
       }
     },
@@ -19044,10 +19069,8 @@
           "crates/processcraft-core/tests/m3_events.rs:boundary_cancel_activity_and_attached_to_edit_with_undo"
         ],
         "export": [
-          "crates/processcraft-io/tests/interchange.rs:choreography_boundary_event_io_round_trips_and_owner_order_is_stable",
-          "scripts/check_bpmn_metadata_source.py:records",
-          "scripts/qualify_choreography_graph.py",
-          "tests/fixtures/bpmn/choreography-graph/boundary-event-io.bpmn"
+          "crates/processcraft-io/tests/m3_repair_events.rs:signal_end_throw_boundary_import_values_and_export_reimport_equal",
+          "scripts/check_bpmn20_xsd.py"
         ],
         "import": [
           "crates/processcraft-io/tests/interchange.rs:choreography_boundary_event_io_round_trips_and_owner_order_is_stable",
@@ -19165,8 +19188,7 @@
           "tests/fixtures/bpmn/m3-events/timers-boundary-terminate.bpmn"
         ],
         "model": [
-          "crates/processcraft-core/tests/choreography_graph.rs:boundary_attachment_local_wire_and_external_namespace_are_preserved",
-          "crates/processcraft-io/tests/interchange.rs:choreography_boundary_event_io_round_trips_and_owner_order_is_stable"
+          "crates/processcraft-core/tests/m3_events.rs:boundary_cancel_activity_and_attached_to_edit_with_undo"
         ],
         "render": [
           "crates/processcraft-render/tests/bpmn_scene.rs:non_interrupting_boundary_and_compensation_have_distinct_shared_vectors"
@@ -19414,17 +19436,14 @@
       ],
       "verified_evidence": {
         "edit": [
-          "crates/processcraft-core/tests/commands.rs:activity_interface_references_follow_xml_id_edits"
+          "crates/processcraft-core/tests/m3_repair_foundation.rs:callable_supported_interface_refs_are_set_cleared_and_undone"
         ],
         "export": [
-          "crates/processcraft-io/tests/interchange.rs:activity_correlation_and_callable_fixtures_roundtrip_with_values",
-          "scripts/check_bpmn_metadata_source.py",
-          "scripts/qualify_activity_metadata.py"
+          "crates/processcraft-io/tests/m3_repair_production.rs:callable_supported_interface_refs_import_and_export_with_values",
+          "scripts/check_bpmn20_xsd.py"
         ],
         "import": [
-          "crates/processcraft-io/tests/interchange.rs:activity_correlation_and_callable_fixtures_roundtrip_with_values",
-          "scripts/check_bpmn_metadata_source.py",
-          "scripts/qualify_activity_metadata.py"
+          "crates/processcraft-io/tests/m3_repair_production.rs:callable_supported_interface_refs_import_and_export_with_values"
         ],
         "model": [
           "crates/processcraft-core/tests/commands.rs:activity_interface_references_follow_xml_id_edits"
@@ -20067,9 +20086,7 @@
           "crates/processcraft-io/tests/interchange.rs:event_root_refs_flags_properties_and_owned_io_roundtrip"
         ],
         "validate": [
-          "crates/processcraft-core/tests/events_extended.rs:missing_local_root_wrong_event_direction_and_duplicate_ids_are_rejected",
-          "crates/processcraft-core/tests/events_extended.rs:qualified_root_reference_keeps_namespace_and_requires_local_kind",
-          "crates/processcraft-core/tests/events_extended.rs:repeated_root_uses_are_rejected_without_namespace_aliasing"
+          "crates/processcraft-core/tests/m3_repair_events.rs:catch_and_throw_event_definition_ref_diagnostics_are_specific"
         ]
       }
     },
@@ -20153,7 +20170,7 @@
         "edit": "verified",
         "render": "unverified",
         "import": "verified",
-        "export": "partial",
+        "export": "verified",
         "validate": "not_applicable"
       },
       "profile": "descriptive artifacts",
@@ -20177,19 +20194,23 @@
       ],
       "verified_evidence": {
         "edit": [
-          "crates/processcraft-core/tests/m2.rs:descriptive_commands_validate_references_and_undo_atomically"
+          "crates/processcraft-core/tests/m3_artifacts.rs:category_name_and_value_edit_are_stored_and_undo_restores"
         ],
         "import": [
           "crates/processcraft-io/tests/m3_artifacts.rs:artifacts_import_typed_association_category_and_annotation_fields",
           "tests/fixtures/bpmn/m3-artifacts/manifest.md"
         ],
         "model": [
-          "crates/processcraft-core/tests/commands.rs:group_category_qnames_rewrite_only_local_target",
-          "crates/processcraft-core/tests/m2.rs:descriptive_commands_validate_references_and_undo_atomically"
+          "crates/processcraft-core/tests/m3_artifacts.rs:category_name_and_value_edit_are_stored_and_undo_restores"
+        ],
+        "export": [
+          "crates/processcraft-io/tests/m3_repair_artifacts.rs:artifacts_export_values_are_in_bytes_reimport_and_xsd_valid",
+          "scripts/check_bpmn20_xsd.py"
         ]
       },
       "verified_notes": {
-        "validate": "BPMN 2.0.2 Table 8.22 (printed p.69) gives Category only a descriptive name and a containment of CategoryValue [0..*]; it states no constraint beyond the XSD structure."
+        "validate": "BPMN 2.0.2 Table 8.22 (printed p.69) gives Category only a descriptive name and a containment of CategoryValue [0..*]; it states no constraint beyond the XSD structure.",
+        "export": "Asserts <category name=Stage> and <categoryValue value=Review> in bytes and after re-import; the test runs the XSD script on the exported file (XSD valid)."
       }
     },
     {
@@ -20337,18 +20358,18 @@
       ],
       "verified_evidence": {
         "edit": [
-          "crates/processcraft-core/tests/m2.rs:descriptive_commands_validate_references_and_undo_atomically"
+          "crates/processcraft-core/tests/m3_artifacts.rs:category_name_and_value_edit_are_stored_and_undo_restores"
         ],
         "export": [
-          "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip"
+          "crates/processcraft-io/tests/m3_repair_artifacts.rs:artifacts_export_values_are_in_bytes_reimport_and_xsd_valid",
+          "scripts/check_bpmn20_xsd.py"
         ],
         "import": [
           "crates/processcraft-io/tests/m3_artifacts.rs:artifacts_import_typed_association_category_and_annotation_fields",
           "tests/fixtures/bpmn/m3-artifacts/manifest.md"
         ],
         "model": [
-          "crates/processcraft-core/tests/commands.rs:group_category_qnames_rewrite_only_local_target",
-          "crates/processcraft-render/tests/bpmn_scene.rs:group_category_label_uses_di_bounds_style_and_viewport_hit"
+          "crates/processcraft-core/tests/m3_artifacts.rs:category_name_and_value_edit_are_stored_and_undo_restores"
         ],
         "validate": [
           "crates/processcraft-core/tests/m3_foundation.rs:category_value_ref_and_outgoing_are_set_undone_and_dangling_refs_diagnosed"
@@ -20387,7 +20408,8 @@
       ],
       "verified_evidence": {
         "export": [
-          "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip"
+          "crates/processcraft-io/tests/m3_repair_artifacts.rs:artifacts_export_values_are_in_bytes_reimport_and_xsd_valid",
+          "scripts/check_bpmn20_xsd.py"
         ],
         "import": [
           "crates/processcraft-io/tests/m3_artifacts.rs:artifacts_import_typed_association_category_and_annotation_fields",
@@ -20398,7 +20420,7 @@
           "crates/processcraft-render/tests/bpmn_scene.rs:group_category_label_uses_di_bounds_style_and_viewport_hit"
         ],
         "validate": [
-          "crates/processcraft-core/tests/m3_foundation.rs:category_value_ref_and_outgoing_are_set_undone_and_dangling_refs_diagnosed"
+          "crates/processcraft-core/tests/m3_repair_artifacts.rs:group_category_value_ref_resolves_to_category_value_only"
         ]
       }
     },
@@ -20435,7 +20457,8 @@
       ],
       "verified_evidence": {
         "export": [
-          "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip"
+          "crates/processcraft-io/tests/m3_repair_artifacts.rs:artifacts_export_values_are_in_bytes_reimport_and_xsd_valid",
+          "scripts/check_bpmn20_xsd.py"
         ],
         "import": [
           "crates/processcraft-io/tests/m3_artifacts.rs:artifacts_import_typed_association_category_and_annotation_fields",
@@ -20820,8 +20843,7 @@
           "crates/processcraft-render/tests/m3_choreography.rs:choreography_loop_type_marker_is_drawn_per_value"
         ],
         "validate": [
-          "crates/processcraft-io/tests/m3_choreography.rs:out_of_enum_choreography_loop_type_is_not_imported_as_editable",
-          "tests/fixtures/bpmn/m3-choreography/values.bpmn"
+          "crates/processcraft-io/tests/m3_choreography.rs:out_of_enum_choreography_loop_type_is_not_imported_as_editable"
         ]
       }
     },
@@ -20870,8 +20892,7 @@
           "crates/processcraft-core/tests/choreography_graph.rs:legacy_wire_and_explicit_defaults_are_distinct"
         ],
         "validate": [
-          "crates/processcraft-io/tests/m3_choreography.rs:out_of_enum_choreography_loop_type_is_not_imported_as_editable",
-          "tests/fixtures/bpmn/m3-choreography/values.bpmn"
+          "crates/processcraft-io/tests/m3_choreography.rs:out_of_enum_choreography_loop_type_is_not_imported_as_editable"
         ]
       }
     },
@@ -21094,8 +21115,8 @@
           "crates/processcraft-core/tests/m3r2_edit-model-io.rs:element_level_collaboration_participant_message_and_message_flow_with_undo"
         ],
         "export": [
-          "crates/processcraft-io/tests/m3r2_edit-model-io.rs:export_writes_lane_set_names_and_partitions_and_reimports_equal",
-          "tests/fixtures/bpmn/m3-r2-edit-model-io/manifest.md"
+          "crates/processcraft-io/tests/m3_repair_process_collaboration.rs:export_writes_the_values_and_reimport_asserts_them_again",
+          "scripts/check_bpmn20_xsd.py"
         ],
         "import": [
           "crates/processcraft-io/tests/m3r2_edit-model-io.rs:process_collaboration_message_and_flows_import_typed",
@@ -21303,7 +21324,7 @@
           "crates/processcraft-io/tests/interchange.rs:multiple_collaborations_and_anonymous_root_order_roundtrip"
         ],
         "model": [
-          "crates/processcraft-io/tests/interchange.rs:multiple_collaborations_and_anonymous_root_order_roundtrip"
+          "crates/processcraft-core/tests/m3_process_collaboration.rs:collaboration_is_closed_and_choreography_refs_edit_with_undo"
         ],
         "validate": [
           "crates/processcraft-core/tests/m3_process_collaboration.rs:collaboration_choreography_ref_dangling_is_reported",
@@ -21697,7 +21718,7 @@
           "crates/processcraft-io/tests/interchange.rs:conditional_catch_expression_round_trips"
         ],
         "model": [
-          "crates/processcraft-io/tests/interchange.rs:conditional_catch_expression_round_trips"
+          "crates/processcraft-core/tests/m3_events.rs:conditional_definition_edit_with_undo"
         ],
         "validate": [
           "crates/processcraft-core/tests/m3r2_validate.rs",
@@ -21746,10 +21767,10 @@
           "tests/fixtures/bpmn/m3-events/references-links-conditions.bpmn"
         ],
         "import": [
-          "crates/processcraft-io/tests/interchange.rs:conditional_catch_expression_round_trips"
+          "crates/processcraft-io/tests/m3_events.rs:conditional_condition_imports_and_exports"
         ],
         "model": [
-          "crates/processcraft-io/tests/interchange.rs:conditional_catch_expression_round_trips"
+          "crates/processcraft-core/tests/m3_events.rs:conditional_definition_edit_with_undo"
         ],
         "validate": [
           "crates/processcraft-core/tests/m3r2_validate.rs",
@@ -22658,7 +22679,8 @@
           "scripts/check_bpmn20_xsd.py"
         ],
         "validate": [
-          "crates/processcraft-core/tests/diagnostics.rs:choreography_graph_reports_bounded_semantics_without_matching_external_names"
+          "crates/processcraft-core/tests/m3_data.rs:data_association_source_count_diagnostic_is_negative_tested",
+          "crates/processcraft-core/tests/m3r2_validate.rs:data_association_endpoints_are_validated"
         ]
       }
     },
@@ -22695,7 +22717,7 @@
       ],
       "verified_evidence": {
         "edit": [
-          "crates/processcraft-core/tests/m2.rs:typed_data_association_is_scoped_to_owner_ports_and_undoable"
+          "crates/processcraft-core/tests/m3_repair_data.rs:data_association_source_edit_and_undo"
         ],
         "export": [
           "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
@@ -22748,7 +22770,7 @@
       ],
       "verified_evidence": {
         "edit": [
-          "crates/processcraft-core/tests/m2.rs:typed_data_association_is_scoped_to_owner_ports_and_undoable"
+          "crates/processcraft-core/tests/m3_data.rs:data_association_sources_target_transformation_edit_and_undo"
         ],
         "export": [
           "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
@@ -22760,10 +22782,11 @@
           "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
         ],
         "model": [
-          "crates/processcraft-core/tests/m2.rs:typed_data_association_is_scoped_to_owner_ports_and_undoable"
+          "crates/processcraft-core/tests/m3_data.rs:data_association_sources_target_transformation_edit_and_undo"
         ],
         "validate": [
-          "crates/processcraft-core/tests/diagnostics.rs:choreography_graph_reports_bounded_semantics_without_matching_external_names"
+          "crates/processcraft-core/tests/m3_data.rs:data_association_source_count_diagnostic_is_negative_tested",
+          "crates/processcraft-core/tests/m3r2_validate.rs:data_association_endpoints_are_validated"
         ]
       }
     },
@@ -22876,7 +22899,8 @@
           "scripts/check_bpmn20_xsd.py"
         ],
         "model": [
-          "crates/processcraft-render/tests/bpmn_scene.rs:process_data_ports_render_direction_collection_state_and_hits"
+          "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo",
+          "crates/processcraft-core/tests/m3_repair_data.rs:data_input_item_subject_ref_edit_and_undo"
         ],
         "render": [
           "crates/processcraft-render/tests/bpmn_scene.rs:process_data_ports_render_direction_collection_state_and_hits"
@@ -23048,7 +23072,7 @@
       ],
       "verified_evidence": {
         "edit": [
-          "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo"
+          "crates/processcraft-core/tests/m3_repair_data.rs:data_input_item_subject_ref_edit_and_undo"
         ],
         "export": [
           "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
@@ -23185,18 +23209,11 @@
           "scripts/check_bpmn20_xsd.py"
         ],
         "import": [
-          "crates/processcraft-core/tests/commands.rs:expanded_data_preserves_omissions_and_validates_transformation",
-          "crates/processcraft-core/tests/m2.rs:nested_data_associations_resolve_ancestor_and_global_endpoints",
-          "crates/processcraft-core/tests/m2.rs:typed_data_association_is_scoped_to_owner_ports_and_undoable",
-          "crates/processcraft-io/tests/interchange.rs:data_io_sets_ports_and_associations_round_trip",
-          "scripts/check_bpmn20_xsd.py"
+          "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+          "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
         ],
         "model": [
-          "crates/processcraft-core/tests/commands.rs:expanded_data_preserves_omissions_and_validates_transformation",
-          "crates/processcraft-core/tests/m2.rs:nested_data_associations_resolve_ancestor_and_global_endpoints",
-          "crates/processcraft-core/tests/m2.rs:typed_data_association_is_scoped_to_owner_ports_and_undoable",
-          "crates/processcraft-io/tests/interchange.rs:data_io_sets_ports_and_associations_round_trip",
-          "scripts/check_bpmn20_xsd.py"
+          "crates/processcraft-core/tests/m3_data.rs:data_association_sources_target_transformation_edit_and_undo"
         ],
         "validate": [
           "crates/processcraft-core/tests/m3_data.rs:data_association_source_count_diagnostic_is_negative_tested",
@@ -23223,7 +23240,7 @@
         "edit": "unverified",
         "render": "unverified",
         "import": "verified",
-        "export": "unverified",
+        "export": "verified",
         "validate": "verified"
       },
       "required": [
@@ -23254,7 +23271,15 @@
           "crates/processcraft-core/tests/m3_data.rs:data_association_source_count_diagnostic_is_negative_tested",
           "crates/processcraft-core/tests/m3r2_validate.rs",
           "crates/processcraft-core/tests/m3r2_validate.rs:data_association_endpoints_are_validated"
+        ],
+        "export": [
+          "crates/processcraft-io/tests/m3_repair_data.rs:io_specification_and_data_associations_export_values_and_reimport_equal",
+          "scripts/check_bpmn20_xsd.py",
+          "tests/fixtures/bpmn/m3-repair-data/data-repair.bpmn"
         ]
+      },
+      "verified_notes": {
+        "export": "Export asserts dataInputAssociation sourceRef/targetRef text, re-import asserts kind/sources/target; export bytes XSD valid (manifest.md)."
       }
     },
     {
@@ -23299,7 +23324,7 @@
       ],
       "verified_evidence": {
         "edit": [
-          "crates/processcraft-core/tests/m2.rs:typed_data_association_is_scoped_to_owner_ports_and_undoable"
+          "crates/processcraft-core/tests/m3_data.rs:data_object_collection_and_item_edit_and_undo"
         ],
         "export": [
           "crates/processcraft-io/tests/interchange.rs:item_aware_metadata_transformations_and_assignments_roundtrip",
@@ -23647,7 +23672,7 @@
       ],
       "verified_evidence": {
         "model": [
-          "crates/processcraft-render/tests/bpmn_scene.rs:process_data_ports_render_direction_collection_state_and_hits"
+          "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo"
         ],
         "render": [
           "crates/processcraft-render/tests/bpmn_scene.rs:process_data_ports_render_direction_collection_state_and_hits"
@@ -23718,7 +23743,7 @@
           "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
         ],
         "model": [
-          "crates/processcraft-render/tests/bpmn_scene.rs:process_data_ports_render_direction_collection_state_and_hits"
+          "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo"
         ],
         "validate": [
           "crates/processcraft-core/tests/m3r2_validate.rs",
@@ -23846,8 +23871,7 @@
           "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
         ],
         "validate": [
-          "crates/processcraft-core/tests/m3r2_validate.rs",
-          "crates/processcraft-core/tests/m3r2_validate.rs:data_ports_are_validated"
+          "crates/processcraft-core/tests/m3_repair_data.rs:data_output_item_subject_ref_must_resolve"
         ]
       }
     },
@@ -23960,18 +23984,12 @@
           "crates/processcraft-core/tests/m3_data.rs:data_association_sources_target_transformation_edit_and_undo"
         ],
         "export": [
-          "crates/processcraft-core/tests/commands.rs:expanded_data_preserves_omissions_and_validates_transformation",
-          "crates/processcraft-core/tests/m2.rs:nested_data_associations_resolve_ancestor_and_global_endpoints",
-          "crates/processcraft-core/tests/m2.rs:typed_data_association_is_scoped_to_owner_ports_and_undoable",
-          "crates/processcraft-io/tests/interchange.rs:data_io_sets_ports_and_associations_round_trip",
-          "scripts/check_bpmn20_xsd.py"
+          "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+          "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
         ],
         "import": [
-          "crates/processcraft-core/tests/commands.rs:expanded_data_preserves_omissions_and_validates_transformation",
-          "crates/processcraft-core/tests/m2.rs:nested_data_associations_resolve_ancestor_and_global_endpoints",
-          "crates/processcraft-core/tests/m2.rs:typed_data_association_is_scoped_to_owner_ports_and_undoable",
-          "crates/processcraft-io/tests/interchange.rs:data_io_sets_ports_and_associations_round_trip",
-          "scripts/check_bpmn20_xsd.py"
+          "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+          "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
         ],
         "model": [
           "crates/processcraft-core/tests/commands.rs:expanded_data_preserves_omissions_and_validates_transformation",
@@ -23981,7 +23999,7 @@
           "scripts/check_bpmn20_xsd.py"
         ],
         "validate": [
-          "crates/processcraft-core/tests/diagnostics.rs:choreography_graph_reports_bounded_semantics_without_matching_external_names"
+          "crates/processcraft-core/tests/m3_repair_data.rs:data_output_association_source_count_is_diagnosed"
         ]
       }
     },
@@ -24017,28 +24035,18 @@
       ],
       "verified_evidence": {
         "export": [
-          "crates/processcraft-core/tests/commands.rs:expanded_data_preserves_omissions_and_validates_transformation",
-          "crates/processcraft-core/tests/m2.rs:nested_data_associations_resolve_ancestor_and_global_endpoints",
-          "crates/processcraft-core/tests/m2.rs:typed_data_association_is_scoped_to_owner_ports_and_undoable",
-          "crates/processcraft-io/tests/interchange.rs:data_io_sets_ports_and_associations_round_trip",
-          "scripts/check_bpmn20_xsd.py"
+          "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+          "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
         ],
         "import": [
-          "crates/processcraft-core/tests/commands.rs:expanded_data_preserves_omissions_and_validates_transformation",
-          "crates/processcraft-core/tests/m2.rs:nested_data_associations_resolve_ancestor_and_global_endpoints",
-          "crates/processcraft-core/tests/m2.rs:typed_data_association_is_scoped_to_owner_ports_and_undoable",
-          "crates/processcraft-io/tests/interchange.rs:data_io_sets_ports_and_associations_round_trip",
-          "scripts/check_bpmn20_xsd.py"
+          "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+          "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
         ],
         "model": [
-          "crates/processcraft-core/tests/commands.rs:expanded_data_preserves_omissions_and_validates_transformation",
-          "crates/processcraft-core/tests/m2.rs:nested_data_associations_resolve_ancestor_and_global_endpoints",
-          "crates/processcraft-core/tests/m2.rs:typed_data_association_is_scoped_to_owner_ports_and_undoable",
-          "crates/processcraft-io/tests/interchange.rs:data_io_sets_ports_and_associations_round_trip",
-          "scripts/check_bpmn20_xsd.py"
+          "crates/processcraft-core/tests/m3_data.rs:data_association_sources_target_transformation_edit_and_undo"
         ],
         "validate": [
-          "crates/processcraft-core/tests/diagnostics.rs:choreography_graph_reports_bounded_semantics_without_matching_external_names"
+          "crates/processcraft-core/tests/m3_repair_data.rs:data_output_association_source_count_is_diagnosed"
         ]
       }
     },
@@ -24171,8 +24179,7 @@
       ],
       "verified_evidence": {
         "export": [
-          "crates/processcraft-io/tests/interchange.rs:choreography_task_and_data_references_round_trip",
-          "crates/processcraft-io/tests/interchange.rs:data_elements_allow_optional_xml_ids_and_process_io",
+          "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
           "scripts/check_bpmn20_xsd.py"
         ],
         "import": [
@@ -24307,7 +24314,7 @@
           "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
         ],
         "model": [
-          "crates/processcraft-render/tests/bpmn_scene.rs:global_data_store_shape_uses_cylinder_state_and_viewport_hits"
+          "crates/processcraft-core/tests/m3_data.rs:data_store_attributes_edit_and_undo"
         ],
         "render": [
           "crates/processcraft-render/tests/bpmn_scene.rs:global_data_store_shape_uses_cylinder_state_and_viewport_hits"
@@ -24550,9 +24557,7 @@
           "scripts/qualify_common_metadata.py"
         ],
         "model": [
-          "crates/processcraft-io/tests/interchange.rs:data_store_qualified_and_no_namespace_references_keep_identity",
-          "crates/processcraft-io/tests/interchange.rs:item_aware_metadata_transformations_and_assignments_roundtrip",
-          "scripts/qualify_common_metadata.py"
+          "crates/processcraft-core/tests/m3_data.rs:data_store_reference_target_and_item_edit_and_undo"
         ],
         "render": [
           "crates/processcraft-render/tests/bpmn_scene.rs:data_store_reference_displays_its_own_name_including_empty"
@@ -24786,7 +24791,7 @@
           "crates/processcraft-core/tests/commands.rs:structured_documentation_requires_explicit_edits_and_preserves_history"
         ],
         "validate": [
-          "crates/processcraft-core/tests/commands.rs:documentation_id_rename_and_collision_are_atomic"
+          "crates/processcraft-core/tests/m3_repair_foundation.rs:documentation_id_collision_and_format_diagnostics_are_specific"
         ]
       }
     },
@@ -24844,7 +24849,7 @@
           "crates/processcraft-core/tests/commands.rs:structured_documentation_requires_explicit_edits_and_preserves_history"
         ],
         "validate": [
-          "crates/processcraft-core/tests/commands.rs:documentation_id_rename_and_collision_are_atomic"
+          "crates/processcraft-core/tests/m3_repair_foundation.rs:documentation_id_collision_and_format_diagnostics_are_specific"
         ]
       }
     },
@@ -24867,7 +24872,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "D"
@@ -24887,12 +24892,17 @@
           "scripts/qualify_common_metadata.py"
         ],
         "import": [
-          "crates/processcraft-io/tests/interchange.rs:process_documentation_mixed_order_and_namespaces_roundtrip",
-          "scripts/qualify_common_metadata.py"
+          "crates/processcraft-io/tests/m3_repair_production.rs:documentation_id_imports_the_fixture_value"
         ],
         "model": [
           "crates/processcraft-core/tests/commands.rs:documentation_id_rename_and_collision_are_atomic"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3_repair_foundation.rs:documentation_id_collision_and_format_diagnostics_are_specific"
         ]
+      },
+      "verified_notes": {
+        "validate": "Documentation xml id colliding with another element id is refused with the specific 'duplicate XML ID' diagnostic and state is unchanged."
       }
     },
     {
@@ -24941,7 +24951,7 @@
           "crates/processcraft-core/tests/commands.rs:structured_documentation_requires_explicit_edits_and_preserves_history"
         ],
         "validate": [
-          "crates/processcraft-core/tests/m3_foundation.rs:documentation_text_format_is_bounded_and_character_checked"
+          "crates/processcraft-core/tests/m3_repair_foundation.rs:documentation_id_collision_and_format_diagnostics_are_specific"
         ]
       }
     },
@@ -24979,28 +24989,27 @@
       ],
       "verified_evidence": {
         "edit": [
-          "apps/processcraft-cli/tests/cli.rs:cli_matches_engine_content",
-          "crates/processcraft-core/tests/commands.rs:one_batch_is_one_undo",
-          "tests/fixtures/commands/procurement.json"
+          "crates/processcraft-core/tests/m3_events.rs:throw_event_definition_ref_edit_with_undo"
         ],
         "export": [
-          "crates/processcraft-io/tests/interchange.rs:event_root_refs_flags_properties_and_owned_io_roundtrip",
-          "scripts/qualify_common_metadata.py:generate",
-          "tests/fixtures/bpmn/event-ownership.bpmn"
+          "crates/processcraft-io/tests/m3_repair_events.rs:referenced_fixture_end_event_and_signal_values_round_trip",
+          "crates/processcraft-io/tests/m3_repair_events.rs:signal_end_throw_boundary_import_values_and_export_reimport_equal",
+          "scripts/check_bpmn20_xsd.py"
         ],
         "import": [
-          "crates/processcraft-io/tests/interchange.rs:event_root_refs_flags_properties_and_owned_io_roundtrip",
-          "tests/fixtures/bpmn/event-ownership.bpmn"
+          "crates/processcraft-io/tests/m3_repair_events.rs:referenced_fixture_end_event_and_signal_values_round_trip",
+          "crates/processcraft-io/tests/m3_repair_events.rs:signal_end_throw_boundary_import_values_and_export_reimport_equal"
         ],
         "model": [
-          "crates/processcraft-core/tests/commands.rs:link_and_compensation_events_validate_atomically",
-          "crates/processcraft-core/tests/geometry.rs:semantic_hits_cover_all_event_and_gateway_shapes"
+          "crates/processcraft-core/tests/m3_repair_events.rs:throw_and_end_events_read_back_refs_and_io_with_undo"
         ],
         "render": [
           "crates/processcraft-render/tests/bpmn_scene.rs:semantic_default_fills_follow_appearance_without_overriding_source"
         ],
         "validate": [
-          "crates/processcraft-core/tests/commands.rs:link_and_compensation_events_validate_atomically"
+          "crates/processcraft-core/tests/m3_events.rs:terminate_is_valid_only_on_end_events",
+          "crates/processcraft-core/tests/m3_events.rs:timer_choice_must_be_complete_and_catch_only",
+          "crates/processcraft-core/tests/m3_repair_events.rs:root_event_definitions_read_back_and_invalid_event_messages_are_specific"
         ]
       }
     },
@@ -25036,20 +25045,22 @@
       ],
       "verified_evidence": {
         "export": [
-          "crates/processcraft-io/tests/interchange.rs:event_root_refs_flags_properties_and_owned_io_roundtrip",
-          "scripts/qualify_common_metadata.py:generate",
-          "tests/fixtures/bpmn/event-ownership.bpmn"
+          "crates/processcraft-io/tests/m3_repair_events.rs:referenced_fixture_end_event_and_signal_values_round_trip",
+          "crates/processcraft-io/tests/m3_repair_events.rs:signal_end_throw_boundary_import_values_and_export_reimport_equal",
+          "scripts/check_bpmn20_xsd.py"
         ],
         "import": [
-          "crates/processcraft-io/tests/interchange.rs:event_root_refs_flags_properties_and_owned_io_roundtrip",
-          "tests/fixtures/bpmn/event-ownership.bpmn"
+          "crates/processcraft-io/tests/m3_repair_events.rs:referenced_fixture_end_event_and_signal_values_round_trip",
+          "crates/processcraft-io/tests/m3_repair_events.rs:signal_end_throw_boundary_import_values_and_export_reimport_equal"
         ],
         "model": [
           "crates/processcraft-core/tests/commands.rs:link_and_compensation_events_validate_atomically",
           "crates/processcraft-core/tests/geometry.rs:semantic_hits_cover_all_event_and_gateway_shapes"
         ],
         "validate": [
-          "crates/processcraft-core/tests/commands.rs:link_and_compensation_events_validate_atomically"
+          "crates/processcraft-core/tests/m3_events.rs:terminate_is_valid_only_on_end_events",
+          "crates/processcraft-core/tests/m3_events.rs:timer_choice_must_be_complete_and_catch_only",
+          "crates/processcraft-core/tests/m3_repair_events.rs:root_event_definitions_read_back_and_invalid_event_messages_are_specific"
         ]
       }
     },
@@ -25707,7 +25718,7 @@
           "tests/fixtures/bpmn/event-ownership.bpmn"
         ],
         "model": [
-          "crates/processcraft-core/tests/events_extended.rs:reused_definitions_multiple_and_event_data_validate_without_synthetic_ids"
+          "crates/processcraft-core/tests/m3_repair_events.rs:throw_and_end_events_read_back_refs_and_io_with_undo"
         ],
         "validate": [
           "crates/processcraft-core/tests/diagnostics.rs:incomplete_event_metadata_is_advisory_and_anchored"
@@ -25761,7 +25772,7 @@
           "tests/fixtures/bpmn/m3-gateways/gateways-all.bpmn"
         ],
         "model": [
-          "crates/processcraft-render/tests/bpmn_scene.rs:event_based_gateway_modes_render_distinct_symbols"
+          "crates/processcraft-core/tests/m3_gateways.rs:event_based_gateway_attributes_are_edited_and_undone"
         ],
         "render": [
           "crates/processcraft-render/tests/bpmn_scene.rs:event_based_gateway_modes_render_distinct_symbols"
@@ -25816,7 +25827,7 @@
           "tests/fixtures/bpmn/m3-gateways/gateways-all.bpmn"
         ],
         "model": [
-          "crates/processcraft-render/tests/bpmn_scene.rs:event_based_gateway_modes_render_distinct_symbols"
+          "crates/processcraft-core/tests/m3_gateways.rs:event_based_gateway_attributes_are_edited_and_undone"
         ],
         "validate": [
           "crates/processcraft-core/tests/diagnostics.rs:activity_conditions_are_allowed_but_event_gateway_conditions_are_diagnosed"
@@ -25867,7 +25878,7 @@
           "tests/fixtures/bpmn/m3-gateways/gateways-all.bpmn"
         ],
         "model": [
-          "crates/processcraft-render/tests/bpmn_scene.rs:event_based_gateway_modes_render_distinct_symbols"
+          "crates/processcraft-core/tests/m3_gateways.rs:event_based_gateway_attributes_are_edited_and_undone"
         ],
         "render": [
           "crates/processcraft-render/tests/bpmn_scene.rs:event_based_gateway_modes_render_distinct_symbols"
@@ -25924,7 +25935,7 @@
           "tests/fixtures/bpmn/m3-gateways/gateways-all.bpmn"
         ],
         "model": [
-          "crates/processcraft-render/tests/bpmn_scene.rs:event_based_gateway_modes_render_distinct_symbols"
+          "crates/processcraft-core/tests/m3_gateways.rs:event_based_gateway_attributes_are_edited_and_undone"
         ],
         "render": [
           "crates/processcraft-render/tests/bpmn_scene.rs:event_based_gateway_modes_render_distinct_symbols"
@@ -25979,7 +25990,7 @@
           "tests/fixtures/bpmn/m3-gateways/gateways-all.bpmn"
         ],
         "model": [
-          "crates/processcraft-render/tests/bpmn_scene.rs:event_based_gateway_modes_render_distinct_symbols"
+          "crates/processcraft-core/tests/m3_gateways.rs:event_based_gateway_attributes_are_edited_and_undone"
         ],
         "validate": [
           "crates/processcraft-core/tests/m3_gateways.rs:event_based_gateway_attribute_rules_are_diagnosed"
@@ -26053,10 +26064,11 @@
           "tests/fixtures/bpmn/event-ownership.bpmn"
         ],
         "model": [
-          "crates/processcraft-core/tests/events_extended.rs:reused_definitions_multiple_and_event_data_validate_without_synthetic_ids"
+          "crates/processcraft-core/tests/m3_repair_events.rs:root_event_definitions_read_back_and_invalid_event_messages_are_specific"
         ],
         "validate": [
-          "crates/processcraft-core/tests/events_extended.rs:missing_local_root_wrong_event_direction_and_duplicate_ids_are_rejected"
+          "crates/processcraft-core/tests/m3_repair_events.rs:catch_and_throw_event_definition_ref_diagnostics_are_specific",
+          "crates/processcraft-core/tests/m3_repair_events.rs:root_event_definitions_read_back_and_invalid_event_messages_are_specific"
         ]
       }
     },
@@ -26100,7 +26112,7 @@
       ],
       "verified_evidence": {
         "edit": [
-          "apps/processcraft/src/app.rs:graph_gateway_properties_keep_metadata_and_representation_through_history"
+          "crates/processcraft-core/tests/m3_gateways.rs:exclusive_default_flow_is_set_cleared_and_undone"
         ],
         "export": [
           "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
@@ -26602,7 +26614,7 @@
       ],
       "verified_evidence": {
         "edit": [
-          "crates/processcraft-core/tests/commands.rs:choreography_sequence_flow_metadata_is_undoable_and_message_flow_rejected"
+          "crates/processcraft-core/tests/m3_repair_foundation.rs:flow_element_name_edit_model_and_undo_for_node_and_flow"
         ],
         "export": [
           "crates/processcraft-io/tests/interchange.rs:anonymous_elements_keep_native_identity_without_invented_xml_ids",
@@ -26612,7 +26624,7 @@
           "crates/processcraft-io/tests/interchange.rs:anonymous_elements_keep_native_identity_without_invented_xml_ids"
         ],
         "model": [
-          "crates/processcraft-core/tests/commands.rs:choreography_sequence_flow_metadata_is_undoable_and_message_flow_rejected"
+          "crates/processcraft-core/tests/m3_repair_foundation.rs:flow_element_name_edit_model_and_undo_for_node_and_flow"
         ],
         "render": [
           "crates/processcraft-render/tests/bpmn_scene.rs:implicit_task_label_centers_each_line_in_shared_scene",
@@ -26679,9 +26691,8 @@
       ],
       "verified_evidence": {
         "export": [
-          "crates/processcraft-io/tests/interchange.rs:lane_and_formal_condition_survive_edit_export_reimport",
-          "crates/processcraft-io/tests/interchange.rs:nested_choreography_graph_round_trips",
-          "scripts/qualify_choreography_graph.py"
+          "crates/processcraft-io/tests/m3_repair_production.rs:flow_node_incoming_and_outgoing_survive_export_with_values",
+          "scripts/check_bpmn20_xsd.py"
         ],
         "import": [
           "crates/processcraft-io/tests/interchange.rs:lane_and_formal_condition_survive_edit_export_reimport",
@@ -26730,12 +26741,11 @@
       ],
       "verified_evidence": {
         "edit": [
-          "crates/processcraft-core/tests/commands.rs:flow_node_incoming_reference_follows_sequence_flow_rename"
+          "crates/processcraft-core/tests/m3_repair_foundation.rs:flow_node_incoming_is_set_cleared_and_undone"
         ],
         "export": [
-          "crates/processcraft-io/tests/interchange.rs:activity_correlation_and_callable_fixtures_roundtrip_with_values",
-          "crates/processcraft-io/tests/interchange.rs:nested_choreography_graph_round_trips",
-          "scripts/qualify_choreography_graph.py"
+          "crates/processcraft-io/tests/m3_repair_production.rs:flow_node_incoming_and_outgoing_survive_export_with_values",
+          "scripts/check_bpmn20_xsd.py"
         ],
         "import": [
           "crates/processcraft-io/tests/interchange.rs:nested_choreography_graph_round_trips",
@@ -26787,16 +26797,15 @@
           "crates/processcraft-core/tests/m3_foundation.rs:category_value_ref_and_outgoing_are_set_undone_and_dangling_refs_diagnosed"
         ],
         "export": [
-          "crates/processcraft-io/tests/interchange.rs:activity_correlation_and_callable_fixtures_roundtrip_with_values",
-          "crates/processcraft-io/tests/interchange.rs:nested_choreography_graph_round_trips",
-          "scripts/qualify_choreography_graph.py"
+          "crates/processcraft-io/tests/m3_repair_production.rs:flow_node_incoming_and_outgoing_survive_export_with_values",
+          "scripts/check_bpmn20_xsd.py"
         ],
         "import": [
           "crates/processcraft-io/tests/interchange.rs:nested_choreography_graph_round_trips",
           "tests/fixtures/bpmn/choreography-graph/nested.bpmn"
         ],
         "model": [
-          "crates/processcraft-core/tests/diagnostics.rs:explicit_flow_node_refs_check_kind_scope_and_direction"
+          "crates/processcraft-core/tests/m3_foundation.rs:category_value_ref_and_outgoing_are_set_undone_and_dangling_refs_diagnosed"
         ],
         "validate": [
           "crates/processcraft-core/tests/m3_foundation.rs:category_value_ref_and_outgoing_are_set_undone_and_dangling_refs_diagnosed"
@@ -27250,7 +27259,7 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
+        "model": "verified",
         "edit": "unverified",
         "render": "unverified",
         "import": "verified",
@@ -27281,6 +27290,9 @@
         ],
         "validate": [
           "crates/processcraft-core/tests/diagnostics.rs:choreography_graph_reports_bounded_semantics_without_matching_external_names"
+        ],
+        "model": [
+          "crates/processcraft-core/tests/m3_repair_choreography.rs:global_choreography_task_kind_and_initiator_are_typed"
         ]
       }
     },
@@ -27300,7 +27312,7 @@
       "coverage": {
         "model": "verified",
         "edit": "verified",
-        "render": "unverified",
+        "render": "not_applicable",
         "import": "verified",
         "export": "verified",
         "validate": "verified"
@@ -27326,9 +27338,8 @@
           "tests/fixtures/bpmn/choreography-graph/nested.bpmn"
         ],
         "import": [
-          "crates/processcraft-io/tests/interchange.rs:global_choreography_initiator_presence_round_trips",
-          "scripts/qualify_choreography_graph.py",
-          "tests/fixtures/bpmn/choreography-graph/nested.bpmn"
+          "crates/processcraft-io/tests/m3_repair_choreography.rs:global_choreography_initiator_imports_exact_value_and_absence",
+          "tests/fixtures/bpmn/m3-choreography/values.bpmn"
         ],
         "model": [
           "crates/processcraft-core/tests/m3_choreography.rs:global_choreography_task_kind_and_initiator_edit_validate_and_undo",
@@ -27338,6 +27349,9 @@
           "crates/processcraft-core/tests/m3_choreography.rs:choreography_reference_diagnostics_name_the_violated_clause",
           "crates/processcraft-core/tests/m3_choreography.rs:global_choreography_task_kind_and_initiator_edit_validate_and_undo"
         ]
+      },
+      "verified_notes": {
+        "render": "BPMN 2.0.2 §11.5.4 specifies no standalone notation for a Global Choreography Task; the renderer emits a diagnostic and omits it (crates/processcraft-render/src/bpmn.rs)."
       }
     },
     {
@@ -27675,11 +27689,11 @@
           "crates/processcraft-core/tests/m2.rs:descriptive_commands_validate_references_and_undo_atomically"
         ],
         "export": [
-          "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip"
+          "crates/processcraft-io/tests/m3_repair_artifacts.rs:artifacts_export_values_are_in_bytes_reimport_and_xsd_valid",
+          "scripts/check_bpmn20_xsd.py"
         ],
         "import": [
-          "crates/processcraft-io/tests/interchange.rs:collaboration_group_external_category_qname_remains_external",
-          "crates/processcraft-io/tests/interchange.rs:unsupported_artifact_metadata_and_dangling_category_are_safe"
+          "crates/processcraft-io/tests/m3_repair_artifacts.rs:artifact_kinds_import_with_typed_values"
         ],
         "model": [
           "crates/processcraft-core/tests/collaboration_model.rs:group_category_reference_preserves_legacy_wire_and_external_namespace"
@@ -27726,7 +27740,8 @@
       ],
       "verified_evidence": {
         "export": [
-          "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip"
+          "crates/processcraft-io/tests/m3_repair_artifacts.rs:artifacts_export_values_are_in_bytes_reimport_and_xsd_valid",
+          "scripts/check_bpmn20_xsd.py"
         ],
         "import": [
           "crates/processcraft-io/tests/interchange.rs:collaboration_group_external_category_qname_remains_external",
@@ -27778,7 +27793,8 @@
           "crates/processcraft-core/tests/m2.rs:descriptive_commands_validate_references_and_undo_atomically"
         ],
         "export": [
-          "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip"
+          "crates/processcraft-io/tests/m3_repair_artifacts.rs:artifacts_export_values_are_in_bytes_reimport_and_xsd_valid",
+          "scripts/check_bpmn20_xsd.py"
         ],
         "import": [
           "crates/processcraft-io/tests/interchange.rs:collaboration_group_external_category_qname_remains_external",
@@ -28270,8 +28286,7 @@
           "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
         ],
         "validate": [
-          "crates/processcraft-core/tests/m3r2_validate.rs",
-          "crates/processcraft-core/tests/m3r2_validate.rs:input_and_output_set_references_are_validated"
+          "crates/processcraft-core/tests/m3_repair_data.rs:set_reference_diagnostics_cover_input_data_refs_and_output_set_members"
         ]
       }
     },
@@ -28759,13 +28774,13 @@
           "tests/fixtures/bpmn/event-ownership.bpmn"
         ],
         "model": [
-          "crates/processcraft-core/tests/events_extended.rs:reused_definitions_multiple_and_event_data_validate_without_synthetic_ids"
+          "crates/processcraft-core/tests/m3_repair_events.rs:throw_and_end_events_read_back_refs_and_io_with_undo"
         ],
         "render": [
           "crates/processcraft-render/tests/bpmn_scene.rs:link_markers_distinguish_catch_and_throw_in_shared_scene"
         ],
         "validate": [
-          "crates/processcraft-core/tests/events_extended.rs:repeated_root_uses_are_rejected_without_namespace_aliasing"
+          "crates/processcraft-core/tests/m3_repair_events.rs:catch_and_throw_event_definition_ref_diagnostics_are_specific"
         ]
       }
     },
@@ -28810,10 +28825,10 @@
           "tests/fixtures/bpmn/event-ownership.bpmn"
         ],
         "model": [
-          "crates/processcraft-core/tests/events_extended.rs:reused_definitions_multiple_and_event_data_validate_without_synthetic_ids"
+          "crates/processcraft-core/tests/m3_repair_events.rs:throw_and_end_events_read_back_refs_and_io_with_undo"
         ],
         "validate": [
-          "crates/processcraft-core/tests/events_extended.rs:repeated_root_uses_are_rejected_without_namespace_aliasing"
+          "crates/processcraft-core/tests/m3_repair_events.rs:catch_and_throw_event_definition_ref_diagnostics_are_specific"
         ]
       }
     },
@@ -28951,7 +28966,7 @@
         "edit": "verified",
         "render": "unverified",
         "import": "verified",
-        "export": "partial",
+        "export": "verified",
         "validate": "verified"
       },
       "profile": "data",
@@ -28988,7 +29003,15 @@
         ],
         "validate": [
           "crates/processcraft-core/tests/diagnostics.rs:message_task_cardinality_is_conditional_and_receive_instantiate_checks_incoming"
+        ],
+        "export": [
+          "crates/processcraft-io/tests/m3_repair_data.rs:io_specification_and_data_associations_export_values_and_reimport_equal",
+          "scripts/check_bpmn20_xsd.py",
+          "tests/fixtures/bpmn/m3-repair-data/data-repair.bpmn"
         ]
+      },
+      "verified_notes": {
+        "export": "Export asserts ioSpecification ports, sets and refs in XML; re-import asserts port counts and set refs; export bytes XSD valid (manifest.md)."
       }
     },
     {
@@ -29033,12 +29056,10 @@
           "tests/fixtures/bpmn20-schema/data-io.bpmn"
         ],
         "model": [
-          "crates/processcraft-io/tests/interchange.rs:data_io_sets_ports_and_associations_round_trip",
-          "scripts/check_bpmn20_xsd.py",
-          "tests/fixtures/bpmn20-schema/data-io.bpmn"
+          "crates/processcraft-core/tests/m3_repair_data.rs:io_specification_is_typed_and_round_trips"
         ],
         "validate": [
-          "crates/processcraft-core/tests/diagnostics.rs:message_task_cardinality_is_conditional_and_receive_instantiate_checks_incoming"
+          "crates/processcraft-core/tests/m3_repair_data.rs:incomplete_io_specification_is_diagnosed_on_node_and_process"
         ]
       }
     },
@@ -29317,10 +29338,10 @@
           "crates/processcraft-io/tests/interchange.rs:lane_and_formal_condition_survive_edit_export_reimport"
         ],
         "model": [
-          "crates/processcraft-core/tests/domain.rs:lane_membership_is_not_a_duplicate_node"
+          "crates/processcraft-core/tests/m3_process_collaboration.rs:lane_name_members_and_child_lane_set_edit_with_undo"
         ],
         "validate": [
-          "crates/processcraft-core/tests/domain.rs:invalid_reference_is_rejected"
+          "crates/processcraft-core/tests/m3_repair_process_collaboration.rs:lane_membership_and_nesting_violations_name_the_rule"
         ]
       }
     },
@@ -29423,10 +29444,10 @@
           "crates/processcraft-io/tests/interchange.rs:omitted_lane_set_ids_stay_omitted_and_preserve_nested_lanes"
         ],
         "model": [
-          "crates/processcraft-core/tests/domain.rs:lane_membership_is_not_a_duplicate_node"
+          "crates/processcraft-core/tests/m3_process_collaboration.rs:lane_name_members_and_child_lane_set_edit_with_undo"
         ],
         "validate": [
-          "crates/processcraft-core/tests/domain.rs:invalid_reference_is_rejected"
+          "crates/processcraft-core/tests/m3_repair_process_collaboration.rs:lane_membership_and_nesting_violations_name_the_rule"
         ]
       }
     },
@@ -29463,21 +29484,19 @@
       ],
       "verified_evidence": {
         "edit": [
-          "crates/processcraft-core/tests/m3_process_collaboration.rs:lane_name_members_and_child_lane_set_edit_with_undo"
+          "crates/processcraft-core/tests/m3_repair_process_collaboration.rs:existing_lane_rename_and_child_lane_set_edit_each_undo_to_prior_value"
         ],
         "export": [
           "crates/processcraft-io/tests/interchange.rs:omitted_root_and_child_lane_set_ids_stay_omitted"
         ],
         "import": [
-          "crates/processcraft-io/tests/interchange.rs:omitted_root_and_child_lane_set_ids_stay_omitted"
+          "crates/processcraft-io/tests/m3_repair_process_collaboration.rs:typed_values_import_from_the_manifested_fixture"
         ],
         "model": [
           "crates/processcraft-core/tests/commands.rs:explicit_anonymous_child_lane_set_can_be_promoted"
         ],
         "validate": [
-          "crates/processcraft-core/tests/m3r2_integration.rs",
-          "crates/processcraft-core/tests/m3r2_integration.rs:lane_partition_reference_must_resolve",
-          "crates/processcraft-core/tests/m3r2_integration.rs:lanes_of_one_lane_set_must_share_partition_type"
+          "crates/processcraft-core/tests/m3_repair_process_collaboration.rs:lane_membership_and_nesting_violations_name_the_rule"
         ]
       }
     },
@@ -29515,7 +29534,7 @@
       ],
       "verified_evidence": {
         "edit": [
-          "crates/processcraft-core/tests/m3_process_collaboration.rs:lane_name_members_and_child_lane_set_edit_with_undo"
+          "crates/processcraft-core/tests/m3_repair_process_collaboration.rs:existing_lane_rename_and_child_lane_set_edit_each_undo_to_prior_value"
         ],
         "export": [
           "crates/processcraft-io/tests/m3_process_collaboration.rs:export_writes_all_values_and_reimport_is_equal"
@@ -29689,12 +29708,11 @@
       ],
       "verified_evidence": {
         "export": [
-          "crates/processcraft-io/tests/interchange.rs:omitted_lane_set_ids_stay_omitted_and_preserve_nested_lanes",
-          "crates/processcraft-io/tests/interchange.rs:omitted_root_and_child_lane_set_ids_stay_omitted"
+          "crates/processcraft-io/tests/m3_repair_process_collaboration.rs:export_writes_the_values_and_reimport_asserts_them_again",
+          "scripts/check_bpmn20_xsd.py"
         ],
         "import": [
-          "crates/processcraft-io/tests/interchange.rs:omitted_lane_set_ids_stay_omitted_and_preserve_nested_lanes",
-          "crates/processcraft-io/tests/interchange.rs:omitted_root_and_child_lane_set_ids_stay_omitted"
+          "crates/processcraft-io/tests/m3_repair_process_collaboration.rs:typed_values_import_from_the_manifested_fixture"
         ],
         "model": [
           "crates/processcraft-core/tests/commands.rs:explicit_anonymous_lane_set_can_be_promoted_with_generation_guard"
@@ -29803,7 +29821,8 @@
       ],
       "verified_evidence": {
         "edit": [
-          "crates/processcraft-core/tests/commands.rs:link_and_compensation_events_validate_atomically"
+          "crates/processcraft-core/tests/m3_events.rs:link_pair_edit_with_undo_and_incomplete_pairing_is_diagnosed",
+          "crates/processcraft-core/tests/m3_repair_events.rs:link_name_edit_and_throw_without_target_is_diagnosed"
         ],
         "export": [
           "crates/processcraft-io/tests/m3_events.rs:link_pair_name_source_target_import_and_export",
@@ -29811,12 +29830,10 @@
           "tests/fixtures/bpmn/m3-events/references-links-conditions.bpmn"
         ],
         "import": [
-          "crates/processcraft-io/tests/interchange.rs:inline_events_preserve_unrepresented_or_invalid_content",
-          "crates/processcraft-io/tests/interchange.rs:inline_link_cancel_and_compensation_roundtrip",
-          "tests/fixtures/bpmn/inline-events.bpmn"
+          "crates/processcraft-io/tests/m3_events.rs:link_pair_name_source_target_import_and_export"
         ],
         "model": [
-          "crates/processcraft-core/tests/commands.rs:link_and_compensation_events_validate_atomically"
+          "crates/processcraft-core/tests/m3_events.rs:link_pair_edit_with_undo_and_incomplete_pairing_is_diagnosed"
         ],
         "validate": [
           "crates/processcraft-core/tests/m3_events.rs:link_dangling_reference_is_refused",
@@ -29867,7 +29884,7 @@
           "tests/fixtures/bpmn/inline-events.bpmn"
         ],
         "model": [
-          "crates/processcraft-core/tests/commands.rs:link_and_compensation_events_validate_atomically"
+          "crates/processcraft-core/tests/m3_events.rs:link_pair_edit_with_undo_and_incomplete_pairing_is_diagnosed"
         ],
         "validate": [
           "crates/processcraft-core/tests/m3_events.rs:link_dangling_reference_is_refused",
@@ -29921,7 +29938,7 @@
           "tests/fixtures/bpmn/m3-events/references-links-conditions.bpmn"
         ],
         "model": [
-          "crates/processcraft-core/tests/commands.rs:link_and_compensation_events_validate_atomically"
+          "crates/processcraft-core/tests/m3_events.rs:link_pair_edit_with_undo_and_incomplete_pairing_is_diagnosed"
         ],
         "validate": [
           "crates/processcraft-core/tests/m3_events.rs:link_dangling_reference_is_refused",
@@ -29971,16 +29988,13 @@
           "tests/fixtures/bpmn/m3-events/references-links-conditions.bpmn"
         ],
         "import": [
-          "crates/processcraft-io/tests/interchange.rs:inline_events_preserve_unrepresented_or_invalid_content",
-          "tests/fixtures/bpmn/inline-events.bpmn"
+          "crates/processcraft-io/tests/m3_events.rs:link_pair_name_source_target_import_and_export"
         ],
         "model": [
-          "crates/processcraft-core/tests/commands.rs:link_and_compensation_events_validate_atomically"
+          "crates/processcraft-core/tests/m3_events.rs:link_pair_edit_with_undo_and_incomplete_pairing_is_diagnosed"
         ],
         "validate": [
-          "crates/processcraft-core/tests/m3_events.rs:link_dangling_reference_is_refused",
-          "crates/processcraft-core/tests/m3_events.rs:link_pair_edit_with_undo_and_incomplete_pairing_is_diagnosed",
-          "crates/processcraft-core/tests/m3_events.rs:link_without_name_is_diagnosed"
+          "crates/processcraft-core/tests/m3_repair_events.rs:link_name_edit_and_throw_without_target_is_diagnosed"
         ]
       }
     },
@@ -30018,7 +30032,7 @@
       ],
       "verified_evidence": {
         "edit": [
-          "crates/processcraft-core/tests/m3_events.rs:link_pair_edit_with_undo_and_incomplete_pairing_is_diagnosed"
+          "crates/processcraft-core/tests/m3_repair_events.rs:link_name_edit_and_throw_without_target_is_diagnosed"
         ],
         "export": [
           "crates/processcraft-io/tests/m3_events.rs:link_pair_name_source_target_import_and_export",
@@ -30030,7 +30044,7 @@
           "tests/fixtures/bpmn/m3-events/references-links-conditions.bpmn"
         ],
         "model": [
-          "crates/processcraft-core/tests/commands.rs:link_and_compensation_events_validate_atomically"
+          "crates/processcraft-core/tests/m3_events.rs:link_pair_edit_with_undo_and_incomplete_pairing_is_diagnosed"
         ],
         "validate": [
           "crates/processcraft-core/tests/m3_events.rs:link_dangling_reference_is_refused",
@@ -30080,7 +30094,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "A"
@@ -30104,7 +30118,14 @@
         "model": [
           "crates/processcraft-core/tests/commands.rs:loop_identity_rename_preserves_checkpoint_and_undo_redo",
           "crates/processcraft-core/tests/m2.rs:loop_metadata_is_atomic_and_undoable"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_validate.rs:multi_instance_behavior_event_refs_must_match_behavior",
+          "crates/processcraft-core/tests/m3r2_validate.rs:standard_loop_maximum_is_validated"
         ]
+      },
+      "verified_notes": {
+        "validate": "Abstract base: its derived loop kinds are validated with specific codes standardLoopMaximumNotInteger (Table 10.28) and multiInstance{One,None}EventBehaviorMismatch (Table 10.29)."
       }
     },
     {
@@ -30187,8 +30208,8 @@
           "crates/processcraft-core/tests/m3r2_edit-model-io.rs:element_level_collaboration_participant_message_and_message_flow_with_undo"
         ],
         "export": [
-          "crates/processcraft-io/tests/m3r2_edit-model-io.rs:export_writes_lane_set_names_and_partitions_and_reimports_equal",
-          "tests/fixtures/bpmn/m3-r2-edit-model-io/manifest.md"
+          "crates/processcraft-io/tests/m3_repair_process_collaboration.rs:export_writes_the_values_and_reimport_asserts_them_again",
+          "scripts/check_bpmn20_xsd.py"
         ],
         "import": [
           "crates/processcraft-io/tests/m3r2_edit-model-io.rs:process_collaboration_message_and_flows_import_typed",
@@ -30235,16 +30256,17 @@
       ],
       "verified_evidence": {
         "export": [
-          "crates/processcraft-io/tests/interchange.rs:message_and_signal_references_round_trip_or_preserve"
+          "crates/processcraft-io/tests/m3_repair_process_collaboration.rs:export_writes_the_values_and_reimport_asserts_them_again",
+          "scripts/check_bpmn20_xsd.py"
         ],
         "import": [
-          "crates/processcraft-io/tests/interchange.rs:message_and_signal_references_round_trip_or_preserve"
+          "crates/processcraft-io/tests/m3_process_collaboration.rs:root_message_name_and_item_ref_import"
         ],
         "model": [
-          "crates/processcraft-core/tests/commands.rs:event_resource_replacement_preserves_previously_resolved_activity_message"
+          "crates/processcraft-core/tests/m3_process_collaboration.rs:root_message_name_and_item_ref_edit_with_undo"
         ],
         "validate": [
-          "crates/processcraft-core/tests/commands.rs:event_resource_replacement_preserves_previously_resolved_activity_message"
+          "crates/processcraft-core/tests/m3r2_integration.rs:message_item_ref_must_resolve_to_an_item_definition"
         ]
       }
     },
@@ -30363,7 +30385,7 @@
       "substitution_group": "eventDefinition",
       "coverage": {
         "model": "verified",
-        "edit": "unverified",
+        "edit": "verified",
         "render": "unverified",
         "import": "verified",
         "export": "verified",
@@ -30389,13 +30411,12 @@
       ],
       "verified_evidence": {
         "export": [
-          "crates/processcraft-io/tests/interchange.rs:event_root_refs_flags_properties_and_owned_io_roundtrip",
-          "scripts/qualify_common_metadata.py:generate",
-          "tests/fixtures/bpmn/event-ownership.bpmn"
+          "crates/processcraft-io/tests/m3_repair_events.rs:signal_end_throw_boundary_import_values_and_export_reimport_equal",
+          "scripts/check_bpmn20_xsd.py"
         ],
         "import": [
-          "crates/processcraft-io/tests/interchange.rs:event_root_refs_flags_properties_and_owned_io_roundtrip",
-          "tests/fixtures/bpmn/event-ownership.bpmn"
+          "crates/processcraft-io/tests/m3_events.rs:message_operation_ref_imports_and_exports",
+          "crates/processcraft-io/tests/m3_repair_events.rs:signal_end_throw_boundary_import_values_and_export_reimport_equal"
         ],
         "model": [
           "crates/processcraft-io/tests/bpmn.rs:external_qname_targets_are_retained_as_inert_qualified_metadata",
@@ -30404,7 +30425,13 @@
         "validate": [
           "crates/processcraft-core/tests/m3_events.rs:dangling_event_references_report_their_clause",
           "crates/processcraft-core/tests/m3_events.rs:message_ref_and_operation_ref_edit_with_undo_and_dangling_is_refused"
+        ],
+        "edit": [
+          "crates/processcraft-core/tests/m3_repair_events.rs:message_ref_set_change_clear_and_undo"
         ]
+      },
+      "verified_notes": {
+        "edit": "SetNodeDetails sets messageRef m1, changes to m2, clears to None; each value read back and undo restores the previous value and the original content id."
       }
     },
     {
@@ -30543,7 +30570,7 @@
       ],
       "verified_evidence": {
         "edit": [
-          "apps/processcraft-cli/tests/definitions_mcp.rs:definitions_metadata_uses_discovered_mcp_command_and_exact_history"
+          "crates/processcraft-core/tests/m3_repair_events.rs:message_ref_set_change_clear_and_undo"
         ],
         "export": [
           "crates/processcraft-io/tests/bpmn.rs:external_qname_targets_are_retained_as_inert_qualified_metadata",
@@ -30607,8 +30634,8 @@
           "crates/processcraft-core/tests/m3r2_edit-model-io.rs:element_level_collaboration_participant_message_and_message_flow_with_undo"
         ],
         "export": [
-          "crates/processcraft-io/tests/m3r2_edit-model-io.rs:export_writes_lane_set_names_and_partitions_and_reimports_equal",
-          "tests/fixtures/bpmn/m3-r2-edit-model-io/manifest.md"
+          "crates/processcraft-io/tests/m3_repair_process_collaboration.rs:export_writes_the_values_and_reimport_asserts_them_again",
+          "scripts/check_bpmn20_xsd.py"
         ],
         "import": [
           "crates/processcraft-io/tests/m3r2_edit-model-io.rs:process_collaboration_message_and_flows_import_typed",
@@ -30667,7 +30694,7 @@
           "crates/processcraft-core/tests/collaboration_model.rs:additional_collaboration_retains_external_and_missing_qname_endpoints"
         ],
         "validate": [
-          "crates/processcraft-core/tests/diagnostics.rs:participant_band_owner_resolves_to_same_diagram_activity_shape"
+          "crates/processcraft-core/tests/m3_process_collaboration.rs:message_flow_dangling_source_and_message_ref_are_reported"
         ]
       }
     },
@@ -30768,7 +30795,7 @@
           "crates/processcraft-io/tests/interchange.rs:collaboration_unqualified_qnames_keep_the_empty_namespace"
         ],
         "model": [
-          "crates/processcraft-core/tests/collaboration_model.rs:additional_collaboration_retains_external_and_missing_qname_endpoints"
+          "crates/processcraft-core/tests/m3_process_collaboration.rs:message_flow_name_ends_and_message_ref_edit_with_undo"
         ],
         "validate": [
           "crates/processcraft-core/tests/m3_process_collaboration.rs:message_flow_dangling_source_and_message_ref_are_reported"
@@ -30811,16 +30838,17 @@
           "crates/processcraft-core/tests/m3_process_collaboration.rs:message_flow_name_ends_and_message_ref_edit_with_undo"
         ],
         "export": [
-          "crates/processcraft-io/tests/m3_process_collaboration.rs:export_writes_all_values_and_reimport_is_equal"
+          "crates/processcraft-io/tests/m3_repair_process_collaboration.rs:export_writes_the_values_and_reimport_asserts_them_again",
+          "scripts/check_bpmn20_xsd.py"
         ],
         "import": [
           "crates/processcraft-io/tests/m3_process_collaboration.rs:message_flow_name_and_ends_import"
         ],
         "model": [
-          "crates/processcraft-core/tests/collaboration_model.rs:additional_collaboration_retains_external_and_missing_qname_endpoints"
+          "crates/processcraft-core/tests/m3_process_collaboration.rs:message_flow_name_ends_and_message_ref_edit_with_undo"
         ],
         "validate": [
-          "crates/processcraft-core/tests/diagnostics.rs:participant_band_owner_resolves_to_same_diagram_activity_shape"
+          "crates/processcraft-core/tests/m3_repair_process_collaboration.rs:sequence_and_message_flow_dangling_targets_are_diagnosed"
         ]
       }
     },
@@ -31413,7 +31441,7 @@
           "scripts/qualify_activity_metadata.py"
         ],
         "import": [
-          "crates/processcraft-io/tests/interchange.rs:structured_expression_metadata_roundtrips_across_loop_and_adhoc_owners"
+          "crates/processcraft-io/tests/m3_loops.rs:multi_instance_and_standard_loop_fields_import_with_values_and_survive_export"
         ],
         "model": [
           "crates/processcraft-core/tests/m3_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
@@ -31911,9 +31939,7 @@
           "tests/fixtures/bpmn20-schema/data-io.bpmn"
         ],
         "model": [
-          "crates/processcraft-io/tests/interchange.rs:data_io_sets_ports_and_associations_round_trip",
-          "scripts/check_bpmn20_xsd.py",
-          "tests/fixtures/bpmn20-schema/data-io.bpmn"
+          "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo"
         ],
         "edit": [
           "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo"
@@ -32117,7 +32143,7 @@
       ],
       "verified_evidence": {
         "edit": [
-          "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo"
+          "crates/processcraft-core/tests/m3_repair_data.rs:output_set_counterpart_and_while_executing_edit_and_undo"
         ],
         "export": [
           "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
@@ -32133,8 +32159,7 @@
           "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
         ],
         "validate": [
-          "crates/processcraft-core/tests/m3r2_validate.rs",
-          "crates/processcraft-core/tests/m3r2_validate.rs:input_and_output_set_references_are_validated"
+          "crates/processcraft-core/tests/m3_repair_data.rs:set_reference_diagnostics_cover_input_data_refs_and_output_set_members"
         ]
       }
     },
@@ -32171,7 +32196,7 @@
       ],
       "verified_evidence": {
         "edit": [
-          "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo"
+          "crates/processcraft-core/tests/m3_repair_data.rs:output_set_counterpart_and_while_executing_edit_and_undo"
         ],
         "export": [
           "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
@@ -32187,8 +32212,7 @@
           "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
         ],
         "validate": [
-          "crates/processcraft-core/tests/m3r2_validate.rs",
-          "crates/processcraft-core/tests/m3r2_validate.rs:input_and_output_set_references_are_validated"
+          "crates/processcraft-core/tests/m3_repair_data.rs:set_reference_diagnostics_cover_input_data_refs_and_output_set_members"
         ]
       }
     },
@@ -32460,7 +32484,7 @@
           "crates/processcraft-io/tests/interchange.rs:collaboration_external_qnames_do_not_alias_local_names"
         ],
         "model": [
-          "crates/processcraft-core/tests/collaboration_model.rs:additional_collaboration_retains_external_and_missing_qname_endpoints"
+          "crates/processcraft-core/tests/m3_process_collaboration.rs:participant_name_and_catalog_refs_edit_with_undo"
         ],
         "validate": [
           "crates/processcraft-core/tests/diagnostics.rs:participant_band_owner_resolves_to_same_diagram_activity_shape"
@@ -32651,7 +32675,7 @@
       ],
       "verified_evidence": {
         "edit": [
-          "crates/processcraft-core/tests/commands.rs:additional_collaboration_local_qname_tracks_process_identity"
+          "crates/processcraft-core/tests/m3_repair_process_collaboration.rs:participant_process_ref_is_created_read_back_cleared_and_undone"
         ],
         "export": [
           "crates/processcraft-io/tests/interchange.rs:collaboration_external_qnames_do_not_alias_local_names",
@@ -32662,7 +32686,7 @@
           "crates/processcraft-io/tests/interchange.rs:collaboration_unqualified_qnames_keep_the_empty_namespace"
         ],
         "model": [
-          "crates/processcraft-core/tests/collaboration_model.rs:additional_collaboration_retains_external_and_missing_qname_endpoints"
+          "crates/processcraft-core/tests/m3_repair_process_collaboration.rs:participant_process_ref_is_created_read_back_cleared_and_undone"
         ],
         "validate": [
           "crates/processcraft-core/tests/diagnostics.rs:participant_band_owner_resolves_to_same_diagram_activity_shape"
@@ -33329,7 +33353,7 @@
           "crates/processcraft-core/tests/m3_process_collaboration.rs:process_typed_fields_survive_native_json_round_trip"
         ],
         "validate": [
-          "crates/processcraft-io/tests/interchange.rs:nested_duplicate_ids_and_cross_scope_edges_are_rejected_by_core"
+          "crates/processcraft-core/tests/m3r2_integration.rs:public_process_must_not_be_executable"
         ]
       }
     },
@@ -33378,8 +33402,7 @@
           "crates/processcraft-core/tests/m3_process_collaboration.rs:process_type_closed_supports_and_collaboration_ref_edit_with_undo"
         ],
         "validate": [
-          "crates/processcraft-core/tests/commands.rs:activity_metadata_rejects_new_dangling_reference_and_undoes",
-          "crates/processcraft-core/tests/commands.rs:existing_unresolved_activity_reference_survives_unrelated_edit"
+          "crates/processcraft-core/tests/m3_process_collaboration.rs:process_supports_and_collaboration_ref_dangling_are_reported"
         ]
       }
     },
@@ -33466,7 +33489,7 @@
       ],
       "verified_evidence": {
         "edit": [
-          "crates/processcraft-core/tests/commands.rs:activity_metadata_rejects_new_dangling_reference_and_undoes"
+          "crates/processcraft-core/tests/m3_process_collaboration.rs:process_type_closed_supports_and_collaboration_ref_edit_with_undo"
         ],
         "export": [
           "crates/processcraft-io/tests/m3_process_collaboration.rs:export_writes_all_values_and_reimport_is_equal"
@@ -34777,7 +34800,7 @@
           "crates/processcraft-core/tests/events_extended.rs:reused_definitions_multiple_and_event_data_validate_without_synthetic_ids"
         ],
         "validate": [
-          "crates/processcraft-core/tests/events_extended.rs:missing_local_root_wrong_event_direction_and_duplicate_ids_are_rejected"
+          "crates/processcraft-core/tests/m3_repair_events.rs:root_event_definitions_read_back_and_invalid_event_messages_are_specific"
         ]
       }
     },
@@ -35070,7 +35093,7 @@
           "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
         ],
         "validate": [
-          "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+          "crates/processcraft-core/tests/m3_repair_activities.rs:implementation_value_diagnostic_on_send_user_service_and_refusal_on_plain_task"
         ]
       }
     },
@@ -35113,7 +35136,7 @@
       ],
       "verified_evidence": {
         "edit": [
-          "crates/processcraft-core/tests/commands.rs:activity_bindings_validate_new_local_refs_and_preserve_legacy"
+          "crates/processcraft-core/tests/m3_repair_activities.rs:send_task_message_ref_is_stored_cleared_and_undone"
         ],
         "export": [
           "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
@@ -35123,7 +35146,7 @@
           "crates/processcraft-io/tests/interchange.rs:activity_message_and_operation_qnames_roundtrip_with_loop_context"
         ],
         "model": [
-          "crates/processcraft-core/tests/commands.rs:activity_bindings_validate_new_local_refs_and_preserve_legacy"
+          "crates/processcraft-core/tests/m3_repair_activities.rs:send_task_message_ref_is_stored_cleared_and_undone"
         ],
         "validate": [
           "crates/processcraft-core/tests/diagnostics.rs:message_task_cardinality_is_conditional_and_receive_instantiate_checks_incoming"
@@ -35283,7 +35306,7 @@
           "crates/processcraft-core/tests/domain.rs:incomplete_process_and_cycles_in_sequence_are_valid"
         ],
         "validate": [
-          "crates/processcraft-io/tests/interchange.rs:nested_duplicate_ids_and_cross_scope_edges_are_rejected_by_core"
+          "crates/processcraft-core/tests/m3_repair_process_collaboration.rs:sequence_flow_declaration_violations_name_the_rule"
         ]
       }
     },
@@ -35320,8 +35343,7 @@
       ],
       "verified_evidence": {
         "edit": [
-          "crates/processcraft-core/tests/commands.rs:explicit_expression_edit_preserves_id_and_undo",
-          "crates/processcraft-core/tests/commands.rs:flow_condition_changes_identity_and_protected_document_rejects_it"
+          "crates/processcraft-core/tests/m3_repair_process_collaboration.rs:sequence_flow_ends_and_condition_are_read_back_edited_cleared_and_undone"
         ],
         "export": [
           "crates/processcraft-io/tests/interchange.rs:lane_and_formal_condition_survive_edit_export_reimport"
@@ -35330,7 +35352,7 @@
           "crates/processcraft-io/tests/interchange.rs:lane_and_formal_condition_survive_edit_export_reimport"
         ],
         "model": [
-          "crates/processcraft-core/tests/commands.rs:explicit_expression_edit_preserves_id_and_undo"
+          "crates/processcraft-core/tests/m3_repair_process_collaboration.rs:sequence_flow_ends_and_condition_are_read_back_edited_cleared_and_undone"
         ],
         "validate": [
           "crates/processcraft-core/tests/diagnostics.rs:activity_conditions_are_allowed_but_event_gateway_conditions_are_diagnosed"
@@ -35376,10 +35398,10 @@
           "crates/processcraft-io/tests/interchange.rs:normative_idrefs_import_and_export_unqualified"
         ],
         "import": [
-          "crates/processcraft-io/tests/interchange.rs:normative_idrefs_import_and_export_unqualified"
+          "crates/processcraft-io/tests/m3_repair_process_collaboration.rs:typed_values_import_from_the_manifested_fixture"
         ],
         "model": [
-          "crates/processcraft-core/tests/domain.rs:incomplete_process_and_cycles_in_sequence_are_valid"
+          "crates/processcraft-core/tests/m3_repair_process_collaboration.rs:sequence_flow_ends_and_condition_are_read_back_edited_cleared_and_undone"
         ],
         "validate": [
           "crates/processcraft-core/tests/m3_process_collaboration.rs:sequence_flow_source_edit_with_undo_and_dangling_source_is_reported"
@@ -35428,10 +35450,10 @@
           "crates/processcraft-io/tests/interchange.rs:normative_idrefs_import_and_export_unqualified"
         ],
         "model": [
-          "crates/processcraft-core/tests/domain.rs:incomplete_process_and_cycles_in_sequence_are_valid"
+          "crates/processcraft-core/tests/m3_repair_process_collaboration.rs:sequence_flow_ends_and_condition_are_read_back_edited_cleared_and_undone"
         ],
         "validate": [
-          "crates/processcraft-core/tests/commands.rs:failed_batch_preserves_state_and_history"
+          "crates/processcraft-core/tests/m3_repair_process_collaboration.rs:sequence_and_message_flow_dangling_targets_are_diagnosed"
         ]
       },
       "verified_notes": {
@@ -35483,7 +35505,7 @@
           "crates/processcraft-core/tests/commands.rs:choreography_sequence_flow_metadata_is_undoable_and_message_flow_rejected"
         ],
         "validate": [
-          "crates/processcraft-core/tests/commands.rs:choreography_sequence_flow_metadata_is_undoable_and_message_flow_rejected"
+          "crates/processcraft-core/tests/m3_repair_process_collaboration.rs:is_immediate_is_refused_on_a_message_flow_with_the_sequence_flow_rule"
         ]
       },
       "verified_notes": {
@@ -35643,7 +35665,7 @@
           "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
         ],
         "validate": [
-          "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+          "crates/processcraft-core/tests/m3_repair_activities.rs:implementation_value_diagnostic_on_send_user_service_and_refusal_on_plain_task"
         ]
       }
     },
@@ -35836,22 +35858,19 @@
           "crates/processcraft-core/tests/commands.rs:reusable_event_catalog_edits_are_atomic_and_undoable"
         ],
         "export": [
-          "crates/processcraft-io/tests/interchange.rs:event_root_refs_flags_properties_and_owned_io_roundtrip",
-          "scripts/qualify_common_metadata.py:generate",
-          "tests/fixtures/bpmn/event-ownership.bpmn"
+          "crates/processcraft-io/tests/m3_repair_events.rs:referenced_fixture_end_event_and_signal_values_round_trip",
+          "crates/processcraft-io/tests/m3_repair_events.rs:signal_end_throw_boundary_import_values_and_export_reimport_equal",
+          "scripts/check_bpmn20_xsd.py"
         ],
         "import": [
-          "crates/processcraft-io/tests/interchange.rs:event_root_refs_flags_properties_and_owned_io_roundtrip",
-          "crates/processcraft-io/tests/interchange.rs:message_and_signal_references_round_trip_or_preserve",
-          "tests/fixtures/bpmn/event-ownership.bpmn"
+          "crates/processcraft-io/tests/m3_repair_events.rs:referenced_fixture_end_event_and_signal_values_round_trip",
+          "crates/processcraft-io/tests/m3_repair_events.rs:signal_end_throw_boundary_import_values_and_export_reimport_equal"
         ],
         "model": [
-          "crates/processcraft-core/tests/commands.rs:event_resource_catalog_rejects_dangling_local_reference",
-          "crates/processcraft-io/tests/interchange.rs:event_root_refs_flags_properties_and_owned_io_roundtrip"
+          "crates/processcraft-core/tests/m3_repair_events.rs:signal_definition_reads_back_and_dangling_signal_ref_reports_event_signal_ref"
         ],
         "validate": [
-          "crates/processcraft-core/tests/commands.rs:event_resource_catalog_rejects_dangling_local_reference",
-          "crates/processcraft-io/tests/interchange.rs:message_and_signal_references_round_trip_or_preserve"
+          "crates/processcraft-core/tests/m3_repair_events.rs:signal_definition_reads_back_and_dangling_signal_ref_reports_event_signal_ref"
         ]
       }
     },
@@ -35901,8 +35920,7 @@
           "crates/processcraft-io/tests/interchange.rs:event_root_refs_flags_properties_and_owned_io_roundtrip"
         ],
         "validate": [
-          "crates/processcraft-core/tests/commands.rs:event_resource_catalog_rejects_dangling_local_reference",
-          "crates/processcraft-io/tests/interchange.rs:message_and_signal_references_round_trip_or_preserve"
+          "crates/processcraft-core/tests/m3_repair_events.rs:signal_definition_reads_back_and_dangling_signal_ref_reports_event_signal_ref"
         ]
       }
     },
@@ -35947,15 +35965,14 @@
           "tests/fixtures/bpmn/event-ownership.bpmn"
         ],
         "import": [
-          "crates/processcraft-io/tests/interchange.rs:event_reference_to_wrong_root_kind_cannot_become_editable",
-          "crates/processcraft-io/tests/interchange.rs:message_and_signal_references_round_trip_or_preserve"
+          "crates/processcraft-io/tests/m3_repair_events.rs:referenced_fixture_end_event_and_signal_values_round_trip",
+          "crates/processcraft-io/tests/m3_repair_events.rs:signal_end_throw_boundary_import_values_and_export_reimport_equal"
         ],
         "model": [
           "crates/processcraft-core/tests/commands.rs:event_resource_catalog_rejects_dangling_local_reference"
         ],
         "validate": [
-          "crates/processcraft-core/tests/commands.rs:event_resource_catalog_rejects_dangling_local_reference",
-          "crates/processcraft-io/tests/interchange.rs:message_and_signal_references_round_trip_or_preserve"
+          "crates/processcraft-core/tests/m3_repair_events.rs:signal_definition_reads_back_and_dangling_signal_ref_reports_event_signal_ref"
         ]
       }
     },
@@ -35999,12 +36016,12 @@
       ],
       "verified_evidence": {
         "edit": [
-          "crates/processcraft-core/tests/commands.rs:loop_identity_rename_preserves_checkpoint_and_undo_redo"
+          "crates/processcraft-core/tests/m3_repair_loops.rs:standard_loop_set_edit_clear_each_undo_to_previous_value_and_identity"
         ],
         "export": [
-          "crates/processcraft-io/tests/interchange.rs:activity_correlation_and_callable_fixtures_roundtrip_with_values",
-          "crates/processcraft-io/tests/interchange.rs:activity_loop_characteristics_round_trip",
-          "scripts/qualify_activity_metadata.py"
+          "crates/processcraft-io/tests/m3_repair_loops.rs:standard_loop_export_bytes_are_written_for_xsd_check",
+          "crates/processcraft-io/tests/m3_repair_loops.rs:standard_loop_export_writes_test_before_maximum_and_condition",
+          "scripts/check_bpmn20_xsd.py"
         ],
         "import": [
           "crates/processcraft-io/tests/interchange.rs:anonymous_metadata_stays_on_its_typed_owner",
@@ -36112,7 +36129,7 @@
           "scripts/qualify_activity_metadata.py"
         ],
         "import": [
-          "crates/processcraft-io/tests/interchange.rs:structured_expression_metadata_roundtrips_across_loop_and_adhoc_owners"
+          "crates/processcraft-io/tests/m3_loops.rs:multi_instance_and_standard_loop_fields_import_with_values_and_survive_export"
         ],
         "model": [
           "crates/processcraft-core/tests/m3_loops.rs:standard_loop_condition_test_before_and_maximum_set_read_and_undo"
@@ -36274,7 +36291,7 @@
           "tests/fixtures/bpmn/event-ownership.bpmn"
         ],
         "model": [
-          "crates/processcraft-core/tests/events_extended.rs:reused_definitions_multiple_and_event_data_validate_without_synthetic_ids"
+          "crates/processcraft-core/tests/m3_repair_events.rs:start_event_is_interrupting_set_clear_and_undo"
         ],
         "render": [
           "crates/processcraft-render/tests/bpmn_scene.rs:event_subprocess_start_interrupting_flag_controls_outer_ring",
@@ -36373,7 +36390,7 @@
       ],
       "verified_evidence": {
         "edit": [
-          "apps/processcraft-cli/tests/definitions_mcp.rs:definitions_metadata_uses_discovered_mcp_command_and_exact_history"
+          "crates/processcraft-core/tests/m3_repair_events.rs:start_event_is_interrupting_set_clear_and_undo"
         ],
         "export": [
           "crates/processcraft-io/tests/interchange.rs:empty_timer_choice_and_event_flags_preserve_omission",
@@ -36462,15 +36479,15 @@
         "model": [
           "crates/processcraft-core/tests/choreography_graph.rs:scope_adapter_keeps_legacy_and_nested_owners"
         ],
-        "render": [
-          "crates/processcraft-render/tests/bpmn_scene.rs:choreography_task_shows_participant_bands_and_sequence_flow"
-        ],
         "validate": [
           "crates/processcraft-io/src/choreography_export.rs:incomplete_nested_draft_is_refused_without_native_changes"
+        ],
+        "render": [
+          "crates/processcraft-render/tests/m3_choreography.rs:sub_choreography_collapsed_shows_plus_marker_and_expanded_does_not"
         ]
       },
       "verified_notes": {
-        "render": "expanded/collapsed sub-choreography section of the test"
+        "render": "Collapsed sub-choreography draws the + marker, expanded does not; hit-test finds the activity."
       }
     },
     {
@@ -36520,7 +36537,7 @@
           "crates/processcraft-core/tests/choreography_graph.rs:scope_adapter_keeps_legacy_and_nested_owners"
         ],
         "validate": [
-          "crates/processcraft-io/src/choreography_export.rs:incomplete_nested_draft_is_refused_without_native_changes"
+          "crates/processcraft-core/tests/m3_repair_choreography.rs:nested_participant_outside_sub_choreography_is_diagnosed"
         ]
       }
     },
@@ -36630,7 +36647,7 @@
           "crates/processcraft-render/tests/bpmn_scene.rs:omitted_subprocess_expansion_draws_collapsed_marker"
         ],
         "validate": [
-          "crates/processcraft-io/tests/interchange.rs:nested_duplicate_ids_and_cross_scope_edges_are_rejected_by_core"
+          "crates/processcraft-core/tests/m3_repair_activities.rs:subprocess_scope_rejects_duplicate_ids_and_cross_scope_flows"
         ]
       }
     },
@@ -36653,7 +36670,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "D"
@@ -36673,6 +36690,10 @@
         ],
         "model": [
           "crates/processcraft-core/tests/m2.rs:nested_scope_edits_and_cross_scope_flows_are_atomic"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3_repair_activities.rs:subprocess_scope_rejects_duplicate_ids_and_cross_scope_flows",
+          "crates/processcraft-core/tests/m3_repair_activities.rs:trigger_by_event_is_stored_on_subprocess_and_refused_elsewhere"
         ]
       }
     },
@@ -36721,15 +36742,14 @@
           "tests/fixtures/bpmn/m3-activities/activities.bpmn"
         ],
         "model": [
-          "crates/processcraft-core/tests/m2.rs:activity_properties_validate_scope_and_kind_and_undo"
+          "crates/processcraft-core/tests/m3_repair_activities.rs:trigger_by_event_is_stored_on_subprocess_and_refused_elsewhere"
         ],
         "render": [
           "crates/processcraft-render/tests/bpmn_scene.rs:activity_properties_change_shared_vectors_and_viewport",
           "crates/processcraft-render/tests/bpmn_scene.rs:event_subprocess_start_interrupting_flag_controls_outer_ring"
         ],
         "validate": [
-          "crates/processcraft-core/tests/events_extended.rs:error_start_is_valid_only_in_event_subprocess_context",
-          "crates/processcraft-core/tests/m2.rs:activity_properties_validate_scope_and_kind_and_undo"
+          "crates/processcraft-core/tests/m3_repair_activities.rs:trigger_by_event_is_stored_on_subprocess_and_refused_elsewhere"
         ]
       }
     },
@@ -36752,7 +36772,7 @@
         "render": "verified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "D"
@@ -36781,7 +36801,10 @@
           "crates/processcraft-core/tests/m2.rs:activity_properties_validate_scope_and_kind_and_undo"
         ],
         "render": [
-          "crates/processcraft-render/tests/bpmn_scene.rs:implicit_task_label_centers_each_line_in_shared_scene"
+          "crates/processcraft-render/tests/m3_repair_activities.rs:plain_task_is_one_rounded_rectangle_without_marker_and_hit_tests"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3_repair_activities.rs:implementation_value_diagnostic_on_send_user_service_and_refusal_on_plain_task"
         ]
       }
     },
@@ -36804,7 +36827,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "A",
@@ -36827,7 +36850,13 @@
         ],
         "model": [
           "crates/processcraft-core/tests/m2.rs:activity_properties_validate_scope_and_kind_and_undo"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3_repair_activities.rs:implementation_value_diagnostic_on_send_user_service_and_refusal_on_plain_task"
         ]
+      },
+      "verified_notes": {
+        "validate": "Plain task: implementation refused with exact message; BPMN 2.0.2 Table 10.8"
       }
     },
     {
@@ -37229,10 +37258,10 @@
           "tests/fixtures/bpmn/event-ownership.bpmn"
         ],
         "model": [
-          "crates/processcraft-core/tests/events_extended.rs:reused_definitions_multiple_and_event_data_validate_without_synthetic_ids"
+          "crates/processcraft-core/tests/m3_repair_events.rs:throw_and_end_events_read_back_refs_and_io_with_undo"
         ],
         "validate": [
-          "crates/processcraft-core/tests/events_extended.rs:repeated_root_uses_are_rejected_without_namespace_aliasing"
+          "crates/processcraft-core/tests/m3_repair_events.rs:catch_and_throw_event_definition_ref_diagnostics_are_specific"
         ]
       }
     },
@@ -37292,7 +37321,7 @@
           "crates/processcraft-core/tests/events_extended.rs:reused_definitions_multiple_and_event_data_validate_without_synthetic_ids"
         ],
         "validate": [
-          "crates/processcraft-core/tests/events_extended.rs:repeated_root_uses_are_rejected_without_namespace_aliasing"
+          "crates/processcraft-core/tests/m3_repair_events.rs:catch_and_throw_event_definition_ref_diagnostics_are_specific"
         ]
       }
     },
@@ -37340,18 +37369,14 @@
           "crates/processcraft-core/tests/m3_events.rs:timer_date_duration_cycle_edit_with_undo"
         ],
         "export": [
-          "crates/processcraft-io/tests/interchange.rs:event_root_refs_flags_properties_and_owned_io_roundtrip",
-          "scripts/qualify_common_metadata.py:generate",
-          "tests/fixtures/bpmn/event-ownership.bpmn"
+          "crates/processcraft-io/tests/m3_events.rs:timer_date_duration_cycle_import_typed_and_export_round_trip",
+          "scripts/check_bpmn20_xsd.py"
         ],
         "import": [
-          "crates/processcraft-io/tests/interchange.rs:empty_timer_choice_and_event_flags_preserve_omission",
-          "crates/processcraft-io/tests/interchange.rs:event_root_refs_flags_properties_and_owned_io_roundtrip",
-          "tests/fixtures/bpmn/event-ownership.bpmn"
+          "crates/processcraft-io/tests/m3_events.rs:timer_date_duration_cycle_import_typed_and_export_round_trip"
         ],
         "model": [
-          "crates/processcraft-core/tests/events_extended.rs:reused_definitions_multiple_and_event_data_validate_without_synthetic_ids",
-          "crates/processcraft-io/tests/interchange.rs:empty_timer_choice_and_event_flags_preserve_omission"
+          "crates/processcraft-core/tests/m3_events.rs:timer_date_duration_cycle_edit_with_undo"
         ],
         "validate": [
           "crates/processcraft-core/tests/diagnostics.rs:incomplete_event_metadata_is_advisory_and_anchored"
@@ -37813,7 +37838,7 @@
           "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
         ],
         "validate": [
-          "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+          "crates/processcraft-core/tests/m3_repair_activities.rs:implementation_value_diagnostic_on_send_user_service_and_refusal_on_plain_task"
         ]
       }
     }
@@ -37822,43 +37847,43 @@
     "total": {
       "declarations": 299,
       "cells": 1450,
-      "verified": 1399,
-      "not_applicable": 35,
-      "partial": 2,
-      "unverified": 14
+      "verified": 1412,
+      "not_applicable": 36,
+      "partial": 0,
+      "unverified": 2
     },
     "by_set": {
       "A": {
         "declarations": 89,
         "cells": 438,
-        "verified": 427,
+        "verified": 429,
         "not_applicable": 7,
         "partial": 0,
-        "unverified": 4
+        "unverified": 2
       },
       "C": {
         "declarations": 34,
         "cells": 166,
-        "verified": 161,
-        "not_applicable": 3,
+        "verified": 162,
+        "not_applicable": 4,
         "partial": 0,
-        "unverified": 2
+        "unverified": 0
       },
       "D": {
         "declarations": 173,
         "cells": 861,
-        "verified": 826,
+        "verified": 835,
         "not_applicable": 26,
-        "partial": 2,
-        "unverified": 7
+        "partial": 0,
+        "unverified": 0
       },
       "I": {
         "declarations": 33,
         "cells": 132,
-        "verified": 128,
+        "verified": 130,
         "not_applicable": 2,
         "partial": 0,
-        "unverified": 2
+        "unverified": 0
       },
       "S": {
         "declarations": 7,

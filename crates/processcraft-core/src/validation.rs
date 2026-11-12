@@ -596,7 +596,11 @@ impl ProjectData {
             for issue in activity_family_reference_issues(doc) {
                 emit(
                     issue.owner,
-                    "unresolvedActivityFamilyReference",
+                    if issue.field == "di.bpmnElement" {
+                        "danglingPlaneElement"
+                    } else {
+                        "unresolvedActivityFamilyReference"
+                    },
                     &format!(
                         "Unresolved local {} reference (editing advisory); BPMN 2.0.2 §§8.4.2, 10.3–10.4.",
                         issue.field
@@ -3294,6 +3298,26 @@ fn activity_family_reference_scan(
             .map(|shape| &shape.id)
             .chain(diagram.edges.iter().map(|edge| &edge.id))
             .collect();
+        // BPMN 2.0.2 §12.2.3 (BPMNPlane): bpmnElement names the Process,
+        // Collaboration or Choreography the plane depicts, or the Sub-Process /
+        // Sub-Choreography it drills into.
+        let scope_activities: Vec<_> = queries::choreography_scopes(doc)
+            .into_iter()
+            .flat_map(|scope| scope.activities)
+            .map(|activity| &activity.id)
+            .collect();
+        check(
+            diagram.plane_id.selector(),
+            "di.bpmnElement",
+            &ModelReference::Local(diagram.plane.clone()),
+            doc.processes
+                .iter()
+                .flat_map(|p| std::iter::once(&p.id).chain(p.nodes.iter().map(|n| &n.id)))
+                .chain(all_collaborations.iter().copied())
+                .chain(choreography_ids.iter().copied())
+                .chain(scope_activities)
+                .collect(),
+        );
         if let Some(order) = &diagram.plane_order {
             for reference in order {
                 check(

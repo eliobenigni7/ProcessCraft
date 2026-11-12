@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:tns="urn:m3-repair-data" id="defs" targetNamespace="urn:m3-repair-data">
+  <itemDefinition id="item" isCollection="true"/>
+  <dataStore id="store" name="Registry" capacity="500" isUnlimited="false" itemSubjectRef="tns:item"/>
+  <process id="p" isExecutable="false">
+    <dataObject id="object" name="Invoice" isCollection="true" itemSubjectRef="tns:item"/>
+    <dataObjectReference id="objectRef" name="Invoice ref" dataObjectRef="object"/>
+    <dataStoreReference id="storeRef" name="Registry ref" dataStoreRef="tns:store" itemSubjectRef="tns:item"/>
+    <task id="work" name="Work">
+      <ioSpecification id="io">
+        <dataInput id="in1" name="Primary" itemSubjectRef="tns:item" isCollection="true"/>
+        <dataInput id="in2" name="Extra"/>
+        <dataInput id="in3" name="Streaming"/>
+        <dataOutput id="out1" name="Result" itemSubjectRef="tns:item" isCollection="true"/>
+        <dataOutput id="out2" name="Spare"/>
+        <dataOutput id="out3" name="Partial"/>
+        <inputSet id="set1" name="Main"><dataInputRefs>in1</dataInputRefs><optionalInputRefs>in2</optionalInputRefs><whileExecutingInputRefs>in3</whileExecutingInputRefs><outputSetRefs>oset1</outputSetRefs></inputSet>
+        <outputSet id="oset1" name="Done"><dataOutputRefs>out1</dataOutputRefs><optionalOutputRefs>out2</optionalOutputRefs><whileExecutingOutputRefs>out3</whileExecutingOutputRefs><inputSetRefs>set1</inputSetRefs></outputSet>
+      </ioSpecification>
+      <dataInputAssociation id="assocIn"><sourceRef>objectRef</sourceRef><targetRef>in1</targetRef></dataInputAssociation>
+      <dataOutputAssociation id="assocOut"><sourceRef>out1</sourceRef><targetRef>storeRef</targetRef></dataOutputAssociation>
+    </task>
+  </process>
+</definitions>

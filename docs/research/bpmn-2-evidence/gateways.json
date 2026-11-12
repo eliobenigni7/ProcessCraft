@@ -43,7 +43,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-render/tests/bpmn_scene.rs:event_based_gateway_modes_render_distinct_symbols"
+    "crates/processcraft-core/tests/m3_gateways.rs:event_based_gateway_attributes_are_edited_and_undone"
    ]
   },
   {
@@ -52,7 +52,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-render/tests/bpmn_scene.rs:event_based_gateway_modes_render_distinct_symbols"
+    "crates/processcraft-core/tests/m3_gateways.rs:event_based_gateway_attributes_are_edited_and_undone"
    ]
   },
   {
@@ -61,7 +61,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-render/tests/bpmn_scene.rs:event_based_gateway_modes_render_distinct_symbols"
+    "crates/processcraft-core/tests/m3_gateways.rs:event_based_gateway_attributes_are_edited_and_undone"
    ]
   },
   {
@@ -79,7 +79,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-render/tests/bpmn_scene.rs:event_based_gateway_modes_render_distinct_symbols"
+    "crates/processcraft-core/tests/m3_gateways.rs:event_based_gateway_attributes_are_edited_and_undone"
    ]
   },
   {
@@ -97,7 +97,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-render/tests/bpmn_scene.rs:event_based_gateway_modes_render_distinct_symbols"
+    "crates/processcraft-core/tests/m3_gateways.rs:event_based_gateway_attributes_are_edited_and_undone"
    ]
   },
   {
@@ -116,7 +116,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "apps/processcraft/src/app.rs:graph_gateway_properties_keep_metadata_and_representation_through_history"
+    "crates/processcraft-core/tests/m3_gateways.rs:exclusive_default_flow_is_set_cleared_and_undone"
    ],
    "note": "name+details edit with undo/redo"
   },

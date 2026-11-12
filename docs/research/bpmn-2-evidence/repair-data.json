@@ -1,0 +1,8 @@
+{"family": "repair-data", "cells": [
+  {"schema": "Semantic.xsd", "path": "/schema/complexType[@name=tDataInputAssociation]", "dimension": "export", "state": "verified",
+   "evidence": ["crates/processcraft-io/tests/m3_repair_data.rs:io_specification_and_data_associations_export_values_and_reimport_equal", "tests/fixtures/bpmn/m3-repair-data/data-repair.bpmn", "scripts/check_bpmn20_xsd.py"],
+   "note": "Export asserts dataInputAssociation sourceRef/targetRef text, re-import asserts kind/sources/target; export bytes XSD valid (manifest.md)."},
+  {"schema": "Semantic.xsd", "path": "/schema/element[@name=ioSpecification]", "dimension": "export", "state": "verified",
+   "evidence": ["crates/processcraft-io/tests/m3_repair_data.rs:io_specification_and_data_associations_export_values_and_reimport_equal", "tests/fixtures/bpmn/m3-repair-data/data-repair.bpmn", "scripts/check_bpmn20_xsd.py"],
+   "note": "Export asserts ioSpecification ports, sets and refs in XML; re-import asserts port counts and set refs; export bytes XSD valid (manifest.md)."}
+]}

@@ -85,10 +85,36 @@ pub fn prepare_import(bytes: &[u8], source_name: &str) -> Result<PreparedImport,
             limitations: if editable {
                 vec!["Qualified BPMN subset; original source retained".into()]
             } else {
-                vec!["Unsupported or ambiguous content retained byte-for-byte; semantic editing disabled".into()]
+                let mut limitations = vec!["Unsupported or ambiguous content retained byte-for-byte; semantic editing disabled".into()];
+                limitations.extend(invalid_choreography_loop_types(bytes));
+                limitations
             },
         },
     })
+}
+/// Names each out-of-enum `loopType` on a choreography activity so a refusal
+/// is attributable (Semantic.xsd `tChoreographyLoopType`). A textual scan is
+/// enough here: it only explains a refusal that parsing already decided.
+fn invalid_choreography_loop_types(bytes: &[u8]) -> Vec<String> {
+    let text = String::from_utf8_lossy(bytes);
+    let mut found = Vec::new();
+    for (at, _) in text.match_indices("loopType=\"") {
+        let tag_start = text[..at].rfind('<').unwrap_or(0);
+        if !text[tag_start..at].contains("horeography") {
+            continue;
+        }
+        let rest = &text[at + 10..];
+        let value = &rest[..rest.find('"').unwrap_or(rest.len())];
+        if !matches!(
+            value,
+            "None" | "Standard" | "MultiInstanceSequential" | "MultiInstanceParallel"
+        ) {
+            found.push(format!(
+                "Choreography activity loopType \"{value}\" is not one of None, Standard, MultiInstanceSequential, MultiInstanceParallel (Semantic.xsd tChoreographyLoopType)"
+            ));
+        }
+    }
+    found
 }
 #[derive(Default)]
 struct Elem {

@@ -1,0 +1,34 @@
+{
+  "family": "repair-activities",
+  "cells": [
+    {
+      "path": "/schema/complexType[@name=tTask]",
+      "schema": "Semantic.xsd",
+      "dimension": "validate",
+      "state": "verified",
+      "evidence": [
+        "crates/processcraft-core/tests/m3_repair_activities.rs:implementation_value_diagnostic_on_send_user_service_and_refusal_on_plain_task"
+      ],
+      "note": "Plain task: implementation refused with exact message; BPMN 2.0.2 Table 10.8"
+    },
+    {
+      "path": "/schema/complexType[@name=tSubProcess]",
+      "schema": "Semantic.xsd",
+      "dimension": "validate",
+      "state": "verified",
+      "evidence": [
+        "crates/processcraft-core/tests/m3_repair_activities.rs:trigger_by_event_is_stored_on_subprocess_and_refused_elsewhere",
+        "crates/processcraft-core/tests/m3_repair_activities.rs:subprocess_scope_rejects_duplicate_ids_and_cross_scope_flows"
+      ]
+    },
+    {
+      "path": "/schema/element[@name=task]",
+      "schema": "Semantic.xsd",
+      "dimension": "validate",
+      "state": "verified",
+      "evidence": [
+        "crates/processcraft-core/tests/m3_repair_activities.rs:implementation_value_diagnostic_on_send_user_service_and_refusal_on_plain_task"
+      ]
+    }
+  ]
+}

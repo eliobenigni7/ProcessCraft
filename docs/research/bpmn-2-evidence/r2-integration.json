@@ -41,7 +41,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_foundation.rs:category_value_ref_and_outgoing_are_set_undone_and_dangling_refs_diagnosed"
+    "crates/processcraft-core/tests/m3_repair_artifacts.rs:group_category_value_ref_resolves_to_category_value_only"
    ]
   },
   {
@@ -118,9 +118,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_integration.rs",
-    "crates/processcraft-core/tests/m3r2_integration.rs:lane_partition_reference_must_resolve",
-    "crates/processcraft-core/tests/m3r2_integration.rs:lanes_of_one_lane_set_must_share_partition_type"
+    "crates/processcraft-core/tests/m3_repair_process_collaboration.rs:lane_membership_and_nesting_violations_name_the_rule"
    ]
   },
   {

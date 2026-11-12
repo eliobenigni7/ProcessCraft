@@ -17,7 +17,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip"
+    "crates/processcraft-io/tests/m3_repair_artifacts.rs:artifacts_export_values_are_in_bytes_reimport_and_xsd_valid",
+    "scripts/check_bpmn20_xsd.py"
    ]
   },
   {
@@ -36,8 +37,9 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m2.rs:descriptive_commands_validate_references_and_undo_atomically"
-   ]
+    "crates/processcraft-core/tests/m3_repair_artifacts.rs:association_endpoints_are_created_read_back_and_undone"
+   ],
+   "note": "Endpoints are set by CreateFlow and undone; no retarget mutation exists."
   },
   {
    "path": "/schema/complexType[@name=tAssociation]/complexContent/extension/attribute[@name=sourceRef]",
@@ -45,7 +47,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip"
+    "crates/processcraft-io/tests/m3_repair_artifacts.rs:artifacts_export_values_are_in_bytes_reimport_and_xsd_valid",
+    "scripts/check_bpmn20_xsd.py"
    ]
   },
   {
@@ -64,8 +67,9 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m2.rs:descriptive_commands_validate_references_and_undo_atomically"
-   ]
+    "crates/processcraft-core/tests/m3_repair_artifacts.rs:association_endpoints_are_created_read_back_and_undone"
+   ],
+   "note": "Endpoints are set by CreateFlow and undone; no retarget mutation exists."
   },
   {
    "path": "/schema/complexType[@name=tAssociation]/complexContent/extension/attribute[@name=targetRef]",
@@ -73,7 +77,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip"
+    "crates/processcraft-io/tests/m3_repair_artifacts.rs:artifacts_export_values_are_in_bytes_reimport_and_xsd_valid",
+    "scripts/check_bpmn20_xsd.py"
    ]
   },
   {
@@ -101,7 +106,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip"
+    "crates/processcraft-io/tests/m3_repair_artifacts.rs:artifacts_export_values_are_in_bytes_reimport_and_xsd_valid",
+    "scripts/check_bpmn20_xsd.py"
    ]
   },
   {
@@ -120,7 +126,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip"
+    "crates/processcraft-io/tests/m3_repair_artifacts.rs:artifacts_export_values_are_in_bytes_reimport_and_xsd_valid",
+    "scripts/check_bpmn20_xsd.py"
    ]
   },
   {
@@ -139,7 +146,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip"
+    "crates/processcraft-io/tests/m3_repair_artifacts.rs:artifacts_export_values_are_in_bytes_reimport_and_xsd_valid",
+    "scripts/check_bpmn20_xsd.py"
    ]
   },
   {
@@ -205,7 +213,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip"
+    "crates/processcraft-io/tests/m3_repair_artifacts.rs:artifacts_export_values_are_in_bytes_reimport_and_xsd_valid",
+    "scripts/check_bpmn20_xsd.py"
    ]
   },
   {
@@ -253,7 +262,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip"
+    "crates/processcraft-io/tests/m3_repair_artifacts.rs:artifacts_export_values_are_in_bytes_reimport_and_xsd_valid",
+    "scripts/check_bpmn20_xsd.py"
    ]
   },
   {
@@ -336,8 +346,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/commands.rs:group_category_qnames_rewrite_only_local_target",
-    "crates/processcraft-render/tests/bpmn_scene.rs:group_category_label_uses_di_bounds_style_and_viewport_hit"
+    "crates/processcraft-core/tests/m3_artifacts.rs:category_name_and_value_edit_are_stored_and_undo_restores"
    ]
   },
   {
@@ -346,7 +355,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m2.rs:descriptive_commands_validate_references_and_undo_atomically"
+    "crates/processcraft-core/tests/m3_artifacts.rs:category_name_and_value_edit_are_stored_and_undo_restores"
    ]
   },
   {
@@ -355,7 +364,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip"
+    "crates/processcraft-io/tests/m3_repair_artifacts.rs:artifacts_export_values_are_in_bytes_reimport_and_xsd_valid",
+    "scripts/check_bpmn20_xsd.py"
    ]
   },
   {
@@ -364,8 +374,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/commands.rs:group_category_qnames_rewrite_only_local_target",
-    "crates/processcraft-core/tests/m2.rs:descriptive_commands_validate_references_and_undo_atomically"
+    "crates/processcraft-core/tests/m3_artifacts.rs:category_name_and_value_edit_are_stored_and_undo_restores"
    ]
   },
   {
@@ -374,7 +383,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m2.rs:descriptive_commands_validate_references_and_undo_atomically"
+    "crates/processcraft-core/tests/m3_artifacts.rs:category_name_and_value_edit_are_stored_and_undo_restores"
    ]
   },
   {
@@ -402,8 +411,7 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/interchange.rs:collaboration_group_external_category_qname_remains_external",
-    "crates/processcraft-io/tests/interchange.rs:unsupported_artifact_metadata_and_dangling_category_are_safe"
+    "crates/processcraft-io/tests/m3_repair_artifacts.rs:artifact_kinds_import_with_typed_values"
    ]
   },
   {
@@ -412,7 +420,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip"
+    "crates/processcraft-io/tests/m3_repair_artifacts.rs:artifacts_export_values_are_in_bytes_reimport_and_xsd_valid",
+    "scripts/check_bpmn20_xsd.py"
    ]
   },
   {

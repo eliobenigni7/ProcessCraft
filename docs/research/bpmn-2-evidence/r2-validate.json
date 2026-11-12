@@ -208,8 +208,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:data_ports_are_validated"
+    "crates/processcraft-core/tests/m3_repair_data.rs:data_output_item_subject_ref_must_resolve"
    ]
   },
   {
@@ -255,8 +254,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:input_and_output_set_references_are_validated"
+    "crates/processcraft-core/tests/m3_repair_data.rs:set_reference_diagnostics_cover_input_data_refs_and_output_set_members"
    ]
   },
   {
@@ -342,8 +340,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:input_and_output_set_references_are_validated"
+    "crates/processcraft-core/tests/m3_repair_data.rs:set_reference_diagnostics_cover_input_data_refs_and_output_set_members"
    ]
   },
   {
@@ -352,8 +349,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:input_and_output_set_references_are_validated"
+    "crates/processcraft-core/tests/m3_repair_data.rs:set_reference_diagnostics_cover_input_data_refs_and_output_set_members"
    ]
   },
   {
