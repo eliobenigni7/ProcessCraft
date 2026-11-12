@@ -376,3 +376,24 @@ Source base `2532d4c` plus this change. On native Windows 11 (NTFS), `cargo fmt 
 - Generic Rename/Delete reach graph-mode choreography elements; graph deletion cascades connected sequence flows, attached events and owned data associations; reparenting an event moves its owned associations. All are one undo step. Tests: `crates/processcraft-core/tests/choreography_graph_commands.rs`.
 
 Not established: a scope definition for "required" coverage is proposed in `docs/research/m3-required-scope-proposal.md` and is not yet adopted. Native GUI interaction, accessibility and named-consumer gates were not run.
+
+## M3 required-scope closure (M3 is NOT closed)
+
+Measured 2026-11-12 on Windows 11 (NTFS), main at `3ad3dc7`, scope per `docs/research/m3-required-scope-proposal.md` and the plan's scope decision.
+
+**Gate** (`python scripts/generate_bpmn20_inventory.py --gate`, exit 1): 299 declarations, 1450 cells; **1399 verified, 35 not_applicable, 16 pending (14 unverified, 2 partial)**. Per set: A 427 verified / 7 n.a. / 4 unverified; C 161 / 3 / 2; D 826 / 26 / 2 partial + 7 unverified; I 128 / 2 / 2; S 26 / 2 / 0. `--check` against the pinned OMG schemas passes.
+
+**Pending required cells (M3 stays open until these are zero):**
+- DC Bounds validate; DC Point validate
+- tArtifact import; tDataInputAssociation export; element category export; element ioSpecification export
+- tDocumentation/@id validate
+- tGlobalChoreographyTask model; tGlobalChoreographyTask/@initiatingParticipantRef render
+- tLinkEventDefinition/@name render; tMessage/@name render
+- tLoopCharacteristics validate; tSubProcess validate; tTask validate; element task validate
+- element messageEventDefinition edit
+
+**How verification works.** Per-dimension cells (model, edit, render, import, export, validate) are recorded in fragments under `docs/research/bpmn-2-evidence/`; the generator validates each against the pinned XSD/CMOF declarations and regenerates `docs/research/bpmn-2-coverage.json`. Two adversarial skeptic audits were run; the second judged 114 cells with two skeptics: 16 refuted by both (removed, now pending, no fixes or new tests added), 8 split.
+
+**Tests (Windows 11):** `cargo fmt --all -- --check` clean; clippy with `-D warnings` clean; `cargo test --workspace --all-targets --all-features --locked --offline --no-fail-fast`: 938 passed, 0 failed.
+
+**Not claimed:** OMG BPMN conformance of any class (Common Executable and Full Process unsatisfied); deferred families; Camunda Modeler / SAP Signavio reopens, the Signavio comparison and screen-reader qualification (deferred to a post-M3 qualification milestone by user decision, 2026-11-12); per-field desktop GUI qualification as part of edit cells; any non-Windows gate run (this gate run is Windows only).

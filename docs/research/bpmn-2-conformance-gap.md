@@ -64,3 +64,7 @@ Test names refer to `crates/processcraft-io/tests/interchange.rs`. The code and 
 ## Qualification method
 
 For each requirement, record the PDF clause/table and applicable XSD/CMOF declaration, scope and exclusions, implementation path, positive and negative tests, native persistence/undo evidence, GUI and CLI/MCP evidence, DI rendering, fixture provenance and independent round-trip results. Mark a cell **partial** while any required attribute, structural rule or transport remains open; mark **verified** only for the explicitly bounded fixture and evidence. Maintain a second prose-constraint checklist in addition to the schema declaration list. Run pinned schema validation on source and exported files, then test non-schema rules independently. Track execution and BPEL conformance separately as out of scope; do not imply they are met by storing execution metadata.
+
+## Status note (2026-11-12)
+
+The required-scope gate (`python scripts/generate_bpmn20_inventory.py --gate`, scope in [m3-required-scope-proposal.md](m3-required-scope-proposal.md)) now evidences most Descriptive, Analytic and Choreography required cells in-repo (1399 of 1450 verified, 35 not applicable, 16 still pending). This is repository evidence only and is not an OMG conformance claim: Common Executable and Full Process conformance remain unsatisfied, deferred families remain out of scope, and named external consumers (Camunda Modeler, SAP Signavio) have not been run. The tables above are retained unchanged. Details: [m3-evidence.md](../implementation/m3-evidence.md).

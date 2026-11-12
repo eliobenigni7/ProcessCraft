@@ -8,7 +8,7 @@
 
 ## Partial delivery checkpoint
 
-**Status (November 11, 2026): in progress.** The user has resumed implementation. The original review/export tools and first BPMN expansion waves are implemented; the complete BPMN modeling/interchange target remains unfinished. Do not mark M3 complete until the gates below are satisfied.
+**Status (November 12, 2026): NOT closed under the adopted scope.** The required-scope gate reports 16 pending required cells (14 unverified, 2 partial; see "M3 required-scope closure" in the evidence file), so `--gate` exits 1. Earlier status (November 11, 2026): in progress. The user has resumed implementation. The original review/export tools and first BPMN expansion waves are implemented; the complete BPMN modeling/interchange target remains unfinished. Do not mark M3 complete until the gates below are satisfied.
 
 - Delivered: explicit bounded auto-layout preview/cancel/apply, comments with orphan handling, schema-3 named checkpoints/reference/frozen views, paginated detailed comparison and guarded restore, shared-scene outlined PDF export, shared CLI/MCP commands and broader typed BPMN profiles.
 - Qualified: workspace regression, formatting and Clippy, focused official-schema XML round trips, native review/export checks and resource/checkpoint limit experiments; see [evidence](../../implementation/m3-evidence.md) for exact build scope and limitations.
@@ -53,14 +53,14 @@ The integrated Cloud continuation now includes bounded definitions/import metada
 
 ## M3.4 coverage work packages
 
-- [ ] Pin authoritative source files and hashes; inventory XSD declarations, reconcile CMOF classes and normative PDF constraints. Track model, edit, render, import, export and validation independently, with actual fixture/test pointers. Keep preserved-source behavior distinct from implemented semantics.
+- [x] Pin authoritative source files and hashes; inventory XSD declarations, reconcile CMOF classes and normative PDF constraints. Track model, edit, render, import, export and validation independently, with actual fixture/test pointers. Keep preserved-source behavior distinct from implemented semantics. Evidence: `scripts/generate_bpmn20_inventory.py --check` and `--gate` (six dimensions per declaration, fragments in `docs/research/bpmn-2-evidence/`), see [M3 required-scope closure](../../implementation/m3-evidence.md).
 - [ ] Extend typed activity/event/gateway metadata without weakening validation or old native identity verification. Cover every task type; loops/multi-instance; subprocess, event subprocess, ad-hoc subprocess, transaction and call activity; all gateway and conditional/default-flow properties.
 - [ ] Implement all start/intermediate/end/boundary event definitions, interrupting/non-interrupting behavior, catch/throw rules, event-definition references and root definitions. Preserve expressions, namespaces and QName resolution; reject or retain unsupported cases until qualified.
 - [ ] Add nested flow scopes, lane hierarchies, participants, collaborations, message flows, conversations/sub-conversations, choreography tasks/subprocesses/call choreography and their associations/multiplicity.
 - [ ] Cover data inputs/outputs/associations, stores, item definitions, expressions, resources/roles, interfaces/operations/messages, errors/signals/escalations, correlations, imports and standard definition metadata. Keep foreign extensions preserved and governed by capability checks.
 - [ ] Extend the scene, palette, property editors, hierarchy navigation and transactional commands for each supported family. New enum variants with generic boxes do not count as rendering support. Every mutation keeps IDs/references, undo, dictionary/comment relationships and checkpoint context consistent.
 - [ ] Qualify full namespace-aware XML import/export and DI semantics, complete per-family properties, nesting, references and failure paths. Unsupported or unqualified data remains safely retained; no selective field dropping to claim wider editing support.
-- [ ] Add normative semantic diagnostics with PDF clause references and negative fixtures, plus external reopen checks in named tool/version combinations. Record limits and failures explicitly. Zero pending required rows, not a rounded headline percentage, is the full-coverage gate.
+- [ ] Add normative semantic diagnostics with PDF clause references and negative fixtures, plus external reopen checks in named tool/version combinations. Record limits and failures explicitly. Zero pending required rows, not a rounded headline percentage, is the full-coverage gate. (external named-tool reopens deferred to post-M3 qualification; left open because 16 required cells remain pending)
 
 ## Comparative product-quality gate
 
@@ -72,8 +72,8 @@ Aim for measurable superiority within the agreed offline modeling/workbench scop
 - [ ] Native format tests: V0–V2 digest verification before migration, separate checkpoint payloads, resource deduplication, tamper and expanded-size rejection, Save As requirements, old recovery preservation and unchanged source on failure.
 - [ ] CLI/MCP: same proposal/commands, expected session/generation, explicit file grants, bounded inputs, retry deduplication, no mutation or file write after refusal, and structured diagnostics for output fallback.
 - [ ] Render/export: exact shared geometry/glyphs, all implemented markers, page clipping and bounds, independent PDF raster/outline-policy checks and no external resources/scripts.
-- [ ] Native desktop: genuine controls and previews in English Light/Dark, keyboard navigation and 200% scrolling, pending-draft guards, cancellation and late-result rejection. No fake approvals or placeholder success controls.
-- [ ] Run `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets --all-features --locked --offline -- -D warnings` and `cargo test --workspace --all-targets --all-features --locked --offline`; build both release binaries and retain artifacts under `target/m3-qualification/`.
+- [ ] Native desktop: genuine controls and previews in English Light/Dark, keyboard navigation and 200% scrolling, pending-draft guards, cancellation and late-result rejection. No fake approvals or placeholder success controls. (screen-reader qualification deferred to post-M3 qualification; per-field native GUI qualification not established; left open)
+- [ ] Run `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets --all-features --locked --offline -- -D warnings` and `cargo test --workspace --all-targets --all-features --locked --offline`; build both release binaries and retain artifacts under `target/m3-qualification/`. (fmt/clippy/tests re-run on Windows 11 on 2026-11-12 and passed; release-binary build and `target/m3-qualification/` artifacts not re-produced in this closeout; left open)
 
 M3 remains in progress until every required delivery/coverage gate above is met. A parser accepting more tags, a schema catalog, outlined PDF support or a subset auto-layout result alone does not complete this milestone.
 
