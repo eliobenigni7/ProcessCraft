@@ -177,15 +177,6 @@
    ]
   },
   {
-   "path": "/schema/complexType[@name=tDocumentation]/attribute[@name=id]",
-   "schema": "Semantic.xsd",
-   "dimension": "validate",
-   "state": "verified",
-   "evidence": [
-    "crates/processcraft-core/tests/commands.rs:documentation_id_rename_and_collision_are_atomic"
-   ]
-  },
-  {
    "path": "/schema/complexType[@name=tDocumentation]/attribute[@name=textFormat]",
    "schema": "Semantic.xsd",
    "dimension": "model",
@@ -638,18 +629,6 @@
    "evidence": [
     "crates/processcraft-core/tests/collaboration_model.rs:group_category_reference_preserves_legacy_wire_and_external_namespace",
     "crates/processcraft-core/tests/m2.rs:descriptive_commands_validate_references_and_undo_atomically"
-   ]
-  },
-  {
-   "path": "/schema/complexType[@name=tArtifact]",
-   "schema": "Semantic.xsd",
-   "dimension": "import",
-   "state": "verified",
-   "evidence": [
-    "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip",
-    "crates/processcraft-io/tests/interchange.rs:unsupported_artifact_metadata_and_dangling_category_are_safe",
-    "crates/processcraft-io/tests/interchange.rs:nested_choreography_graph_round_trips",
-    "tests/fixtures/bpmn20-schema/groups.bpmn"
    ]
   },
   {

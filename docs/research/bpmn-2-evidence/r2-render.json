@@ -66,13 +66,6 @@
    "note": "BPMN 2.0.2 Table 8.46 (printed p.89): gatewayDirection only adds constraints on incoming/outgoing Sequence Flows; Gateway notation (section 10.6) defines markers by gateway type only, no direction marker."
   },
   {
-   "path": "/schema/complexType[@name=tGlobalChoreographyTask]/complexContent/extension/attribute[@name=initiatingParticipantRef]",
-   "schema": "Semantic.xsd",
-   "dimension": "render",
-   "state": "not_applicable",
-   "note": "BPMN 2.0.2 section 11.5.4 / Table 11.5 (printed p.335) and Table 12.30: a GlobalChoreographyTask has no Flow Elements and no standalone shape; only the calling Call Choreography is drawn."
-  },
-  {
    "path": "/schema/complexType[@name=tInclusiveGateway]/complexContent/extension/attribute[@name=default]",
    "schema": "Semantic.xsd",
    "dimension": "render",
@@ -94,20 +87,6 @@
    "dimension": "render",
    "state": "not_applicable",
    "note": "BPMN 2.0.2 Table 10.134 (printed p.307): 'A LaneSet is not visually displayed on a BPMN diagram. Consequently, the name of the LaneSet is not displayed as well.'"
-  },
-  {
-   "path": "/schema/complexType[@name=tLinkEventDefinition]/complexContent/extension/attribute[@name=name]",
-   "schema": "Semantic.xsd",
-   "dimension": "render",
-   "state": "not_applicable",
-   "note": "BPMN 2.0.2 Table 10.98 (printed p.269) and Table 10.93: the Link name correlates throw/catch events; the Link marker is a fixed arrow and the name is not part of the notation (the event label is the Event name)."
-  },
-  {
-   "path": "/schema/complexType[@name=tMessage]/complexContent/extension/attribute[@name=name]",
-   "schema": "Semantic.xsd",
-   "dimension": "render",
-   "state": "not_applicable",
-   "note": "BPMN 2.0.2 Table 8.48 (printed p.93): Message name is a text description; the DI section only says the Message name MAY be used as a label for the choreography envelope decorator (optional); the renderer deliberately does not draw it."
   },
   {
    "path": "/schema/complexType[@name=tOutputSet]/complexContent/extension/attribute[@name=name]",

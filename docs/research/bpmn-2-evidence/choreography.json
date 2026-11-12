@@ -457,15 +457,6 @@
   {
    "path": "/schema/complexType[@name=tGlobalChoreographyTask]",
    "schema": "Semantic.xsd",
-   "dimension": "model",
-   "state": "verified",
-   "evidence": [
-    "crates/processcraft-core/tests/choreography_graph.rs:legacy_wire_and_explicit_defaults_are_distinct"
-   ]
-  },
-  {
-   "path": "/schema/complexType[@name=tGlobalChoreographyTask]",
-   "schema": "Semantic.xsd",
    "dimension": "import",
    "state": "verified",
    "evidence": [

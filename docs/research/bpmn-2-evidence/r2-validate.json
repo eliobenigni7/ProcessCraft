@@ -441,13 +441,6 @@
    "note": "BPMN 2.0.2 Table 10.28 (p. 190) says the looping behavior MAY be underspecified and merely documented; no constraint on the Expression is stated beyond its Semantic.xsd type."
   },
   {
-   "path": "/schema/complexType[@name=tLoopCharacteristics]",
-   "schema": "Semantic.xsd",
-   "dimension": "validate",
-   "state": "not_applicable",
-   "note": "BPMN 2.0.2 section 10.3.7 (p. 188) states LoopCharacteristics inherits BaseElement and has no further attributes or model associations; the abstract type has no constraint of its own."
-  },
-  {
    "path": "/schema/complexType[@name=tMultiInstanceLoopCharacteristics]/complexContent/extension/sequence/element[@name=loopCardinality]",
    "schema": "Semantic.xsd",
    "dimension": "validate",
@@ -627,20 +620,6 @@
    "dimension": "validate",
    "state": "not_applicable",
    "note": "BPMN 2.0.2 Table 8.44 (p. 86) describes name only as the descriptive name of the element; Semantic.xsd types it xsd:string; no constraint beyond the lexical type."
-  },
-  {
-   "path": "/schema/complexType[@name=tTask]",
-   "schema": "Semantic.xsd",
-   "dimension": "validate",
-   "state": "not_applicable",
-   "note": "BPMN 2.0.2 section 10.3.1 (p. 155) states the Task inherits Activity (Table 10.3) and has no further attributes or model associations; the Activity constraints are checked on the owners that carry them."
-  },
-  {
-   "path": "/schema/element[@name=task]",
-   "schema": "Semantic.xsd",
-   "dimension": "validate",
-   "state": "not_applicable",
-   "note": "BPMN 2.0.2 section 10.3.1 (p. 155) states the Task inherits Activity (Table 10.3) and has no further attributes or model associations; the Activity constraints are checked on the owners that carry them."
   }
  ]
 }

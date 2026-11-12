@@ -1308,15 +1308,6 @@
   {
    "path": "/schema/element[@name=messageEventDefinition]",
    "schema": "Semantic.xsd",
-   "dimension": "edit",
-   "state": "verified",
-   "evidence": [
-    "apps/processcraft-cli/tests/definitions_mcp.rs:definitions_metadata_uses_discovered_mcp_command_and_exact_history"
-   ]
-  },
-  {
-   "path": "/schema/element[@name=messageEventDefinition]",
-   "schema": "Semantic.xsd",
    "dimension": "import",
    "state": "verified",
    "evidence": [

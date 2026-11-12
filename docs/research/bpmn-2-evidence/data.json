@@ -121,19 +121,6 @@
   {
    "path": "/schema/complexType[@name=tDataInputAssociation]",
    "schema": "Semantic.xsd",
-   "dimension": "export",
-   "state": "verified",
-   "evidence": [
-    "crates/processcraft-core/tests/m2.rs:typed_data_association_is_scoped_to_owner_ports_and_undoable",
-    "crates/processcraft-core/tests/commands.rs:expanded_data_preserves_omissions_and_validates_transformation",
-    "crates/processcraft-core/tests/m2.rs:nested_data_associations_resolve_ancestor_and_global_endpoints",
-    "crates/processcraft-io/tests/interchange.rs:data_io_sets_ports_and_associations_round_trip",
-    "scripts/check_bpmn20_xsd.py"
-   ]
-  },
-  {
-   "path": "/schema/complexType[@name=tDataInputAssociation]",
-   "schema": "Semantic.xsd",
    "dimension": "import",
    "state": "verified",
    "evidence": [
@@ -902,17 +889,6 @@
    "state": "verified",
    "evidence": [
     "crates/processcraft-core/tests/m2.rs:typed_data_association_is_scoped_to_owner_ports_and_undoable"
-   ]
-  },
-  {
-   "path": "/schema/element[@name=ioSpecification]",
-   "schema": "Semantic.xsd",
-   "dimension": "export",
-   "state": "verified",
-   "evidence": [
-    "crates/processcraft-io/tests/interchange.rs:data_io_sets_ports_and_associations_round_trip",
-    "tests/fixtures/bpmn20-schema/data-io.bpmn",
-    "scripts/check_bpmn20_xsd.py"
    ]
   },
   {

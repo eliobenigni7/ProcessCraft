@@ -378,15 +378,6 @@
    ]
   },
   {
-   "path": "/schema/element[@name=category]",
-   "schema": "Semantic.xsd",
-   "dimension": "export",
-   "state": "verified",
-   "evidence": [
-    "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip"
-   ]
-  },
-  {
    "path": "/schema/element[@name=group]",
    "schema": "Semantic.xsd",
    "dimension": "model",

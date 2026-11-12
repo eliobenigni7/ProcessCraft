@@ -165,15 +165,6 @@
    ]
   },
   {
-   "path": "/schema/complexType[@name=tSubProcess]",
-   "schema": "Semantic.xsd",
-   "dimension": "validate",
-   "state": "verified",
-   "evidence": [
-    "crates/processcraft-io/tests/interchange.rs:nested_duplicate_ids_and_cross_scope_edges_are_rejected_by_core"
-   ]
-  },
-  {
    "path": "/schema/complexType[@name=tSubProcess]/complexContent/extension/attribute[@name=triggeredByEvent]",
    "schema": "Semantic.xsd",
    "dimension": "model",

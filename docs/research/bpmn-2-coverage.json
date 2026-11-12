@@ -16861,7 +16861,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "not_applicable"
+        "validate": "unverified"
       },
       "required": [
         "I"
@@ -16886,8 +16886,7 @@
         ]
       },
       "verified_notes": {
-        "export": "Export evidence: XSD-valid fixture, whole-document model equality after export and re-import.",
-        "validate": "The DC XSD (DC.xsd) types x/y as xsd:double and BPMN 2.0.2 section 12.2.3.5 BPMNEdge states no constraint on waypoint values beyond the lexical type."
+        "export": "Export evidence: XSD-valid fixture, whole-document model equality after export and re-import."
       }
     },
     {
@@ -17009,7 +17008,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "not_applicable"
+        "validate": "unverified"
       },
       "required": [
         "I"
@@ -17035,8 +17034,7 @@
         ]
       },
       "verified_notes": {
-        "export": "Export evidence: XSD-valid fixture, whole-document model equality after export and re-import.",
-        "validate": "The DC XSD (DC.xsd) types x/y/width/height as xsd:double and BPMN 2.0.2 (section 12.2.3, DI chapter) states no range or relation for a label or shape Bounds beyond the lexical type; Participant-band geometry is checked separately by participantBandGeometryDisjoint."
+        "export": "Export evidence: XSD-valid fixture, whole-document model equality after export and re-import."
       }
     },
     {
@@ -18328,7 +18326,7 @@
         "model": "verified",
         "edit": "unverified",
         "render": "unverified",
-        "import": "verified",
+        "import": "unverified",
         "export": "verified",
         "validate": "verified"
       },
@@ -18345,12 +18343,6 @@
         "export": [
           "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip",
           "tests/fixtures/bpmn20-schema/artifacts.bpmn",
-          "tests/fixtures/bpmn20-schema/groups.bpmn"
-        ],
-        "import": [
-          "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip",
-          "crates/processcraft-io/tests/interchange.rs:nested_choreography_graph_round_trips",
-          "crates/processcraft-io/tests/interchange.rs:unsupported_artifact_metadata_and_dangling_category_are_safe",
           "tests/fixtures/bpmn20-schema/groups.bpmn"
         ],
         "model": [
@@ -20161,7 +20153,7 @@
         "edit": "verified",
         "render": "unverified",
         "import": "verified",
-        "export": "verified",
+        "export": "partial",
         "validate": "not_applicable"
       },
       "profile": "descriptive artifacts",
@@ -20186,9 +20178,6 @@
       "verified_evidence": {
         "edit": [
           "crates/processcraft-core/tests/m2.rs:descriptive_commands_validate_references_and_undo_atomically"
-        ],
-        "export": [
-          "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip"
         ],
         "import": [
           "crates/processcraft-io/tests/m3_artifacts.rs:artifacts_import_typed_association_category_and_annotation_fields",
@@ -23234,7 +23223,7 @@
         "edit": "unverified",
         "render": "unverified",
         "import": "verified",
-        "export": "verified",
+        "export": "unverified",
         "validate": "verified"
       },
       "required": [
@@ -23247,13 +23236,6 @@
         "validate"
       ],
       "verified_evidence": {
-        "export": [
-          "crates/processcraft-core/tests/commands.rs:expanded_data_preserves_omissions_and_validates_transformation",
-          "crates/processcraft-core/tests/m2.rs:nested_data_associations_resolve_ancestor_and_global_endpoints",
-          "crates/processcraft-core/tests/m2.rs:typed_data_association_is_scoped_to_owner_ports_and_undoable",
-          "crates/processcraft-io/tests/interchange.rs:data_io_sets_ports_and_associations_round_trip",
-          "scripts/check_bpmn20_xsd.py"
-        ],
         "import": [
           "crates/processcraft-core/tests/commands.rs:expanded_data_preserves_omissions_and_validates_transformation",
           "crates/processcraft-core/tests/m2.rs:nested_data_associations_resolve_ancestor_and_global_endpoints",
@@ -24885,7 +24867,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "verified"
+        "validate": "unverified"
       },
       "required": [
         "D"
@@ -24909,9 +24891,6 @@
           "scripts/qualify_common_metadata.py"
         ],
         "model": [
-          "crates/processcraft-core/tests/commands.rs:documentation_id_rename_and_collision_are_atomic"
-        ],
-        "validate": [
           "crates/processcraft-core/tests/commands.rs:documentation_id_rename_and_collision_are_atomic"
         ]
       }
@@ -27271,7 +27250,7 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "verified",
+        "model": "unverified",
         "edit": "unverified",
         "render": "unverified",
         "import": "verified",
@@ -27300,9 +27279,6 @@
           "scripts/qualify_choreography_graph.py",
           "tests/fixtures/bpmn/choreography-graph/nested.bpmn"
         ],
-        "model": [
-          "crates/processcraft-core/tests/choreography_graph.rs:legacy_wire_and_explicit_defaults_are_distinct"
-        ],
         "validate": [
           "crates/processcraft-core/tests/diagnostics.rs:choreography_graph_reports_bounded_semantics_without_matching_external_names"
         ]
@@ -27324,7 +27300,7 @@
       "coverage": {
         "model": "verified",
         "edit": "verified",
-        "render": "not_applicable",
+        "render": "unverified",
         "import": "verified",
         "export": "verified",
         "validate": "verified"
@@ -27362,9 +27338,6 @@
           "crates/processcraft-core/tests/m3_choreography.rs:choreography_reference_diagnostics_name_the_violated_clause",
           "crates/processcraft-core/tests/m3_choreography.rs:global_choreography_task_kind_and_initiator_edit_validate_and_undo"
         ]
-      },
-      "verified_notes": {
-        "render": "BPMN 2.0.2 section 11.5.4 / Table 11.5 (printed p.335) and Table 12.30: a GlobalChoreographyTask has no Flow Elements and no standalone shape; only the calling Call Choreography is drawn."
       }
     },
     {
@@ -28978,7 +28951,7 @@
         "edit": "verified",
         "render": "unverified",
         "import": "verified",
-        "export": "verified",
+        "export": "partial",
         "validate": "verified"
       },
       "profile": "data",
@@ -29002,11 +28975,6 @@
       "verified_evidence": {
         "edit": [
           "crates/processcraft-core/tests/m2.rs:typed_data_association_is_scoped_to_owner_ports_and_undoable"
-        ],
-        "export": [
-          "crates/processcraft-io/tests/interchange.rs:data_io_sets_ports_and_associations_round_trip",
-          "scripts/check_bpmn20_xsd.py",
-          "tests/fixtures/bpmn20-schema/data-io.bpmn"
         ],
         "import": [
           "crates/processcraft-io/tests/interchange.rs:data_io_sets_ports_and_associations_round_trip",
@@ -30032,7 +30000,7 @@
       "coverage": {
         "model": "verified",
         "edit": "verified",
-        "render": "not_applicable",
+        "render": "unverified",
         "import": "verified",
         "export": "verified",
         "validate": "verified"
@@ -30069,9 +30037,6 @@
           "crates/processcraft-core/tests/m3_events.rs:link_pair_edit_with_undo_and_incomplete_pairing_is_diagnosed",
           "crates/processcraft-core/tests/m3_events.rs:link_without_name_is_diagnosed"
         ]
-      },
-      "verified_notes": {
-        "render": "BPMN 2.0.2 Table 10.98 (printed p.269) and Table 10.93: the Link name correlates throw/catch events; the Link marker is a fixed arrow and the name is not part of the notation (the event label is the Event name)."
       }
     },
     {
@@ -30115,7 +30080,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "not_applicable"
+        "validate": "unverified"
       },
       "required": [
         "A"
@@ -30140,9 +30105,6 @@
           "crates/processcraft-core/tests/commands.rs:loop_identity_rename_preserves_checkpoint_and_undo_redo",
           "crates/processcraft-core/tests/m2.rs:loop_metadata_is_atomic_and_undoable"
         ]
-      },
-      "verified_notes": {
-        "validate": "BPMN 2.0.2 section 10.3.7 (p. 188) states LoopCharacteristics inherits BaseElement and has no further attributes or model associations; the abstract type has no constraint of its own."
       }
     },
     {
@@ -30302,7 +30264,7 @@
       "coverage": {
         "model": "verified",
         "edit": "verified",
-        "render": "not_applicable",
+        "render": "unverified",
         "import": "verified",
         "export": "verified",
         "validate": "not_applicable"
@@ -30333,8 +30295,7 @@
         ]
       },
       "verified_notes": {
-        "validate": "BPMN 2.0.2 Table 8.48 (printed p.93) describes the attribute only as a descriptive name; Semantic.xsd types it xsd:string; no constraint beyond the lexical type.",
-        "render": "BPMN 2.0.2 Table 8.48 (printed p.93): Message name is a text description; the DI section only says the Message name MAY be used as a label for the choreography envelope decorator (optional); the renderer deliberately does not draw it."
+        "validate": "BPMN 2.0.2 Table 8.48 (printed p.93) describes the attribute only as a descriptive name; Semantic.xsd types it xsd:string; no constraint beyond the lexical type."
       }
     },
     {
@@ -30402,7 +30363,7 @@
       "substitution_group": "eventDefinition",
       "coverage": {
         "model": "verified",
-        "edit": "verified",
+        "edit": "unverified",
         "render": "unverified",
         "import": "verified",
         "export": "verified",
@@ -30427,9 +30388,6 @@
         "validate"
       ],
       "verified_evidence": {
-        "edit": [
-          "apps/processcraft-cli/tests/definitions_mcp.rs:definitions_metadata_uses_discovered_mcp_command_and_exact_history"
-        ],
         "export": [
           "crates/processcraft-io/tests/interchange.rs:event_root_refs_flags_properties_and_owned_io_roundtrip",
           "scripts/qualify_common_metadata.py:generate",
@@ -36695,7 +36653,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "verified"
+        "validate": "unverified"
       },
       "required": [
         "D"
@@ -36715,9 +36673,6 @@
         ],
         "model": [
           "crates/processcraft-core/tests/m2.rs:nested_scope_edits_and_cross_scope_flows_are_atomic"
-        ],
-        "validate": [
-          "crates/processcraft-io/tests/interchange.rs:nested_duplicate_ids_and_cross_scope_edges_are_rejected_by_core"
         ]
       }
     },
@@ -36797,7 +36752,7 @@
         "render": "verified",
         "import": "verified",
         "export": "verified",
-        "validate": "not_applicable"
+        "validate": "unverified"
       },
       "required": [
         "D"
@@ -36828,9 +36783,6 @@
         "render": [
           "crates/processcraft-render/tests/bpmn_scene.rs:implicit_task_label_centers_each_line_in_shared_scene"
         ]
-      },
-      "verified_notes": {
-        "validate": "BPMN 2.0.2 section 10.3.1 (p. 155) states the Task inherits Activity (Table 10.3) and has no further attributes or model associations; the Activity constraints are checked on the owners that carry them."
       }
     },
     {
@@ -36852,7 +36804,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "not_applicable"
+        "validate": "unverified"
       },
       "required": [
         "A",
@@ -36876,9 +36828,6 @@
         "model": [
           "crates/processcraft-core/tests/m2.rs:activity_properties_validate_scope_and_kind_and_undo"
         ]
-      },
-      "verified_notes": {
-        "validate": "BPMN 2.0.2 section 10.3.1 (p. 155) states the Task inherits Activity (Table 10.3) and has no further attributes or model associations; the Activity constraints are checked on the owners that carry them."
       }
     },
     {
@@ -37873,43 +37822,43 @@
     "total": {
       "declarations": 299,
       "cells": 1450,
-      "verified": 1407,
-      "not_applicable": 43,
-      "partial": 0,
-      "unverified": 0
+      "verified": 1399,
+      "not_applicable": 35,
+      "partial": 2,
+      "unverified": 14
     },
     "by_set": {
       "A": {
         "declarations": 89,
         "cells": 438,
         "verified": 427,
-        "not_applicable": 11,
+        "not_applicable": 7,
         "partial": 0,
-        "unverified": 0
+        "unverified": 4
       },
       "C": {
         "declarations": 34,
         "cells": 166,
-        "verified": 162,
-        "not_applicable": 4,
+        "verified": 161,
+        "not_applicable": 3,
         "partial": 0,
-        "unverified": 0
+        "unverified": 2
       },
       "D": {
         "declarations": 173,
         "cells": 861,
-        "verified": 833,
-        "not_applicable": 28,
-        "partial": 0,
-        "unverified": 0
+        "verified": 826,
+        "not_applicable": 26,
+        "partial": 2,
+        "unverified": 7
       },
       "I": {
         "declarations": 33,
         "cells": 132,
         "verified": 128,
-        "not_applicable": 4,
+        "not_applicable": 2,
         "partial": 0,
-        "unverified": 0
+        "unverified": 2
       },
       "S": {
         "declarations": 7,

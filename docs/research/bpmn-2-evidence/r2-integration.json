@@ -22,20 +22,6 @@
    ]
   },
   {
-   "path": "/schema/complexType[@name=Bounds]",
-   "schema": "DC.xsd",
-   "dimension": "validate",
-   "state": "not_applicable",
-   "note": "The DC XSD (DC.xsd) types x/y/width/height as xsd:double and BPMN 2.0.2 (section 12.2.3, DI chapter) states no range or relation for a label or shape Bounds beyond the lexical type; Participant-band geometry is checked separately by participantBandGeometryDisjoint."
-  },
-  {
-   "path": "/schema/complexType[@name=Point]",
-   "schema": "DC.xsd",
-   "dimension": "validate",
-   "state": "not_applicable",
-   "note": "The DC XSD (DC.xsd) types x/y as xsd:double and BPMN 2.0.2 section 12.2.3.5 BPMNEdge states no constraint on waypoint values beyond the lexical type."
-  },
-  {
    "path": "/schema/complexType[@name=tAssociation]/complexContent/extension/attribute[@name=associationDirection]",
    "schema": "Semantic.xsd",
    "dimension": "validate",
