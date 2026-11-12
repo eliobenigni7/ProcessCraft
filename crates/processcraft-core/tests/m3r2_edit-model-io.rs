@@ -424,3 +424,68 @@ fn text_annotation_text_format_edits_with_undo() {
     undo(&mut s);
     assert_eq!(format(&s).as_deref(), Some("text/plain"));
 }
+
+/// BPMN 2.0.2 Semantic.xsd tServiceTask `operationRef`: typed value on the
+/// activity, set/cleared by `SetActivityProperties`, undoable.
+#[test]
+fn service_task_operation_ref_sets_clears_and_undoes() {
+    let mut s = session();
+    let svc = Node {
+        flow_metadata: None,
+        base_extras: None,
+        item_aware: None,
+        id: ident("m3r2_svc"),
+        name: Some("Lookup".into()),
+        documentation: String::new().into(),
+        kind: NodeKind::ServiceTask,
+        details: None,
+        loop_characteristics: None,
+        io_specification: None,
+        activity: None,
+        owner: String::new(),
+        contact: String::new(),
+    };
+    run(
+        &mut s,
+        vec![Mutation::CreateElement {
+            document_id: docid(),
+            process_id: sel("procurement"),
+            element: svc,
+        }],
+    );
+    let created = s.snapshot().content_id;
+    let op = |s: &Session| {
+        processcraft_core::queries::find_node(&document(s), &sel("m3r2_svc"))
+            .unwrap()
+            .activity
+            .as_ref()
+            .and_then(|a| a.operation_ref.clone())
+    };
+    assert_eq!(op(&s), None);
+    let q = QNameRef {
+        namespace: "urn:external".into(),
+        local: "lookupOp".parse().unwrap(),
+    };
+    let set = |activity| Mutation::SetActivityProperties {
+        document_id: docid(),
+        element_id: sel("m3r2_svc"),
+        activity,
+    };
+    run(
+        &mut s,
+        vec![set(Some(
+            processcraft_core::bpmn_activity::ActivityProperties {
+                implementation: Some("##WebService".into()),
+                operation_ref: Some(q.clone()),
+                ..Default::default()
+            },
+        ))],
+    );
+    assert_eq!(op(&s), Some(q));
+    run(&mut s, vec![set(None)]);
+    assert_eq!(op(&s), None);
+    undo(&mut s);
+    assert!(op(&s).is_some());
+    undo(&mut s);
+    assert_eq!(s.snapshot().content_id, created);
+}

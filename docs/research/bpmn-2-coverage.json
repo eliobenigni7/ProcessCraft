@@ -19473,7 +19473,7 @@
       "substitution_group": "flowElement",
       "coverage": {
         "model": "verified",
-        "edit": "unverified",
+        "edit": "verified",
         "render": "verified",
         "import": "verified",
         "export": "verified",
@@ -19513,6 +19513,9 @@
         ],
         "validate": [
           "crates/processcraft-core/tests/diagnostics.rs:call_activity_local_target_is_checked_without_resolving_external"
+        ],
+        "edit": [
+          "crates/processcraft-core/tests/m3_activities.rs:call_activity_called_element_is_set_and_undone"
         ]
       }
     },
@@ -22755,7 +22758,7 @@
       "substitution_group": null,
       "coverage": {
         "model": "verified",
-        "edit": "unverified",
+        "edit": "verified",
         "render": "verified",
         "import": "verified",
         "export": "verified",
@@ -22794,6 +22797,9 @@
         ],
         "render": [
           "crates/processcraft-render/tests/bpmn_scene.rs:process_data_ports_render_direction_collection_state_and_hits"
+        ],
+        "edit": [
+          "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo"
         ]
       }
     },
@@ -23493,10 +23499,10 @@
       "substitution_group": null,
       "coverage": {
         "model": "verified",
-        "edit": "unverified",
+        "edit": "verified",
         "render": "verified",
-        "import": "partial",
-        "export": "partial",
+        "import": "verified",
+        "export": "verified",
         "validate": "partial"
       },
       "profile": "data",
@@ -23524,6 +23530,18 @@
         ],
         "render": [
           "crates/processcraft-render/tests/bpmn_scene.rs:process_data_ports_render_direction_collection_state_and_hits"
+        ],
+        "edit": [
+          "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo"
+        ],
+        "export": [
+          "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+          "tests/fixtures/bpmn/m3-data/manifest.md"
+        ],
+        "import": [
+          "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+          "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+          "tests/fixtures/bpmn/m3-data/manifest.md"
         ]
       }
     },
@@ -23986,7 +24004,7 @@
       "substitution_group": "rootElement",
       "coverage": {
         "model": "verified",
-        "edit": "unverified",
+        "edit": "verified",
         "render": "verified",
         "import": "verified",
         "export": "verified",
@@ -24028,6 +24046,9 @@
         ],
         "render": [
           "crates/processcraft-render/tests/bpmn_scene.rs:global_data_store_shape_uses_cylinder_state_and_viewport_hits"
+        ],
+        "edit": [
+          "crates/processcraft-core/tests/m3_data.rs:data_store_attributes_edit_and_undo"
         ]
       }
     },
@@ -24330,7 +24351,7 @@
       "substitution_group": "flowElement",
       "coverage": {
         "model": "verified",
-        "edit": "unverified",
+        "edit": "verified",
         "render": "verified",
         "import": "verified",
         "export": "verified",
@@ -24373,6 +24394,9 @@
         ],
         "render": [
           "crates/processcraft-render/tests/bpmn_scene.rs:data_store_reference_displays_its_own_name_including_empty"
+        ],
+        "edit": [
+          "crates/processcraft-core/tests/m3_data.rs:data_store_reference_target_and_item_edit_and_undo"
         ]
       }
     },
@@ -25530,7 +25554,7 @@
       "substitution_group": "flowElement",
       "coverage": {
         "model": "verified",
-        "edit": "unverified",
+        "edit": "verified",
         "render": "verified",
         "import": "verified",
         "export": "verified",
@@ -25569,6 +25593,9 @@
         ],
         "validate": [
           "crates/processcraft-core/tests/diagnostics.rs:activity_conditions_are_allowed_but_event_gateway_conditions_are_diagnosed"
+        ],
+        "edit": [
+          "crates/processcraft-core/tests/m3_gateways.rs:event_based_gateway_attributes_are_edited_and_undone"
         ]
       },
       "verified_notes": {
@@ -25639,7 +25666,7 @@
       "substitution_group": null,
       "coverage": {
         "model": "verified",
-        "edit": "unverified",
+        "edit": "verified",
         "render": "verified",
         "import": "verified",
         "export": "verified",
@@ -25672,6 +25699,9 @@
         ],
         "validate": [
           "crates/processcraft-core/tests/m3_gateways.rs:event_based_gateway_attribute_rules_are_diagnosed"
+        ],
+        "edit": [
+          "crates/processcraft-core/tests/m3_gateways.rs:event_based_gateway_attributes_are_edited_and_undone"
         ]
       },
       "verified_notes": {
@@ -25693,7 +25723,7 @@
       "substitution_group": null,
       "coverage": {
         "model": "verified",
-        "edit": "unverified",
+        "edit": "verified",
         "render": "verified",
         "import": "verified",
         "export": "verified",
@@ -25726,6 +25756,9 @@
         ],
         "validate": [
           "crates/processcraft-core/tests/m3_gateways.rs:event_based_gateway_attribute_rules_are_diagnosed"
+        ],
+        "edit": [
+          "crates/processcraft-core/tests/m3_gateways.rs:event_based_gateway_attributes_are_edited_and_undone"
         ]
       },
       "verified_notes": {
@@ -25981,7 +26014,7 @@
       "substitution_group": null,
       "coverage": {
         "model": "verified",
-        "edit": "unverified",
+        "edit": "verified",
         "render": "verified",
         "import": "verified",
         "export": "verified",
@@ -26014,6 +26047,9 @@
         ],
         "validate": [
           "crates/processcraft-core/tests/diagnostics.rs:nested_gateway_diagnostics_are_advisory_and_anchored"
+        ],
+        "edit": [
+          "crates/processcraft-core/tests/m3_gateways.rs:exclusive_default_flow_is_set_cleared_and_undone"
         ]
       },
       "verified_notes": {
@@ -27635,7 +27671,7 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
+        "model": "verified",
         "edit": "unverified",
         "render": "unverified",
         "import": "verified",
@@ -27659,6 +27695,9 @@
         "import": [
           "crates/processcraft-io/tests/m3_foundation.rs:callable_process_name_and_global_task_implementation_survive_round_trip",
           "tests/fixtures/bpmn/m3-foundation/callable-name-implementation.bpmn"
+        ],
+        "model": [
+          "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
         ]
       }
     },
@@ -27727,7 +27766,7 @@
       "substitution_group": "flowElement",
       "coverage": {
         "model": "verified",
-        "edit": "unverified",
+        "edit": "verified",
         "render": "verified",
         "import": "verified",
         "export": "verified",
@@ -27767,6 +27806,9 @@
         ],
         "validate": [
           "crates/processcraft-core/tests/m3_gateways.rs:inclusive_and_parallel_gateways_diagnose_misuse"
+        ],
+        "edit": [
+          "crates/processcraft-core/tests/m3_gateways.rs:inclusive_and_parallel_gateways_are_created_edited_and_undone"
         ]
       },
       "verified_notes": {
@@ -27837,7 +27879,7 @@
       "substitution_group": null,
       "coverage": {
         "model": "verified",
-        "edit": "unverified",
+        "edit": "verified",
         "render": "unverified",
         "import": "verified",
         "export": "verified",
@@ -27867,6 +27909,9 @@
         ],
         "validate": [
           "crates/processcraft-core/tests/m3_gateways.rs:inclusive_and_parallel_gateways_diagnose_misuse"
+        ],
+        "edit": [
+          "crates/processcraft-core/tests/m3_gateways.rs:inclusive_and_parallel_gateways_are_created_edited_and_undone"
         ]
       },
       "verified_notes": {
@@ -27888,7 +27933,7 @@
       "substitution_group": null,
       "coverage": {
         "model": "verified",
-        "edit": "unverified",
+        "edit": "verified",
         "render": "unverified",
         "import": "verified",
         "export": "verified",
@@ -27927,6 +27972,9 @@
           "crates/processcraft-io/tests/interchange.rs:data_io_sets_ports_and_associations_round_trip",
           "scripts/check_bpmn20_xsd.py",
           "tests/fixtures/bpmn20-schema/data-io.bpmn"
+        ],
+        "edit": [
+          "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo"
         ]
       }
     },
@@ -31520,7 +31568,7 @@
       "substitution_group": null,
       "coverage": {
         "model": "verified",
-        "edit": "unverified",
+        "edit": "verified",
         "render": "unverified",
         "import": "verified",
         "export": "verified",
@@ -31559,6 +31607,9 @@
           "crates/processcraft-io/tests/interchange.rs:data_io_sets_ports_and_associations_round_trip",
           "scripts/check_bpmn20_xsd.py",
           "tests/fixtures/bpmn20-schema/data-io.bpmn"
+        ],
+        "edit": [
+          "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo"
         ]
       }
     },
@@ -31876,7 +31927,7 @@
       "substitution_group": "flowElement",
       "coverage": {
         "model": "verified",
-        "edit": "unverified",
+        "edit": "verified",
         "render": "verified",
         "import": "verified",
         "export": "verified",
@@ -31916,6 +31967,9 @@
         ],
         "validate": [
           "crates/processcraft-core/tests/m3_gateways.rs:inclusive_and_parallel_gateways_diagnose_misuse"
+        ],
+        "edit": [
+          "crates/processcraft-core/tests/m3_gateways.rs:inclusive_and_parallel_gateways_are_created_edited_and_undone"
         ]
       },
       "verified_notes": {
@@ -35238,8 +35292,8 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "partial",
-        "edit": "partial",
+        "model": "verified",
+        "edit": "verified",
         "render": "unverified",
         "import": "verified",
         "export": "verified",
@@ -35268,6 +35322,12 @@
         ],
         "import": [
           "crates/processcraft-io/tests/interchange.rs:activity_message_and_operation_qnames_roundtrip_with_loop_context"
+        ],
+        "edit": [
+          "crates/processcraft-core/tests/m3r2_edit-model-io.rs:service_task_operation_ref_sets_clears_and_undoes"
+        ],
+        "model": [
+          "crates/processcraft-core/tests/m3r2_edit-model-io.rs:service_task_operation_ref_sets_clears_and_undoes"
         ]
       }
     },
@@ -37364,19 +37424,19 @@
     "total": {
       "declarations": 299,
       "cells": 1450,
-      "verified": 1303,
+      "verified": 1322,
       "not_applicable": 0,
-      "partial": 28,
-      "unverified": 119
+      "partial": 24,
+      "unverified": 104
     },
     "by_set": {
       "A": {
         "declarations": 89,
         "cells": 438,
-        "verified": 403,
+        "verified": 408,
         "not_applicable": 0,
         "partial": 0,
-        "unverified": 35
+        "unverified": 30
       },
       "C": {
         "declarations": 34,
@@ -37389,10 +37449,10 @@
       "D": {
         "declarations": 173,
         "cells": 861,
-        "verified": 758,
+        "verified": 771,
         "not_applicable": 0,
-        "partial": 25,
-        "unverified": 78
+        "partial": 21,
+        "unverified": 69
       },
       "I": {
         "declarations": 33,
@@ -37405,10 +37465,10 @@
       "S": {
         "declarations": 7,
         "cells": 28,
-        "verified": 23,
+        "verified": 24,
         "not_applicable": 0,
         "partial": 0,
-        "unverified": 5
+        "unverified": 4
       }
     }
   },
