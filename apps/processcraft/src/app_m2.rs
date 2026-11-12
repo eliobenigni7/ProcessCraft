@@ -10,6 +10,20 @@ struct TableItem {
     selected: bool,
 }
 
+pub(super) fn capability_label(capability: &Capability) -> &'static str {
+    match capability {
+        Capability::Editable => "Editable",
+        Capability::RetainedExtensions { .. } => "Read-only structure",
+        Capability::PreservedSource { .. } => "Preserved source",
+    }
+}
+pub(super) fn dictionary_kind_label(kind: DictionaryKind) -> &'static str {
+    match kind {
+        DictionaryKind::Role => "Role",
+        DictionaryKind::System => "IT system",
+        DictionaryKind::Document => "Document",
+    }
+}
 fn data_table(
     ui: &mut egui::Ui,
     id: &'static str,
@@ -127,6 +141,7 @@ impl ProcessCraft {
         ui.spacing_mut().item_spacing = egui::vec2(12.0, 8.0);
         match self.view {
             1 => {
+                let library = queries::library_search(project, &self.library_filter);
                 ui.heading("Library");
                 let folder_label = self
                     .folder_selected
@@ -152,11 +167,11 @@ impl ProcessCraft {
                     if self.folder_selected.is_some() && ui.button("All models").clicked() {
                         self.folder_selected = None;
                     }
-                    let count = queries::library_search(project, &self.library_filter)
-                        .into_iter()
-                        .filter(|id| {
+                    let count = library
+                        .iter()
+                        .filter(|&&id| {
                             project.documents.iter().any(|d| {
-                                d.id == *id
+                                d.id == id
                                     && self
                                         .folder_selected
                                         .as_ref()
@@ -245,18 +260,17 @@ impl ProcessCraft {
                         egui::vec2(list_width, if wide { ui.available_height() } else { 220.0 }),
                         egui::Layout::top_down(egui::Align::Min),
                         |ui| {
-                            let docs: Vec<_> =
-                                queries::library_search(project, &self.library_filter)
-                                    .into_iter()
-                                    .filter_map(|id| {
-                                        project.documents.iter().enumerate().find(|(_, d)| {
-                                            d.id == id
-                                                && self.folder_selected.as_ref().is_none_or(
-                                                    |folder| d.folder.as_ref() == Some(folder),
-                                                )
-                                        })
+                            let docs: Vec<_> = library
+                                .iter()
+                                .filter_map(|&id| {
+                                    project.documents.iter().enumerate().find(|(_, d)| {
+                                        d.id == id
+                                            && self.folder_selected.as_ref().is_none_or(|folder| {
+                                                d.folder.as_ref() == Some(folder)
+                                            })
                                     })
-                                    .collect();
+                                })
+                                .collect();
                             let items: Vec<_> = docs
                                 .iter()
                                 .map(|(index, doc)| TableItem {
@@ -271,7 +285,7 @@ impl ProcessCraft {
                                             .map_or("Root", |f| f.name.as_str())
                                             .into(),
                                         "BPMN".into(),
-                                        format!("{:?}", doc.capability),
+                                        capability_label(&doc.capability).into(),
                                     ],
                                     tooltip: doc
                                         .provenance
@@ -382,17 +396,24 @@ impl ProcessCraft {
                                             .contains(&self.dictionary_filter.to_lowercase())
                                 })
                                 .collect();
+                            // One pass over the links instead of a query per entry.
+                            let mut usages = std::collections::HashMap::new();
+                            for link in &project.dictionary_links {
+                                if let DictionaryTarget::Entry(id) = link.target {
+                                    *usages.entry(id).or_insert(0usize) += 1;
+                                }
+                            }
                             let items: Vec<_> = entries
                                 .iter()
                                 .map(|entry| {
-                                    let count = queries::dictionary_usages(project, entry.id).len();
+                                    let count = usages.get(&entry.id).copied().unwrap_or(0);
                                     TableItem {
                                         key: entry.id.to_string(),
                                         cells: vec![
                                             entry.name.clone(),
                                             format!(
-                                                "{:?}  ·  {count} {}",
-                                                entry.kind,
+                                                "{}  ·  {count} {}",
+                                                dictionary_kind_label(entry.kind),
                                                 if count == 1 { "usage" } else { "usages" }
                                             ),
                                         ],
@@ -441,7 +462,7 @@ impl ProcessCraft {
             if let Some(doc) = project.documents.get(self.doc) {
                 ui.add_space(12.0);
                 ui.strong(&doc.name);
-                ui.label(format!("Capability: {:?}", doc.capability));
+                ui.label(format!("Capability: {}", capability_label(&doc.capability)));
                 let processes = doc.processes.len();
                 let diagrams = doc.diagrams.len();
                 ui.label(format!(
@@ -560,7 +581,11 @@ impl ProcessCraft {
                     DictionaryKind::Document,
                 ] {
                     ui.add_enabled_ui(self.dictionary_selected.is_none(), |ui| {
-                        ui.selectable_value(&mut self.dictionary_kind, kind, format!("{kind:?}"));
+                        ui.selectable_value(
+                            &mut self.dictionary_kind,
+                            kind,
+                            dictionary_kind_label(kind),
+                        );
                     });
                 }
             });
@@ -671,7 +696,37 @@ impl ProcessCraft {
         else {
             return;
         };
-        let Some(rows) = queries::activity_table(project, d.id, &p.id.selector()) else {
+        // The table query walks the whole process; reuse it until the model changes.
+        let key = (
+            self.ctl.session.id(),
+            self.ctl.session.snapshot().generation,
+            d.id,
+            p.id.selector(),
+        );
+        let slot = egui::Id::unique("activity_table_rows");
+        type Cached = std::sync::Arc<(
+            (
+                String,
+                u64,
+                processcraft_core::ids::DocumentId,
+                ElementSelector,
+            ),
+            Option<Vec<queries::ActivityRow>>,
+        )>;
+        let cached = ui
+            .ctx()
+            .data(|data| data.get_temp::<Cached>(slot))
+            .filter(|cached| cached.0 == key);
+        let cached = cached.unwrap_or_else(|| {
+            let fresh: Cached = std::sync::Arc::new((
+                key.clone(),
+                queries::activity_table(project, d.id, &p.id.selector()),
+            ));
+            ui.ctx()
+                .data_mut(|data| data.insert_temp(slot, fresh.clone()));
+            fresh
+        });
+        let Some(rows) = &cached.1 else {
             return;
         };
         ui.add_space(12.0);
@@ -800,7 +855,7 @@ impl ProcessCraft {
             xml_id: element.clone(),
         };
         for kind in [DictionaryKind::System, DictionaryKind::Document] {
-            ui.collapsing(format!("{kind:?} links"), |ui| {
+            ui.collapsing(format!("{} links", dictionary_kind_label(kind)), |ui| {
                 let targets: Vec<_> = snap
                     .project
                     .dictionary_links

@@ -21,6 +21,11 @@ pub enum ResultValue {
         report: Vec<String>,
         extension: &'static str,
     },
+    Opened {
+        session: String,
+        generation: u64,
+        opened: Box<crate::controller::OpenedProject>,
+    },
     Written(String),
     Indeterminate(Box<UncertainExport>),
     LostWrite(Box<WriteContext>),
@@ -46,23 +51,32 @@ pub struct WriteContext {
 pub struct Effects {
     pending: Option<mpsc::Receiver<ResultValue>>,
     write_context: Option<Box<WriteContext>>,
+    /// What the running worker does, shown in the status bar.
+    pub label: &'static str,
 }
 impl Effects {
     pub fn new() -> Self {
         Self {
             pending: None,
             write_context: None,
+            label: "",
         }
     }
     pub fn busy(&self) -> bool {
         self.pending.is_some()
     }
-    fn start(&mut self, ctx: egui::Context, work: impl FnOnce() -> ResultValue + Send + 'static) {
+    fn start(
+        &mut self,
+        ctx: egui::Context,
+        label: &'static str,
+        work: impl FnOnce() -> ResultValue + Send + 'static,
+    ) {
         if self.busy() {
             return;
         }
         let (tx, rx) = mpsc::channel();
         self.pending = Some(rx);
+        self.label = label;
         std::thread::spawn(move || {
             let result = work();
             let _ = tx.send(result);
@@ -86,8 +100,22 @@ impl Effects {
             Err(mpsc::TryRecvError::Empty) => None,
         }
     }
+    pub fn open(&mut self, ctx: egui::Context, path: PathBuf, session: String, generation: u64) {
+        self.start(
+            ctx,
+            "Opening project…",
+            move || match crate::controller::load_project(&path) {
+                Ok(opened) => ResultValue::Opened {
+                    session,
+                    generation,
+                    opened: Box::new(opened),
+                },
+                Err(error) => ResultValue::Failed(error),
+            },
+        );
+    }
     pub fn import(&mut self, ctx: egui::Context, path: PathBuf, session: String, generation: u64) {
-        self.start(ctx, move || {
+        self.start(ctx, "Importing BPMN…", move || {
             let result = FileGrant::new(&path, Access::ReadOnly)
                 .and_then(|g| g.read_limited(32 * 1024 * 1024))
                 .map_err(|e| e.to_string())
@@ -96,7 +124,7 @@ impl Effects {
                         &bytes,
                         &path.file_stem().unwrap_or_default().to_string_lossy(),
                     )
-                    .map_err(|e| format!("{e:?}"))
+                    .map_err(|e| e.detail)
                 });
             match result {
                 Ok(prepared) => ResultValue::Import {
@@ -117,7 +145,7 @@ impl Effects {
         format: Option<ExportFormat>,
         appearance: Appearance,
     ) {
-        self.start(ctx, move || {
+        self.start(ctx, "Preparing export…", move || {
             if let Some(format) = format {
                 let Some(document) = project.documents.iter().find(|d| d.id == doc) else {
                     return ResultValue::Failed("Document not found.".into());
@@ -164,7 +192,10 @@ impl Effects {
                             extension: "bpmn",
                         }
                     }
-                    Err(e) => ResultValue::Failed(format!("Export blocked: {:?}", e.report)),
+                    Err(e) => ResultValue::Failed(format!(
+                        "Export blocked: {}",
+                        e.report.blocked.join("; ")
+                    )),
                 }
             }
         });
@@ -179,7 +210,7 @@ impl Effects {
             digest: Sha256::digest(&bytes).into(),
             bytes: bytes.clone(),
         }));
-        self.start(ctx, move || {
+        self.start(ctx, "Writing export…", move || {
             let mut writer = match WriterSession::open(&grant) {
                 Ok(OpenSession::Writable(writer)) => writer,
                 Ok(OpenSession::ReadOnly) => {
@@ -238,8 +269,10 @@ impl Effects {
             digest: Sha256::digest(&pending.bytes).into(),
             bytes: pending.bytes.clone(),
         }));
-        self.start(ctx, move || {
-            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        self.start(
+            ctx,
+            "Checking export outcome…",
+            move || match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 pending.writer.reconcile(&pending.bytes)
             })) {
                 Ok(Ok(true)) => {
@@ -257,8 +290,8 @@ impl Effects {
                     pending.error = "Checking the export outcome failed unexpectedly".into();
                     ResultValue::Indeterminate(pending)
                 }
-            }
-        });
+            },
+        );
     }
 }
 
@@ -279,6 +312,7 @@ mod tests {
                 digest: [7; 32],
                 bytes: vec![1, 2, 3],
             })),
+            label: "",
         };
         let Some(ResultValue::LostWrite(context)) = effects.poll() else {
             panic!("write outcome must remain unknown")

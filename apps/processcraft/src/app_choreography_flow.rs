@@ -555,18 +555,25 @@ impl ProcessCraft {
                     }
                 }
             }
-            use processcraft_core::bpmn_collaboration::ChoreographyLoopType;
+            use processcraft_core::bpmn_collaboration::ChoreographyLoopType as L;
+            let label = |value: Option<L>| match value {
+                None => "Unspecified",
+                Some(L::None) => "No loop",
+                Some(L::Standard) => "Standard loop",
+                Some(L::MultiInstanceSequential) => "Multi-instance, sequential",
+                Some(L::MultiInstanceParallel) => "Multi-instance, parallel",
+            };
             egui::ComboBox::from_label("Loop behavior")
-                .selected_text(format!("{:?}", activity.loop_type))
+                .selected_text(label(activity.loop_type))
                 .show_ui(ui, |ui| {
                     for value in [
                         None,
-                        Some(ChoreographyLoopType::None),
-                        Some(ChoreographyLoopType::Standard),
-                        Some(ChoreographyLoopType::MultiInstanceSequential),
-                        Some(ChoreographyLoopType::MultiInstanceParallel),
+                        Some(L::None),
+                        Some(L::Standard),
+                        Some(L::MultiInstanceSequential),
+                        Some(L::MultiInstanceParallel),
                     ] {
-                        ui.selectable_value(&mut activity.loop_type, value, format!("{value:?}"));
+                        ui.selectable_value(&mut activity.loop_type, value, label(value));
                     }
                 });
         }

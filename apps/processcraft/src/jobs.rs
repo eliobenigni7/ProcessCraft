@@ -173,6 +173,61 @@ mod recovery_wake_tests {
     }
 }
 
+/// Model validation off the UI thread; only the latest submitted snapshot is checked.
+pub struct DiagnosticsWorker {
+    pending: Arc<(Mutex<Option<DiagnosticsJob>>, Condvar)>,
+    results: mpsc::Receiver<((String, u64), Vec<processcraft_core::Diagnostic>)>,
+}
+struct DiagnosticsJob {
+    key: (String, u64),
+    project: Arc<processcraft_core::model::ProjectData>,
+    context: egui::Context,
+}
+impl DiagnosticsWorker {
+    pub fn new() -> Self {
+        let pending: Arc<(Mutex<Option<DiagnosticsJob>>, Condvar)> =
+            Arc::new((Mutex::new(None), Condvar::new()));
+        let worker = pending.clone();
+        let (tx, results) = mpsc::channel();
+        std::thread::spawn(move || {
+            loop {
+                let job = {
+                    let (lock, ready) = &*worker;
+                    let mut slot = lock.lock().unwrap();
+                    while slot.is_none() {
+                        slot = ready.wait(slot).unwrap();
+                    }
+                    slot.take().unwrap()
+                };
+                if tx.send((job.key, job.project.diagnostics())).is_err() {
+                    return;
+                }
+                job.context.request_repaint();
+            }
+        });
+        Self { pending, results }
+    }
+    pub fn submit(
+        &self,
+        key: (String, u64),
+        project: Arc<processcraft_core::model::ProjectData>,
+        context: egui::Context,
+    ) {
+        enqueue_latest(
+            &self.pending,
+            DiagnosticsJob {
+                key,
+                project,
+                context,
+            },
+        );
+    }
+    /// Latest finished result, if any.
+    pub fn poll(&self) -> Option<((String, u64), Vec<processcraft_core::Diagnostic>)> {
+        self.results.try_iter().last()
+    }
+}
+
 /// Unit-test UI frames use a private recovery folder, never the desktop user's recovery store.
 pub(crate) fn recovery_location() -> std::path::PathBuf {
     #[cfg(test)]

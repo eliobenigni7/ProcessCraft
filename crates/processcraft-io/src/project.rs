@@ -125,6 +125,15 @@ impl FileSession {
             loaded,
         ))
     }
+    /// Bind a freshly opened file to the editing session created from its loaded project,
+    /// so the file is read once. Refused while a save is pending.
+    pub fn rebind_session(&mut self, session_id: impl Into<String>) -> io::Result<()> {
+        if self.pending.is_some() {
+            return Err(io::Error::other("a save is pending"));
+        }
+        self.session_id = session_id.into();
+        Ok(())
+    }
     /// Digest of the last observed or confirmed bound file bytes, not a live disk probe.
     pub fn observed_disk_digest(&self) -> Option<[u8; 32]> {
         self.observed_digest

@@ -316,9 +316,12 @@ pub(super) struct ShellState {
     automation: bool,
     properties: bool,
     project: bool,
-    problems: bool,
+    pub(super) problems: bool,
     search: String,
 }
+
+/// How long a success notice stays in the status bar.
+const INFO_SECONDS: f32 = 4.0;
 
 impl ProcessCraft {
     pub(super) fn workbench_ui(&mut self, ui: &mut egui::Ui) {
@@ -361,6 +364,25 @@ impl ProcessCraft {
                         self.new_or_open("open");
                         ui.close();
                     }
+                    ui.add_enabled_ui(!self.settings.recent.is_empty(), |ui| {
+                        ui.menu_button("Open recent", |ui| {
+                            for path in self.settings.recent.clone() {
+                                let name = path.file_name().map_or_else(
+                                    || path.display().to_string(),
+                                    |n| n.to_string_lossy().into_owned(),
+                                );
+                                if ui
+                                    .button(name)
+                                    .on_hover_text(path.display().to_string())
+                                    .clicked()
+                                {
+                                    self.pending_open = Some(path);
+                                    self.new_or_open("open");
+                                    ui.close();
+                                }
+                            }
+                        });
+                    });
                     ui.separator();
                     if ui.button("Save                  Ctrl+S").clicked() {
                         self.save(false);
@@ -643,37 +665,6 @@ impl ProcessCraft {
         let footer = Rect::from_min_max(egui::pos2(body.left(), content.bottom()), body.max);
         self.shell_panel(ui, "footer", footer, p.panel, |app, ui| {
             ui.horizontal(|ui| {
-                if !app.ctl.error.is_empty() {
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let dismiss = ui.small_button("Dismiss message");
-                        #[cfg(test)]
-                        ui.ctx().data_mut(|data| {
-                            data.insert_temp(egui::Id::unique("test_dismiss_rect"), dismiss.rect)
-                        });
-                        if dismiss.clicked() {
-                            app.ctl.error.clear();
-                        }
-                        if app.ctl.uncertain && ui.small_button("Check save outcome").clicked() {
-                            app.ctl.reconcile();
-                        }
-                        if !app.ctl.error.is_empty() {
-                            let message = app.ctl.error.clone();
-                            let label = ui.add(
-                                egui::Label::new(egui::RichText::new(&message).color(p.warning))
-                                    .truncate(),
-                            );
-                            label.widget_info(|| {
-                                egui::WidgetInfo::labeled(
-                                    egui::Role::Label,
-                                    ui.is_enabled(),
-                                    &message,
-                                )
-                            });
-                            label.on_hover_text(&message);
-                        }
-                    });
-                    return;
-                }
                 if app.ctl.uncertain && ui.small_button("Check save outcome").clicked() {
                     app.ctl.reconcile();
                 }
@@ -708,6 +699,27 @@ impl ProcessCraft {
                 if app.ctl.migration {
                     ui.colored_label(p.warning, "Migration · Save As required");
                 }
+                if app.effects.busy() {
+                    ui.separator();
+                    ui.spinner();
+                    ui.label(app.effects.label);
+                }
+                // Success notices are transient: shown for a few seconds, then fade out.
+                let age = app.ctl.info_at.elapsed().as_secs_f32();
+                if !app.ctl.info.is_empty() {
+                    if age >= INFO_SECONDS {
+                        app.ctl.info.clear();
+                    } else {
+                        let alpha = (INFO_SECONDS - age).min(1.0);
+                        ui.separator();
+                        ui.label(
+                            egui::RichText::new(&app.ctl.info)
+                                .color(p.accent.gamma_multiply(alpha)),
+                        );
+                        ui.ctx()
+                            .request_repaint_after(std::time::Duration::from_millis(50));
+                    }
+                }
                 if toolbar_room {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(
@@ -720,6 +732,56 @@ impl ProcessCraft {
             });
         });
         ui.advance_cursor_after_rect(body);
+        {
+            // Errors float above the footer so they never move the canvas, wrap instead of
+            // truncating, and stay until dismissed. The area exists every frame (empty when there
+            // is no error) so a new message is visible on its first frame.
+            // Fixed width and top anchor: the position never depends on the wrapped height.
+            let error_width = (body.width() - 40.0).clamp(150.0, 520.0);
+            egui::Area::new(egui::Id::unique("status_error"))
+                .order(egui::Order::Foreground)
+                .fixed_pos(egui::pos2(
+                    body.right() - 12.0 - error_width - 16.0,
+                    body.top() + 8.0,
+                ))
+                .show(&ctx, |ui| {
+                    if self.ctl.error.is_empty() {
+                        return;
+                    }
+                    egui::Frame::popup(ui.style())
+                        .fill(p.warning_soft)
+                        .stroke(egui::Stroke::new(1.0, p.warning))
+                        .show(ui, |ui| {
+                            ui.set_width(error_width);
+                            let message = self.ctl.error.clone();
+                            let label = ui.add(
+                                egui::Label::new(egui::RichText::new(&message).color(p.warning))
+                                    .wrap(),
+                            );
+                            label.widget_info(|| {
+                                egui::WidgetInfo::labeled(egui::Role::Label, true, &message)
+                            });
+                            ui.horizontal(|ui| {
+                                let dismiss = ui.small_button("Dismiss message");
+                                #[cfg(test)]
+                                ui.ctx().data_mut(|data| {
+                                    data.insert_temp(
+                                        egui::Id::unique("test_dismiss_rect"),
+                                        dismiss.rect,
+                                    )
+                                });
+                                if dismiss.clicked() {
+                                    self.ctl.error.clear();
+                                }
+                                if self.ctl.uncertain
+                                    && ui.small_button("Check save outcome").clicked()
+                                {
+                                    self.ctl.reconcile();
+                                }
+                            });
+                        });
+                });
+        }
         self.m3_windows(&ctx);
         self.collaboration_windows(&ctx);
         let window_height = (ctx.content_rect().height() - 64.0).max(100.0);
@@ -1032,11 +1094,6 @@ impl ProcessCraft {
             }
         } else {
             ui.add_enabled_ui(editable, |ui| {
-                ui.checkbox(
-                    &mut self.create_anonymous,
-                    "New canvas elements without XML ID",
-                )
-                .on_hover_text("Assign an XML ID before exporting referenced elements to BPMN.");
                 ui.horizontal(|ui| {
                     if ui.button("Pool").clicked() {
                         self.add_pool();
@@ -1097,26 +1154,26 @@ impl ProcessCraft {
                 .show(ui, |ui| {
                     if let Some(doc) = snap.project.documents.get(self.doc) {
                         for process in processcraft_core::queries::scopes(doc) {
-                            for (id, name) in
-                                process
-                                    .lanes
-                                    .iter()
-                                    .map(|l| (l.id.selector(), l.name.as_deref().unwrap_or("")))
-                                    .chain(process.nodes.iter().map(|n| {
-                                        (n.id.selector(), n.name.as_deref().unwrap_or(""))
-                                    }))
-                                    .chain(process.flows.iter().map(|f| {
-                                        (f.id.selector(), f.name.as_deref().unwrap_or(""))
-                                    }))
+                            // Unnamed elements show their type, never a raw XML ID.
+                            for (id, name, kind) in process
+                                .lanes
+                                .iter()
+                                .map(|l| (l.id.selector(), l.name.as_deref(), "Lane"))
+                                .chain(process.nodes.iter().map(|n| {
+                                    (
+                                        n.id.selector(),
+                                        n.name.as_deref(),
+                                        super::node_kind_label(n.kind),
+                                    )
+                                }))
+                                .chain(process.flows.iter().map(|f| {
+                                    (f.id.selector(), f.name.as_deref(), flow_kind_label(f.kind))
+                                }))
                             {
                                 if ui
                                     .selectable_label(
                                         self.selected.as_ref() == Some(&id),
-                                        if name.is_empty() {
-                                            id.to_string()
-                                        } else {
-                                            name.to_owned()
-                                        },
+                                        name.filter(|n| !n.is_empty()).unwrap_or(kind),
                                     )
                                     .clicked()
                                 {
@@ -1167,16 +1224,15 @@ impl ProcessCraft {
             );
             ui.horizontal_wrapped(|ui| {
                 ui.heading(&doc.name);
-                let (label, fg, bg) = match &doc.capability {
-                    Capability::Editable => ("BPMN 2.0 subset", p.muted, p.secondary),
-                    Capability::RetainedExtensions { .. } => {
-                        ("Read-only structure", p.warning, p.warning_soft)
-                    }
-                    Capability::PreservedSource { .. } => {
-                        ("Preserved source", p.warning, p.warning_soft)
-                    }
+                // Only limited documents get a badge; an editable model needs no label.
+                let badge = match &doc.capability {
+                    Capability::Editable => None,
+                    Capability::RetainedExtensions { .. } => Some(("Read-only structure", "Source extensions are retained. Metadata editing remains available; structural editing is disabled.")),
+                    Capability::PreservedSource { .. } => Some(("Preserved source", "Original BPMN source is retained. A semantic preview is unavailable.")),
                 };
-                widgets::badge(ui, label, fg, bg).on_hover_text(match &doc.capability { Capability::Editable=>"Editable BPMN model", Capability::RetainedExtensions{..}=>"Source extensions are retained. Metadata editing remains available; structural editing is disabled.", Capability::PreservedSource{..}=>"Original BPMN source is retained. A semantic preview is unavailable." });
+                if let Some((label, hint)) = badge {
+                    widgets::badge(ui, label, p.warning, p.warning_soft).on_hover_text(hint);
+                }
                 ui.add_space(4.0);
             });
         }
@@ -1328,14 +1384,14 @@ impl ProcessCraft {
             }
             ui.separator();
             ui.strong("Diagrams");
-            for diagram in &doc.diagrams {
+            for (index, diagram) in doc.diagrams.iter().enumerate() {
                 if ui
                     .selectable_label(
                         self.diagram_id
                             .clone()
                             .or_else(|| doc.diagrams.first().map(|d| d.id.selector()))
                             == Some(diagram.id.selector()),
-                        diagram.id.to_string(),
+                        diagram_label(doc, diagram, index),
                     )
                     .clicked()
                     && self.prepare_navigation()
@@ -1617,7 +1673,7 @@ impl ProcessCraft {
                     && ui.button("Check attachment export outcome").clicked()
                 {
                     match attachment.reconcile_export() {
-                        Ok(Some(true)) => self.ctl.error = "Attachment export confirmed.".into(),
+                        Ok(Some(true)) => self.ctl.notify("Attachment export confirmed."),
                         Ok(Some(false)) => {
                             self.ctl.error = "Attachment export was not committed.".into()
                         }
@@ -1637,6 +1693,24 @@ impl ProcessCraft {
     }
 }
 
+pub(super) fn flow_kind_label(kind: processcraft_core::model::FlowKind) -> &'static str {
+    match kind {
+        processcraft_core::model::FlowKind::Sequence => "Sequence flow",
+        processcraft_core::model::FlowKind::Message => "Message flow",
+        processcraft_core::model::FlowKind::Association => "Association",
+    }
+}
+/// Diagram name, else the name of the element it shows, else its position.
+fn diagram_label(doc: &BpmnDocument, diagram: &Diagram, index: usize) -> String {
+    diagram
+        .name
+        .clone()
+        .or_else(|| {
+            processcraft_core::queries::element_name(doc, &diagram.plane).map(str::to_owned)
+        })
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| format!("Diagram {}", index + 1))
+}
 fn palette_item(ui: &mut egui::Ui, kind: NodeKind, label: &str) -> egui::Response {
     let (rect, response) =
         ui.allocate_exact_size(egui::vec2(ui.available_width(), 29.0), egui::Sense::click());
