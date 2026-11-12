@@ -19,7 +19,11 @@ fn declarations_are_addressable_without_claiming_support() {
             &item.coverage.export,
             &item.coverage.validate,
         ] {
-            assert!(matches!(status.as_str(), "unverified" | "partial"));
+            // "verified" is set only from evidence fragments the inventory generator validates.
+            assert!(matches!(
+                status.as_str(),
+                "unverified" | "partial" | "verified"
+            ));
         }
     }
 }

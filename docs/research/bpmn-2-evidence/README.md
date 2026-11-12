@@ -20,7 +20,7 @@ Preserved-source never counts.
 | Dimension | Verified means (evidence pointer) |
 |---|---|
 | model | Typed field in `processcraft-core`, with a core test constructing and reading it; opaque-source-only storage does not count. |
-| edit | A `Mutation` (present in `COMMAND_DESCRIPTORS`) sets/clears it, with a command test including undo, plus a GUI or CLI path test. |
+| edit | A `Mutation` (present in `COMMAND_DESCRIPTORS`) sets/clears it, with a command test including undo. CLI batch and MCP reach every descriptor through the one generated request schema (`crates/processcraft-core/tests/commands.rs:descriptors_match_protocol_tags`, `crates/processcraft-core/tests/m2.rs:request_schema_covers_all_discovered_tags`, `apps/processcraft-cli/tests/cli.rs:cli_matches_engine_content`), so no per-field CLI test is required. Per-field desktop GUI qualification is not part of this cell. |
 | render | A processcraft-render scene test or golden/PDF check for the notation, plus hit-testing where applicable. |
 | import | An `interchange.rs` test importing a fixture in `tests/fixtures/**` (with manifest entry) into the typed model, not preserved-source. |
 | export | An export test whose output validates against the pinned XSD (`scripts/check_bpmn20_xsd.py`) and re-imports equal. |

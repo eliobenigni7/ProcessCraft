@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:tns="urn:m3-events" id="defs" targetNamespace="urn:m3-events">
+  <message id="message" name="Notice"/>
+  <signal id="signal" name="Alert"/>
+  <error id="error" name="Failure" errorCode="E1"/>
+  <escalation id="escalation" name="Escalate" escalationCode="S1"/>
+  <interface id="interface" name="Service"><operation id="operation" name="Notify"><inMessageRef>tns:message</inMessageRef></operation></interface>
+  <signalEventDefinition id="sharedSignal" signalRef="tns:signal"/>
+  <process id="process" isExecutable="false">
+    <task id="work" name="Work"/>
+    <boundaryEvent id="errorBoundary" attachedToRef="tns:work"><errorEventDefinition id="errorDef" errorRef="tns:error"/></boundaryEvent>
+    <endEvent id="escalationEnd"><escalationEventDefinition id="escalationDef" escalationRef="tns:escalation"/></endEvent>
+    <endEvent id="signalEnd"><eventDefinitionRef>tns:sharedSignal</eventDefinitionRef></endEvent>
+    <intermediateThrowEvent id="messageThrow"><messageEventDefinition id="messageDef" messageRef="tns:message"><operationRef>tns:operation</operationRef></messageEventDefinition></intermediateThrowEvent>
+    <intermediateThrowEvent id="linkThrow"><linkEventDefinition id="throwLink" name="Jump"><target>tns:catchLink</target></linkEventDefinition></intermediateThrowEvent>
+    <intermediateCatchEvent id="linkCatch"><linkEventDefinition id="catchLink" name="Jump"><source>tns:throwLink</source></linkEventDefinition></intermediateCatchEvent>
+    <intermediateCatchEvent id="conditionCatch"><conditionalEventDefinition id="conditionDef"><condition>amount &gt; 10</condition></conditionalEventDefinition></intermediateCatchEvent>
+    <sequenceFlow id="f1" sourceRef="errorBoundary" targetRef="escalationEnd"/>
+  </process>
+</definitions>

@@ -77,11 +77,9 @@ mod tests {
             .next()
             .is_some()
         );
-        assert!(
-            inventory()
-                .declarations
-                .iter()
-                .all(|d| matches!(d.coverage.model.as_str(), "unverified" | "partial"))
-        );
+        assert!(inventory().declarations.iter().all(|d| matches!(
+            d.coverage.model.as_str(),
+            "unverified" | "partial" | "verified"
+        )));
     }
 }

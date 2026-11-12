@@ -609,6 +609,809 @@
    "evidence": [
     "crates/processcraft-io/tests/interchange.rs:activity_message_and_operation_qnames_roundtrip_with_loop_context"
    ]
+  },
+  {
+   "path": "/schema/complexType[@name=tActivity]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tActivity]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tActivity]/complexContent/extension/attribute[@name=isForCompensation]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tActivity]/complexContent/extension/attribute[@name=isForCompensation]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tActivity]/complexContent/extension/attribute[@name=startQuantity]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tActivity]/complexContent/extension/attribute[@name=startQuantity]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tActivity]/complexContent/extension/attribute[@name=startQuantity]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_activities.rs:completion_quantity_is_set_validated_and_undone",
+    "crates/processcraft-io/tests/m3_activities.rs:non_numeric_quantity_is_preserved_not_typed"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tActivity]/complexContent/extension/attribute[@name=completionQuantity]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_activities.rs:completion_quantity_is_set_validated_and_undone"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tActivity]/complexContent/extension/attribute[@name=completionQuantity]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_activities.rs:completion_quantity_is_set_validated_and_undone"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tActivity]/complexContent/extension/attribute[@name=completionQuantity]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tActivity]/complexContent/extension/attribute[@name=completionQuantity]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tActivity]/complexContent/extension/attribute[@name=completionQuantity]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_activities.rs:completion_quantity_is_set_validated_and_undone",
+    "crates/processcraft-io/tests/m3_activities.rs:non_numeric_quantity_is_preserved_not_typed"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tActivity]/complexContent/extension/attribute[@name=default]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tActivity]/complexContent/extension/attribute[@name=default]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tCallActivity]/complexContent/extension/attribute[@name=calledElement]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_activities.rs:call_activity_called_element_is_set_and_undone"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tReceiveTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tReceiveTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tReceiveTask]/complexContent/extension/attribute[@name=implementation]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tReceiveTask]/complexContent/extension/attribute[@name=implementation]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tReceiveTask]/complexContent/extension/attribute[@name=implementation]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tReceiveTask]/complexContent/extension/attribute[@name=implementation]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tReceiveTask]/complexContent/extension/attribute[@name=implementation]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tReceiveTask]/complexContent/extension/attribute[@name=instantiate]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tReceiveTask]/complexContent/extension/attribute[@name=instantiate]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tReceiveTask]/complexContent/extension/attribute[@name=instantiate]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tReceiveTask]/complexContent/extension/attribute[@name=messageRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tReceiveTask]/complexContent/extension/attribute[@name=messageRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tReceiveTask]/complexContent/extension/attribute[@name=messageRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tReceiveTask]/complexContent/extension/attribute[@name=messageRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tReceiveTask]/complexContent/extension/attribute[@name=messageRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tReceiveTask]/complexContent/extension/attribute[@name=operationRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tReceiveTask]/complexContent/extension/attribute[@name=operationRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tReceiveTask]/complexContent/extension/attribute[@name=operationRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tReceiveTask]/complexContent/extension/attribute[@name=operationRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tReceiveTask]/complexContent/extension/attribute[@name=operationRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tSendTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tSendTask]/complexContent/extension/attribute[@name=implementation]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tSendTask]/complexContent/extension/attribute[@name=implementation]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tSendTask]/complexContent/extension/attribute[@name=implementation]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tSendTask]/complexContent/extension/attribute[@name=implementation]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tSendTask]/complexContent/extension/attribute[@name=implementation]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tSendTask]/complexContent/extension/attribute[@name=messageRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tSendTask]/complexContent/extension/attribute[@name=operationRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tServiceTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tServiceTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tServiceTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tServiceTask]/complexContent/extension/attribute[@name=implementation]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tServiceTask]/complexContent/extension/attribute[@name=implementation]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tServiceTask]/complexContent/extension/attribute[@name=implementation]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tServiceTask]/complexContent/extension/attribute[@name=implementation]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tServiceTask]/complexContent/extension/attribute[@name=implementation]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tServiceTask]/complexContent/extension/attribute[@name=operationRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tSubProcess]/complexContent/extension/attribute[@name=triggeredByEvent]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tSubProcess]/complexContent/extension/attribute[@name=triggeredByEvent]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tSubProcess]/complexContent/extension/attribute[@name=triggeredByEvent]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tUserTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tUserTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tUserTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tUserTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tUserTask]/complexContent/extension/attribute[@name=implementation]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tUserTask]/complexContent/extension/attribute[@name=implementation]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tUserTask]/complexContent/extension/attribute[@name=implementation]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tUserTask]/complexContent/extension/attribute[@name=implementation]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tUserTask]/complexContent/extension/attribute[@name=implementation]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=receiveTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=receiveTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=receiveTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=sendTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=sendTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/m3_activities.rs:task_kinds_render_their_own_markers_and_hit_test"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=serviceTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=serviceTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=serviceTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=serviceTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=serviceTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/m3_activities.rs:task_kinds_render_their_own_markers_and_hit_test"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=task]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=task]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=userTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=userTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=userTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=userTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=userTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=userTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/m3_activities.rs:task_kinds_render_their_own_markers_and_hit_test"
+   ]
   }
  ]
 }

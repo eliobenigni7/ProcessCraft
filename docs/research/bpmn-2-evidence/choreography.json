@@ -869,6 +869,221 @@
    "evidence": [
     "crates/processcraft-core/tests/commands.rs:choreography_sequence_flow_metadata_is_undoable_and_message_flow_rejected"
    ]
+  },
+  {
+   "path": "/schema/element[@name=callChoreography]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_choreography.rs:call_choreography_ref_is_edited_validated_and_undone"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=callChoreography]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_choreography.rs:call_choreography_ref_is_edited_validated_and_undone"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=callChoreography]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_choreography.rs:choreography_reference_diagnostics_name_the_violated_clause",
+    "crates/processcraft-core/tests/m3_choreography.rs:call_choreography_ref_is_edited_validated_and_undone"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=callChoreography]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/m3_choreography.rs:call_choreography_uses_the_thick_border_notation"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tCallChoreography]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_choreography.rs:call_choreography_ref_is_edited_validated_and_undone"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tCallChoreography]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_choreography.rs:choreography_reference_diagnostics_name_the_violated_clause"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tCallChoreography]/complexContent/extension/attribute[@name=calledChoreographyRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_choreography.rs:call_choreography_ref_is_edited_validated_and_undone"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tCallChoreography]/complexContent/extension/attribute[@name=calledChoreographyRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_choreography.rs:call_choreography_ref_is_edited_validated_and_undone"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tCallChoreography]/complexContent/extension/attribute[@name=calledChoreographyRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_choreography.rs:choreography_reference_diagnostics_name_the_violated_clause",
+    "crates/processcraft-core/tests/m3_choreography.rs:call_choreography_ref_is_edited_validated_and_undone"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=globalChoreographyTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_choreography.rs:global_choreography_task_kind_and_initiator_edit_validate_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tGlobalChoreographyTask]/complexContent/extension/attribute[@name=initiatingParticipantRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_choreography.rs:global_choreography_task_kind_and_initiator_edit_validate_and_undo",
+    "crates/processcraft-io/tests/m3_choreography.rs:choreography_field_values_import_and_export_reimport_equal"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tGlobalChoreographyTask]/complexContent/extension/attribute[@name=initiatingParticipantRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_choreography.rs:global_choreography_task_kind_and_initiator_edit_validate_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tGlobalChoreographyTask]/complexContent/extension/attribute[@name=initiatingParticipantRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_choreography.rs:choreography_reference_diagnostics_name_the_violated_clause",
+    "crates/processcraft-core/tests/m3_choreography.rs:global_choreography_task_kind_and_initiator_edit_validate_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tChoreographyActivity]/complexContent/extension/attribute[@name=initiatingParticipantRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_choreography.rs:choreography_activity_fields_edit_with_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tChoreographyActivity]/complexContent/extension/attribute[@name=initiatingParticipantRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_choreography.rs:choreography_field_values_import_and_export_reimport_equal",
+    "tests/fixtures/bpmn/m3-choreography/values.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tChoreographyActivity]/complexContent/extension/attribute[@name=loopType]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_choreography.rs:choreography_activity_fields_edit_with_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tChoreographyActivity]/complexContent/extension/attribute[@name=loopType]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_choreography.rs:out_of_enum_choreography_loop_type_is_not_imported_as_editable",
+    "tests/fixtures/bpmn/m3-choreography/values.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tChoreographyActivity]/complexContent/extension/attribute[@name=loopType]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/m3_choreography.rs:choreography_loop_type_marker_is_drawn_per_value"
+   ]
+  },
+  {
+   "path": "/schema/simpleType[@name=tChoreographyLoopType]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_choreography.rs:out_of_enum_choreography_loop_type_is_not_imported_as_editable",
+    "tests/fixtures/bpmn/m3-choreography/values.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tChoreographyActivity]/complexContent/extension/sequence/element[@name=participantRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_choreography.rs:choreography_activity_fields_edit_with_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tChoreographyActivity]/complexContent/extension/sequence/element[@name=participantRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_choreography.rs:choreography_field_values_import_and_export_reimport_equal",
+    "tests/fixtures/bpmn/m3-choreography/values.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tChoreographyTask]/complexContent/extension/sequence/element[@name=messageFlowRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_choreography.rs:choreography_activity_fields_edit_with_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tParticipantMultiplicity]/complexContent/extension/attribute[@name=minimum]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_choreography.rs:participant_multiplicity_minimum_and_maximum_edit_with_undo"
+   ]
   }
  ]
 }

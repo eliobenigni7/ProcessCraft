@@ -701,6 +701,177 @@
    "evidence": [
     "crates/processcraft-core/tests/m2.rs:descriptive_commands_validate_references_and_undo_atomically"
    ]
+  },
+  {
+   "path": "/schema/complexType[@name=tCallableElement]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_foundation.rs:process_name_rename_is_undoable"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tCallableElement]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_foundation.rs:process_name_rename_is_undoable"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tCallableElement]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_foundation.rs:callable_process_name_and_global_task_implementation_survive_round_trip",
+    "tests/fixtures/bpmn/m3-foundation/callable-name-implementation.bpmn",
+    "tests/fixtures/bpmn/m3-foundation/manifest.md"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tCallableElement]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_foundation.rs:callable_process_name_and_global_task_implementation_survive_round_trip",
+    "tests/fixtures/bpmn/m3-foundation/manifest.md"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tFlowElement]/complexContent/extension/sequence/element[@name=categoryValueRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_foundation.rs:category_value_ref_and_outgoing_are_set_undone_and_dangling_refs_diagnosed"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tFlowElement]/complexContent/extension/sequence/element[@name=categoryValueRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_foundation.rs:category_value_ref_and_outgoing_are_set_undone_and_dangling_refs_diagnosed"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tFlowElement]/complexContent/extension/sequence/element[@name=categoryValueRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_foundation.rs:process_type_and_category_value_ref_survive_round_trip",
+    "tests/fixtures/bpmn/activity-correlation.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tFlowElement]/complexContent/extension/sequence/element[@name=categoryValueRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_foundation.rs:process_type_and_category_value_ref_survive_round_trip",
+    "tests/fixtures/bpmn/m3-foundation/manifest.md"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tFlowElement]/complexContent/extension/sequence/element[@name=categoryValueRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_foundation.rs:category_value_ref_and_outgoing_are_set_undone_and_dangling_refs_diagnosed"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tFlowNode]/complexContent/extension/sequence/element[@name=outgoing]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_foundation.rs:category_value_ref_and_outgoing_are_set_undone_and_dangling_refs_diagnosed"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tFlowNode]/complexContent/extension/sequence/element[@name=outgoing]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_foundation.rs:category_value_ref_and_outgoing_are_set_undone_and_dangling_refs_diagnosed"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDocumentation]/attribute[@name=textFormat]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_foundation.rs:documentation_text_format_is_bounded_and_character_checked"
+   ]
+  },
+  {
+   "path": "/schema/simpleType[@name=tMultiInstanceFlowCondition]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_foundation.rs:multi_instance_behavior_values_round_trip_through_set_node_loop_with_undo"
+   ]
+  },
+  {
+   "path": "/schema/simpleType[@name=tImplementation]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_foundation.rs:callable_process_name_and_global_task_implementation_survive_round_trip",
+    "tests/fixtures/bpmn/m3-foundation/callable-name-implementation.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/simpleType[@name=tImplementation]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_foundation.rs:callable_process_name_and_global_task_implementation_survive_round_trip",
+    "tests/fixtures/bpmn/m3-foundation/callable-name-implementation.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/simpleType[@name=tProcessType]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_foundation.rs:process_type_is_set_read_back_and_undone"
+   ]
+  },
+  {
+   "path": "/schema/simpleType[@name=tProcessType]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_foundation.rs:process_type_and_category_value_ref_survive_round_trip",
+    "tests/fixtures/bpmn/activity-correlation.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/simpleType[@name=tProcessType]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_foundation.rs:process_type_and_category_value_ref_survive_round_trip",
+    "tests/fixtures/bpmn/m3-foundation/manifest.md"
+   ]
   }
  ]
 }

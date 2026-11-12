@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" id="defs" targetNamespace="urn:m3-foundation">
+ <process id="Process" name="Callable process" processType="Public" isClosed="false" isExecutable="false"><startEvent id="start"/></process>
+ <globalBusinessRuleTask id="Rule" name="Rule task" implementation="##unspecified"/>
+ <globalUserTask id="User" name="User task" implementation="##WebService"/>
+</definitions>

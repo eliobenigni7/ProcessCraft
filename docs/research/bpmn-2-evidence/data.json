@@ -978,6 +978,991 @@
     "tests/fixtures/bpmn20-schema/data-io.bpmn",
     "scripts/check_bpmn20_xsd.py"
    ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataAssociation]/complexContent/extension/sequence/element[@name=sourceRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs:data_association_sources_target_transformation_edit_and_undo",
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataAssociation]/complexContent/extension/sequence/element[@name=sourceRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataAssociation]/complexContent/extension/sequence/element[@name=sourceRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "scripts/check_bpmn20_xsd.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataAssociation]/complexContent/extension/sequence/element[@name=sourceRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs:data_association_source_count_diagnostic_is_negative_tested"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataAssociation]/complexContent/extension/sequence/element[@name=targetRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataAssociation]/complexContent/extension/sequence/element[@name=targetRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "scripts/check_bpmn20_xsd.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataAssociation]/complexContent/extension/sequence/element[@name=transformation]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs:data_association_sources_target_transformation_edit_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataInput]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataInput]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataInput]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "scripts/check_bpmn20_xsd.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataInput]/complexContent/extension/attribute[@name=itemSubjectRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo",
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataInput]/complexContent/extension/attribute[@name=itemSubjectRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataInput]/complexContent/extension/attribute[@name=itemSubjectRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataInput]/complexContent/extension/attribute[@name=itemSubjectRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "scripts/check_bpmn20_xsd.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataInput]/complexContent/extension/attribute[@name=isCollection]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo",
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataInput]/complexContent/extension/attribute[@name=isCollection]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataInput]/complexContent/extension/attribute[@name=isCollection]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataInput]/complexContent/extension/attribute[@name=isCollection]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "scripts/check_bpmn20_xsd.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataInput]/complexContent/extension/attribute[@name=isCollection]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/m3_data.rs:data_input_port_draws_name_and_collection_marker"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataObject]/complexContent/extension/attribute[@name=itemSubjectRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs:data_object_collection_and_item_edit_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataObject]/complexContent/extension/attribute[@name=isCollection]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs:data_object_collection_and_item_edit_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataObject]/complexContent/extension/attribute[@name=isCollection]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataObject]/complexContent/extension/attribute[@name=isCollection]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "scripts/check_bpmn20_xsd.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataOutput]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataOutput]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "scripts/check_bpmn20_xsd.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataOutput]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo",
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataOutput]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataOutput]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataOutput]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "scripts/check_bpmn20_xsd.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataOutput]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/m3_data.rs:data_output_port_draws_its_own_name_and_collection_marker"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataOutput]/complexContent/extension/attribute[@name=itemSubjectRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo",
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataOutput]/complexContent/extension/attribute[@name=itemSubjectRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataOutput]/complexContent/extension/attribute[@name=itemSubjectRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataOutput]/complexContent/extension/attribute[@name=itemSubjectRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "scripts/check_bpmn20_xsd.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataOutput]/complexContent/extension/attribute[@name=isCollection]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo",
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataOutput]/complexContent/extension/attribute[@name=isCollection]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataOutput]/complexContent/extension/attribute[@name=isCollection]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataOutput]/complexContent/extension/attribute[@name=isCollection]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "scripts/check_bpmn20_xsd.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataOutput]/complexContent/extension/attribute[@name=isCollection]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/m3_data.rs:data_output_port_draws_its_own_name_and_collection_marker"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataStoreReference]/complexContent/extension/attribute[@name=itemSubjectRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs:data_store_reference_target_and_item_edit_and_undo",
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataStoreReference]/complexContent/extension/attribute[@name=itemSubjectRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs:data_store_reference_target_and_item_edit_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataStoreReference]/complexContent/extension/attribute[@name=itemSubjectRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataStoreReference]/complexContent/extension/attribute[@name=itemSubjectRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "scripts/check_bpmn20_xsd.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataStoreReference]/complexContent/extension/attribute[@name=dataStoreRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs:data_store_reference_target_and_item_edit_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataStore]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs:data_store_attributes_edit_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataStore]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataStore]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "scripts/check_bpmn20_xsd.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataStore]/complexContent/extension/attribute[@name=capacity]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs:data_store_attributes_edit_and_undo",
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataStore]/complexContent/extension/attribute[@name=capacity]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs:data_store_attributes_edit_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataStore]/complexContent/extension/attribute[@name=capacity]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataStore]/complexContent/extension/attribute[@name=capacity]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "scripts/check_bpmn20_xsd.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataStore]/complexContent/extension/attribute[@name=isUnlimited]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs:data_store_attributes_edit_and_undo",
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataStore]/complexContent/extension/attribute[@name=isUnlimited]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs:data_store_attributes_edit_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataStore]/complexContent/extension/attribute[@name=isUnlimited]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataStore]/complexContent/extension/attribute[@name=isUnlimited]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "scripts/check_bpmn20_xsd.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataStore]/complexContent/extension/attribute[@name=itemSubjectRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs:data_store_attributes_edit_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataStore]/complexContent/extension/attribute[@name=itemSubjectRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tDataStore]/complexContent/extension/attribute[@name=itemSubjectRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "scripts/check_bpmn20_xsd.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tInputSet]/complexContent/extension/sequence/element[@name=dataInputRefs]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo",
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tInputSet]/complexContent/extension/sequence/element[@name=dataInputRefs]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tInputSet]/complexContent/extension/sequence/element[@name=dataInputRefs]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tInputSet]/complexContent/extension/sequence/element[@name=dataInputRefs]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "scripts/check_bpmn20_xsd.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tInputSet]/complexContent/extension/sequence/element[@name=optionalInputRefs]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo",
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tInputSet]/complexContent/extension/sequence/element[@name=optionalInputRefs]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tInputSet]/complexContent/extension/sequence/element[@name=optionalInputRefs]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tInputSet]/complexContent/extension/sequence/element[@name=optionalInputRefs]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "scripts/check_bpmn20_xsd.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tInputSet]/complexContent/extension/sequence/element[@name=whileExecutingInputRefs]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo",
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tInputSet]/complexContent/extension/sequence/element[@name=whileExecutingInputRefs]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tInputSet]/complexContent/extension/sequence/element[@name=whileExecutingInputRefs]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tInputSet]/complexContent/extension/sequence/element[@name=whileExecutingInputRefs]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "scripts/check_bpmn20_xsd.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tInputSet]/complexContent/extension/sequence/element[@name=outputSetRefs]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo",
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tInputSet]/complexContent/extension/sequence/element[@name=outputSetRefs]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tInputSet]/complexContent/extension/sequence/element[@name=outputSetRefs]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tInputSet]/complexContent/extension/sequence/element[@name=outputSetRefs]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "scripts/check_bpmn20_xsd.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tInputSet]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo",
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tInputSet]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tInputSet]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tInputSet]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "scripts/check_bpmn20_xsd.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tOutputSet]/complexContent/extension/sequence/element[@name=dataOutputRefs]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo",
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tOutputSet]/complexContent/extension/sequence/element[@name=dataOutputRefs]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tOutputSet]/complexContent/extension/sequence/element[@name=dataOutputRefs]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tOutputSet]/complexContent/extension/sequence/element[@name=dataOutputRefs]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "scripts/check_bpmn20_xsd.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tOutputSet]/complexContent/extension/sequence/element[@name=optionalOutputRefs]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo",
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tOutputSet]/complexContent/extension/sequence/element[@name=optionalOutputRefs]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tOutputSet]/complexContent/extension/sequence/element[@name=optionalOutputRefs]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tOutputSet]/complexContent/extension/sequence/element[@name=optionalOutputRefs]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "scripts/check_bpmn20_xsd.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tOutputSet]/complexContent/extension/sequence/element[@name=whileExecutingOutputRefs]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo",
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tOutputSet]/complexContent/extension/sequence/element[@name=whileExecutingOutputRefs]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tOutputSet]/complexContent/extension/sequence/element[@name=whileExecutingOutputRefs]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tOutputSet]/complexContent/extension/sequence/element[@name=whileExecutingOutputRefs]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "scripts/check_bpmn20_xsd.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tOutputSet]/complexContent/extension/sequence/element[@name=inputSetRefs]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo",
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tOutputSet]/complexContent/extension/sequence/element[@name=inputSetRefs]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tOutputSet]/complexContent/extension/sequence/element[@name=inputSetRefs]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tOutputSet]/complexContent/extension/sequence/element[@name=inputSetRefs]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "scripts/check_bpmn20_xsd.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tOutputSet]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo",
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tOutputSet]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tOutputSet]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tOutputSet]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "scripts/check_bpmn20_xsd.py"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=dataOutputAssociation]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_data.rs:data_association_sources_target_transformation_edit_and_undo"
+   ]
   }
  ]
 }

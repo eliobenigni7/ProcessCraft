@@ -479,6 +479,212 @@
    "evidence": [
     "crates/processcraft-render/tests/bpmn_scene.rs:annotation_text_uses_dedicated_payload_with_legacy_fallback"
    ]
+  },
+  {
+   "path": "/schema/complexType[@name=tAssociation]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "tests/fixtures/bpmn/m3-artifacts/manifest.md",
+    "crates/processcraft-io/tests/m3_artifacts.rs:artifacts_import_typed_association_category_and_annotation_fields"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tAssociation]/complexContent/extension/attribute[@name=sourceRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "tests/fixtures/bpmn/m3-artifacts/manifest.md",
+    "crates/processcraft-io/tests/m3_artifacts.rs:artifacts_import_typed_association_category_and_annotation_fields"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tAssociation]/complexContent/extension/attribute[@name=targetRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "tests/fixtures/bpmn/m3-artifacts/manifest.md",
+    "crates/processcraft-io/tests/m3_artifacts.rs:artifacts_import_typed_association_category_and_annotation_fields"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tAssociation]/complexContent/extension/attribute[@name=associationDirection]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "tests/fixtures/bpmn/m3-artifacts/manifest.md",
+    "crates/processcraft-io/tests/m3_artifacts.rs:artifacts_import_typed_association_category_and_annotation_fields"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=association]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "tests/fixtures/bpmn/m3-artifacts/manifest.md",
+    "crates/processcraft-io/tests/m3_artifacts.rs:artifacts_import_typed_association_category_and_annotation_fields"
+   ]
+  },
+  {
+   "path": "/schema/simpleType[@name=tAssociationDirection]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "tests/fixtures/bpmn/m3-artifacts/manifest.md",
+    "crates/processcraft-io/tests/m3_artifacts.rs:artifacts_import_typed_association_category_and_annotation_fields"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tCategory]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "tests/fixtures/bpmn/m3-artifacts/manifest.md",
+    "crates/processcraft-io/tests/m3_artifacts.rs:artifacts_import_typed_association_category_and_annotation_fields"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tCategory]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "tests/fixtures/bpmn/m3-artifacts/manifest.md",
+    "crates/processcraft-io/tests/m3_artifacts.rs:artifacts_import_typed_association_category_and_annotation_fields"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=category]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "tests/fixtures/bpmn/m3-artifacts/manifest.md",
+    "crates/processcraft-io/tests/m3_artifacts.rs:artifacts_import_typed_association_category_and_annotation_fields"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tCategoryValue]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "tests/fixtures/bpmn/m3-artifacts/manifest.md",
+    "crates/processcraft-io/tests/m3_artifacts.rs:artifacts_import_typed_association_category_and_annotation_fields"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tCategoryValue]/complexContent/extension/attribute[@name=value]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "tests/fixtures/bpmn/m3-artifacts/manifest.md",
+    "crates/processcraft-io/tests/m3_artifacts.rs:artifacts_import_typed_association_category_and_annotation_fields"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=categoryValue]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "tests/fixtures/bpmn/m3-artifacts/manifest.md",
+    "crates/processcraft-io/tests/m3_artifacts.rs:artifacts_import_typed_association_category_and_annotation_fields"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tTextAnnotation]/complexContent/extension/attribute[@name=textFormat]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "tests/fixtures/bpmn/m3-artifacts/manifest.md",
+    "crates/processcraft-io/tests/m3_artifacts.rs:artifacts_import_typed_association_category_and_annotation_fields"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tTextAnnotation]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "tests/fixtures/bpmn/m3-artifacts/manifest.md",
+    "crates/processcraft-io/tests/m3_artifacts.rs:artifacts_export_text_annotation_and_association_reimport_equal"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=textAnnotation]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "tests/fixtures/bpmn/m3-artifacts/manifest.md",
+    "crates/processcraft-io/tests/m3_artifacts.rs:artifacts_export_text_annotation_and_association_reimport_equal"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tTextAnnotation]/complexContent/extension/attribute[@name=textFormat]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "tests/fixtures/bpmn/m3-artifacts/manifest.md",
+    "crates/processcraft-io/tests/m3_artifacts.rs:artifacts_export_text_annotation_and_association_reimport_equal"
+   ]
+  },
+  {
+   "path": "/schema/simpleType[@name=tAssociationDirection]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "tests/fixtures/bpmn/m3-artifacts/manifest.md",
+    "crates/processcraft-io/tests/m3_artifacts.rs:artifacts_export_text_annotation_and_association_reimport_equal"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tAssociation]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_artifacts.rs:association_dangling_endpoints_report_source_and_target_diagnostics"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tAssociation]/complexContent/extension/attribute[@name=sourceRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_artifacts.rs:association_dangling_endpoints_report_source_and_target_diagnostics"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tAssociation]/complexContent/extension/attribute[@name=targetRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_artifacts.rs:association_dangling_endpoints_report_source_and_target_diagnostics"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=association]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_artifacts.rs:association_dangling_endpoints_report_source_and_target_diagnostics"
+   ]
   }
  ]
 }

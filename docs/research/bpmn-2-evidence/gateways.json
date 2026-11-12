@@ -237,6 +237,463 @@
    "evidence": [
     "crates/processcraft-core/tests/diagnostics.rs:activity_conditions_are_allowed_but_event_gateway_conditions_are_diagnosed"
    ]
+  },
+  {
+   "path": "/schema/complexType[@name=tInclusiveGateway]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_gateways.rs:inclusive_and_parallel_gateways_are_created_edited_and_undone"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tInclusiveGateway]/complexContent/extension/attribute[@name=default]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_gateways.rs:inclusive_and_parallel_gateways_are_created_edited_and_undone"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=inclusiveGateway]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_gateways.rs:inclusive_and_parallel_gateways_are_created_edited_and_undone"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tParallelGateway]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_gateways.rs:inclusive_and_parallel_gateways_are_created_edited_and_undone"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=parallelGateway]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_gateways.rs:inclusive_and_parallel_gateways_are_created_edited_and_undone"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tGateway]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_imports_typed_values",
+    "tests/fixtures/bpmn/m3-gateways/gateways-all.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tGateway]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
+   ],
+   "note": "export XSD-valid (check_bpmn20_xsd.py on target/m3-gateways-export.bpmn) and re-imports equal"
+  },
+  {
+   "path": "/schema/complexType[@name=tGateway]/complexContent/extension/attribute[@name=gatewayDirection]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_imports_typed_values",
+    "tests/fixtures/bpmn/m3-gateways/gateways-all.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tGateway]/complexContent/extension/attribute[@name=gatewayDirection]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
+   ],
+   "note": "export XSD-valid (check_bpmn20_xsd.py on target/m3-gateways-export.bpmn) and re-imports equal"
+  },
+  {
+   "path": "/schema/simpleType[@name=tGatewayDirection]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_imports_typed_values",
+    "tests/fixtures/bpmn/m3-gateways/gateways-all.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/simpleType[@name=tGatewayDirection]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
+   ],
+   "note": "export XSD-valid (check_bpmn20_xsd.py on target/m3-gateways-export.bpmn) and re-imports equal"
+  },
+  {
+   "path": "/schema/complexType[@name=tExclusiveGateway]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_imports_typed_values",
+    "tests/fixtures/bpmn/m3-gateways/gateways-all.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tExclusiveGateway]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
+   ],
+   "note": "export XSD-valid (check_bpmn20_xsd.py on target/m3-gateways-export.bpmn) and re-imports equal"
+  },
+  {
+   "path": "/schema/complexType[@name=tExclusiveGateway]/complexContent/extension/attribute[@name=default]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_imports_typed_values",
+    "tests/fixtures/bpmn/m3-gateways/gateways-all.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tExclusiveGateway]/complexContent/extension/attribute[@name=default]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
+   ],
+   "note": "export XSD-valid (check_bpmn20_xsd.py on target/m3-gateways-export.bpmn) and re-imports equal"
+  },
+  {
+   "path": "/schema/element[@name=exclusiveGateway]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_imports_typed_values",
+    "tests/fixtures/bpmn/m3-gateways/gateways-all.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=exclusiveGateway]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
+   ],
+   "note": "export XSD-valid (check_bpmn20_xsd.py on target/m3-gateways-export.bpmn) and re-imports equal"
+  },
+  {
+   "path": "/schema/complexType[@name=tInclusiveGateway]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_imports_typed_values",
+    "tests/fixtures/bpmn/m3-gateways/gateways-all.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tInclusiveGateway]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
+   ],
+   "note": "export XSD-valid (check_bpmn20_xsd.py on target/m3-gateways-export.bpmn) and re-imports equal"
+  },
+  {
+   "path": "/schema/complexType[@name=tInclusiveGateway]/complexContent/extension/attribute[@name=default]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_imports_typed_values",
+    "tests/fixtures/bpmn/m3-gateways/gateways-all.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tInclusiveGateway]/complexContent/extension/attribute[@name=default]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
+   ],
+   "note": "export XSD-valid (check_bpmn20_xsd.py on target/m3-gateways-export.bpmn) and re-imports equal"
+  },
+  {
+   "path": "/schema/element[@name=inclusiveGateway]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_imports_typed_values",
+    "tests/fixtures/bpmn/m3-gateways/gateways-all.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=inclusiveGateway]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
+   ],
+   "note": "export XSD-valid (check_bpmn20_xsd.py on target/m3-gateways-export.bpmn) and re-imports equal"
+  },
+  {
+   "path": "/schema/complexType[@name=tParallelGateway]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_imports_typed_values",
+    "tests/fixtures/bpmn/m3-gateways/gateways-all.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tParallelGateway]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
+   ],
+   "note": "export XSD-valid (check_bpmn20_xsd.py on target/m3-gateways-export.bpmn) and re-imports equal"
+  },
+  {
+   "path": "/schema/element[@name=parallelGateway]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_imports_typed_values",
+    "tests/fixtures/bpmn/m3-gateways/gateways-all.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=parallelGateway]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
+   ],
+   "note": "export XSD-valid (check_bpmn20_xsd.py on target/m3-gateways-export.bpmn) and re-imports equal"
+  },
+  {
+   "path": "/schema/complexType[@name=tEventBasedGateway]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_imports_typed_values",
+    "tests/fixtures/bpmn/m3-gateways/gateways-all.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tEventBasedGateway]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
+   ],
+   "note": "export XSD-valid (check_bpmn20_xsd.py on target/m3-gateways-export.bpmn) and re-imports equal"
+  },
+  {
+   "path": "/schema/complexType[@name=tEventBasedGateway]/complexContent/extension/attribute[@name=instantiate]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_imports_typed_values",
+    "tests/fixtures/bpmn/m3-gateways/gateways-all.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tEventBasedGateway]/complexContent/extension/attribute[@name=instantiate]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
+   ],
+   "note": "export XSD-valid (check_bpmn20_xsd.py on target/m3-gateways-export.bpmn) and re-imports equal"
+  },
+  {
+   "path": "/schema/complexType[@name=tEventBasedGateway]/complexContent/extension/attribute[@name=eventGatewayType]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_imports_typed_values",
+    "tests/fixtures/bpmn/m3-gateways/gateways-all.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tEventBasedGateway]/complexContent/extension/attribute[@name=eventGatewayType]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
+   ],
+   "note": "export XSD-valid (check_bpmn20_xsd.py on target/m3-gateways-export.bpmn) and re-imports equal"
+  },
+  {
+   "path": "/schema/element[@name=eventBasedGateway]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_imports_typed_values",
+    "tests/fixtures/bpmn/m3-gateways/gateways-all.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=eventBasedGateway]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
+   ],
+   "note": "export XSD-valid (check_bpmn20_xsd.py on target/m3-gateways-export.bpmn) and re-imports equal"
+  },
+  {
+   "path": "/schema/simpleType[@name=tEventBasedGatewayType]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_imports_typed_values",
+    "tests/fixtures/bpmn/m3-gateways/gateways-all.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/simpleType[@name=tEventBasedGatewayType]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
+   ],
+   "note": "export XSD-valid (check_bpmn20_xsd.py on target/m3-gateways-export.bpmn) and re-imports equal"
+  },
+  {
+   "path": "/schema/complexType[@name=tInclusiveGateway]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_gateways.rs:inclusive_and_parallel_gateways_diagnose_misuse"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tInclusiveGateway]/complexContent/extension/attribute[@name=default]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_gateways.rs:inclusive_and_parallel_gateways_diagnose_misuse"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=inclusiveGateway]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_gateways.rs:inclusive_and_parallel_gateways_diagnose_misuse"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tParallelGateway]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_gateways.rs:inclusive_and_parallel_gateways_diagnose_misuse"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=parallelGateway]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_gateways.rs:inclusive_and_parallel_gateways_diagnose_misuse"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tEventBasedGateway]/complexContent/extension/attribute[@name=instantiate]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_gateways.rs:event_based_gateway_attribute_rules_are_diagnosed"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tEventBasedGateway]/complexContent/extension/attribute[@name=eventGatewayType]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_gateways.rs:event_based_gateway_attribute_rules_are_diagnosed"
+   ]
+  },
+  {
+   "path": "/schema/simpleType[@name=tEventBasedGatewayType]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_gateways.rs:event_based_gateway_attribute_rules_are_diagnosed"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=inclusiveGateway]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/m3_gateways.rs:inclusive_gateway_draws_circle_marker_distinct_from_parallel_plus",
+    "crates/processcraft-render/tests/m3_gateways.rs:inclusive_and_parallel_gateways_hit_test_to_their_element_keys"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=parallelGateway]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/m3_gateways.rs:inclusive_gateway_draws_circle_marker_distinct_from_parallel_plus",
+    "crates/processcraft-render/tests/m3_gateways.rs:inclusive_and_parallel_gateways_hit_test_to_their_element_keys"
+   ]
   }
  ]
 }

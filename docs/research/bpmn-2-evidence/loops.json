@@ -444,6 +444,267 @@
     "crates/processcraft-render/tests/bpmn_scene.rs:loop_and_multi_instance_markers_use_distinct_shared_vectors",
     "crates/processcraft-render/tests/bpmn_scene.rs:multi_instance_omitted_sequential_uses_parallel_marker_without_storing_default"
    ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMultiInstanceLoopCharacteristics]/complexContent/extension/sequence/element[@name=loopDataInputRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMultiInstanceLoopCharacteristics]/complexContent/extension/sequence/element[@name=loopDataOutputRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMultiInstanceLoopCharacteristics]/complexContent/extension/sequence/element[@name=inputDataItem]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMultiInstanceLoopCharacteristics]/complexContent/extension/sequence/element[@name=outputDataItem]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMultiInstanceLoopCharacteristics]/complexContent/extension/sequence/element[@name=completionCondition]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMultiInstanceLoopCharacteristics]/complexContent/extension/attribute[@name=behavior]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMultiInstanceLoopCharacteristics]/complexContent/extension/attribute[@name=oneBehaviorEventRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMultiInstanceLoopCharacteristics]/complexContent/extension/attribute[@name=noneBehaviorEventRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMultiInstanceLoopCharacteristics]/complexContent/extension/sequence/element[@name=loopDataOutputRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMultiInstanceLoopCharacteristics]/complexContent/extension/sequence/element[@name=inputDataItem]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMultiInstanceLoopCharacteristics]/complexContent/extension/sequence/element[@name=outputDataItem]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMultiInstanceLoopCharacteristics]/complexContent/extension/sequence/element[@name=completionCondition]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMultiInstanceLoopCharacteristics]/complexContent/extension/attribute[@name=behavior]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMultiInstanceLoopCharacteristics]/complexContent/extension/attribute[@name=oneBehaviorEventRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMultiInstanceLoopCharacteristics]/complexContent/extension/attribute[@name=noneBehaviorEventRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMultiInstanceLoopCharacteristics]/complexContent/extension/sequence/element[@name=loopDataInputRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_loops.rs:multi_instance_and_standard_loop_fields_import_with_values_and_survive_export"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMultiInstanceLoopCharacteristics]/complexContent/extension/sequence/element[@name=loopDataOutputRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_loops.rs:multi_instance_and_standard_loop_fields_import_with_values_and_survive_export"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMultiInstanceLoopCharacteristics]/complexContent/extension/sequence/element[@name=inputDataItem]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_loops.rs:multi_instance_and_standard_loop_fields_import_with_values_and_survive_export"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMultiInstanceLoopCharacteristics]/complexContent/extension/sequence/element[@name=outputDataItem]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_loops.rs:multi_instance_and_standard_loop_fields_import_with_values_and_survive_export"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMultiInstanceLoopCharacteristics]/complexContent/extension/attribute[@name=oneBehaviorEventRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_loops.rs:multi_instance_and_standard_loop_fields_import_with_values_and_survive_export"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMultiInstanceLoopCharacteristics]/complexContent/extension/attribute[@name=noneBehaviorEventRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_loops.rs:multi_instance_and_standard_loop_fields_import_with_values_and_survive_export"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tStandardLoopCharacteristics]/complexContent/extension/sequence/element[@name=loopCondition]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_loops.rs:standard_loop_condition_test_before_and_maximum_set_read_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tStandardLoopCharacteristics]/complexContent/extension/sequence/element[@name=loopCondition]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_loops.rs:standard_loop_condition_test_before_and_maximum_set_read_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tStandardLoopCharacteristics]/complexContent/extension/attribute[@name=testBefore]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_loops.rs:standard_loop_condition_test_before_and_maximum_set_read_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tStandardLoopCharacteristics]/complexContent/extension/attribute[@name=testBefore]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_loops.rs:standard_loop_condition_test_before_and_maximum_set_read_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tStandardLoopCharacteristics]/complexContent/extension/attribute[@name=loopMaximum]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_loops.rs:standard_loop_condition_test_before_and_maximum_set_read_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tStandardLoopCharacteristics]/complexContent/extension/attribute[@name=loopMaximum]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_loops.rs:standard_loop_condition_test_before_and_maximum_set_read_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tStandardLoopCharacteristics]/complexContent/extension/attribute[@name=testBefore]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_loops.rs:multi_instance_and_standard_loop_fields_import_with_values_and_survive_export"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tStandardLoopCharacteristics]/complexContent/extension/attribute[@name=loopMaximum]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_loops.rs:multi_instance_and_standard_loop_fields_import_with_values_and_survive_export"
+   ]
   }
  ]
 }

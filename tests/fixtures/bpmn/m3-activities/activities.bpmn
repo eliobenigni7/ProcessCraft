@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:tns="urn:m3-activities" id="defs" targetNamespace="urn:m3-activities">
+  <message id="request" name="Request"/>
+  <interface id="service" name="Lookup"><operation id="lookup" name="Find"><inMessageRef>tns:request</inMessageRef></operation></interface>
+  <process id="process" isExecutable="false">
+    <task id="plain" name="Plain" isForCompensation="true" startQuantity="3" completionQuantity="2" default="toUser"/>
+    <userTask id="user" name="User" implementation="##unspecified"/>
+    <serviceTask id="service1" name="Service" implementation="##WebService" operationRef="tns:lookup"/>
+    <sendTask id="send" name="Send" implementation="##WebService" messageRef="tns:request" operationRef="tns:lookup"/>
+    <receiveTask id="receive" name="Receive" implementation="##WebService" instantiate="true" messageRef="tns:request" operationRef="tns:lookup"/>
+    <callActivity id="call" name="Call" calledElement="tns:process"/>
+    <subProcess id="event" name="Event" triggeredByEvent="true"><startEvent id="evStart"/></subProcess>
+    <sequenceFlow id="toUser" sourceRef="plain" targetRef="user"/>
+    <sequenceFlow id="toService" sourceRef="user" targetRef="service1"/>
+  </process>
+</definitions>

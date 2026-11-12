@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:tns="urn:m3-events" id="defs" targetNamespace="urn:m3-events">
+  <process id="process" isExecutable="false">
+    <startEvent id="start"><timerEventDefinition id="startTimer"><timeDate>2026-11-12T10:00:00Z</timeDate></timerEventDefinition></startEvent>
+    <task id="work" name="Work"/>
+    <boundaryEvent id="boundary" attachedToRef="tns:work" cancelActivity="false"><timerEventDefinition id="boundaryTimer"><timeDuration>PT5M</timeDuration></timerEventDefinition></boundaryEvent>
+    <intermediateCatchEvent id="wait"><timerEventDefinition id="waitTimer"><timeCycle>R3/PT5M</timeCycle></timerEventDefinition></intermediateCatchEvent>
+    <endEvent id="end"><terminateEventDefinition id="terminate"/></endEvent>
+    <sequenceFlow id="f1" sourceRef="start" targetRef="work"/>
+    <sequenceFlow id="f2" sourceRef="boundary" targetRef="wait"/>
+    <sequenceFlow id="f3" sourceRef="wait" targetRef="end"/>
+  </process>
+</definitions>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:t="urn:m3choreo" id="defs" targetNamespace="urn:m3choreo">
+  <choreography id="main">
+    <participant id="buyer"/>
+    <participant id="seller"/>
+    <participant id="carrier"><participantMultiplicity minimum="2" maximum="5"/></participant>
+    <messageFlow id="order" sourceRef="t:buyer" targetRef="t:seller"/>
+    <messageFlow id="ship" sourceRef="t:seller" targetRef="t:carrier"/>
+    <choreographyTask id="task" name="Ship" initiatingParticipantRef="t:seller" loopType="MultiInstanceSequential"><participantRef>t:seller</participantRef><participantRef>t:carrier</participantRef><messageFlowRef>t:ship</messageFlowRef></choreographyTask>
+    <callChoreography id="call2" initiatingParticipantRef="t:buyer" calledChoreographyRef="t:buyer"><participantRef>t:buyer</participantRef><participantRef>t:seller</participantRef></callChoreography>
+    <callChoreography id="call" initiatingParticipantRef="t:buyer" calledChoreographyRef="t:seller"><participantRef>t:buyer</participantRef><participantRef>t:seller</participantRef></callChoreography>
+  </choreography>
+  <globalChoreographyTask id="global" initiatingParticipantRef="t:buyer"><participant id="globalBuyer"/><participant id="globalSeller"/></globalChoreographyTask>
+</definitions>

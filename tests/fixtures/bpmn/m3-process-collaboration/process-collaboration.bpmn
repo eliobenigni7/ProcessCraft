@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:t="urn:pc-collab" targetNamespace="urn:pc-collab" id="Definitions">
+ <itemDefinition id="Item"/>
+ <message id="Msg" name="Order message" itemRef="t:Item"/>
+ <interface id="Iface" name="Ordering"><operation id="Op" name="Place"><inMessageRef>t:Msg</inMessageRef></operation></interface>
+ <endPoint id="Endpoint"/>
+ <choreography id="Chor"/>
+ <collaboration id="Collab" name="Order handling" isClosed="true">
+  <participant id="Buyer" name="Buyer" processRef="t:Main"><interfaceRef>t:Iface</interfaceRef><endPointRef>t:Endpoint</endPointRef></participant>
+  <participant id="Seller" name="Seller"/>
+  <messageFlow id="Order" name="Order" sourceRef="t:Buyer" targetRef="t:Seller" messageRef="t:Msg"/>
+  <choreographyRef>t:Chor</choreographyRef>
+ </collaboration>
+ <process id="Support"/>
+ <process id="Main" name="Main process" processType="Public" isClosed="true" isExecutable="false" definitionalCollaborationRef="t:Collab">
+  <laneSet id="Lanes">
+   <lane id="LaneA" name="Clerk"><flowNodeRef>Start</flowNodeRef><flowNodeRef>Work</flowNodeRef></lane>
+   <lane id="LaneB" name="Manager"><flowNodeRef>End</flowNodeRef></lane>
+  </laneSet>
+  <startEvent id="Start"/>
+  <task id="Work" name="Work"/>
+  <endEvent id="End"/>
+  <sequenceFlow id="F1" sourceRef="Start" targetRef="Work" isImmediate="true"/>
+  <sequenceFlow id="F2" sourceRef="Work" targetRef="End"/>
+  <supports>t:Support</supports>
+ </process>
+</definitions>

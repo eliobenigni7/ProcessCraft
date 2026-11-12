@@ -1486,6 +1486,768 @@
    "evidence": [
     "crates/processcraft-core/tests/diagnostics.rs:incomplete_event_metadata_is_advisory_and_anchored"
    ]
+  },
+  {
+   "path": "/schema/complexType[@name=tBoundaryEvent]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:dangling_event_references_report_their_clause",
+    "crates/processcraft-core/tests/m3_events.rs:boundary_attached_to_unknown_or_non_activity_is_refused"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tBoundaryEvent]/complexContent/extension/attribute[@name=cancelActivity]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:boundary_cancel_activity_and_attached_to_edit_with_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tBoundaryEvent]/complexContent/extension/attribute[@name=cancelActivity]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_events.rs:boundary_cancel_activity_false_and_attachment_import_explicitly",
+    "tests/fixtures/bpmn/m3-events/timers-boundary-terminate.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tBoundaryEvent]/complexContent/extension/attribute[@name=attachedToRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:boundary_cancel_activity_and_attached_to_edit_with_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tBoundaryEvent]/complexContent/extension/attribute[@name=attachedToRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:dangling_event_references_report_their_clause",
+    "crates/processcraft-core/tests/m3_events.rs:boundary_attached_to_unknown_or_non_activity_is_refused"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tConditionalEventDefinition]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_events.rs:conditional_condition_imports_and_exports",
+    "tests/fixtures/bpmn/m3-events/references-links-conditions.bpmn",
+    "scripts/check_bpmn20_xsd.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tConditionalEventDefinition]/complexContent/extension/sequence/element[@name=condition]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:conditional_definition_edit_with_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tConditionalEventDefinition]/complexContent/extension/sequence/element[@name=condition]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_events.rs:conditional_condition_imports_and_exports",
+    "tests/fixtures/bpmn/m3-events/references-links-conditions.bpmn",
+    "scripts/check_bpmn20_xsd.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tErrorEventDefinition]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_events.rs:error_and_escalation_refs_import_typed_and_export_round_trip",
+    "tests/fixtures/bpmn/m3-events/references-links-conditions.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tErrorEventDefinition]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_events.rs:error_and_escalation_refs_import_typed_and_export_round_trip",
+    "tests/fixtures/bpmn/m3-events/references-links-conditions.bpmn",
+    "scripts/check_bpmn20_xsd.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tErrorEventDefinition]/complexContent/extension/attribute[@name=errorRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:signal_error_escalation_refs_edit_with_undo_and_dangling_is_refused"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tErrorEventDefinition]/complexContent/extension/attribute[@name=errorRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:signal_error_escalation_refs_edit_with_undo_and_dangling_is_refused"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tErrorEventDefinition]/complexContent/extension/attribute[@name=errorRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_events.rs:error_and_escalation_refs_import_typed_and_export_round_trip",
+    "tests/fixtures/bpmn/m3-events/references-links-conditions.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tErrorEventDefinition]/complexContent/extension/attribute[@name=errorRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_events.rs:error_and_escalation_refs_import_typed_and_export_round_trip",
+    "tests/fixtures/bpmn/m3-events/references-links-conditions.bpmn",
+    "scripts/check_bpmn20_xsd.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tErrorEventDefinition]/complexContent/extension/attribute[@name=errorRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:dangling_event_references_report_their_clause",
+    "crates/processcraft-core/tests/m3_events.rs:signal_error_escalation_refs_edit_with_undo_and_dangling_is_refused"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tEscalationEventDefinition]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:signal_error_escalation_refs_edit_with_undo_and_dangling_is_refused"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tEscalationEventDefinition]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_events.rs:error_and_escalation_refs_import_typed_and_export_round_trip",
+    "tests/fixtures/bpmn/m3-events/references-links-conditions.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tEscalationEventDefinition]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_events.rs:error_and_escalation_refs_import_typed_and_export_round_trip",
+    "tests/fixtures/bpmn/m3-events/references-links-conditions.bpmn",
+    "scripts/check_bpmn20_xsd.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tEscalationEventDefinition]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:dangling_event_references_report_their_clause",
+    "crates/processcraft-core/tests/m3_events.rs:signal_error_escalation_refs_edit_with_undo_and_dangling_is_refused"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tEscalationEventDefinition]/complexContent/extension/attribute[@name=escalationRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:signal_error_escalation_refs_edit_with_undo_and_dangling_is_refused"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tEscalationEventDefinition]/complexContent/extension/attribute[@name=escalationRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:signal_error_escalation_refs_edit_with_undo_and_dangling_is_refused"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tEscalationEventDefinition]/complexContent/extension/attribute[@name=escalationRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_events.rs:error_and_escalation_refs_import_typed_and_export_round_trip",
+    "tests/fixtures/bpmn/m3-events/references-links-conditions.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tEscalationEventDefinition]/complexContent/extension/attribute[@name=escalationRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_events.rs:error_and_escalation_refs_import_typed_and_export_round_trip",
+    "tests/fixtures/bpmn/m3-events/references-links-conditions.bpmn",
+    "scripts/check_bpmn20_xsd.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tEscalationEventDefinition]/complexContent/extension/attribute[@name=escalationRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:dangling_event_references_report_their_clause",
+    "crates/processcraft-core/tests/m3_events.rs:signal_error_escalation_refs_edit_with_undo_and_dangling_is_refused"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tLinkEventDefinition]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_events.rs:link_pair_name_source_target_import_and_export",
+    "tests/fixtures/bpmn/m3-events/references-links-conditions.bpmn",
+    "scripts/check_bpmn20_xsd.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tLinkEventDefinition]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:link_pair_edit_with_undo_and_incomplete_pairing_is_diagnosed",
+    "crates/processcraft-core/tests/m3_events.rs:link_dangling_reference_is_refused",
+    "crates/processcraft-core/tests/m3_events.rs:link_without_name_is_diagnosed"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tLinkEventDefinition]/complexContent/extension/sequence/element[@name=source]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:link_pair_edit_with_undo_and_incomplete_pairing_is_diagnosed"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tLinkEventDefinition]/complexContent/extension/sequence/element[@name=source]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_events.rs:link_pair_name_source_target_import_and_export",
+    "tests/fixtures/bpmn/m3-events/references-links-conditions.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tLinkEventDefinition]/complexContent/extension/sequence/element[@name=source]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_events.rs:link_pair_name_source_target_import_and_export",
+    "tests/fixtures/bpmn/m3-events/references-links-conditions.bpmn",
+    "scripts/check_bpmn20_xsd.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tLinkEventDefinition]/complexContent/extension/sequence/element[@name=source]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:link_pair_edit_with_undo_and_incomplete_pairing_is_diagnosed",
+    "crates/processcraft-core/tests/m3_events.rs:link_dangling_reference_is_refused",
+    "crates/processcraft-core/tests/m3_events.rs:link_without_name_is_diagnosed"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tLinkEventDefinition]/complexContent/extension/sequence/element[@name=target]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:link_pair_edit_with_undo_and_incomplete_pairing_is_diagnosed"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tLinkEventDefinition]/complexContent/extension/sequence/element[@name=target]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_events.rs:link_pair_name_source_target_import_and_export",
+    "tests/fixtures/bpmn/m3-events/references-links-conditions.bpmn",
+    "scripts/check_bpmn20_xsd.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tLinkEventDefinition]/complexContent/extension/sequence/element[@name=target]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:link_pair_edit_with_undo_and_incomplete_pairing_is_diagnosed",
+    "crates/processcraft-core/tests/m3_events.rs:link_dangling_reference_is_refused",
+    "crates/processcraft-core/tests/m3_events.rs:link_without_name_is_diagnosed"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tLinkEventDefinition]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:link_pair_edit_with_undo_and_incomplete_pairing_is_diagnosed"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tLinkEventDefinition]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_events.rs:link_pair_name_source_target_import_and_export",
+    "tests/fixtures/bpmn/m3-events/references-links-conditions.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tLinkEventDefinition]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_events.rs:link_pair_name_source_target_import_and_export",
+    "tests/fixtures/bpmn/m3-events/references-links-conditions.bpmn",
+    "scripts/check_bpmn20_xsd.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tLinkEventDefinition]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:link_pair_edit_with_undo_and_incomplete_pairing_is_diagnosed",
+    "crates/processcraft-core/tests/m3_events.rs:link_dangling_reference_is_refused",
+    "crates/processcraft-core/tests/m3_events.rs:link_without_name_is_diagnosed"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMessageEventDefinition]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:dangling_event_references_report_their_clause",
+    "crates/processcraft-core/tests/m3_events.rs:message_ref_and_operation_ref_edit_with_undo_and_dangling_is_refused"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMessageEventDefinition]/complexContent/extension/sequence/element[@name=operationRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:message_ref_and_operation_ref_edit_with_undo_and_dangling_is_refused"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMessageEventDefinition]/complexContent/extension/sequence/element[@name=operationRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:dangling_event_references_report_their_clause",
+    "crates/processcraft-core/tests/m3_events.rs:message_ref_and_operation_ref_edit_with_undo_and_dangling_is_refused"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMessageEventDefinition]/complexContent/extension/attribute[@name=messageRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:dangling_event_references_report_their_clause",
+    "crates/processcraft-core/tests/m3_events.rs:message_ref_and_operation_ref_edit_with_undo_and_dangling_is_refused"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tSignalEventDefinition]/complexContent/extension/attribute[@name=signalRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:signal_error_escalation_refs_edit_with_undo_and_dangling_is_refused"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tTerminateEventDefinition]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:terminate_definition_edit_with_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tTerminateEventDefinition]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_events.rs:terminate_end_event_imports_as_typed_definition_and_exports",
+    "tests/fixtures/bpmn/m3-events/timers-boundary-terminate.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tTerminateEventDefinition]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_events.rs:terminate_end_event_imports_as_typed_definition_and_exports",
+    "tests/fixtures/bpmn/m3-events/timers-boundary-terminate.bpmn",
+    "scripts/check_bpmn20_xsd.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tTerminateEventDefinition]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:terminate_is_valid_only_on_end_events"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tThrowEvent]/complexContent/extension/sequence/element[@name=eventDefinitionRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:throw_event_definition_ref_edit_with_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tThrowEvent]/complexContent/extension/sequence/element[@name=eventDefinitionRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_events.rs:throw_event_definition_ref_imports_and_exports",
+    "tests/fixtures/bpmn/m3-events/references-links-conditions.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tThrowEvent]/complexContent/extension/sequence/element[@name=eventDefinitionRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_events.rs:throw_event_definition_ref_imports_and_exports",
+    "tests/fixtures/bpmn/m3-events/references-links-conditions.bpmn",
+    "scripts/check_bpmn20_xsd.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tTimerEventDefinition]/complexContent/extension/choice/element[@name=timeDate]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:timer_date_duration_cycle_edit_with_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tTimerEventDefinition]/complexContent/extension/choice/element[@name=timeDate]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_events.rs:timer_date_duration_cycle_import_typed_and_export_round_trip",
+    "tests/fixtures/bpmn/m3-events/timers-boundary-terminate.bpmn",
+    "scripts/check_bpmn20_xsd.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tTimerEventDefinition]/complexContent/extension/choice/element[@name=timeDate]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:timer_choice_must_be_complete_and_catch_only"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tTimerEventDefinition]/complexContent/extension/choice/element[@name=timeDuration]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:timer_date_duration_cycle_edit_with_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tTimerEventDefinition]/complexContent/extension/choice/element[@name=timeDuration]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:timer_choice_must_be_complete_and_catch_only"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tTimerEventDefinition]/complexContent/extension/choice/element[@name=timeCycle]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:timer_date_duration_cycle_edit_with_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tTimerEventDefinition]/complexContent/extension/choice/element[@name=timeCycle]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:timer_choice_must_be_complete_and_catch_only"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=boundaryEvent]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:boundary_cancel_activity_and_attached_to_edit_with_undo"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=boundaryEvent]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:dangling_event_references_report_their_clause",
+    "crates/processcraft-core/tests/m3_events.rs:boundary_attached_to_unknown_or_non_activity_is_refused"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=linkEventDefinition]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_events.rs:link_pair_name_source_target_import_and_export",
+    "tests/fixtures/bpmn/m3-events/references-links-conditions.bpmn",
+    "scripts/check_bpmn20_xsd.py"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=linkEventDefinition]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:link_pair_edit_with_undo_and_incomplete_pairing_is_diagnosed",
+    "crates/processcraft-core/tests/m3_events.rs:link_dangling_reference_is_refused",
+    "crates/processcraft-core/tests/m3_events.rs:link_without_name_is_diagnosed"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=messageEventDefinition]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:dangling_event_references_report_their_clause",
+    "crates/processcraft-core/tests/m3_events.rs:message_ref_and_operation_ref_edit_with_undo_and_dangling_is_refused"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=terminateEventDefinition]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:terminate_definition_edit_with_undo"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=terminateEventDefinition]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:terminate_definition_edit_with_undo"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=terminateEventDefinition]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_events.rs:terminate_end_event_imports_as_typed_definition_and_exports",
+    "tests/fixtures/bpmn/m3-events/timers-boundary-terminate.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=terminateEventDefinition]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_events.rs:terminate_end_event_imports_as_typed_definition_and_exports",
+    "tests/fixtures/bpmn/m3-events/timers-boundary-terminate.bpmn",
+    "scripts/check_bpmn20_xsd.py"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=terminateEventDefinition]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:terminate_is_valid_only_on_end_events"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=conditionalEventDefinition]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:conditional_definition_edit_with_undo"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=conditionalEventDefinition]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_events.rs:conditional_condition_imports_and_exports",
+    "tests/fixtures/bpmn/m3-events/references-links-conditions.bpmn",
+    "scripts/check_bpmn20_xsd.py"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=errorEventDefinition]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:signal_error_escalation_refs_edit_with_undo_and_dangling_is_refused"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=errorEventDefinition]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_events.rs:error_and_escalation_refs_import_typed_and_export_round_trip",
+    "tests/fixtures/bpmn/m3-events/references-links-conditions.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=errorEventDefinition]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_events.rs:error_and_escalation_refs_import_typed_and_export_round_trip",
+    "tests/fixtures/bpmn/m3-events/references-links-conditions.bpmn",
+    "scripts/check_bpmn20_xsd.py"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=escalationEventDefinition]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:signal_error_escalation_refs_edit_with_undo_and_dangling_is_refused"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=escalationEventDefinition]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:signal_error_escalation_refs_edit_with_undo_and_dangling_is_refused"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=escalationEventDefinition]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_events.rs:error_and_escalation_refs_import_typed_and_export_round_trip",
+    "tests/fixtures/bpmn/m3-events/references-links-conditions.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=escalationEventDefinition]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/m3_events.rs:error_and_escalation_refs_import_typed_and_export_round_trip",
+    "tests/fixtures/bpmn/m3-events/references-links-conditions.bpmn",
+    "scripts/check_bpmn20_xsd.py"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=escalationEventDefinition]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:dangling_event_references_report_their_clause",
+    "crates/processcraft-core/tests/m3_events.rs:signal_error_escalation_refs_edit_with_undo_and_dangling_is_refused"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=timerEventDefinition]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_events.rs:timer_date_duration_cycle_edit_with_undo"
+   ]
   }
  ]
 }
