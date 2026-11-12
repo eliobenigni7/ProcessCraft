@@ -55,6 +55,7 @@ pub(super) struct CanvasState {
     pending: Vec<(String, TextureView)>,
     scene: String,
     size: Vec2,
+    rect: Option<Rect>,
 }
 
 fn fit(diagram: &processcraft_core::model::Diagram, size: Vec2) -> ((f64, f64), f32) {
@@ -474,6 +475,21 @@ impl ProcessCraft {
         }
         .cloned()
     }
+    /// Topmost shape (never a label region) under the pointer other than `exclude`.
+    fn connect_target_at(
+        &self,
+        x: f64,
+        y: f64,
+        zoom: f32,
+        exclude: &ElementSelector,
+    ) -> Option<processcraft_render::HitRegion> {
+        let tolerance = 5.0 / zoom as f64;
+        self.hits
+            .iter()
+            .rev()
+            .find(|h| !h.is_label && &h.key.xml_id != exclude && h.contains(x, y, tolerance))
+            .cloned()
+    }
     fn canvas_render(&mut self, ui: &mut egui::Ui, size: Vec2, interactive: bool) {
         let ctx = ui.ctx().clone();
         let snap = self.ctl.session.snapshot();
@@ -508,6 +524,9 @@ impl ProcessCraft {
                 Sense::hover()
             },
         );
+        if interactive {
+            self.canvas.rect = Some(rect);
+        }
         let palette = self.theme.palette();
         let painter = ui.painter_at(rect);
         painter.rect_filled(rect, 4, palette.canvas);
@@ -1076,10 +1095,8 @@ impl ProcessCraft {
                                 if let Some(pos) = pointer {
                                     let from = to_screen(rect, camera, zoom, bounds).center();
                                     let (x, y) = to_model(rect, camera, zoom, pos);
-                                    if let Some(target) = self
-                                        .hit_at(x, y, zoom, false)
-                                        .filter(|h| !h.is_label && &h.key.xml_id != element)
-                                        .and_then(|h| {
+                                    if let Some(target) =
+                                        self.connect_target_at(x, y, zoom, element).and_then(|h| {
                                             diagram
                                                 .shapes
                                                 .iter()
@@ -1174,9 +1191,8 @@ impl ProcessCraft {
                             Gesture::Connect { element, .. } => {
                                 if let Some(pos) = pointer {
                                     let (x, y) = to_model(rect, camera, zoom, pos);
-                                    if let Some(target) = self
-                                        .hit_at(x, y, zoom, false)
-                                        .filter(|h| !h.is_label && h.key.xml_id != element)
+                                    if let Some(target) =
+                                        self.connect_target_at(x, y, zoom, &element)
                                     {
                                         self.connect_elements(element, target.key.xml_id, None);
                                     }
@@ -1412,6 +1428,75 @@ mod tests {
         );
         assert!((app.zoom - zoom * ZOOM_STEP).abs() < 1e-5);
         assert_eq!(context.zoom_factor(), 1.0);
+    }
+
+    #[test]
+    fn dragging_the_connect_handle_onto_a_task_creates_a_flow() {
+        let mut app = ProcessCraft::default();
+        app.add(NodeKind::StartEvent);
+        let start = app.selected.clone().unwrap();
+        app.select(None);
+        app.add(NodeKind::Task);
+        let task = app.selected.clone().unwrap();
+        app.select(Some(start.clone()));
+        let context = egui::Context::default();
+        let run = |app: &mut ProcessCraft, events: Vec<egui::Event>| {
+            let mut output = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(900., 600.))),
+                    events,
+                    ..Default::default()
+                },
+                |ui| app.canvas_ui(ui),
+            );
+            output.textures_delta.clear();
+        };
+        // Wait for the background render that supplies hit regions.
+        for _ in 0..200 {
+            run(&mut app, vec![]);
+            if !app.hits.is_empty() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert!(!app.hits.is_empty(), "render produced no hit regions");
+        let snap = app.ctl.session.snapshot();
+        let diagram = &snap.project.documents[0].diagrams[0];
+        let bounds = |id: &ElementSelector| {
+            diagram
+                .shapes
+                .iter()
+                .find(|s| &s.element == id)
+                .unwrap()
+                .bounds
+                .clone()
+        };
+        let edges_before = diagram.edges.len();
+        let (rect, camera, zoom) = (app.canvas.rect.unwrap(), app.camera, app.zoom);
+        let source = to_screen(rect, camera, zoom, &bounds(&start));
+        let handle = Pos2::new(source.right() + 16.0, source.center().y);
+        let target = to_screen(rect, camera, zoom, &bounds(&task)).center();
+        let button = |pos, pressed| egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        };
+        run(&mut app, vec![egui::Event::PointerMoved(handle)]);
+        run(&mut app, vec![button(handle, true)]);
+        for step in 1..=5 {
+            let pos = handle + (target - handle) * (step as f32 / 5.0);
+            run(&mut app, vec![egui::Event::PointerMoved(pos)]);
+        }
+        run(&mut app, vec![button(target, false)]);
+        run(&mut app, vec![]);
+        let snap = app.ctl.session.snapshot();
+        let document = &snap.project.documents[0];
+        assert_eq!(document.diagrams[0].edges.len(), edges_before + 1);
+        assert!(document.processes[0].flows.iter().any(|f| {
+            matches!(&f.source, Some(processcraft_core::bpmn_activity::ModelReference::Local(id)) if *id == start)
+                && matches!(&f.target, Some(processcraft_core::bpmn_activity::ModelReference::Local(id)) if *id == task)
+        }));
     }
 
     #[test]
