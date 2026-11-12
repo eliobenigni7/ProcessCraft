@@ -1,0 +1,2258 @@
+{
+  "format": "vectorcraft",
+  "version": 4,
+  "generator": "VectorCraft 0.23.0",
+  "pdfCompatible": true,
+  "pdf": {
+    "mime": "application/pdf",
+    "data": "JVBERi0xLjcKJYCAgIAKCjEgMCBvYmoKPDwvVHlwZS9QYWdlcy9Db3VudCAxL0tpZHNbMyAwIFJdPj4KZW5kb2JqCjIgMCBvYmoKPDwvUHJvY1NldFsvUERGL1RleHQvSW1hZ2VDL0ltYWdlQl0+PgplbmRvYmoKMyAwIG9iago8PC9UeXBlL1BhZ2UvUmVzb3VyY2VzIDIgMCBSL01lZGlhQm94WzAgMCA1MTIgNTEyXS9CbGVlZEJveFswIDAgNTEyIDUxMl0vVHJpbUJveFswIDAgNTEyIDUxMl0vUGFyZW50IDEgMCBSL0NvbnRlbnRzIDQgMCBSPj4KZW5kb2JqCjQgMCBvYmoKPDwvTGVuZ3RoIDE2ODYvRmlsdGVyL0ZsYXRlRGVjb2RlPj4Kc3RyZWFtCnic7VhJbp7JDd37FLxACM7DCQJkl/QRBMSBIS3am1w/eJTcbcRquxEpyaZXKvGvj8Xi8PhYP5OSkNCf8CfV6OGJhDdWdIuEK1pyJkhYpqwjlT5/JFUjoScKwcePFKU8mfuiJIU1QmXuP2x+uBW2Pz6vvnzwy+LL72fEfYPV47/pkq+PwvYHktv8iKN/3frL6vlXoYcP//jw9w9//fDz6xf2tozFSrFMEv7qujVs2jWkGjjcl57IM7h8d2iC+9nY0GIdbPTgXJkTRnDpZFFIsop00yOpGKe4KEUoS+L3x9dOevyu5RJ+Ftc36wucBf3tz6RB/ySlv5DSp///ZX767TD8KO86eVXFSU1ZJj3piVSFW9dJtTmsJmFROGeoOYUtt1T72TncbtsU7uyVBukrWt/D6faV07/17xN5Ccd6kYZwRIT/htO/47HfZ4nAElne6Tp3RaXu+S6CrW2dwourxvuN533+SB7NItFFJsNm2bhtIL6mpCmc4Xdbj+SZniTN4IwJeiQL5SiXIK3kNKQNWSQH3FLC2aPIL4vlys0lE+HICzyEq+sQGq+LFlkMq5WTIWfh6tNXGS+ykDDAjoWzDvID0irsE96agjrnaVk9WctgJcq+a4lvvTi1nbSUU2dRLhBadhppLrxkRebDklJwRfG47ZzKNLM5WbbDGo/gjZYhjeTcKzU4N3RwTiS79xo5HOGODI5mdRU92SwU4kexGmjM5M3E/aXZJhYO9yw2TYN0ubPq8jXMNMlUeXFb8lTeFIiMzaX6bFyOnrGTxkrkmWgVWWQqXNver+XEw5sq7PNHsoDdK3vndCOaT2Qe7OKVpGus2ndHS+fd1CFdqBmrNxc5GuEUx2ySJep6BRboNqddzqRz7vQlpgiLiGOvs/tclhmbXhZmsroJ/GMcHaFk2Vzi7cguMW4PIyth6USsUFDoblbGNltNusNRG3myjA3ESKc5XAxS55ZtpKZO8Oagesp5a5N0jDvC9T7XrrCTxUTCRABpdJxKY7NoXKbZ3PX0ifbE3UV0Rl9zz9ujLs0TMTCoWRw5/kQ6yzgyyGp4M64tTbPqRB8qWLn2ewTdFjwh/OCixzOAbzK8mgqp8qzmVasqO+AcQpy/5OpcogKjnMNi5mRTMpAlz1YCUVyD1VBnADCvMSVXY7fOIQOOjsWSyz5TIogmzBB02+NJgnA8p86VwSz7+LNwN8TI4KQCmKWyiayTTfHKOu4y3LZW0DjFFYvUQ+ElanmGIw5ZI+Awt9e88+aYuy6bn2+BeSbHWQStIOo5BaMTHcV2OCWWzJszc+c9Iu7lLAW3dfCqBXqn13CpT5Fbc5se6YF02svJXVjXjbyaZSSD3I1DOskruA5U3biqL2SOovO2E661AIeX12zxqbK6b5+syjXJbbjKgA8AbFVrsk6edJ0DdudJW7J29tH06wAFn7WyVluQ5wAlkaMtvNKHGSAnObAe0oquPvtGvCAzjgD3e8Uzb492JWu749LD4n38IR05h/pBCgsCS94G0hhOrs2u6j+I9g+IPlqqzm4dJpbFURdwye0+lDaWFXXSNPZIR20qeuaAroAhLHoh2nlA6QNpJ4fGNf5F8gJTkzsaDTKaa3fjoHLRKw5nzcPRsHWGte05Cl0zTtrLI4EYjrIKKBWYdssVs7FrxM1QWdye2WTjnFYgf1EcYi95oofIr136++PS72KdC9L5hz9/9edP/2lWminYzZGxxtSyaDio4BQBa1PgxqYewAsbBifwNtPECjkEoLrPcxWpOItJB2TOir03kKq2zjWA7hZWv2GAbAFVDbbSw2uVp9Hc0AmmuBcNvvdmmGsnbcCfBzKMXopOvVenR9pNvrDyRbk4rFFnyVZkanNsT71cCmyp54WzgAU1pz/XEtiL9DU1KS4V9EQr1jqNxnta5qiRvurEh3eb8j79EaT/ZpDe8GSAqSVGMKs1d6aDofsMT/Q8z2KaghETjTBnwJg62ceuw5iymaDBAcsMQ9bja0rf78Xg0//U5je+LczLIwdmVQlHeI/RrJ7NVSwHgKCmUXgAeq8DMbT4EVi/J4GXV4Zi9QC6pHHm5ru8ZxTXAu5wqEo1Jg68XcSI2Xk22xx0zRGjLfJQNl/BNxeYuBcQMTxEPZB38SpIAyjOXMf2abYUxTzfeIbQuqBHWUD1cGvljfGzXB2gXy1sqThmlF36VqBuccRzudty7tfeKvB4aDLHE4qPswgGUZy4EpPkHVyhZ++3135BzH8BS0VmvQplbmRzdHJlYW0KZW5kb2JqCjUgMCBvYmoKPDwvVGl0bGUoUHJvY2Vzc0NyYWZ0IGljb24pL0NyZWF0b3IoVmVjdG9yQ3JhZnQpL1Byb2R1Y2VyKFZlY3RvckNyYWZ0KS9Nb2REYXRlKEQ6MjAyNjExMTIyMDUzNDlaKS9DcmVhdGlvbkRhdGUoRDoyMDI2MTExMjIwNTM0OVopPj4KZW5kb2JqCjYgMCBvYmoKPDwvTGVuZ3RoIDEwNjcvVHlwZS9NZXRhZGF0YS9TdWJ0eXBlL1hNTD4+CnN0cmVhbQo8P3hwYWNrZXQgYmVnaW49Iu+7vyIgaWQ9Ilc1TTBNcENlaGlIenJlU3pOVGN6a2M5ZCI/Pjx4OnhtcG1ldGEgeG1sbnM6eD0iYWRvYmU6bnM6bWV0YS8iIHg6eG1wdGs9InhtcC13cml0ZXIiPjxyZGY6UkRGIHhtbG5zOnJkZj0iaHR0cDovL3d3dy53My5vcmcvMTk5OS8wMi8yMi1yZGYtc3ludGF4LW5zIyI+PHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIgeG1sbnM6ZGM9Imh0dHA6Ly9wdXJsLm9yZy9kYy9lbGVtZW50cy8xLjEvIiAgeG1sbnM6eG1wPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvIiAgeG1sbnM6eG1wTU09Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9tbS8iICB4bWxuczp4bXBUUGc9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC90L3BnLyIgIHhtbG5zOnBkZj0iaHR0cDovL25zLmFkb2JlLmNvbS9wZGYvMS4zLyIgPjxkYzp0aXRsZT48cmRmOkFsdD48cmRmOmxpIHhtbDpsYW5nPSJ4LWRlZmF1bHQiPlByb2Nlc3NDcmFmdCBpY29uPC9yZGY6bGk+PC9yZGY6QWx0PjwvZGM6dGl0bGU+PHhtcDpDcmVhdG9yVG9vbD5WZWN0b3JDcmFmdDwveG1wOkNyZWF0b3JUb29sPjxwZGY6UHJvZHVjZXI+VmVjdG9yQ3JhZnQ8L3BkZjpQcm9kdWNlcj48eG1wOk1vZGlmeURhdGU+MjAyNi0xMS0xMlQyMDo1Mzo0OSswMDowMDwveG1wOk1vZGlmeURhdGU+PHhtcDpDcmVhdGVEYXRlPjIwMjYtMTEtMTJUMjA6NTM6NDkrMDA6MDA8L3htcDpDcmVhdGVEYXRlPjx4bXBUUGc6TlBhZ2VzPjE8L3htcFRQZzpOUGFnZXM+PGRjOmZvcm1hdD5hcHBsaWNhdGlvbi9wZGY8L2RjOmZvcm1hdD48eG1wTU06SW5zdGFuY2VJRD53TnFUdUpWWUhURHN0WjJEcFY4SC9RPT08L3htcE1NOkluc3RhbmNlSUQ+PHhtcE1NOkRvY3VtZW50SUQ+d05xVHVKVllIVERzdFoyRHBWOEgvUT09PC94bXBNTTpEb2N1bWVudElEPjx4bXBNTTpSZW5kaXRpb25DbGFzcz5kZWZhdWx0PC94bXBNTTpSZW5kaXRpb25DbGFzcz48cGRmOlBERlZlcnNpb24+MS43PC9wZGY6UERGVmVyc2lvbj48L3JkZjpEZXNjcmlwdGlvbj48L3JkZjpSREY+PC94OnhtcG1ldGE+PD94cGFja2V0IGVuZD0iciI/PgplbmRzdHJlYW0KZW5kb2JqCjcgMCBvYmoKPDwvVmlld2VyUHJlZmVyZW5jZXM8PC9EaXNwbGF5RG9jVGl0bGUgdHJ1ZT4+L1R5cGUvQ2F0YWxvZy9QYWdlcyAxIDAgUi9NZXRhZGF0YSA2IDAgUj4+CmVuZG9iagp4cmVmCjAgOAowMDAwMDAwMDAwIDY1NTM1IGYNCjAwMDAwMDAwMTYgMDAwMDAgbg0KMDAwMDAwMDA2NyAwMDAwMCBuDQowMDAwMDAwMTIwIDAwMDAwIG4NCjAwMDAwMDAyNTkgMDAwMDAgbg0KMDAwMDAwMjAxNCAwMDAwMCBuDQowMDAwMDAyMTYxIDAwMDAwIG4NCjAwMDAwMDMzMDQgMDAwMDAgbg0KdHJhaWxlcgo8PC9TaXplIDgvUm9vdCA3IDAgUi9JbmZvIDUgMCBSL0lEWyh3TnFUdUpWWUhURHN0WjJEcFY4SC9RPT0pKHdOcVR1SlZZSFREc3RaMkRwVjhIL1E9PSldPj4Kc3RhcnR4cmVmCjM0MDcKJSVFT0Y="
+  },
+  "document": {
+    "version": 3,
+    "title": "ProcessCraft icon",
+    "units": "Pixels",
+    "rulers": "artboard",
+    "color_mode": "Rgb",
+    "artboards": [
+      {
+        "id": 1,
+        "name": "Artboard 1",
+        "rect": {
+          "x0": 0.0,
+          "y0": 0.0,
+          "x1": 512.0,
+          "y1": 512.0
+        },
+        "show_center_mark": false,
+        "show_cross_hairs": false
+      }
+    ],
+    "layers": [
+      {
+        "id": 1,
+        "name": "Layer 1",
+        "kind": {
+          "type": "layer",
+          "color": {
+            "Preset": 0
+          },
+          "template": false,
+          "printable": true,
+          "children": [
+            {
+              "id": 17,
+              "appearance": {
+                "items": [
+                  {
+                    "kind": "fill",
+                    "paint": {
+                      "type": "solid",
+                      "color": {
+                        "model": "rgb",
+                        "r": 0.9490196,
+                        "g": 0.64705884,
+                        "b": 0.08627451
+                      }
+                    }
+                  },
+                  {
+                    "kind": "stroke",
+                    "paint": {
+                      "type": "none"
+                    },
+                    "width": 0.0
+                  }
+                ]
+              },
+              "kind": {
+                "type": "path",
+                "path": {
+                  "subpaths": [
+                    {
+                      "anchors": [
+                        {
+                          "p": [
+                            112.0,
+                            0.0
+                          ],
+                          "in": [
+                            50.14410801895112,
+                            0.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            400.0,
+                            0.0
+                          ],
+                          "out": [
+                            461.8558919810489,
+                            0.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            512.0,
+                            112.0
+                          ],
+                          "in": [
+                            512.0,
+                            50.14410801895112
+                          ]
+                        },
+                        {
+                          "p": [
+                            512.0,
+                            400.0
+                          ],
+                          "out": [
+                            512.0,
+                            461.8558919810489
+                          ]
+                        },
+                        {
+                          "p": [
+                            400.0,
+                            512.0
+                          ],
+                          "in": [
+                            461.8558919810489,
+                            512.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            112.0,
+                            512.0
+                          ],
+                          "out": [
+                            50.14410801895112,
+                            512.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            0.0,
+                            400.0
+                          ],
+                          "in": [
+                            0.0,
+                            461.8558919810489
+                          ]
+                        },
+                        {
+                          "p": [
+                            0.0,
+                            112.0
+                          ],
+                          "out": [
+                            0.0,
+                            50.14410801895112
+                          ]
+                        }
+                      ],
+                      "closed": true
+                    }
+                  ]
+                },
+                "live": {
+                  "shape": "rectangle",
+                  "w": 512.0,
+                  "h": 512.0,
+                  "radii": [
+                    112.0,
+                    112.0,
+                    112.0,
+                    112.0
+                  ],
+                  "xf": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    1.0,
+                    0.0,
+                    0.0
+                  ]
+                }
+              }
+            },
+            {
+              "id": 16,
+              "kind": {
+                "type": "group",
+                "children": [
+                  {
+                    "id": 2,
+                    "appearance": {
+                      "items": [
+                        {
+                          "kind": "fill",
+                          "paint": {
+                            "type": "solid",
+                            "color": {
+                              "model": "rgb",
+                              "r": 0.9372549,
+                              "g": 0.9137255,
+                              "b": 0.8627451
+                            }
+                          }
+                        },
+                        {
+                          "kind": "stroke",
+                          "paint": {
+                            "type": "solid",
+                            "color": {
+                              "model": "rgb",
+                              "r": 0.043137256,
+                              "g": 0.043137256,
+                              "b": 0.047058824
+                            }
+                          },
+                          "width": 14.0,
+                          "cap": "Round",
+                          "join": "Round"
+                        }
+                      ]
+                    },
+                    "kind": {
+                      "type": "path",
+                      "path": {
+                        "subpaths": [
+                          {
+                            "anchors": [
+                              {
+                                "p": [
+                                  68.21767987383242,
+                                  114.85539242311268
+                                ]
+                              },
+                              {
+                                "p": [
+                                  354.63998573989517,
+                                  84.75119500202848
+                                ]
+                              },
+                              {
+                                "p": [
+                                  416.18680582350703,
+                                  134.5908271996632
+                                ]
+                              },
+                              {
+                                "p": [
+                                  444.6185478323088,
+                                  405.10078273983356
+                                ]
+                              },
+                              {
+                                "p": [
+                                  102.50301582562275,
+                                  441.0585741039063
+                                ]
+                              }
+                            ],
+                            "closed": true
+                          }
+                        ]
+                      }
+                    },
+                    "bbox_angle": 6.000000000000001
+                  },
+                  {
+                    "id": 3,
+                    "appearance": {
+                      "items": [
+                        {
+                          "kind": "fill",
+                          "paint": {
+                            "type": "solid",
+                            "color": {
+                              "model": "rgb",
+                              "r": 0.9490196,
+                              "g": 0.64705884,
+                              "b": 0.08627451
+                            }
+                          }
+                        },
+                        {
+                          "kind": "stroke",
+                          "paint": {
+                            "type": "none"
+                          },
+                          "width": 0.0
+                        }
+                      ]
+                    },
+                    "kind": {
+                      "type": "path",
+                      "path": {
+                        "subpaths": [
+                          {
+                            "anchors": [
+                              {
+                                "p": [
+                                  75.91103238428391,
+                                  121.08534644781702
+                                ]
+                              },
+                              {
+                                "p": [
+                                  110.71929872217348,
+                                  117.42685023344914
+                                ]
+                              },
+                              {
+                                "p": [
+                                  143.54123618821666,
+                                  429.706725379087
+                                ]
+                              },
+                              {
+                                "p": [
+                                  108.7329698503271,
+                                  433.36522159345486
+                                ]
+                              }
+                            ],
+                            "closed": true
+                          }
+                        ]
+                      }
+                    },
+                    "bbox_angle": 6.000000000000001
+                  },
+                  {
+                    "id": 4,
+                    "appearance": {
+                      "items": [
+                        {
+                          "kind": "fill",
+                          "paint": {
+                            "type": "none"
+                          }
+                        },
+                        {
+                          "kind": "stroke",
+                          "paint": {
+                            "type": "solid",
+                            "color": {
+                              "model": "rgb",
+                              "r": 0.043137256,
+                              "g": 0.043137256,
+                              "b": 0.047058824
+                            }
+                          },
+                          "width": 12.0,
+                          "cap": "Round",
+                          "join": "Round"
+                        }
+                      ]
+                    },
+                    "kind": {
+                      "type": "path",
+                      "path": {
+                        "subpaths": [
+                          {
+                            "anchors": [
+                              {
+                                "p": [
+                                  354.63998573989517,
+                                  84.75119500202848
+                                ]
+                              },
+                              {
+                                "p": [
+                                  360.4935796828837,
+                                  140.4444211426518
+                                ]
+                              },
+                              {
+                                "p": [
+                                  416.18680582350703,
+                                  134.5908271996632
+                                ]
+                              }
+                            ],
+                            "closed": false
+                          }
+                        ]
+                      }
+                    },
+                    "bbox_angle": 6.000000000000001
+                  },
+                  {
+                    "id": 5,
+                    "appearance": {
+                      "items": [
+                        {
+                          "kind": "fill",
+                          "paint": {
+                            "type": "none"
+                          }
+                        },
+                        {
+                          "kind": "stroke",
+                          "paint": {
+                            "type": "solid",
+                            "color": {
+                              "model": "rgb",
+                              "r": 0.043137256,
+                              "g": 0.043137256,
+                              "b": 0.047058824
+                            }
+                          },
+                          "width": 10.0
+                        }
+                      ]
+                    },
+                    "kind": {
+                      "type": "path",
+                      "path": {
+                        "subpaths": [
+                          {
+                            "anchors": [
+                              {
+                                "p": [
+                                  109.98759947929992,
+                                  110.46519696587123
+                                ]
+                              },
+                              {
+                                "p": [
+                                  144.27293543109025,
+                                  436.6683786466649
+                                ]
+                              }
+                            ],
+                            "closed": false
+                          }
+                        ]
+                      },
+                      "live": {
+                        "shape": "line",
+                        "a": {
+                          "x": 109.98759947929992,
+                          "y": 110.46519696587123
+                        },
+                        "b": {
+                          "x": 144.27293543109025,
+                          "y": 436.6683786466649
+                        }
+                      }
+                    },
+                    "bbox_angle": 6.000000000000001
+                  },
+                  {
+                    "id": 6,
+                    "appearance": {
+                      "items": [
+                        {
+                          "kind": "fill",
+                          "paint": {
+                            "type": "none"
+                          }
+                        },
+                        {
+                          "kind": "stroke",
+                          "paint": {
+                            "type": "solid",
+                            "color": {
+                              "model": "rgb",
+                              "r": 0.043137256,
+                              "g": 0.043137256,
+                              "b": 0.047058824
+                            }
+                          },
+                          "width": 9.0,
+                          "cap": "Round",
+                          "join": "Round",
+                          "end_arrow": "Triangle",
+                          "arrow_scale": [
+                            100.0,
+                            55.0
+                          ],
+                          "arrow_align": "Tip"
+                        }
+                      ]
+                    },
+                    "kind": {
+                      "type": "path",
+                      "path": {
+                        "subpaths": [
+                          {
+                            "anchors": [
+                              {
+                                "p": [
+                                  351.4801079326565,
+                                  207.7553216492403
+                                ]
+                              },
+                              {
+                                "p": [
+                                  345.4174570631326,
+                                  150.07305171788045
+                                ]
+                              },
+                              {
+                                "p": [
+                                  240.9926580494639,
+                                  161.04854036098405
+                                ]
+                              },
+                              {
+                                "p": [
+                                  246.21908121284656,
+                                  210.7746351293977
+                                ]
+                              }
+                            ],
+                            "closed": false
+                          }
+                        ]
+                      }
+                    },
+                    "bbox_angle": 6.000000000000001
+                  },
+                  {
+                    "id": 7,
+                    "appearance": {
+                      "items": [
+                        {
+                          "kind": "fill",
+                          "paint": {
+                            "type": "none"
+                          }
+                        },
+                        {
+                          "kind": "stroke",
+                          "paint": {
+                            "type": "solid",
+                            "color": {
+                              "model": "rgb",
+                              "r": 0.043137256,
+                              "g": 0.043137256,
+                              "b": 0.047058824
+                            }
+                          },
+                          "width": 9.0,
+                          "cap": "Round",
+                          "end_arrow": "Triangle",
+                          "arrow_scale": [
+                            100.0,
+                            55.0
+                          ],
+                          "arrow_align": "Tip"
+                        }
+                      ]
+                    },
+                    "kind": {
+                      "type": "path",
+                      "path": {
+                        "subpaths": [
+                          {
+                            "anchors": [
+                              {
+                                "p": [
+                                  186.95987536651853,
+                                  259.234376383995
+                                ]
+                              },
+                              {
+                                "p": [
+                                  207.84483516925226,
+                                  257.0392786553743
+                                ]
+                              }
+                            ],
+                            "closed": false
+                          }
+                        ]
+                      },
+                      "live": {
+                        "shape": "line",
+                        "a": {
+                          "x": 186.95987536651853,
+                          "y": 259.234376383995
+                        },
+                        "b": {
+                          "x": 207.84483516925226,
+                          "y": 257.0392786553743
+                        }
+                      }
+                    },
+                    "bbox_angle": 6.000000000000001
+                  },
+                  {
+                    "id": 8,
+                    "appearance": {
+                      "items": [
+                        {
+                          "kind": "fill",
+                          "paint": {
+                            "type": "none"
+                          }
+                        },
+                        {
+                          "kind": "stroke",
+                          "paint": {
+                            "type": "solid",
+                            "color": {
+                              "model": "rgb",
+                              "r": 0.043137256,
+                              "g": 0.043137256,
+                              "b": 0.047058824
+                            }
+                          },
+                          "width": 9.0,
+                          "cap": "Round",
+                          "end_arrow": "Triangle",
+                          "arrow_scale": [
+                            100.0,
+                            55.0
+                          ],
+                          "arrow_align": "Tip"
+                        }
+                      ]
+                    },
+                    "kind": {
+                      "type": "path",
+                      "path": {
+                        "subpaths": [
+                          {
+                            "anchors": [
+                              {
+                                "p": [
+                                  291.3846743801872,
+                                  248.2588877408914
+                                ]
+                              },
+                              {
+                                "p": [
+                                  319.2312874504989,
+                                  245.3320907693971
+                                ]
+                              }
+                            ],
+                            "closed": false
+                          }
+                        ]
+                      },
+                      "live": {
+                        "shape": "line",
+                        "a": {
+                          "x": 291.3846743801872,
+                          "y": 248.2588877408914
+                        },
+                        "b": {
+                          "x": 319.2312874504989,
+                          "y": 245.3320907693971
+                        }
+                      }
+                    },
+                    "bbox_angle": 6.000000000000001
+                  },
+                  {
+                    "id": 9,
+                    "appearance": {
+                      "items": [
+                        {
+                          "kind": "fill",
+                          "paint": {
+                            "type": "none"
+                          }
+                        },
+                        {
+                          "kind": "stroke",
+                          "paint": {
+                            "type": "solid",
+                            "color": {
+                              "model": "rgb",
+                              "r": 0.043137256,
+                              "g": 0.043137256,
+                              "b": 0.047058824
+                            }
+                          },
+                          "width": 9.0,
+                          "cap": "Round",
+                          "end_arrow": "Triangle",
+                          "arrow_scale": [
+                            100.0,
+                            55.0
+                          ],
+                          "arrow_align": "Tip"
+                        }
+                      ]
+                    },
+                    "kind": {
+                      "type": "path",
+                      "path": {
+                        "subpaths": [
+                          {
+                            "anchors": [
+                              {
+                                "p": [
+                                  358.58804343485696,
+                                  275.3828105342829
+                                ]
+                              },
+                              {
+                                "p": [
+                                  365.1733366207191,
+                                  338.03768994248406
+                                ]
+                              }
+                            ],
+                            "closed": false
+                          }
+                        ]
+                      },
+                      "live": {
+                        "shape": "line",
+                        "a": {
+                          "x": 358.58804343485696,
+                          "y": 275.3828105342829
+                        },
+                        "b": {
+                          "x": 365.1733366207191,
+                          "y": 338.03768994248406
+                        }
+                      }
+                    },
+                    "bbox_angle": 6.000000000000001
+                  },
+                  {
+                    "id": 10,
+                    "appearance": {
+                      "items": [
+                        {
+                          "kind": "fill",
+                          "paint": {
+                            "type": "solid",
+                            "color": {
+                              "model": "rgb",
+                              "r": 0.9372549,
+                              "g": 0.9137255,
+                              "b": 0.8627451
+                            }
+                          }
+                        },
+                        {
+                          "kind": "stroke",
+                          "paint": {
+                            "type": "solid",
+                            "color": {
+                              "model": "rgb",
+                              "r": 0.043137256,
+                              "g": 0.043137256,
+                              "b": 0.047058824
+                            }
+                          },
+                          "width": 9.0
+                        }
+                      ]
+                    },
+                    "kind": {
+                      "type": "path",
+                      "path": {
+                        "subpaths": [
+                          {
+                            "anchors": [
+                              {
+                                "p": [
+                                  145.18995576105104,
+                                  263.62457184123645
+                                ],
+                                "in": [
+                                  146.40227476095646,
+                                  275.15901664111544
+                                ],
+                                "out": [
+                                  143.9776367611456,
+                                  252.09012704135745
+                                ],
+                                "kind": "Smooth"
+                              },
+                              {
+                                "p": [
+                                  163.87981783516403,
+                                  240.544514309882
+                                ],
+                                "in": [
+                                  152.34537303528506,
+                                  241.75683330978745
+                                ],
+                                "out": [
+                                  175.41426263504303,
+                                  239.33219530997656
+                                ],
+                                "kind": "Smooth"
+                              },
+                              {
+                                "p": [
+                                  186.95987536651853,
+                                  259.234376383995
+                                ],
+                                "in": [
+                                  185.74755636661308,
+                                  247.69993158411603
+                                ],
+                                "out": [
+                                  188.17219436642395,
+                                  270.76882118387397
+                                ],
+                                "kind": "Smooth"
+                              },
+                              {
+                                "p": [
+                                  168.27001329240548,
+                                  282.31443391534947
+                                ],
+                                "in": [
+                                  179.80445809228448,
+                                  281.102114915444
+                                ],
+                                "out": [
+                                  156.7355684925265,
+                                  283.5267529152549
+                                ],
+                                "kind": "Smooth"
+                              }
+                            ],
+                            "closed": true
+                          }
+                        ]
+                      },
+                      "live": {
+                        "shape": "ellipse",
+                        "w": 42.0,
+                        "h": 42.0,
+                        "pie": [
+                          0.0,
+                          360.0
+                        ],
+                        "xf": [
+                          0.9945218953682733,
+                          -0.10452846326765347,
+                          0.10452846326765347,
+                          0.9945218953682733,
+                          142.9948580324303,
+                          242.73961203850274
+                        ]
+                      }
+                    },
+                    "bbox_angle": 6.000000000000001
+                  },
+                  {
+                    "id": 11,
+                    "appearance": {
+                      "items": [
+                        {
+                          "kind": "fill",
+                          "paint": {
+                            "type": "solid",
+                            "color": {
+                              "model": "rgb",
+                              "r": 0.9372549,
+                              "g": 0.9137255,
+                              "b": 0.8627451
+                            }
+                          }
+                        },
+                        {
+                          "kind": "stroke",
+                          "paint": {
+                            "type": "solid",
+                            "color": {
+                              "model": "rgb",
+                              "r": 0.043137256,
+                              "g": 0.043137256,
+                              "b": 0.047058824
+                            }
+                          },
+                          "width": 12.0,
+                          "join": "Round"
+                        }
+                      ]
+                    },
+                    "kind": {
+                      "type": "path",
+                      "path": {
+                        "subpaths": [
+                          {
+                            "anchors": [
+                              {
+                                "p": [
+                                  221.77414768171036,
+                                  217.36593429256214
+                                ],
+                                "in": [
+                                  212.98599926275494,
+                                  218.28960591153773
+                                ]
+                              },
+                              {
+                                "p": [
+                                  271.500242450124,
+                                  212.13951112917948
+                                ],
+                                "out": [
+                                  280.2883908690794,
+                                  211.21583951020392
+                                ]
+                              },
+                              {
+                                "p": [
+                                  289.08504818829886,
+                                  226.37940604278938
+                                ],
+                                "in": [
+                                  288.16137656932324,
+                                  217.59125762383397
+                                ]
+                              },
+                              {
+                                "p": [
+                                  293.6843005720756,
+                                  270.13836943899344
+                                ],
+                                "out": [
+                                  294.60797219105115,
+                                  278.92651785794885
+                                ]
+                              },
+                              {
+                                "p": [
+                                  279.4444056584657,
+                                  287.72317517716823
+                                ],
+                                "in": [
+                                  288.2325540774211,
+                                  286.79950355819267
+                                ]
+                              },
+                              {
+                                "p": [
+                                  229.718310890052,
+                                  292.9495983405509
+                                ],
+                                "out": [
+                                  220.9301624710966,
+                                  293.87326995952645
+                                ]
+                              },
+                              {
+                                "p": [
+                                  212.13350515187716,
+                                  278.709703426941
+                                ],
+                                "in": [
+                                  213.05717677085275,
+                                  287.49785184589643
+                                ]
+                              },
+                              {
+                                "p": [
+                                  207.5342527681004,
+                                  234.95074003073697
+                                ],
+                                "out": [
+                                  206.61058114912484,
+                                  226.16259161178155
+                                ]
+                              }
+                            ],
+                            "closed": true
+                          }
+                        ]
+                      },
+                      "live": {
+                        "shape": "rectangle",
+                        "w": 82.0,
+                        "h": 76.0,
+                        "radii": [
+                          16.0,
+                          16.0,
+                          16.0,
+                          16.0
+                        ],
+                        "xf": [
+                          0.9945218953682733,
+                          -0.10452846326765347,
+                          0.10452846326765347,
+                          0.9945218953682733,
+                          205.86179735581794,
+                          219.0383897048446
+                        ]
+                      }
+                    },
+                    "bbox_angle": 6.000000000000001
+                  },
+                  {
+                    "id": 12,
+                    "appearance": {
+                      "items": [
+                        {
+                          "kind": "fill",
+                          "paint": {
+                            "type": "solid",
+                            "color": {
+                              "model": "rgb",
+                              "r": 0.9490196,
+                              "g": 0.64705884,
+                              "b": 0.08627451
+                            }
+                          }
+                        },
+                        {
+                          "kind": "stroke",
+                          "paint": {
+                            "type": "solid",
+                            "color": {
+                              "model": "rgb",
+                              "r": 0.043137256,
+                              "g": 0.043137256,
+                              "b": 0.047058824
+                            }
+                          },
+                          "width": 12.0,
+                          "join": "Round"
+                        }
+                      ]
+                    },
+                    "kind": {
+                      "type": "path",
+                      "path": {
+                        "subpaths": [
+                          {
+                            "anchors": [
+                              {
+                                "p": [
+                                  351.4801079326565,
+                                  207.7553216492403
+                                ]
+                              },
+                              {
+                                "p": [
+                                  388.847820126278,
+                                  238.01509834066135
+                                ]
+                              },
+                              {
+                                "p": [
+                                  358.58804343485696,
+                                  275.3828105342829
+                                ]
+                              },
+                              {
+                                "p": [
+                                  321.22033124123544,
+                                  245.1230338428618
+                                ]
+                              }
+                            ],
+                            "closed": true
+                          }
+                        ]
+                      }
+                    },
+                    "bbox_angle": 6.000000000000001
+                  },
+                  {
+                    "id": 13,
+                    "appearance": {
+                      "items": [
+                        {
+                          "kind": "fill",
+                          "paint": {
+                            "type": "none"
+                          }
+                        },
+                        {
+                          "kind": "stroke",
+                          "paint": {
+                            "type": "solid",
+                            "color": {
+                              "model": "rgb",
+                              "r": 0.043137256,
+                              "g": 0.043137256,
+                              "b": 0.047058824
+                            }
+                          },
+                          "width": 8.0,
+                          "cap": "Round"
+                        }
+                      ]
+                    },
+                    "kind": {
+                      "type": "path",
+                      "path": {
+                        "subpaths": [
+                          {
+                            "anchors": [
+                              {
+                                "p": [
+                                  344.04357209739743,
+                                  232.66913177075537
+                                ]
+                              },
+                              {
+                                "p": [
+                                  366.024579270116,
+                                  250.46900041276774
+                                ]
+                              }
+                            ],
+                            "closed": false
+                          }
+                        ]
+                      },
+                      "live": {
+                        "shape": "line",
+                        "a": {
+                          "x": 344.04357209739743,
+                          "y": 232.66913177075537
+                        },
+                        "b": {
+                          "x": 366.024579270116,
+                          "y": 250.46900041276774
+                        }
+                      }
+                    },
+                    "bbox_angle": 6.000000000000001
+                  },
+                  {
+                    "id": 14,
+                    "appearance": {
+                      "items": [
+                        {
+                          "kind": "fill",
+                          "paint": {
+                            "type": "none"
+                          }
+                        },
+                        {
+                          "kind": "stroke",
+                          "paint": {
+                            "type": "solid",
+                            "color": {
+                              "model": "rgb",
+                              "r": 0.043137256,
+                              "g": 0.043137256,
+                              "b": 0.047058824
+                            }
+                          },
+                          "width": 8.0,
+                          "cap": "Round"
+                        }
+                      ]
+                    },
+                    "kind": {
+                      "type": "path",
+                      "path": {
+                        "subpaths": [
+                          {
+                            "anchors": [
+                              {
+                                "p": [
+                                  363.9340100047629,
+                                  230.57856250540232
+                                ]
+                              },
+                              {
+                                "p": [
+                                  346.13414136275054,
+                                  252.55956967812082
+                                ]
+                              }
+                            ],
+                            "closed": false
+                          }
+                        ]
+                      },
+                      "live": {
+                        "shape": "line",
+                        "a": {
+                          "x": 363.9340100047629,
+                          "y": 230.57856250540232
+                        },
+                        "b": {
+                          "x": 346.13414136275054,
+                          "y": 252.55956967812082
+                        }
+                      }
+                    },
+                    "bbox_angle": 6.000000000000001
+                  },
+                  {
+                    "id": 15,
+                    "appearance": {
+                      "items": [
+                        {
+                          "kind": "fill",
+                          "paint": {
+                            "type": "solid",
+                            "color": {
+                              "model": "rgb",
+                              "r": 0.043137256,
+                              "g": 0.043137256,
+                              "b": 0.047058824
+                            }
+                          }
+                        },
+                        {
+                          "kind": "stroke",
+                          "paint": {
+                            "type": "none"
+                          },
+                          "width": 0.0
+                        }
+                      ]
+                    },
+                    "kind": {
+                      "type": "path",
+                      "path": {
+                        "subpaths": [
+                          {
+                            "anchors": [
+                              {
+                                "p": [
+                                  346.69253147314134,
+                                  363.1067912645751
+                                ],
+                                "in": [
+                                  347.9048504730468,
+                                  374.64123606445406
+                                ],
+                                "out": [
+                                  345.48021247323595,
+                                  351.5723464646962
+                                ],
+                                "kind": "Smooth"
+                              },
+                              {
+                                "p": [
+                                  365.3823935472544,
+                                  340.0267337332206
+                                ],
+                                "in": [
+                                  353.8479487473754,
+                                  341.2390527331261
+                                ],
+                                "out": [
+                                  376.91683834713336,
+                                  338.8144147333152
+                                ],
+                                "kind": "Smooth"
+                              },
+                              {
+                                "p": [
+                                  388.46245107860886,
+                                  358.71659580733365
+                                ],
+                                "in": [
+                                  387.2501320787034,
+                                  347.1821510074547
+                                ],
+                                "out": [
+                                  389.67477007851426,
+                                  370.2510406072126
+                                ],
+                                "kind": "Smooth"
+                              },
+                              {
+                                "p": [
+                                  369.77258900449584,
+                                  381.7966533386881
+                                ],
+                                "in": [
+                                  381.3070338043748,
+                                  380.58433433878264
+                                ],
+                                "out": [
+                                  358.23814420461684,
+                                  383.00897233859354
+                                ],
+                                "kind": "Smooth"
+                              }
+                            ],
+                            "closed": true
+                          }
+                        ]
+                      },
+                      "live": {
+                        "shape": "ellipse",
+                        "w": 42.0,
+                        "h": 42.0,
+                        "pie": [
+                          0.0,
+                          360.0
+                        ],
+                        "xf": [
+                          0.9945218953682733,
+                          -0.10452846326765347,
+                          0.10452846326765347,
+                          0.9945218953682733,
+                          344.49743374452066,
+                          342.22183146184136
+                        ]
+                      }
+                    },
+                    "bbox_angle": 6.000000000000001
+                  }
+                ],
+                "clip": false
+              },
+              "bbox_angle": 6.000000000000001
+            }
+          ]
+        }
+      }
+    ],
+    "swatches": [
+      {
+        "name": "[None]",
+        "paint": {
+          "type": "none"
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "White",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 1.0,
+            "g": 1.0,
+            "b": 1.0
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Black",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.0,
+            "g": 0.0,
+            "b": 0.0
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Red",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.92941177,
+            "g": 0.10980392,
+            "b": 0.14117648
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Orange Red",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.94509804,
+            "g": 0.3529412,
+            "b": 0.14117648
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Orange",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.96862745,
+            "g": 0.5764706,
+            "b": 0.11764706
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Amber",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.9843137,
+            "g": 0.6901961,
+            "b": 0.23137255
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Yellow",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.9882353,
+            "g": 0.93333334,
+            "b": 0.12941177
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Yellow Green",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.8509804,
+            "g": 0.8784314,
+            "b": 0.12941177
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Lime",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.54901963,
+            "g": 0.7764706,
+            "b": 0.24705882
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Green",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.22352941,
+            "g": 0.70980394,
+            "b": 0.2901961
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Emerald",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.0,
+            "g": 0.57254905,
+            "b": 0.27058825
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Teal",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.0,
+            "g": 0.40784314,
+            "b": 0.21568628
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Aqua",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.13333334,
+            "g": 0.70980394,
+            "b": 0.4509804
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Cyan Green",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.0,
+            "g": 0.6627451,
+            "b": 0.6156863
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Cyan",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.16078432,
+            "g": 0.67058825,
+            "b": 0.8862745
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Azure",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.0,
+            "g": 0.44313726,
+            "b": 0.7372549
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Blue",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.18039216,
+            "g": 0.19215687,
+            "b": 0.57254905
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Indigo",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.105882354,
+            "g": 0.078431375,
+            "b": 0.39215687
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Violet",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.4,
+            "g": 0.1764706,
+            "b": 0.5686275
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Purple",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.5764706,
+            "g": 0.15294118,
+            "b": 0.56078434
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Magenta",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.61960787,
+            "g": 0.0,
+            "b": 0.3647059
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Rose",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.83137256,
+            "g": 0.078431375,
+            "b": 0.3529412
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Pink",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.92941177,
+            "g": 0.11764706,
+            "b": 0.4745098
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Brown",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.78039217,
+            "g": 0.69803923,
+            "b": 0.6
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Tan",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.6,
+            "g": 0.5254902,
+            "b": 0.45882353
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Coffee",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.4509804,
+            "g": 0.3882353,
+            "b": 0.34117648
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Chocolate",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.3254902,
+            "g": 0.2784314,
+            "b": 0.25490198
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Sand",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.7764706,
+            "g": 0.6117647,
+            "b": 0.42745098
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Copper",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.6509804,
+            "g": 0.4862745,
+            "b": 0.32156864
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Rust",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.54901963,
+            "g": 0.38431373,
+            "b": 0.22352941
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Walnut",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.45882353,
+            "g": 0.29803923,
+            "b": 0.14117648
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Espresso",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.3764706,
+            "g": 0.21960784,
+            "b": 0.07450981
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "White, Black",
+        "paint": {
+          "type": "gradient",
+          "gradient": {
+            "kind": "Linear",
+            "stops": [
+              {
+                "offset": 0.0,
+                "color": {
+                  "model": "rgb",
+                  "r": 1.0,
+                  "g": 1.0,
+                  "b": 1.0
+                },
+                "opacity": 1.0,
+                "midpoint": 0.5
+              },
+              {
+                "offset": 1.0,
+                "color": {
+                  "model": "rgb",
+                  "r": 0.0,
+                  "g": 0.0,
+                  "b": 0.0
+                },
+                "opacity": 1.0,
+                "midpoint": 0.5
+              }
+            ]
+          },
+          "angle": 0.0
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Radial White, Black",
+        "paint": {
+          "type": "gradient",
+          "gradient": {
+            "kind": "Radial",
+            "stops": [
+              {
+                "offset": 0.0,
+                "color": {
+                  "model": "rgb",
+                  "r": 1.0,
+                  "g": 1.0,
+                  "b": 1.0
+                },
+                "opacity": 1.0,
+                "midpoint": 0.5
+              },
+              {
+                "offset": 1.0,
+                "color": {
+                  "model": "rgb",
+                  "r": 0.0,
+                  "g": 0.0,
+                  "b": 0.0
+                },
+                "opacity": 1.0,
+                "midpoint": 0.5
+              }
+            ]
+          },
+          "angle": 0.0
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Sunset",
+        "paint": {
+          "type": "gradient",
+          "gradient": {
+            "kind": "Linear",
+            "stops": [
+              {
+                "offset": 0.0,
+                "color": {
+                  "model": "rgb",
+                  "r": 0.9843137,
+                  "g": 0.6901961,
+                  "b": 0.23137255
+                },
+                "opacity": 1.0,
+                "midpoint": 0.5
+              },
+              {
+                "offset": 1.0,
+                "color": {
+                  "model": "rgb",
+                  "r": 0.83137256,
+                  "g": 0.078431375,
+                  "b": 0.3529412
+                },
+                "opacity": 1.0,
+                "midpoint": 0.5
+              }
+            ]
+          },
+          "angle": 0.0
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Ocean",
+        "paint": {
+          "type": "gradient",
+          "gradient": {
+            "kind": "Linear",
+            "stops": [
+              {
+                "offset": 0.0,
+                "color": {
+                  "model": "rgb",
+                  "r": 0.16078432,
+                  "g": 0.67058825,
+                  "b": 0.8862745
+                },
+                "opacity": 1.0,
+                "midpoint": 0.5
+              },
+              {
+                "offset": 1.0,
+                "color": {
+                  "model": "rgb",
+                  "r": 0.18039216,
+                  "g": 0.19215687,
+                  "b": 0.57254905
+                },
+                "opacity": 1.0,
+                "midpoint": 0.5
+              }
+            ]
+          },
+          "angle": 0.0
+        },
+        "global": false,
+        "spot": false
+      }
+    ],
+    "swatch_groups": [
+      {
+        "name": "Grays",
+        "swatches": [
+          {
+            "name": "K=90",
+            "paint": {
+              "type": "solid",
+              "color": {
+                "model": "gray",
+                "k": 0.9
+              }
+            },
+            "global": false,
+            "spot": false
+          },
+          {
+            "name": "K=80",
+            "paint": {
+              "type": "solid",
+              "color": {
+                "model": "gray",
+                "k": 0.8
+              }
+            },
+            "global": false,
+            "spot": false
+          },
+          {
+            "name": "K=70",
+            "paint": {
+              "type": "solid",
+              "color": {
+                "model": "gray",
+                "k": 0.7
+              }
+            },
+            "global": false,
+            "spot": false
+          },
+          {
+            "name": "K=60",
+            "paint": {
+              "type": "solid",
+              "color": {
+                "model": "gray",
+                "k": 0.6
+              }
+            },
+            "global": false,
+            "spot": false
+          },
+          {
+            "name": "K=50",
+            "paint": {
+              "type": "solid",
+              "color": {
+                "model": "gray",
+                "k": 0.5
+              }
+            },
+            "global": false,
+            "spot": false
+          },
+          {
+            "name": "K=40",
+            "paint": {
+              "type": "solid",
+              "color": {
+                "model": "gray",
+                "k": 0.4
+              }
+            },
+            "global": false,
+            "spot": false
+          },
+          {
+            "name": "K=30",
+            "paint": {
+              "type": "solid",
+              "color": {
+                "model": "gray",
+                "k": 0.3
+              }
+            },
+            "global": false,
+            "spot": false
+          },
+          {
+            "name": "K=20",
+            "paint": {
+              "type": "solid",
+              "color": {
+                "model": "gray",
+                "k": 0.2
+              }
+            },
+            "global": false,
+            "spot": false
+          },
+          {
+            "name": "K=10",
+            "paint": {
+              "type": "solid",
+              "color": {
+                "model": "gray",
+                "k": 0.1
+              }
+            },
+            "global": false,
+            "spot": false
+          }
+        ]
+      },
+      {
+        "name": "Brights",
+        "swatches": [
+          {
+            "name": "Bright Red",
+            "paint": {
+              "type": "solid",
+              "color": {
+                "model": "rgb",
+                "r": 1.0,
+                "g": 0.11372549,
+                "b": 0.14509805
+              }
+            },
+            "global": false,
+            "spot": false
+          },
+          {
+            "name": "Bright Yellow",
+            "paint": {
+              "type": "solid",
+              "color": {
+                "model": "rgb",
+                "r": 1.0,
+                "g": 0.9019608,
+                "b": 0.0
+              }
+            },
+            "global": false,
+            "spot": false
+          },
+          {
+            "name": "Bright Green",
+            "paint": {
+              "type": "solid",
+              "color": {
+                "model": "rgb",
+                "r": 0.0,
+                "g": 0.9019608,
+                "b": 0.4627451
+              }
+            },
+            "global": false,
+            "spot": false
+          },
+          {
+            "name": "Bright Blue",
+            "paint": {
+              "type": "solid",
+              "color": {
+                "model": "rgb",
+                "r": 0.16078432,
+                "g": 0.4745098,
+                "b": 1.0
+              }
+            },
+            "global": false,
+            "spot": false
+          },
+          {
+            "name": "Bright Violet",
+            "paint": {
+              "type": "solid",
+              "color": {
+                "model": "rgb",
+                "r": 0.8352941,
+                "g": 0.0,
+                "b": 0.9764706
+              }
+            },
+            "global": false,
+            "spot": false
+          }
+        ]
+      }
+    ],
+    "graphic_styles": [
+      {
+        "name": "Default Graphic Style",
+        "appearance": {
+          "items": [
+            {
+              "kind": "fill",
+              "paint": {
+                "type": "solid",
+                "color": {
+                  "model": "rgb",
+                  "r": 1.0,
+                  "g": 1.0,
+                  "b": 1.0
+                }
+              }
+            },
+            {
+              "kind": "stroke",
+              "paint": {
+                "type": "solid",
+                "color": {
+                  "model": "rgb",
+                  "r": 0.0,
+                  "g": 0.0,
+                  "b": 0.0
+                }
+              },
+              "width": 1.0
+            }
+          ]
+        },
+        "id": 1,
+        "unit_box": true
+      },
+      {
+        "name": "Black Outline",
+        "appearance": {
+          "items": [
+            {
+              "kind": "fill",
+              "paint": {
+                "type": "none"
+              }
+            },
+            {
+              "kind": "stroke",
+              "paint": {
+                "type": "solid",
+                "color": {
+                  "model": "rgb",
+                  "r": 0.0,
+                  "g": 0.0,
+                  "b": 0.0
+                }
+              },
+              "width": 1.0
+            }
+          ]
+        },
+        "id": 2,
+        "unit_box": true
+      },
+      {
+        "name": "Heavy Ink",
+        "appearance": {
+          "items": [
+            {
+              "kind": "fill",
+              "paint": {
+                "type": "solid",
+                "color": {
+                  "model": "rgb",
+                  "r": 0.105882354,
+                  "g": 0.078431375,
+                  "b": 0.39215687
+                }
+              }
+            },
+            {
+              "kind": "stroke",
+              "paint": {
+                "type": "solid",
+                "color": {
+                  "model": "rgb",
+                  "r": 0.0,
+                  "g": 0.0,
+                  "b": 0.0
+                }
+              },
+              "width": 4.0
+            }
+          ]
+        },
+        "id": 3,
+        "unit_box": true
+      },
+      {
+        "name": "Sunshine",
+        "appearance": {
+          "items": [
+            {
+              "kind": "fill",
+              "paint": {
+                "type": "solid",
+                "color": {
+                  "model": "rgb",
+                  "r": 0.9843137,
+                  "g": 0.6901961,
+                  "b": 0.23137255
+                }
+              }
+            },
+            {
+              "kind": "stroke",
+              "paint": {
+                "type": "solid",
+                "color": {
+                  "model": "rgb",
+                  "r": 0.94509804,
+                  "g": 0.3529412,
+                  "b": 0.14117648
+                }
+              },
+              "width": 2.0
+            }
+          ]
+        },
+        "id": 4,
+        "unit_box": true
+      }
+    ],
+    "symbols": [],
+    "guides": [],
+    "grid": {
+      "spacing": 72.0,
+      "subdivisions": 8
+    },
+    "raster_effects_ppi": 72.0,
+    "images": {},
+    "next_id": 18,
+    "metadata": {
+      "author": "",
+      "authorTitle": "",
+      "description": "",
+      "keywords": [],
+      "rating": 0,
+      "copyrightStatus": "unknown",
+      "copyrightNotice": "",
+      "copyrightUrl": "",
+      "created": 1794516829,
+      "modified": null
+    }
+  },
+  "images": {}
+}

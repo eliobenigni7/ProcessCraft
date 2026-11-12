@@ -6,7 +6,8 @@ to the task, and an end event below. It reads as "a process on paper" from 1024 
 
 The icon follows the tile conventions of the open-source Crafting Apps family (FigCraft, GridCraft,
 WordCraft, …) so ProcessCraft sits naturally next to them: a full-bleed app-colour tile, a
-three-colour palette and thick ink line work. The artwork itself is original to ProcessCraft.
+three-colour palette and thick ink line work. The artwork itself is original to ProcessCraft and
+is drawn in **VectorCraft**, one of the family's own apps.
 
 ## Palette
 
@@ -28,19 +29,28 @@ rotated −6° around the tile centre. Windows and Linux use the tile edge to ed
 
 ## Files
 
-- `processcraft.svg`: canonical vector master.
-- `processcraft-<size>.png` (16–1024): raster renders; the 256 px one is the runtime window icon
-  (`apps/processcraft/src/widgets.rs`) and the README header image.
-- `processcraft.ico`: Windows icon, 16–256 px.
+- `processcraft.vectorcraft`: the editable master, a native **VectorCraft** document — open it in
+  VectorCraft to change the artwork.
+- `processcraft-icon.commands.json`: the VectorCraft command batch that draws the master
+  (`file.new`, `path.create`, `shape.*`, `paint.*`, `stroke.*`, `object.rotate` …), so the icon can be
+  rebuilt headlessly and reviewed as text.
+- `processcraft.svg`: SVG exported by VectorCraft.
+- `processcraft-<size>.png` (16–1024): rendered by `vectorcraft-cli convert`; the 256 px one is the
+  runtime window icon (`apps/processcraft/src/widgets.rs`) and the README header image.
+- `processcraft.ico`: Windows icon whose 16–256 px entries are exactly those VectorCraft renders.
 
 ## Regenerate
 
-All files come from one geometry in [`scripts/generate_app_icon.py`](../../scripts/generate_app_icon.py)
-(requires Pillow):
+With VectorCraft installed (the script finds `vectorcraft-cli` under
+`%LOCALAPPDATA%/Programs/ArtCraft/VectorCraft/` or on `PATH`) and Pillow, which only packs the
+`.ico`:
 
 ```sh
 python scripts/generate_app_icon.py
 ```
+
+To change the artwork, edit `processcraft-icon.commands.json` (or redraw in VectorCraft and keep the
+command batch in step), then regenerate.
 
 ## License
 
