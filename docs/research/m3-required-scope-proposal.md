@@ -10,12 +10,14 @@ A declaration is **required** when it is one of:
 2. A simpleType used as the type of a selected attribute (7 enums).
 3. The BPMNDI/DI/DC declarations for the diagram objects in set I.
 
-Sets (XSD names):
+Sets (XSD names), **frozen by WP2** (the `REQUIRED_SETS` dict in `scripts/generate_bpmn20_inventory.py` is authoritative):
 
-- **D, Descriptive:** definitions, process, collaboration, participant, laneSet, lane, childLaneSet, sequenceFlow, conditionExpression, messageFlow, task, manualTask, userTask, serviceTask, scriptTask, script, subProcess, callActivity, exclusiveGateway, parallelGateway, startEvent, intermediateCatchEvent, intermediateThrowEvent, endEvent, messageEventDefinition, timerEventDefinition, terminateEventDefinition, message, dataObject, dataObjectReference, dataStore, dataStoreReference, dataInput, dataOutput, ioSpecification, inputSet, outputSet, dataInputAssociation, dataOutputAssociation, textAnnotation, association, group, category, categoryValue, documentation.
-- **A, Analytic (adds):** sendTask, receiveTask, businessRuleTask, standardLoopCharacteristics, multiInstanceLoopCharacteristics, loopCardinality, completionCondition, inclusiveGateway, eventBasedGateway, boundaryEvent, linkEventDefinition, errorEventDefinition, escalationEventDefinition, signalEventDefinition, conditionalEventDefinition.
-- **C, Choreography:** choreography, choreographyTask, subChoreography, callChoreography, globalChoreographyTask, participantMultiplicity (participant, messageFlow, gateways and events come from D/A).
+- **D, Descriptive:** definitions, process, collaboration, participant, laneSet, lane, childLaneSet, sequenceFlow, messageFlow, task, userTask, serviceTask, subProcess, callActivity, exclusiveGateway, parallelGateway, startEvent, endEvent, messageEventDefinition, timerEventDefinition, terminateEventDefinition, dataObject, dataStore, dataStoreReference, dataInput, dataOutput, ioSpecification, inputSet, outputSet, dataInputAssociation, dataOutputAssociation, textAnnotation, association, group, category, categoryValue, documentation.
+- **A, Analytic (adds):** conditionExpression, message, sendTask, receiveTask, standardLoopCharacteristics, multiInstanceLoopCharacteristics, inclusiveGateway, eventBasedGateway, intermediateCatchEvent, intermediateThrowEvent, boundaryEvent, linkEventDefinition, errorEventDefinition, escalationEventDefinition, signalEventDefinition, conditionalEventDefinition.
+- **C, Choreography:** choreography, choreographyTask, subChoreography, callChoreography, globalChoreographyTask, participantMultiplicity.
 - **I, Interchange:** BPMNDiagram, BPMNPlane, BPMNShape, BPMNEdge, BPMNLabel, Bounds, Point, Waypoint and their attributes.
+
+WP2 change log (against Tables 2.1/2.2): removed manualTask, scriptTask, script, businessRuleTask, dataObjectReference (not in the tables; reinstate dataObjectReference if tool practice is preferred), loopCardinality, completionCondition (still required as children of tMultiInstanceLoopCharacteristics via the type rule). Moved D to A: conditionExpression, message, intermediateCatchEvent, intermediateThrowEvent. Kept: boundaryEvent and link/error/escalation/signal/conditional definitions in A; dataStore, data I/O substructure, category/categoryValue, structural containers and documentation in D; callChoreography (contested, sec 2.5.2 does not name it) and participantMultiplicity in C. cancelEventDefinition stays out of scope (flag if choreography event coverage widens).
 
 Not required (deferred): conversation family, adHocSubProcess/transaction, complexGateway, compensation/cancel/multiple event definitions, resources/roles, interfaces/operations/itemDefinitions/assignments, correlations, imports, WSDL/XPath bindings. Optional bucket the user may add to the gate: conversation/subConversation/conversationLink (already has a round-trip profile).
 
@@ -32,14 +34,15 @@ Not required (deferred): conversation family, adHocSubProcess/transaction, compl
 
 | Measure | Value |
 |---|---|
-| Required declarations | **313** (110 element, 83 complexType, 113 attribute, 7 simpleType) of 580 |
-| Required cells | **1519** of 3480 |
-| Currently `partial` | **306** |
-| Currently `unverified` | **1213** |
+| Required declarations | **299** of 580 |
+| Required cells | **1450** of 3480 |
+| Currently `partial` | **288** |
+| Currently `unverified` | **1162** |
 | Verified | 0 |
-| Required declarations with at least one partial cell | 84 |
 
-Set membership (overlapping through inheritance): D 192, A 82, C 34, I 33, S 7. The counts depend on the lists above; the script below is the authoritative definition and becomes the generator logic (section 3). Run it from the repo root as `python req.py`.
+Set membership (overlapping through inheritance): D 173, A 89, C 34, I 33, S 7 declarations (cells: D 861, A 438, C 166, I 132, S 28). Counts are produced by `python scripts/generate_bpmn20_inventory.py --gate` and stored in `required_scope` of the coverage JSON (pre-WP2 baseline with the unfrozen lists: 313 / 1519 / 306 / 1213).
+
+**Superseded:** the embedded script below was the reference for WP1 and is now implemented by the generator (`REQUIRED_SETS`, `required`, `required_dims`, `required_scope`, `--gate`); it is kept for history only and its set lists are out of date.
 
 ```python
 import json,re,collections,sys

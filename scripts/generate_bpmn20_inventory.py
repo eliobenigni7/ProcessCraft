@@ -1,6 +1,7 @@
 """Generate the BPMN normative declaration inventory from pinned OMG schemas."""
 import hashlib
 import json
+import re
 import sys
 from pathlib import Path
 import xml.etree.ElementTree as ET
@@ -262,9 +263,136 @@ for declaration in declarations:
             "Selected callable, role, correlation and loop metadata only; all subtype/context paths, "
             "native interaction, DI, external consumers and complete semantics remain unverified."
         )
-result = {"implementation_evidence_commit": "a69472b251de88a221a873476fa5cb51e60560db", "implementation_evidence_tree": "100cada0dd4910463cb2b7ae42d6f89c59583569", "profiles": profiles, "cmof_declarations": cmof, "version": "2.0.2", "coverage_policy": "unverified means no construct-level evidence recorded; raw retention is not modeling support", "sources": sources, "declarations": declarations,
+# ---- Required scope (M3 proposal sections 1-2; sets frozen by WP2) ----
+REQUIRED_SETS = {
+    "descriptive": ["definitions", "process", "collaboration", "participant", "laneSet", "lane", "childLaneSet", "sequenceFlow", "messageFlow", "task", "userTask", "serviceTask", "subProcess", "callActivity", "exclusiveGateway", "parallelGateway", "startEvent", "endEvent", "messageEventDefinition", "timerEventDefinition", "terminateEventDefinition", "dataObject", "dataStore", "dataStoreReference", "dataInput", "dataOutput", "ioSpecification", "inputSet", "outputSet", "dataInputAssociation", "dataOutputAssociation", "textAnnotation", "association", "group", "category", "categoryValue", "documentation"],
+    "analytic": ["conditionExpression", "message", "sendTask", "receiveTask", "standardLoopCharacteristics", "multiInstanceLoopCharacteristics", "inclusiveGateway", "eventBasedGateway", "intermediateCatchEvent", "intermediateThrowEvent", "boundaryEvent", "linkEventDefinition", "errorEventDefinition", "escalationEventDefinition", "signalEventDefinition", "conditionalEventDefinition"],
+    "choreography": ["choreography", "choreographyTask", "subChoreography", "callChoreography", "globalChoreographyTask", "participantMultiplicity"],
+    "di": ["BPMNDiagram", "BPMNPlane", "BPMNShape", "BPMNEdge", "BPMNLabel", "Bounds", "Point", "Waypoint"],
+}
+SET_TAGS = {"descriptive": "D", "analytic": "A", "choreography": "C", "di": "I"}
+DI_SCHEMAS = ("BPMNDI.xsd", "DI.xsd", "DC.xsd")
+STATES = ("verified", "partial", "unverified")
+DIMENSIONS = ("model", "edit", "render", "import", "export", "validate")
+semantic_base = {}
+for n in ET.parse(FIX / "Semantic.xsd").getroot().iter(XSD + "complexType"):
+    for e in n.iter(XSD + "extension"):
+        semantic_base[n.get("name")] = e.get("base").split(":")[-1]
+        break
+top_elements = {x["name"]: x for x in declarations if x["kind"] == "element" and x["path"] == f"/schema/element[@name={x['name']}]"}
+def type_name(n):
+    e = top_elements.get(n)
+    return e["type"].split(":")[-1] if e and e["type"] else "t" + n[0].upper() + n[1:]
+required = {}
+for label, names in REQUIRED_SETS.items():
+    tag = SET_TAGS[label]
+    if label == "di":
+        prefixes = [f"/schema/{k}[@name={n}]" for n in names for k in ("element", "complexType")]
+        prefixes += [f"/schema/complexType[@name=BPMN{n}]" for n in names]
+        for x in declarations:
+            if x["schema"] in DI_SCHEMAS and any(x["path"].startswith(q) for q in prefixes):
+                required.setdefault((x["schema"], x["path"]), set()).add(tag)
+        continue
+    for n in names:
+        t = type_name(n)
+        chain = []
+        while t:
+            chain.append(t)
+            t = semantic_base.get(t)
+        if n in top_elements:
+            required.setdefault((top_elements[n]["schema"], top_elements[n]["path"]), set()).add(tag)
+        for x in declarations:
+            if x["schema"] == "Semantic.xsd" and any(x["path"].startswith(f"/schema/complexType[@name={c}]") for c in chain):
+                required.setdefault((x["schema"], x["path"]), set()).add(tag)
+by_key = {(x["schema"], x["path"]): x for x in declarations}
+simple_types = {x["name"]: x for x in declarations if x["kind"] == "simpleType" and x["schema"] == "Semantic.xsd"}
+for key in list(required):
+    t = (by_key[key]["type"] or "").split(":")[-1]
+    if t in simple_types:
+        required.setdefault((simple_types[t]["schema"], simple_types[t]["path"]), {"S"})
+VISIBLE_ATTRS = {"name", "isExpanded", "isMarkerVisible", "isMessageVisible", "messageVisibleKind", "participantBandKind", "isHorizontal", "cancelActivity", "isCollection", "loopType", "sequential", "bpmnElement", "x", "y", "width", "height", "isInterrupting", "default", "initiatingParticipantRef", "instantiate", "eventGatewayType", "gatewayDirection", "isForCompensation", "triggeredByEvent"}
+NOTATION = set(sum(REQUIRED_SETS.values(), [])) - {"definitions", "script", "conditionExpression", "documentation", "childLaneSet", "dataInputAssociation", "dataOutputAssociation", "ioSpecification", "inputSet", "outputSet", "loopCardinality", "completionCondition", "category", "categoryValue", "message", "messageEventDefinition", "timerEventDefinition", "terminateEventDefinition", "linkEventDefinition", "errorEventDefinition", "escalationEventDefinition", "signalEventDefinition", "conditionalEventDefinition", "participantMultiplicity", "collaboration", "process", "choreography", "globalChoreographyTask"}
+def required_dims(x):
+    if x["kind"] in ("complexType", "simpleType"):
+        return ["model", "import", "export", "validate"]
+    if x["schema"] in DI_SCHEMAS:
+        return ["model", "render", "import", "export"]
+    dims = ["model", "edit", "import", "export", "validate"]
+    if (x["kind"] == "element" and x["name"] in NOTATION and x["path"].count("/") == 2) or (x["kind"] == "attribute" and x["name"] in VISIBLE_ATTRS):
+        dims.append("render")
+    return dims
+for key, tags in required.items():
+    by_key[key]["required"] = sorted(tags)
+    by_key[key]["required_dims"] = required_dims(by_key[key])
+
+# ---- Evidence sidecar: docs/research/bpmn-2-evidence/*.json fragments ----
+EVIDENCE_DIR = ROOT / "docs/research/bpmn-2-evidence"
+def validate_evidence(ref, where):
+    file, sep, name = ref.partition(":")
+    f = (ROOT / file).resolve()
+    if not f.is_relative_to(ROOT) or not f.is_file():
+        raise SystemExit(f"{where}: evidence file not found in repository: {file}")
+    if sep and not re.fullmatch(r"\w+", name):
+        raise SystemExit(f"{where}: invalid test name in {ref!r}")
+    # A named test must be a Rust `fn` or Python `def` in that file.
+    if sep and not re.search(rf"\b(?:fn|def)\s+{name}\b", f.read_text(encoding="utf-8", errors="replace")):
+        raise SystemExit(f"{where}: no fn/def {name!r} in {file}")
+seen = set()
+fragments = sorted(EVIDENCE_DIR.glob("*.json")) if EVIDENCE_DIR.is_dir() else []
+for frag in fragments:
+    data = json.loads(frag.read_text(encoding="utf-8"))
+    for cell in sorted(data.get("cells", []), key=lambda c: (c["schema"], c["path"], c["dimension"])):
+        where = f"{frag.name} {cell.get('schema')} {cell.get('path')} {cell.get('dimension')}"
+        key = (cell["schema"], cell["path"])
+        if key not in by_key:
+            raise SystemExit(f"{where}: unknown declaration path")
+        if cell["dimension"] not in DIMENSIONS:
+            raise SystemExit(f"{where}: unknown dimension")
+        if cell.get("state") != "verified":
+            raise SystemExit(f"{where}: only state 'verified' is allowed")
+        if not cell.get("evidence"):
+            raise SystemExit(f"{where}: empty evidence list")
+        if (key, cell["dimension"]) in seen:
+            raise SystemExit(f"{where}: duplicate cell across fragments")
+        seen.add((key, cell["dimension"]))
+        for ref in cell["evidence"]:
+            validate_evidence(ref, where)
+        d = by_key[key]
+        d["coverage"][cell["dimension"]] = "verified"
+        d.setdefault("verified_evidence", {})[cell["dimension"]] = sorted(cell["evidence"])
+        if cell.get("note"):
+            d.setdefault("verified_notes", {})[cell["dimension"]] = cell["note"]
+
+# ---- required_scope summary ----
+def empty():
+    return {"declarations": 0, "cells": 0, **{s: 0 for s in STATES}}
+required_scope = {"total": empty(), "by_set": {}}
+pending = []
+for x in declarations:
+    if "required" not in x:
+        continue
+    for bucket in [required_scope["total"]] + [required_scope["by_set"].setdefault(t, empty()) for t in x["required"]]:
+        bucket["declarations"] += 1
+        for dm in x["required_dims"]:
+            bucket["cells"] += 1
+            bucket[x["coverage"][dm]] += 1
+    pending += [(x["schema"], x["path"], dm) for dm in x["required_dims"] if x["coverage"][dm] != "verified"]
+required_scope["by_set"] = dict(sorted(required_scope["by_set"].items()))
+
+result = {"implementation_evidence_commit": "a69472b251de88a221a873476fa5cb51e60560db", "implementation_evidence_tree": "100cada0dd4910463cb2b7ae42d6f89c59583569", "profiles": profiles, "cmof_declarations": cmof, "version": "2.0.2", "coverage_policy": "unverified means no construct-level evidence recorded; raw retention is not modeling support", "sources": sources, "declarations": declarations, "required_scope": required_scope,
           "conformance": {"status": "not_assessed", "note": "OMG PDF conformance classes and semantic constraints require separate clause-by-clause mapping; XSD declarations do not establish conformance."}}
 serialized = json.dumps(result, indent=2, ensure_ascii=False) + "\n"
+if "--gate" in sys.argv:
+    print(json.dumps(required_scope, indent=2))
+    if "--list" in sys.argv:
+        groups = {}
+        for schema, path, dm in pending:
+            groups.setdefault((schema, path.split("/")[2]), []).append((path, dm))
+        for (schema, owner), rows in sorted(groups.items()):
+            print(f"{schema} {owner} ({len(rows)})")
+            for path, dm in rows:
+                print(f"  {path} {dm}")
+    raise SystemExit(1 if pending else 0)
 if "--check" in sys.argv:
     if not OUT.exists() or OUT.read_text(encoding="utf-8") != serialized:
         raise SystemExit("Inventory differs from pinned source files; inspect before regenerating")

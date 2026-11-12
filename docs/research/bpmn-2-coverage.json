@@ -14872,7 +14872,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "BPMN20.xsd",
@@ -15263,7 +15273,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "I"
+      ],
+      "required_dims": [
+        "model",
+        "render",
+        "import",
+        "export"
+      ]
     },
     {
       "schema": "BPMNDI.xsd",
@@ -15285,7 +15304,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "I"
+      ],
+      "required_dims": [
+        "model",
+        "render",
+        "import",
+        "export"
+      ]
     },
     {
       "schema": "BPMNDI.xsd",
@@ -15339,7 +15367,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "I"
+      ],
+      "required_dims": [
+        "model",
+        "render",
+        "import",
+        "export"
+      ]
     },
     {
       "schema": "BPMNDI.xsd",
@@ -15371,7 +15408,16 @@
         "crates/processcraft-io/tests/interchange.rs:diagram_label_style_and_empty_label_roundtrip",
         "scripts/qualify_common_metadata.py"
       ],
-      "limitations": "Bounded common metadata and DI label profiles; all inherited owners, external QName/style resolution, arbitrary vendor semantics, native interaction and independent consumer qualification remain open."
+      "limitations": "Bounded common metadata and DI label profiles; all inherited owners, external QName/style resolution, arbitrary vendor semantics, native interaction and independent consumer qualification remain open.",
+      "required": [
+        "I"
+      ],
+      "required_dims": [
+        "model",
+        "render",
+        "import",
+        "export"
+      ]
     },
     {
       "schema": "BPMNDI.xsd",
@@ -15393,7 +15439,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "I"
+      ],
+      "required_dims": [
+        "model",
+        "render",
+        "import",
+        "export"
+      ]
     },
     {
       "schema": "BPMNDI.xsd",
@@ -15415,7 +15470,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "I"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "BPMNDI.xsd",
@@ -15437,7 +15501,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "I"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "BPMNDI.xsd",
@@ -15459,7 +15532,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "I"
+      ],
+      "required_dims": [
+        "model",
+        "render",
+        "import",
+        "export"
+      ]
     },
     {
       "schema": "BPMNDI.xsd",
@@ -15481,7 +15563,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "I"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "BPMNDI.xsd",
@@ -15503,7 +15594,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "I"
+      ],
+      "required_dims": [
+        "model",
+        "render",
+        "import",
+        "export"
+      ]
     },
     {
       "schema": "BPMNDI.xsd",
@@ -15531,7 +15631,16 @@
         "crates/processcraft-io/tests/interchange.rs:empty_timer_choice_and_event_flags_preserve_omission",
         "crates/processcraft-io/tests/interchange.rs:explicit_di_representation_endpoints_and_shape_flags_roundtrip"
       ],
-      "limitations": "Bounded event/DI fixture profile; complete contexts, user paths, style, native interaction and independent consumers remain unverified or preserved."
+      "limitations": "Bounded event/DI fixture profile; complete contexts, user paths, style, native interaction and independent consumers remain unverified or preserved.",
+      "required": [
+        "I"
+      ],
+      "required_dims": [
+        "model",
+        "render",
+        "import",
+        "export"
+      ]
     },
     {
       "schema": "BPMNDI.xsd",
@@ -15559,7 +15668,16 @@
         "crates/processcraft-io/tests/interchange.rs:empty_timer_choice_and_event_flags_preserve_omission",
         "crates/processcraft-io/tests/interchange.rs:explicit_di_representation_endpoints_and_shape_flags_roundtrip"
       ],
-      "limitations": "Bounded event/DI fixture profile; complete contexts, user paths, style, native interaction and independent consumers remain unverified or preserved."
+      "limitations": "Bounded event/DI fixture profile; complete contexts, user paths, style, native interaction and independent consumers remain unverified or preserved.",
+      "required": [
+        "I"
+      ],
+      "required_dims": [
+        "model",
+        "render",
+        "import",
+        "export"
+      ]
     },
     {
       "schema": "BPMNDI.xsd",
@@ -15581,7 +15699,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "I"
+      ],
+      "required_dims": [
+        "model",
+        "render",
+        "import",
+        "export"
+      ]
     },
     {
       "schema": "BPMNDI.xsd",
@@ -15603,7 +15730,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "I"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "BPMNDI.xsd",
@@ -15625,7 +15761,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "I"
+      ],
+      "required_dims": [
+        "model",
+        "render",
+        "import",
+        "export"
+      ]
     },
     {
       "schema": "BPMNDI.xsd",
@@ -15653,7 +15798,16 @@
         "crates/processcraft-io/tests/interchange.rs:empty_timer_choice_and_event_flags_preserve_omission",
         "crates/processcraft-io/tests/interchange.rs:explicit_di_representation_endpoints_and_shape_flags_roundtrip"
       ],
-      "limitations": "Bounded event/DI fixture profile; complete contexts, user paths, style, native interaction and independent consumers remain unverified or preserved."
+      "limitations": "Bounded event/DI fixture profile; complete contexts, user paths, style, native interaction and independent consumers remain unverified or preserved.",
+      "required": [
+        "I"
+      ],
+      "required_dims": [
+        "model",
+        "render",
+        "import",
+        "export"
+      ]
     },
     {
       "schema": "BPMNDI.xsd",
@@ -15675,7 +15829,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "I"
+      ],
+      "required_dims": [
+        "model",
+        "render",
+        "import",
+        "export"
+      ]
     },
     {
       "schema": "BPMNDI.xsd",
@@ -15703,7 +15866,16 @@
         "crates/processcraft-io/tests/interchange.rs:empty_timer_choice_and_event_flags_preserve_omission",
         "crates/processcraft-io/tests/interchange.rs:explicit_di_representation_endpoints_and_shape_flags_roundtrip"
       ],
-      "limitations": "Bounded event/DI fixture profile; complete contexts, user paths, style, native interaction and independent consumers remain unverified or preserved."
+      "limitations": "Bounded event/DI fixture profile; complete contexts, user paths, style, native interaction and independent consumers remain unverified or preserved.",
+      "required": [
+        "I"
+      ],
+      "required_dims": [
+        "model",
+        "render",
+        "import",
+        "export"
+      ]
     },
     {
       "schema": "BPMNDI.xsd",
@@ -15725,7 +15897,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "I"
+      ],
+      "required_dims": [
+        "model",
+        "render",
+        "import",
+        "export"
+      ]
     },
     {
       "schema": "BPMNDI.xsd",
@@ -15747,7 +15928,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "I"
+      ],
+      "required_dims": [
+        "model",
+        "render",
+        "import",
+        "export"
+      ]
     },
     {
       "schema": "BPMNDI.xsd",
@@ -15769,7 +15959,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "I"
+      ],
+      "required_dims": [
+        "model",
+        "render",
+        "import",
+        "export"
+      ]
     },
     {
       "schema": "BPMNDI.xsd",
@@ -15801,7 +16000,16 @@
         "crates/processcraft-io/tests/interchange.rs:diagram_label_style_and_empty_label_roundtrip",
         "scripts/qualify_common_metadata.py"
       ],
-      "limitations": "Bounded common metadata and DI label profiles; all inherited owners, external QName/style resolution, arbitrary vendor semantics, native interaction and independent consumer qualification remain open."
+      "limitations": "Bounded common metadata and DI label profiles; all inherited owners, external QName/style resolution, arbitrary vendor semantics, native interaction and independent consumer qualification remain open.",
+      "required": [
+        "I"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "BPMNDI.xsd",
@@ -15823,7 +16031,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "I"
+      ],
+      "required_dims": [
+        "model",
+        "render",
+        "import",
+        "export"
+      ]
     },
     {
       "schema": "BPMNDI.xsd",
@@ -15943,7 +16160,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "I"
+      ],
+      "required_dims": [
+        "model",
+        "render",
+        "import",
+        "export"
+      ]
     },
     {
       "schema": "DC.xsd",
@@ -15965,7 +16191,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "I"
+      ],
+      "required_dims": [
+        "model",
+        "render",
+        "import",
+        "export"
+      ]
     },
     {
       "schema": "DC.xsd",
@@ -16141,7 +16376,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "I"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "DC.xsd",
@@ -16163,7 +16407,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "I"
+      ],
+      "required_dims": [
+        "model",
+        "render",
+        "import",
+        "export"
+      ]
     },
     {
       "schema": "DC.xsd",
@@ -16185,7 +16438,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "I"
+      ],
+      "required_dims": [
+        "model",
+        "render",
+        "import",
+        "export"
+      ]
     },
     {
       "schema": "DC.xsd",
@@ -16207,7 +16469,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "I"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "DC.xsd",
@@ -16229,7 +16500,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "I"
+      ],
+      "required_dims": [
+        "model",
+        "render",
+        "import",
+        "export"
+      ]
     },
     {
       "schema": "DC.xsd",
@@ -16251,7 +16531,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "I"
+      ],
+      "required_dims": [
+        "model",
+        "render",
+        "import",
+        "export"
+      ]
     },
     {
       "schema": "DC.xsd",
@@ -16273,7 +16562,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "I"
+      ],
+      "required_dims": [
+        "model",
+        "render",
+        "import",
+        "export"
+      ]
     },
     {
       "schema": "DC.xsd",
@@ -16295,7 +16593,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "I"
+      ],
+      "required_dims": [
+        "model",
+        "render",
+        "import",
+        "export"
+      ]
     },
     {
       "schema": "DI.xsd",
@@ -16955,7 +17262,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A",
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -16977,7 +17294,19 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A",
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -16999,7 +17328,18 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A",
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -17021,7 +17361,18 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A",
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -17043,7 +17394,19 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A",
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -17225,7 +17588,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -17358,7 +17730,18 @@
         "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip",
         "crates/processcraft-io/tests/interchange.rs:descriptive_artifact_identity_survives_native_round_trip"
       ],
-      "limitations": "Plain annotation, association, groups/categories and bounded nested lanes; rich text and advanced fields remain preserved-source. Full UI/render and semantics not proven."
+      "limitations": "Plain annotation, association, groups/categories and bounded nested lanes; rich text and advanced fields remain preserved-source. Full UI/render and semantics not proven.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -17380,7 +17763,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -17402,7 +17794,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -17424,7 +17826,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -17446,7 +17858,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -17468,7 +17890,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "S"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -17556,7 +17987,18 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A",
+        "C",
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -17578,7 +18020,19 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A",
+        "C",
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -17666,7 +18120,18 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -17688,7 +18153,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -17710,7 +18184,18 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -17732,7 +18217,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -17854,7 +18349,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -17876,7 +18380,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -17898,7 +18412,18 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -17926,7 +18451,18 @@
         "crates/processcraft-io/tests/interchange.rs:nested_subprocess_call_and_expanded_geometry_round_trip",
         "crates/processcraft-io/tests/interchange.rs:activity_loop_characteristics_round_trip"
       ],
-      "limitations": "Only local call targets, bounded nested children/lane sets, selected ad hoc/transaction metadata and simple loops; other metadata preserved-source."
+      "limitations": "Only local call targets, bounded nested children/lane sets, selected ad hoc/transaction metadata and simple loops; other metadata preserved-source.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -17948,7 +18484,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -17970,7 +18515,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -18004,7 +18559,18 @@
         "tests/fixtures/bpmn/choreography-graph/manifest.md",
         "scripts/qualify_choreography_graph.py"
       ],
-      "limitations": "Bounded ordered Task/Sub/Call/Global graphs, selected event/gateway contexts, exact namespace references and event-owned I/O. Full semantic, DI, native interaction and consumer qualification remain incomplete. Table 8.45 excludes process Activities, Data Objects and Data Associations as choreography flowElements; event-owned associations are a separate child context."
+      "limitations": "Bounded ordered Task/Sub/Call/Global graphs, selected event/gateway contexts, exact namespace references and event-owned I/O. Full semantic, DI, native interaction and consumer qualification remain incomplete. Table 8.45 excludes process Activities, Data Objects and Data Associations as choreography flowElements; event-owned associations are a separate child context.",
+      "required": [
+        "C"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -18026,7 +18592,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "C"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -18048,7 +18623,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "C"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -18211,7 +18796,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A",
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -18239,7 +18834,18 @@
         "crates/processcraft-io/tests/interchange.rs:empty_timer_choice_and_event_flags_preserve_omission",
         "crates/processcraft-io/tests/interchange.rs:explicit_di_representation_endpoints_and_shape_flags_roundtrip"
       ],
-      "limitations": "Bounded event/DI fixture profile; complete contexts, user paths, style, native interaction and independent consumers remain unverified or preserved."
+      "limitations": "Bounded event/DI fixture profile; complete contexts, user paths, style, native interaction and independent consumers remain unverified or preserved.",
+      "required": [
+        "A",
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -18267,7 +18873,18 @@
         "crates/processcraft-io/tests/interchange.rs:empty_timer_choice_and_event_flags_preserve_omission",
         "crates/processcraft-io/tests/interchange.rs:explicit_di_representation_endpoints_and_shape_flags_roundtrip"
       ],
-      "limitations": "Bounded event/DI fixture profile; complete contexts, user paths, style, native interaction and independent consumers remain unverified or preserved."
+      "limitations": "Bounded event/DI fixture profile; complete contexts, user paths, style, native interaction and independent consumers remain unverified or preserved.",
+      "required": [
+        "A",
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -18298,7 +18915,17 @@
         "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip",
         "crates/processcraft-io/tests/interchange.rs:descriptive_artifact_identity_survives_native_round_trip"
       ],
-      "limitations": "Plain annotation, association, groups/categories and bounded nested lanes; rich text and advanced fields remain preserved-source. Full UI/render and semantics not proven."
+      "limitations": "Plain annotation, association, groups/categories and bounded nested lanes; rich text and advanced fields remain preserved-source. Full UI/render and semantics not proven.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -18320,7 +18947,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -18342,7 +18978,18 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -18373,7 +19020,17 @@
         "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip",
         "crates/processcraft-io/tests/interchange.rs:descriptive_artifact_identity_survives_native_round_trip"
       ],
-      "limitations": "Plain annotation, association, groups/categories and bounded nested lanes; rich text and advanced fields remain preserved-source. Full UI/render and semantics not proven."
+      "limitations": "Plain annotation, association, groups/categories and bounded nested lanes; rich text and advanced fields remain preserved-source. Full UI/render and semantics not proven.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -18395,7 +19052,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -18417,7 +19083,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -18451,7 +19127,17 @@
         "tests/fixtures/bpmn/choreography-graph/manifest.md",
         "scripts/qualify_choreography_graph.py"
       ],
-      "limitations": "Bounded ordered Task/Sub/Call/Global graphs, selected event/gateway contexts, exact namespace references and event-owned I/O. Full semantic, DI, native interaction and consumer qualification remain incomplete. Table 8.45 excludes process Activities, Data Objects and Data Associations as choreography flowElements; event-owned associations are a separate child context."
+      "limitations": "Bounded ordered Task/Sub/Call/Global graphs, selected event/gateway contexts, exact namespace references and event-owned I/O. Full semantic, DI, native interaction and consumer qualification remain incomplete. Table 8.45 excludes process Activities, Data Objects and Data Associations as choreography flowElements; event-owned associations are a separate child context.",
+      "required": [
+        "C"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -18473,7 +19159,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "C"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -18517,7 +19212,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "C"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -18539,7 +19243,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "C"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -18561,7 +19275,18 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "C"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -18583,7 +19308,18 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "C"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -18605,7 +19341,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "S"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -18639,7 +19384,18 @@
         "tests/fixtures/bpmn/choreography-graph/manifest.md",
         "scripts/qualify_choreography_graph.py"
       ],
-      "limitations": "Bounded ordered Task/Sub/Call/Global graphs, selected event/gateway contexts, exact namespace references and event-owned I/O. Full semantic, DI, native interaction and consumer qualification remain incomplete. Table 8.45 excludes process Activities, Data Objects and Data Associations as choreography flowElements; event-owned associations are a separate child context."
+      "limitations": "Bounded ordered Task/Sub/Call/Global graphs, selected event/gateway contexts, exact namespace references and event-owned I/O. Full semantic, DI, native interaction and consumer qualification remain incomplete. Table 8.45 excludes process Activities, Data Objects and Data Associations as choreography flowElements; event-owned associations are a separate child context.",
+      "required": [
+        "C"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -18661,7 +19417,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "C"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -18683,7 +19448,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "C"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -18711,7 +19486,17 @@
         "crates/processcraft-io/tests/interchange.rs:collaboration_conversation_and_links_round_trip",
         "tests/fixtures/bpmn20-schema/conversation.bpmn"
       ],
-      "limitations": "Subset without unmodeled attributes; semantic conformance and full GUI not established."
+      "limitations": "Subset without unmodeled attributes; semantic conformance and full GUI not established.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -18733,7 +19518,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "C",
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -18755,7 +19550,18 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "C",
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -18777,7 +19583,19 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "C",
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -18799,7 +19617,18 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "C",
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -19114,7 +19943,17 @@
         "crates/processcraft-io/tests/interchange.rs:error_and_escalation_end_events_keep_typed_root_references",
         "crates/processcraft-io/tests/interchange.rs:conditional_catch_expression_round_trips"
       ],
-      "limitations": "Only documented inline subsets, local refs and simple expressions; semantic conformance and full GUI not established."
+      "limitations": "Only documented inline subsets, local refs and simple expressions; semantic conformance and full GUI not established.",
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -19136,7 +19975,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -19158,7 +20006,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -20028,7 +20886,16 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -20050,7 +20917,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -20072,7 +20949,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -20094,7 +20981,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -20124,7 +21021,18 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -20153,7 +21061,16 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -20182,7 +21099,18 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -20211,7 +21139,17 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -20240,7 +21178,18 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -20270,7 +21219,17 @@
         "crates/processcraft-io/tests/interchange.rs:data_io_sets_ports_and_associations_round_trip",
         "crates/processcraft-io/tests/interchange.rs:invalid_data_ports_and_unmodeled_assignments_cannot_become_editable"
       ],
-      "limitations": "Local declarations, ports, I/O sets and simple associations only; transformations, assignments, item types and nested I/O remain preserved-source."
+      "limitations": "Local declarations, ports, I/O sets and simple associations only; transformations, assignments, item types and nested I/O remain preserved-source.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -20292,7 +21251,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -20322,7 +21290,18 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -20351,7 +21330,16 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -20380,7 +21368,17 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -20409,7 +21407,18 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -20535,7 +21544,18 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -20564,7 +21584,16 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -20593,7 +21622,18 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -20622,7 +21662,17 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -20651,7 +21701,18 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -20681,7 +21742,17 @@
         "crates/processcraft-io/tests/interchange.rs:data_io_sets_ports_and_associations_round_trip",
         "crates/processcraft-io/tests/interchange.rs:invalid_data_ports_and_unmodeled_assignments_cannot_become_editable"
       ],
-      "limitations": "Local declarations, ports, I/O sets and simple associations only; transformations, assignments, item types and nested I/O remain preserved-source."
+      "limitations": "Local declarations, ports, I/O sets and simple associations only; transformations, assignments, item types and nested I/O remain preserved-source.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -20703,7 +21774,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -20820,7 +21900,18 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -20849,7 +21940,16 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -20878,7 +21978,18 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -20907,7 +22018,17 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -20936,7 +22057,17 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -20965,7 +22096,17 @@
         "crates/processcraft-io/tests/interchange.rs:unsupported_data_state_metadata_and_invalid_assignments_are_preserved",
         "crates/processcraft-io/tests/native.rs:expanded_data_capability_covers_live_and_checkpoint_documents"
       ],
-      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved."
+      "limitations": "Bounded data metadata, expressions and optional identities only; all owners, inherited content, event-owned associations, Property endpoints, complete renderer/UI and semantic qualification remain unverified or preserved.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -20995,7 +22136,18 @@
         "crates/processcraft-io/tests/interchange.rs:data_io_sets_ports_and_associations_round_trip",
         "crates/processcraft-io/tests/interchange.rs:invalid_data_ports_and_unmodeled_assignments_cannot_become_editable"
       ],
-      "limitations": "Local declarations, ports, I/O sets and simple associations only; transformations, assignments, item types and nested I/O remain preserved-source."
+      "limitations": "Local declarations, ports, I/O sets and simple associations only; transformations, assignments, item types and nested I/O remain preserved-source.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -21017,7 +22169,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -21039,7 +22200,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -21061,7 +22232,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -21093,7 +22274,17 @@
         "crates/processcraft-io/tests/interchange.rs:diagram_label_style_and_empty_label_roundtrip",
         "scripts/qualify_common_metadata.py"
       ],
-      "limitations": "Bounded common metadata and DI label profiles; all inherited owners, external QName/style resolution, arbitrary vendor semantics, native interaction and independent consumer qualification remain open."
+      "limitations": "Bounded common metadata and DI label profiles; all inherited owners, external QName/style resolution, arbitrary vendor semantics, native interaction and independent consumer qualification remain open.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -21125,7 +22316,16 @@
         "crates/processcraft-io/tests/interchange.rs:diagram_label_style_and_empty_label_roundtrip",
         "scripts/qualify_common_metadata.py"
       ],
-      "limitations": "Bounded common metadata and DI label profiles; all inherited owners, external QName/style resolution, arbitrary vendor semantics, native interaction and independent consumer qualification remain open."
+      "limitations": "Bounded common metadata and DI label profiles; all inherited owners, external QName/style resolution, arbitrary vendor semantics, native interaction and independent consumer qualification remain open.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -21147,7 +22347,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -21169,7 +22379,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -21191,7 +22411,18 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -21213,7 +22444,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -21397,7 +22637,17 @@
         "crates/processcraft-io/tests/interchange.rs:error_and_escalation_end_events_keep_typed_root_references",
         "crates/processcraft-io/tests/interchange.rs:conditional_catch_expression_round_trips"
       ],
-      "limitations": "Only documented inline subsets, local refs and simple expressions; semantic conformance and full GUI not established."
+      "limitations": "Only documented inline subsets, local refs and simple expressions; semantic conformance and full GUI not established.",
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -21419,7 +22669,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -21441,7 +22700,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -21581,7 +22850,17 @@
         "crates/processcraft-io/tests/interchange.rs:error_and_escalation_end_events_keep_typed_root_references",
         "crates/processcraft-io/tests/interchange.rs:conditional_catch_expression_round_trips"
       ],
-      "limitations": "Only documented inline subsets, local refs and simple expressions; semantic conformance and full GUI not established."
+      "limitations": "Only documented inline subsets, local refs and simple expressions; semantic conformance and full GUI not established.",
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -21603,7 +22882,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -21625,7 +22913,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -21669,7 +22967,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A",
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -21697,7 +23005,18 @@
         "tests/fixtures/bpmn20-schema/gateways.bpmn",
         "crates/processcraft-io/tests/interchange.rs:gateway_metadata_and_default_flow_round_trip"
       ],
-      "limitations": "Default outgoing flow, direction, event-based type/instantiate and simple activation condition; semantic/structural and full GUI qualification remain incomplete."
+      "limitations": "Default outgoing flow, direction, event-based type/instantiate and simple activation condition; semantic/structural and full GUI qualification remain incomplete.",
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -21719,7 +23038,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -21741,7 +23069,18 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -21763,7 +23102,18 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -21785,7 +23135,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "S"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -21829,7 +23188,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A",
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -21857,7 +23226,18 @@
         "tests/fixtures/bpmn20-schema/gateways.bpmn",
         "crates/processcraft-io/tests/interchange.rs:gateway_metadata_and_default_flow_round_trip"
       ],
-      "limitations": "Default outgoing flow, direction, event-based type/instantiate and simple activation condition; semantic/structural and full GUI qualification remain incomplete."
+      "limitations": "Default outgoing flow, direction, event-based type/instantiate and simple activation condition; semantic/structural and full GUI qualification remain incomplete.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -21879,7 +23259,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -21901,7 +23290,18 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -22155,7 +23555,18 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A",
+        "C",
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -22177,7 +23588,19 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A",
+        "C",
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -22199,7 +23622,20 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A",
+        "C",
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -22243,7 +23679,18 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A",
+        "C",
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -22265,7 +23712,19 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A",
+        "C",
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -22287,7 +23746,19 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A",
+        "C",
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -22447,7 +23918,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A",
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -22469,7 +23950,19 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A",
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -22491,7 +23984,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "S"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -22597,7 +24099,17 @@
         "tests/fixtures/bpmn/choreography-graph/manifest.md",
         "scripts/qualify_choreography_graph.py"
       ],
-      "limitations": "Bounded ordered Task/Sub/Call/Global graphs, selected event/gateway contexts, exact namespace references and event-owned I/O. Full semantic, DI, native interaction and consumer qualification remain incomplete. Table 8.45 excludes process Activities, Data Objects and Data Associations as choreography flowElements; event-owned associations are a separate child context."
+      "limitations": "Bounded ordered Task/Sub/Call/Global graphs, selected event/gateway contexts, exact namespace references and event-owned I/O. Full semantic, DI, native interaction and consumer qualification remain incomplete. Table 8.45 excludes process Activities, Data Objects and Data Associations as choreography flowElements; event-owned associations are a separate child context.",
+      "required": [
+        "C"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -22619,7 +24131,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "C"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -22641,7 +24162,18 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "C"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -22960,7 +24492,18 @@
         "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip",
         "crates/processcraft-io/tests/interchange.rs:descriptive_artifact_identity_survives_native_round_trip"
       ],
-      "limitations": "Plain annotation, association, groups/categories and bounded nested lanes; rich text and advanced fields remain preserved-source. Full UI/render and semantics not proven."
+      "limitations": "Plain annotation, association, groups/categories and bounded nested lanes; rich text and advanced fields remain preserved-source. Full UI/render and semantics not proven.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -22982,7 +24525,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -23004,7 +24556,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -23070,7 +24632,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "S"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -23148,7 +24719,18 @@
         "tests/fixtures/bpmn20-schema/gateways.bpmn",
         "crates/processcraft-io/tests/interchange.rs:gateway_metadata_and_default_flow_round_trip"
       ],
-      "limitations": "Default outgoing flow, direction, event-based type/instantiate and simple activation condition; semantic/structural and full GUI qualification remain incomplete."
+      "limitations": "Default outgoing flow, direction, event-based type/instantiate and simple activation condition; semantic/structural and full GUI qualification remain incomplete.",
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -23170,7 +24752,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -23192,7 +24783,18 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -23222,7 +24824,17 @@
         "crates/processcraft-io/tests/interchange.rs:data_io_sets_ports_and_associations_round_trip",
         "crates/processcraft-io/tests/interchange.rs:invalid_data_ports_and_unmodeled_assignments_cannot_become_editable"
       ],
-      "limitations": "Local declarations, ports, I/O sets and simple associations only; transformations, assignments, item types and nested I/O remain preserved-source."
+      "limitations": "Local declarations, ports, I/O sets and simple associations only; transformations, assignments, item types and nested I/O remain preserved-source.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -23244,7 +24856,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -23266,7 +24887,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -23288,7 +24919,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -23310,7 +24951,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -23332,7 +24983,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -23354,7 +25015,18 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -23492,7 +25164,18 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -23514,7 +25197,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -23536,7 +25228,18 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -23558,7 +25261,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -23704,7 +25416,17 @@
         "crates/processcraft-io/tests/interchange.rs:data_io_sets_ports_and_associations_round_trip",
         "crates/processcraft-io/tests/interchange.rs:invalid_data_ports_and_unmodeled_assignments_cannot_become_editable"
       ],
-      "limitations": "Local declarations, ports, I/O sets and simple associations only; transformations, assignments, item types and nested I/O remain preserved-source."
+      "limitations": "Local declarations, ports, I/O sets and simple associations only; transformations, assignments, item types and nested I/O remain preserved-source.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -23726,7 +25448,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -23924,7 +25655,18 @@
         "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip",
         "crates/processcraft-io/tests/interchange.rs:descriptive_artifact_identity_survives_native_round_trip"
       ],
-      "limitations": "Plain annotation, association, groups/categories and bounded nested lanes; rich text and advanced fields remain preserved-source. Full UI/render and semantics not proven."
+      "limitations": "Plain annotation, association, groups/categories and bounded nested lanes; rich text and advanced fields remain preserved-source. Full UI/render and semantics not proven.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -23946,7 +25688,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -23968,7 +25719,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -23990,7 +25751,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -24012,7 +25783,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -24034,7 +25815,18 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -24056,7 +25848,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -24087,7 +25889,18 @@
         "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip",
         "crates/processcraft-io/tests/interchange.rs:descriptive_artifact_identity_survives_native_round_trip"
       ],
-      "limitations": "Plain annotation, association, groups/categories and bounded nested lanes; rich text and advanced fields remain preserved-source. Full UI/render and semantics not proven."
+      "limitations": "Plain annotation, association, groups/categories and bounded nested lanes; rich text and advanced fields remain preserved-source. Full UI/render and semantics not proven.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -24109,7 +25922,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -24131,7 +25953,18 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -24162,7 +25995,17 @@
         "crates/processcraft-render/tests/bpmn_scene.rs:cancel_boundary_and_end_use_hollow_and_filled_crosses",
         "crates/processcraft-render/tests/bpmn_scene.rs:compensation_boundary_and_throw_render_distinct_markers"
       ],
-      "limitations": "Bounded inline local-reference profile and selected context checks only; root/referenced definitions, complete context rules, GUI and independent consumers remain unverified."
+      "limitations": "Bounded inline local-reference profile and selected context checks only; root/referenced definitions, complete context rules, GUI and independent consumers remain unverified.",
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -24184,7 +26027,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -24206,7 +26058,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -24228,7 +26090,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -24250,7 +26122,18 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -24294,7 +26177,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -24360,7 +26252,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -24382,7 +26284,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -24404,7 +26315,18 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -24426,7 +26348,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -24456,7 +26388,17 @@
         "crates/processcraft-io/tests/interchange.rs:error_and_escalation_end_events_keep_typed_root_references",
         "crates/processcraft-io/tests/interchange.rs:conditional_catch_expression_round_trips"
       ],
-      "limitations": "Only documented inline subsets, local refs and simple expressions; semantic conformance and full GUI not established."
+      "limitations": "Only documented inline subsets, local refs and simple expressions; semantic conformance and full GUI not established.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -24478,7 +26420,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -24500,7 +26451,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -24522,7 +26483,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -24550,7 +26521,18 @@
         "crates/processcraft-io/tests/interchange.rs:collaboration_conversation_and_links_round_trip",
         "tests/fixtures/bpmn20-schema/conversation.bpmn"
       ],
-      "limitations": "Subset without unmodeled attributes; semantic conformance and full GUI not established."
+      "limitations": "Subset without unmodeled attributes; semantic conformance and full GUI not established.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -24572,7 +26554,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -24594,7 +26585,18 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -24616,7 +26618,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -24638,7 +26650,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -24660,7 +26682,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -24820,7 +26852,18 @@
         "crates/processcraft-io/tests/interchange.rs:nested_subprocess_call_and_expanded_geometry_round_trip",
         "crates/processcraft-io/tests/interchange.rs:activity_loop_characteristics_round_trip"
       ],
-      "limitations": "Only local call targets, bounded nested children/lane sets, selected ad hoc/transaction metadata and simple loops; other metadata preserved-source."
+      "limitations": "Only local call targets, bounded nested children/lane sets, selected ad hoc/transaction metadata and simple loops; other metadata preserved-source.",
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -24842,7 +26885,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -24864,7 +26916,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -24886,7 +26948,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -24908,7 +26980,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -24930,7 +27012,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -24952,7 +27044,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -24974,7 +27076,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -24996,7 +27108,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -25018,7 +27140,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -25040,7 +27172,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -25062,7 +27204,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -25084,7 +27236,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "S"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -25296,7 +27457,17 @@
         "crates/processcraft-io/tests/interchange.rs:data_io_sets_ports_and_associations_round_trip",
         "crates/processcraft-io/tests/interchange.rs:invalid_data_ports_and_unmodeled_assignments_cannot_become_editable"
       ],
-      "limitations": "Local declarations, ports, I/O sets and simple associations only; transformations, assignments, item types and nested I/O remain preserved-source."
+      "limitations": "Local declarations, ports, I/O sets and simple associations only; transformations, assignments, item types and nested I/O remain preserved-source.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -25318,7 +27489,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -25340,7 +27520,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -25362,7 +27552,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -25384,7 +27584,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -25406,7 +27616,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -25428,7 +27648,18 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -25456,7 +27687,18 @@
         "tests/fixtures/bpmn20-schema/gateways.bpmn",
         "crates/processcraft-io/tests/interchange.rs:gateway_metadata_and_default_flow_round_trip"
       ],
-      "limitations": "Default outgoing flow, direction, event-based type/instantiate and simple activation condition; semantic/structural and full GUI qualification remain incomplete."
+      "limitations": "Default outgoing flow, direction, event-based type/instantiate and simple activation condition; semantic/structural and full GUI qualification remain incomplete.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -25478,7 +27720,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -25506,7 +27757,18 @@
         "crates/processcraft-io/tests/interchange.rs:collaboration_conversation_and_links_round_trip",
         "tests/fixtures/bpmn20-schema/conversation.bpmn"
       ],
-      "limitations": "Subset without unmodeled attributes; semantic conformance and full GUI not established."
+      "limitations": "Subset without unmodeled attributes; semantic conformance and full GUI not established.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -25528,7 +27790,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -25550,7 +27821,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -25572,7 +27853,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -25594,7 +27885,18 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -25616,7 +27918,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -25726,7 +28038,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "C"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -25748,7 +28070,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "C"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -25770,7 +28101,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "C"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -25792,7 +28133,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "C"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -26078,7 +28429,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -26100,7 +28461,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -26122,7 +28492,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -26144,7 +28524,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -26166,7 +28556,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -26188,7 +28588,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -26210,7 +28620,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -26232,7 +28652,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "S"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -26348,7 +28777,18 @@
         "tests/fixtures/bpmn20-schema/activity.bpmn",
         "crates/processcraft-io/tests/interchange.rs:activity_attributes_and_plain_script_round_trip"
       ],
-      "limitations": "Basic compensation/quantities/default, subtype implementation/instantiate and plain script only; external QName, advanced attributes and complete UI/semantics are not qualified."
+      "limitations": "Basic compensation/quantities/default, subtype implementation/instantiate and plain script only; external QName, advanced attributes and complete UI/semantics are not qualified.",
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -26370,7 +28810,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -26392,7 +28841,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -26414,7 +28873,18 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -26442,7 +28912,17 @@
         "crates/processcraft-io/tests/interchange.rs:activity_unqualified_qname_and_wrong_subtype_are_safe",
         "crates/processcraft-core/tests/commands.rs:activity_bindings_validate_new_local_refs_and_preserve_legacy"
       ],
-      "limitations": "Bounded QName binding profile; full task I/O, external resolution, GUI and normative semantics remain unverified. No general equality between task messageRef and operation messages is inferred."
+      "limitations": "Bounded QName binding profile; full task I/O, external resolution, GUI and normative semantics remain unverified. No general equality between task messageRef and operation messages is inferred.",
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -26470,7 +28950,17 @@
         "crates/processcraft-io/tests/interchange.rs:activity_unqualified_qname_and_wrong_subtype_are_safe",
         "crates/processcraft-core/tests/commands.rs:activity_bindings_validate_new_local_refs_and_preserve_legacy"
       ],
-      "limitations": "Bounded QName binding profile; full task I/O, external resolution, GUI and normative semantics remain unverified. No general equality between task messageRef and operation messages is inferred."
+      "limitations": "Bounded QName binding profile; full task I/O, external resolution, GUI and normative semantics remain unverified. No general equality between task messageRef and operation messages is inferred.",
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -27180,7 +29670,18 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A",
+        "C",
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -27344,7 +29845,18 @@
         "tests/fixtures/bpmn20-schema/activity.bpmn",
         "crates/processcraft-io/tests/interchange.rs:activity_attributes_and_plain_script_round_trip"
       ],
-      "limitations": "Basic compensation/quantities/default, subtype implementation/instantiate and plain script only; external QName, advanced attributes and complete UI/semantics are not qualified."
+      "limitations": "Basic compensation/quantities/default, subtype implementation/instantiate and plain script only; external QName, advanced attributes and complete UI/semantics are not qualified.",
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -27366,7 +29878,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -27388,7 +29909,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -27416,7 +29947,17 @@
         "crates/processcraft-io/tests/interchange.rs:activity_unqualified_qname_and_wrong_subtype_are_safe",
         "crates/processcraft-core/tests/commands.rs:activity_bindings_validate_new_local_refs_and_preserve_legacy"
       ],
-      "limitations": "Bounded QName binding profile; full task I/O, external resolution, GUI and normative semantics remain unverified. No general equality between task messageRef and operation messages is inferred."
+      "limitations": "Bounded QName binding profile; full task I/O, external resolution, GUI and normative semantics remain unverified. No general equality between task messageRef and operation messages is inferred.",
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -27444,7 +29985,17 @@
         "crates/processcraft-io/tests/interchange.rs:activity_unqualified_qname_and_wrong_subtype_are_safe",
         "crates/processcraft-core/tests/commands.rs:activity_bindings_validate_new_local_refs_and_preserve_legacy"
       ],
-      "limitations": "Bounded QName binding profile; full task I/O, external resolution, GUI and normative semantics remain unverified. No general equality between task messageRef and operation messages is inferred."
+      "limitations": "Bounded QName binding profile; full task I/O, external resolution, GUI and normative semantics remain unverified. No general equality between task messageRef and operation messages is inferred.",
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -27466,7 +30017,18 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -27488,7 +30050,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -27510,7 +30081,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -27532,7 +30113,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -27554,7 +30145,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -27576,7 +30177,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -27604,7 +30215,18 @@
         "tests/fixtures/bpmn20-schema/activity.bpmn",
         "crates/processcraft-io/tests/interchange.rs:activity_attributes_and_plain_script_round_trip"
       ],
-      "limitations": "Basic compensation/quantities/default, subtype implementation/instantiate and plain script only; external QName, advanced attributes and complete UI/semantics are not qualified."
+      "limitations": "Basic compensation/quantities/default, subtype implementation/instantiate and plain script only; external QName, advanced attributes and complete UI/semantics are not qualified.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -27626,7 +30248,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -27648,7 +30279,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -27676,7 +30317,17 @@
         "crates/processcraft-io/tests/interchange.rs:activity_unqualified_qname_and_wrong_subtype_are_safe",
         "crates/processcraft-core/tests/commands.rs:activity_bindings_validate_new_local_refs_and_preserve_legacy"
       ],
-      "limitations": "Bounded QName binding profile; full task I/O, external resolution, GUI and normative semantics remain unverified. No general equality between task messageRef and operation messages is inferred."
+      "limitations": "Bounded QName binding profile; full task I/O, external resolution, GUI and normative semantics remain unverified. No general equality between task messageRef and operation messages is inferred.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -27794,7 +30445,17 @@
         "crates/processcraft-io/tests/interchange.rs:error_and_escalation_end_events_keep_typed_root_references",
         "crates/processcraft-io/tests/interchange.rs:conditional_catch_expression_round_trips"
       ],
-      "limitations": "Only documented inline subsets, local refs and simple expressions; semantic conformance and full GUI not established."
+      "limitations": "Only documented inline subsets, local refs and simple expressions; semantic conformance and full GUI not established.",
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -27816,7 +30477,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -27838,7 +30508,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -27866,7 +30546,18 @@
         "crates/processcraft-io/tests/interchange.rs:nested_subprocess_call_and_expanded_geometry_round_trip",
         "crates/processcraft-io/tests/interchange.rs:activity_loop_characteristics_round_trip"
       ],
-      "limitations": "Only local call targets, bounded nested children/lane sets, selected ad hoc/transaction metadata and simple loops; other metadata preserved-source."
+      "limitations": "Only local call targets, bounded nested children/lane sets, selected ad hoc/transaction metadata and simple loops; other metadata preserved-source.",
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -27888,7 +30579,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -27910,7 +30610,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -27932,7 +30642,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -27954,7 +30674,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -27976,7 +30706,18 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -27998,7 +30739,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -28026,7 +30776,18 @@
         "crates/processcraft-io/tests/interchange.rs:empty_timer_choice_and_event_flags_preserve_omission",
         "crates/processcraft-io/tests/interchange.rs:explicit_di_representation_endpoints_and_shape_flags_roundtrip"
       ],
-      "limitations": "Bounded event/DI fixture profile; complete contexts, user paths, style, native interaction and independent consumers remain unverified or preserved."
+      "limitations": "Bounded event/DI fixture profile; complete contexts, user paths, style, native interaction and independent consumers remain unverified or preserved.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -28060,7 +30821,18 @@
         "tests/fixtures/bpmn/choreography-graph/manifest.md",
         "scripts/qualify_choreography_graph.py"
       ],
-      "limitations": "Bounded ordered Task/Sub/Call/Global graphs, selected event/gateway contexts, exact namespace references and event-owned I/O. Full semantic, DI, native interaction and consumer qualification remain incomplete. Table 8.45 excludes process Activities, Data Objects and Data Associations as choreography flowElements; event-owned associations are a separate child context."
+      "limitations": "Bounded ordered Task/Sub/Call/Global graphs, selected event/gateway contexts, exact namespace references and event-owned I/O. Full semantic, DI, native interaction and consumer qualification remain incomplete. Table 8.45 excludes process Activities, Data Objects and Data Associations as choreography flowElements; event-owned associations are a separate child context.",
+      "required": [
+        "C"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -28082,7 +30854,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "C"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -28160,7 +30941,18 @@
         "crates/processcraft-io/tests/interchange.rs:nested_subprocess_call_and_expanded_geometry_round_trip",
         "crates/processcraft-io/tests/interchange.rs:activity_loop_characteristics_round_trip"
       ],
-      "limitations": "Only local call targets, bounded nested children/lane sets, selected ad hoc/transaction metadata and simple loops; other metadata preserved-source."
+      "limitations": "Only local call targets, bounded nested children/lane sets, selected ad hoc/transaction metadata and simple loops; other metadata preserved-source.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -28182,7 +30974,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -28204,7 +31005,18 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -28226,7 +31038,18 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -28248,7 +31071,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A",
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -28278,7 +31111,17 @@
         "crates/processcraft-io/tests/interchange.rs:error_and_escalation_end_events_keep_typed_root_references",
         "crates/processcraft-io/tests/interchange.rs:conditional_catch_expression_round_trips"
       ],
-      "limitations": "Only documented inline subsets, local refs and simple expressions; semantic conformance and full GUI not established."
+      "limitations": "Only documented inline subsets, local refs and simple expressions; semantic conformance and full GUI not established.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -28300,7 +31143,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -28331,7 +31183,18 @@
         "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip",
         "crates/processcraft-io/tests/interchange.rs:descriptive_artifact_identity_survives_native_round_trip"
       ],
-      "limitations": "Plain annotation, association, groups/categories and bounded nested lanes; rich text and advanced fields remain preserved-source. Full UI/render and semantics not proven."
+      "limitations": "Plain annotation, association, groups/categories and bounded nested lanes; rich text and advanced fields remain preserved-source. Full UI/render and semantics not proven.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -28353,7 +31216,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -28375,7 +31247,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -28483,7 +31365,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "A",
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -28511,7 +31403,18 @@
         "crates/processcraft-io/tests/interchange.rs:empty_timer_choice_and_event_flags_preserve_omission",
         "crates/processcraft-io/tests/interchange.rs:explicit_di_representation_endpoints_and_shape_flags_roundtrip"
       ],
-      "limitations": "Bounded event/DI fixture profile; complete contexts, user paths, style, native interaction and independent consumers remain unverified or preserved."
+      "limitations": "Bounded event/DI fixture profile; complete contexts, user paths, style, native interaction and independent consumers remain unverified or preserved.",
+      "required": [
+        "A",
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -28541,7 +31444,17 @@
         "crates/processcraft-io/tests/interchange.rs:error_and_escalation_end_events_keep_typed_root_references",
         "crates/processcraft-io/tests/interchange.rs:conditional_catch_expression_round_trips"
       ],
-      "limitations": "Only documented inline subsets, local refs and simple expressions; semantic conformance and full GUI not established."
+      "limitations": "Only documented inline subsets, local refs and simple expressions; semantic conformance and full GUI not established.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -28563,7 +31476,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -28585,7 +31507,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -28607,7 +31539,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -28629,7 +31571,17 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -28751,7 +31703,18 @@
         "tests/fixtures/bpmn20-schema/activity.bpmn",
         "crates/processcraft-io/tests/interchange.rs:activity_attributes_and_plain_script_round_trip"
       ],
-      "limitations": "Basic compensation/quantities/default, subtype implementation/instantiate and plain script only; external QName, advanced attributes and complete UI/semantics are not qualified."
+      "limitations": "Basic compensation/quantities/default, subtype implementation/instantiate and plain script only; external QName, advanced attributes and complete UI/semantics are not qualified.",
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate",
+        "render"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -28773,7 +31736,16 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "import",
+        "export",
+        "validate"
+      ]
     },
     {
       "schema": "Semantic.xsd",
@@ -28795,9 +31767,65 @@
         "import": "unverified",
         "export": "unverified",
         "validate": "unverified"
-      }
+      },
+      "required": [
+        "D"
+      ],
+      "required_dims": [
+        "model",
+        "edit",
+        "import",
+        "export",
+        "validate"
+      ]
     }
   ],
+  "required_scope": {
+    "total": {
+      "declarations": 299,
+      "cells": 1450,
+      "verified": 0,
+      "partial": 288,
+      "unverified": 1162
+    },
+    "by_set": {
+      "A": {
+        "declarations": 89,
+        "cells": 438,
+        "verified": 0,
+        "partial": 70,
+        "unverified": 368
+      },
+      "C": {
+        "declarations": 34,
+        "cells": 166,
+        "verified": 0,
+        "partial": 15,
+        "unverified": 151
+      },
+      "D": {
+        "declarations": 173,
+        "cells": 861,
+        "verified": 0,
+        "partial": 194,
+        "unverified": 667
+      },
+      "I": {
+        "declarations": 33,
+        "cells": 132,
+        "verified": 0,
+        "partial": 24,
+        "unverified": 108
+      },
+      "S": {
+        "declarations": 7,
+        "cells": 28,
+        "verified": 0,
+        "partial": 0,
+        "unverified": 28
+      }
+    }
+  },
   "conformance": {
     "status": "not_assessed",
     "note": "OMG PDF conformance classes and semantic constraints require separate clause-by-clause mapping; XSD declarations do not establish conformance."
