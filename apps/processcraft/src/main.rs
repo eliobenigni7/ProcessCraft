@@ -26,6 +26,7 @@ fn main() -> eframe::Result {
         Box::new(|cc| {
             let mut app = app::ProcessCraft::default();
             app.apply_settings(settings);
+            app.startup_path = std::env::args_os().nth(1).map(Into::into);
             app.apply_theme(&cc.egui_ctx);
             Ok(Box::new(app))
         }),

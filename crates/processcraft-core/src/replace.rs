@@ -621,6 +621,9 @@ pub fn replace(
     target: &ReplaceTarget,
 ) -> Result<Vec<Mutation>, String> {
     if !replace_options(doc, element).contains(target) {
+        if queries::find_node(doc, element).is_some_and(|n| current(doc, n) == *target) {
+            return Err(format!("This element is already a {}", target.label()));
+        }
         return Err(format!(
             "This element cannot be replaced with: {}",
             target.label()

@@ -286,9 +286,22 @@ pub fn layout_route(a: &Bounds, b: &Bounds, shapes: &[Bounds], layout: RouteLayo
     };
     let vh = || compact(vec![v_start.clone(), p(ax, by), h_end.clone()]);
     let hv = || compact(vec![h_start.clone(), p(bx, ay), v_end.clone()]);
+    // Rework loop: leave the bottom, run below both shapes, enter the target's bottom, so the
+    // back edge never shares the forward flows' sides.
+    let back = || {
+        let y = (a.y + a.height).max(b.y + b.height) + APART;
+        compact(vec![
+            p(ax, a.y + a.height),
+            p(ax, y),
+            p(bx, y),
+            p(bx, b.y + b.height),
+        ])
+    };
+    let backward = b.x + b.width <= a.x - APART;
     let (overlap_from, overlap_to) = (a.x.max(b.x), (a.x + a.width).min(b.x + b.width));
     let elbow =
         match layout {
+            RouteLayout::Sequence | RouteLayout::IntoGateway if backward => back(),
             RouteLayout::Message if vertical_apart && overlap_from <= overlap_to => {
                 let x = (overlap_from + overlap_to) / 2.0;
                 vec![p(x, v_start.y), p(x, v_end.y)]

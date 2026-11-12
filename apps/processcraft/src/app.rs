@@ -286,6 +286,8 @@ pub struct ProcessCraft {
     settings: processcraft_io::settings::Settings,
     /// Path chosen from Open recent, opened once any unsaved-changes prompt is resolved.
     pending_open: Option<std::path::PathBuf>,
+    /// File given on the command line (`processcraft <file>`), opened or imported on the first frame.
+    pub startup_path: Option<std::path::PathBuf>,
     recovery_records: Vec<processcraft_io::recovery::RecoveryRecord>,
     recovery_visible: bool,
     recovery_generation: Option<(String, u64)>,
@@ -429,6 +431,7 @@ impl Default for ProcessCraft {
             repaint: egui::Context::default(),
             settings: processcraft_io::settings::Settings::default(),
             pending_open: None,
+            startup_path: None,
             recovery_records,
             recovery_visible: true,
             recovery_generation: None,
@@ -1720,6 +1723,23 @@ impl ProcessCraft {
         }
         self.render_key.clear();
     }
+    /// BPMN XML is imported as a new model; anything else is opened as a native project.
+    fn open_startup_path(&mut self, path: std::path::PathBuf) {
+        let is_bpmn = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|e| e.eq_ignore_ascii_case("bpmn") || e.eq_ignore_ascii_case("xml"));
+        if is_bpmn {
+            self.effects.import(
+                self.repaint.clone(),
+                path,
+                self.ctl.session.id(),
+                self.ctl.session.snapshot().generation,
+            );
+        } else {
+            self.open_selected_path(Some(path));
+        }
+    }
     fn open_selected_path(&mut self, path: Option<std::path::PathBuf>) {
         let Some(path) = path else { return };
         if self.transition_blocked() {
@@ -1864,23 +1884,29 @@ impl ProcessCraft {
             host.map(|(activity, _)| activity.id.selector()),
         );
         canvas::apply_trigger(&mut node, entry.trigger);
-        if self.ctl.mutate(vec![
-            Mutation::CreateElement {
-                document_id: d.id,
-                process_id: p.id.selector(),
-                element: node,
-            },
-            Mutation::CreateShape {
-                document_id: d.id,
-                diagram_id: diagram.id.selector(),
-                shape: modeling::new_shape(
-                    kind,
-                    controller::id("Shape").into(),
-                    eid.selector(),
-                    bounds,
-                ),
-            },
-        ]) {
+        let backing = modeling::backing_data_object(d.id, &p.id.selector(), &node);
+        if self.ctl.mutate(
+            backing
+                .into_iter()
+                .chain([
+                    Mutation::CreateElement {
+                        document_id: d.id,
+                        process_id: p.id.selector(),
+                        element: node,
+                    },
+                    Mutation::CreateShape {
+                        document_id: d.id,
+                        diagram_id: diagram.id.selector(),
+                        shape: modeling::new_shape(
+                            kind,
+                            controller::id("Shape").into(),
+                            eid.selector(),
+                            bounds,
+                        ),
+                    },
+                ])
+                .collect(),
+        ) {
             self.select(Some(eid.selector()));
         }
     }
@@ -2562,6 +2588,9 @@ impl eframe::App for ProcessCraft {
             .rect_filled(ui.max_rect(), 0.0, ui.visuals().panel_fill);
         let ctx = ui.ctx().clone();
         self.repaint = ctx.clone();
+        if let Some(path) = self.startup_path.take() {
+            self.open_startup_path(path);
+        }
         #[cfg(windows)]
         if self.attachment.is_some() {
             {

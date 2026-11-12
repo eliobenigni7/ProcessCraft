@@ -678,7 +678,9 @@ fn copying_data_groups_and_associations_keeps_them_together() {
     }
     let doc = document(&s);
     let process = &doc.processes[0];
-    assert_eq!(process.data_objects.len(), 2);
+    // data_obj, its pasted copy, and the backing object createAt gave data_ref before it was
+    // re-pointed at data_obj.
+    assert_eq!(process.data_objects.len(), 3);
     assert_eq!(process.groups.len(), 2);
     assert_eq!(process.data_associations.len(), 2);
     let pasted_ref = process

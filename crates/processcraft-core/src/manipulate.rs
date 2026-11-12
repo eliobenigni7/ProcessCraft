@@ -1142,7 +1142,10 @@ pub fn create_at(
     };
     let shape_kind = node.kind;
     let shape_id = ids.shape.selector();
-    let mut batch = vec![
+    let mut batch: Vec<Mutation> = modeling::backing_data_object(doc.id, &scope, &node)
+        .into_iter()
+        .collect();
+    batch.extend([
         Mutation::CreateElement {
             document_id: doc.id,
             process_id: scope.clone(),
@@ -1153,7 +1156,7 @@ pub fn create_at(
             diagram_id: diagram_id.clone(),
             shape: modeling::new_shape(shape_kind, ids.shape, id.clone(), bounds.clone()),
         },
-    ];
+    ]);
     if host.is_some() {
         return Ok(batch);
     }

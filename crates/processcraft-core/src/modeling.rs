@@ -33,13 +33,14 @@ pub fn has_external_label(kind: NodeKind) -> bool {
             NodeKind::DataObjectReference | NodeKind::DataStoreReference
         )
 }
-/// External label: 90x20, centred below the shape with a 10 px gap.
+/// External label: 90 wide, centred below the shape with a 10 px gap. bpmn-js starts at 90x20
+/// and grows to the measured text; core has no text metrics, so it reserves two lines.
 pub fn external_label_bounds(shape: &Bounds) -> Bounds {
     Bounds {
         x: shape.x + shape.width / 2.0 - 45.0,
         y: shape.y + shape.height + 10.0,
         width: 90.0,
-        height: 20.0,
+        height: 40.0,
     }
 }
 /// A new boundary event sits on the host's bottom edge at three quarters of its width.
@@ -52,6 +53,45 @@ pub fn boundary_bounds(host: &Bounds) -> Bounds {
         height,
     }
 }
+fn backing_object_id(reference: &ElementIdentity) -> ElementIdentity {
+    reference
+        .xml_id()
+        .and_then(|id| format!("{id}_object").parse().ok())
+        .unwrap_or_else(ElementIdentity::anonymous)
+}
+/// The data object a new [`new_node`] data object reference points at, created in `scope`
+/// before the reference (same batch). `None` for every other kind.
+pub fn backing_data_object(
+    document_id: crate::ids::DocumentId,
+    scope: &ElementSelector,
+    node: &Node,
+) -> Option<Mutation> {
+    let Some(NodeDetails::DataObjectReference {
+        data_object_ref: Some(object),
+    }) = &node.details
+    else {
+        return None;
+    };
+    let id = match object {
+        ElementSelector::Xml(xml) => ElementIdentity::from(xml.clone()),
+        ElementSelector::Native { native_id } => ElementIdentity::Native {
+            native_id: *native_id,
+            xml_id: None,
+        },
+    };
+    Some(Mutation::CreateDataObject {
+        document_id,
+        scope_id: scope.clone(),
+        data_object: crate::bpmn_data::DataObject {
+            flow_metadata: None,
+            base: None,
+            id: Some(id),
+            name: node.name.clone(),
+            is_collection: None,
+            item_aware: None,
+        },
+    })
+}
 /// A new node with the details its kind needs to be valid; boundary events attach to `host`.
 pub fn new_node(
     kind: NodeKind,
@@ -59,10 +99,15 @@ pub fn new_node(
     name: Option<String>,
     host: Option<ElementSelector>,
 ) -> Node {
+    // A text annotation has no BPMN name: the given name becomes its text.
+    let (name, annotation_text) = match kind {
+        NodeKind::TextAnnotation => (None, name.unwrap_or_default()),
+        _ => (name, String::new()),
+    };
     let details = match kind {
         NodeKind::TextAnnotation => Some(NodeDetails::TextAnnotation {
             text_format: None,
-            text: Some(String::new().into()),
+            text: Some(annotation_text.into()),
         }),
         NodeKind::SubProcess | NodeKind::AdHocSubProcess | NodeKind::Transaction => {
             Some(NodeDetails::SubProcess {
@@ -71,6 +116,10 @@ pub fn new_node(
         }
         NodeKind::DataStoreReference => Some(NodeDetails::DataStoreReference {
             data_store_ref: None,
+        }),
+        // BPMN requires a reference to point at a data object; see [`backing_data_object`].
+        NodeKind::DataObjectReference => Some(NodeDetails::DataObjectReference {
+            data_object_ref: Some(backing_object_id(&id).selector()),
         }),
         NodeKind::IntermediateCatchEvent | NodeKind::BoundaryEvent => Some(NodeDetails::Event {
             definition_refs: Vec::new(),
@@ -827,10 +876,24 @@ pub fn connect(
             });
         }
     }
+    let mut new_edge = edge(edge_id, flow_id.selector(), waypoints);
+    if matches!(kind, ConnectionKind::DataInput | ConnectionKind::DataOutput) {
+        // A data association binds an activity port, which has no shape: the edge names the
+        // visible representations so BPMN DI export can resolve both ends.
+        let shape_id = |element: &ElementSelector| {
+            diagram
+                .shapes
+                .iter()
+                .find(|s| s.element == *element)
+                .map(|s| s.id.selector())
+        };
+        new_edge.source_element = shape_id(source);
+        new_edge.target_element = shape_id(target);
+    }
     batch.push(Mutation::CreateEdge {
         document_id: doc.id,
         diagram_id: diagram.id.selector(),
-        edge: edge(edge_id, flow_id.selector(), waypoints),
+        edge: new_edge,
     });
     Ok(batch)
 }

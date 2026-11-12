@@ -148,6 +148,59 @@ fn append_annotation_goes_above_right_with_an_association() {
 }
 
 #[test]
+fn appended_annotation_name_becomes_its_text() {
+    let mut s = session();
+    let mut mutation = append("review", NodeKind::TextAnnotation, "note");
+    if let Mutation::Append { name, .. } = &mut mutation {
+        *name = Some("Within 2 hours".into());
+    }
+    batch(&mut s, vec![mutation]).unwrap();
+    let node = document(&s).processes[0]
+        .nodes
+        .iter()
+        .find(|n| n.id == sel("note"))
+        .cloned()
+        .unwrap();
+    assert_eq!(node.name, None);
+    let Some(processcraft_core::bpmn_model::NodeDetails::TextAnnotation { text, .. }) =
+        node.details
+    else {
+        panic!("annotation details missing")
+    };
+    assert_eq!(text, Some(String::from("Within 2 hours").into()));
+}
+
+#[test]
+fn backward_sequence_flow_loops_below_into_the_target_bottom() {
+    use processcraft_core::geometry::{RouteLayout, layout_route};
+    let target = Bounds {
+        x: 100.0,
+        y: 100.0,
+        width: 100.0,
+        height: 80.0,
+    };
+    let source = Bounds {
+        x: 400.0,
+        y: 200.0,
+        width: 100.0,
+        height: 80.0,
+    };
+    let points: Vec<_> = layout_route(&source, &target, &[], RouteLayout::Sequence)
+        .iter()
+        .map(|p| (p.x, p.y))
+        .collect();
+    assert_eq!(
+        points,
+        vec![
+            (450.0, 280.0),
+            (450.0, 300.0),
+            (150.0, 300.0),
+            (150.0, 180.0)
+        ]
+    );
+}
+
+#[test]
 fn append_and_connect_refuse_with_the_rule_reason() {
     let mut s = session();
     let before = s.snapshot().content_id;
@@ -201,6 +254,20 @@ fn connect_binds_data_associations_to_new_ports() {
         Some(ident("readForm_port"))
     );
     assert_eq!(d.diagrams[0].edges.len(), 7);
+    // Port ends have no shape: the edges name the visible shapes so BPMN export resolves them.
+    let edge_ends = |flow: &str| {
+        let e = d.diagrams[0]
+            .edges
+            .iter()
+            .find(|e| e.element == sel(flow))
+            .unwrap();
+        (e.source_element.clone(), e.target_element.clone())
+    };
+    assert_eq!(
+        edge_ends("readForm"),
+        (Some(sel("form_di")), Some(sel("pc_shape_review")))
+    );
+    assert!(matches!(edge_ends("writeLedger"), (Some(_), Some(_))));
 }
 
 #[test]

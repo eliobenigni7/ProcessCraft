@@ -48,6 +48,14 @@ impl ReferenceIndex {
                     ReferenceResolution::MissingLocal
                 }
             }
+            // An unprefixed QName with no default namespace in scope (`attachedToRef="Task_1"` in
+            // bpmn.io/Camunda files) names a local element when one has that ID, as every BPMN
+            // tool reads it; an unknown one stays external and is preserved verbatim.
+            ModelReference::Qualified(name)
+                if name.namespace.is_empty() && self.xml_ids.contains_key(&name.local) =>
+            {
+                ReferenceResolution::Resolved(self.xml_ids[&name.local].clone())
+            }
             ModelReference::Qualified(name) => match &self.namespace {
                 None => ReferenceResolution::NamespaceUnknown,
                 Some(namespace) if namespace != &name.namespace => ReferenceResolution::External,
@@ -92,6 +100,21 @@ mod tests {
             ReferenceResolution::Resolved(_)
         ));
         assert_eq!(index.resolve(&external), ReferenceResolution::External);
+        let unprefixed = |local: &str| {
+            ModelReference::Qualified(QNameRef {
+                namespace: String::new(),
+                local: local.parse().unwrap(),
+            })
+        };
+        assert!(matches!(
+            index.resolve(&unprefixed("defs")),
+            ReferenceResolution::Resolved(_)
+        ));
+        // An unknown unprefixed name is not aliased to a local element.
+        assert_eq!(
+            index.resolve(&unprefixed("missing")),
+            ReferenceResolution::External
+        );
         doc.definitions = None;
         doc.provenance = Some(crate::model::Provenance {
             source_resource_id: "source".parse().unwrap(),

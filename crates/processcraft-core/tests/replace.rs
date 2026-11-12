@@ -240,6 +240,12 @@ fn replacing_a_task_keeps_identity_flows_lane_and_di_and_undoes_in_one_step() {
             .contains(&sel("order"))
     );
     assert_eq!(s.snapshot().undo_count, before.undo_count + 1);
+    // Replacing with the current type says so instead of "cannot be replaced".
+    let error = batch(&mut s, vec![replace("order", kind(NodeKind::UserTask))]).unwrap_err();
+    assert!(
+        matches!(&error, CommandError::InvalidParams(m) if m.contains("already a User task")),
+        "{error:?}"
+    );
     send(&mut s, Request::Undo).unwrap();
     assert_eq!(s.snapshot().content_id, before.content_id);
 }
