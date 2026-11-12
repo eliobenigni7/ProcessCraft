@@ -66,6 +66,7 @@ fn complete_connected_process_has_no_incomplete_warnings() {
     let mut p = ProjectData::new("p".into());
     let mut d = BpmnDocument::new("d".into(), id("defs"));
     let f = |name: &str, source: &str, target: &str| Flow {
+        message_ref: None,
         flow_metadata: None,
         base_extras: None,
         association_direction: None,
@@ -125,6 +126,7 @@ fn nested_gateway_diagnostics_are_advisory_and_anchored() {
             nodes: vec![gateway, node("nested_task", NodeKind::Task, "Task")],
             lanes: vec![],
             flows: vec![Flow {
+                message_ref: None,
                 flow_metadata: None,
                 base_extras: None,
                 association_direction: None,
@@ -175,6 +177,7 @@ fn activity_conditions_are_allowed_but_event_gateway_conditions_are_diagnosed() 
     // BPMN 2.0.2 §8.4.13 permits conditions on Activity flows (with another
     // outgoing flow); §10.6.6 prohibits them on Event-Based Gateway flows.
     let flow = |name: &str, source: &str, target: &str, condition: Option<&str>| Flow {
+        message_ref: None,
         flow_metadata: None,
         base_extras: None,
         association_direction: None,
@@ -1058,6 +1061,7 @@ fn explicit_flow_node_refs_check_kind_scope_and_direction() {
         ..Default::default()
     });
     let flow = Flow {
+        message_ref: None,
         flow_metadata: None,
         association_direction: None,
         id: id("sequence"),
@@ -1125,6 +1129,7 @@ fn message_task_cardinality_is_conditional_and_receive_instantiate_checks_incomi
         ..Default::default()
     });
     let flow = Flow {
+        message_ref: None,
         flow_metadata: None,
         association_direction: None,
         id: id("sequence"),
@@ -1179,5 +1184,212 @@ fn message_task_cardinality_is_conditional_and_receive_instantiate_checks_incomi
         !after
             .iter()
             .any(|d| d.code == "messageTaskItemEquivalenceUnverified")
+    );
+}
+
+#[test]
+fn participant_band_and_multiplicity_advisories_are_anchored() {
+    use processcraft_core::model::{
+        Bounds, Collaboration, Diagram, Participant, ParticipantBandKind, ParticipantMultiplicity,
+        Shape,
+    };
+    let mut doc = BpmnDocument::new("d".into(), id("defs"));
+    doc.collaboration = Some(Collaboration {
+        correlation_keys: vec![],
+        base: None,
+        name: None,
+        id: id("collab"),
+        participants: vec![Participant {
+            multiplicity: Some(ParticipantMultiplicity {
+                id: None,
+                base: None,
+                minimum: Some(2),
+                maximum: Some(1),
+            }),
+            base: None,
+            id: id("participant"),
+            name: None,
+            process: None,
+        }],
+        flows: vec![],
+        conversation_nodes: vec![],
+        conversation_links: vec![],
+    });
+    doc.diagrams.push(Diagram {
+        plane_metadata: None,
+        plane_order: None,
+        documentation: None,
+        resolution: None,
+        label_styles: vec![],
+        name: None,
+        id: id("diagram"),
+        plane_id: id("plane"),
+        plane: id("collab"),
+        shapes: vec![Shape {
+            di_metadata: None,
+            is_message_visible: Some(true),
+            participant_band_kind: Some(ParticipantBandKind::TopInitiating),
+            choreography_activity_shape: None,
+            id: id("shape"),
+            element: id("participant"),
+            is_expanded: None,
+            is_horizontal: None,
+            is_marker_visible: None,
+            bounds: Bounds {
+                x: 0.0,
+                y: 0.0,
+                width: 50.0,
+                height: 20.0,
+            },
+            label: None,
+            label_visibility: None,
+            style: None,
+        }],
+        edges: vec![],
+    });
+    let mut project = ProjectData::new("p".into());
+    project.documents.push(Arc::new(doc));
+    let diagnostics = project.diagnostics();
+    for (code, anchor) in [
+        ("participantMultiplicityRange", "participant"),
+        ("participantBandMissingOwner", "shape"),
+    ] {
+        assert!(
+            diagnostics.iter().any(|d| d.code == code
+                && d.element_id == Some(id(anchor))
+                && d.severity == DiagnosticSeverity::Warning),
+            "{code}"
+        );
+    }
+}
+
+#[test]
+fn participant_band_owner_resolves_to_same_diagram_activity_shape() {
+    use processcraft_core::bpmn_collaboration::{Choreography, ChoreographyActivity};
+    use processcraft_core::model::{
+        Bounds, DiReference, Diagram, Participant, ParticipantBandKind, Shape,
+    };
+    let shape = |name: &str, element: &str| Shape {
+        di_metadata: None,
+        is_message_visible: None,
+        participant_band_kind: None,
+        choreography_activity_shape: None,
+        id: id(name),
+        element: id(element),
+        is_expanded: None,
+        is_horizontal: None,
+        is_marker_visible: None,
+        bounds: Bounds {
+            x: 0.0,
+            y: 0.0,
+            width: 100.0,
+            height: 50.0,
+        },
+        label: None,
+        label_visibility: None,
+        style: None,
+    };
+    let participant = |name: &str| Participant {
+        multiplicity: None,
+        base: None,
+        id: id(name),
+        name: None,
+        process: None,
+    };
+    let mut doc = BpmnDocument::new("d".into(), id("defs"));
+    doc.choreographies.push(Choreography {
+        base: None,
+        id: id("choreo"),
+        name: None,
+        participants: vec![participant("p1"), participant("p2")],
+        message_flows: vec![],
+        activities: vec![ChoreographyActivity {
+            flow_metadata: None,
+            correlation_keys: vec![],
+            base: None,
+            id: id("task"),
+            name: None,
+            participant_refs: vec![id("p1"), id("p2")],
+            initiating_participant: id("p1"),
+            message_flow_refs: vec![],
+        }],
+        sequence_flows: vec![],
+    });
+    let mut band = shape("band", "p1");
+    band.participant_band_kind = Some(ParticipantBandKind::TopInitiating);
+    band.choreography_activity_shape = Some(DiReference::Local(id("owner_other_diagram")));
+    let diagram = |name: &str, plane: &str, shapes| Diagram {
+        plane_metadata: None,
+        plane_order: None,
+        name: None,
+        documentation: None,
+        resolution: None,
+        label_styles: vec![],
+        id: id(name),
+        plane_id: id(plane),
+        plane: id("choreo"),
+        shapes,
+        edges: vec![],
+    };
+    doc.diagrams.push(diagram(
+        "first",
+        "plane1",
+        vec![shape("owner_here", "task"), band],
+    ));
+    doc.diagrams.push(diagram(
+        "second",
+        "plane2",
+        vec![shape("owner_other_diagram", "task")],
+    ));
+    assert!(
+        processcraft_core::validation::activity_family_reference_issues(&doc)
+            .iter()
+            .any(|issue| issue.field == "di.choreographyActivityShape")
+    );
+    doc.diagrams[0].shapes[1].choreography_activity_shape =
+        Some(DiReference::Local(id("owner_here")));
+    assert!(
+        !processcraft_core::validation::activity_family_reference_issues(&doc)
+            .iter()
+            .any(|issue| issue.field == "di.choreographyActivityShape")
+    );
+    doc.diagrams[0].shapes[1].is_message_visible = Some(true);
+    doc.choreographies[0].message_flows.push(Flow {
+        message_ref: None,
+        flow_metadata: None,
+        base_extras: None,
+        association_direction: None,
+        id: id("request"),
+        kind: FlowKind::Message,
+        source: id("p2"),
+        target: id("p1"),
+        name: None,
+        documentation: String::new().into(),
+        condition: None,
+    });
+    doc.choreographies[0].activities[0].message_flow_refs = vec![id("request")];
+    let has_warning = |doc: &BpmnDocument, code: &str| {
+        let mut project = ProjectData::new("p".into());
+        project.documents.push(Arc::new(doc.clone()));
+        project
+            .diagnostics()
+            .iter()
+            .any(|diagnostic| diagnostic.code == code)
+    };
+    assert!(has_warning(&doc, "participantBandMessageMissing"));
+    doc.choreographies[0].activities[0]
+        .message_flow_refs
+        .push(id("unresolved"));
+    assert!(!has_warning(&doc, "participantBandMessageMissing"));
+    doc.choreographies[0].activities[0].message_flow_refs.pop();
+    doc.choreographies[0].message_flows[0].source = id("p1");
+    assert!(!has_warning(&doc, "participantBandMessageMissing"));
+    doc.diagrams[0].shapes[1].participant_band_kind = Some(ParticipantBandKind::MiddleInitiating);
+    assert!(has_warning(&doc, "participantBandMiddleMessage"));
+    doc.choreographies[0].activities[0].participant_refs = vec![id("p2")];
+    assert!(
+        processcraft_core::validation::activity_family_reference_issues(&doc)
+            .iter()
+            .any(|issue| issue.field == "di.choreographyActivityShape")
     );
 }

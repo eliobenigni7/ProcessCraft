@@ -227,10 +227,17 @@ pub fn validate_mixed(body: &MixedXml) -> Result<(), String> {
 }
 /// Validate a BPMN extensionElements body without interpreting foreign semantics.
 pub fn validate_extension(content: &XmlContent) -> Result<(), String> {
+    validate_extension_for(content, BPMN_NS)
+}
+/// Validate DI extension syntax. Its foreign namespace is relative to DI, not BPMN.
+pub fn validate_di_extension(content: &XmlContent) -> Result<(), String> {
+    validate_extension_for(content, "http://www.omg.org/spec/DD/20100524/DI")
+}
+fn validate_extension_for(content: &XmlContent, target_namespace: &str) -> Result<(), String> {
     for node in &content.nodes {
         match node {
             XmlNode::Element { element }
-                if element.namespace.is_empty() || element.namespace == BPMN_NS =>
+                if element.namespace.is_empty() || element.namespace == target_namespace =>
             {
                 return Err("Extension child must have a foreign namespace".into());
             }
@@ -250,9 +257,27 @@ pub fn validate_foreign_attributes(
     attributes: &[XmlAttribute],
     namespaces: &[NamespaceBinding],
 ) -> Result<(), String> {
+    validate_foreign_attributes_for(attributes, namespaces, BPMN_NS)
+}
+/// Validate DI DiagramElement foreign attributes in their own namespace domain.
+pub fn validate_di_foreign_attributes(
+    attributes: &[XmlAttribute],
+    namespaces: &[NamespaceBinding],
+) -> Result<(), String> {
+    validate_foreign_attributes_for(
+        attributes,
+        namespaces,
+        "http://www.omg.org/spec/DD/20100524/DI",
+    )
+}
+fn validate_foreign_attributes_for(
+    attributes: &[XmlAttribute],
+    namespaces: &[NamespaceBinding],
+    target_namespace: &str,
+) -> Result<(), String> {
     if attributes
         .iter()
-        .any(|a| a.namespace.is_empty() || a.namespace == BPMN_NS)
+        .any(|a| a.namespace.is_empty() || a.namespace == target_namespace)
     {
         return Err("Attribute must have a foreign namespace".into());
     }
@@ -319,5 +344,71 @@ mod tests {
             }],
         };
         assert!(validate_extension(&content).is_err());
+    }
+    #[test]
+    fn di_extensions_use_di_not_bpmn_namespace_as_target() {
+        let content = XmlContent {
+            namespaces: vec![NamespaceBinding {
+                prefix: "b".into(),
+                uri: BPMN_NS.into(),
+            }],
+            nodes: vec![XmlNode::Element {
+                element: XmlElement {
+                    namespace: BPMN_NS.into(),
+                    local: "task".parse().unwrap(),
+                    prefix: Some("b".parse().unwrap()),
+                    namespaces: vec![],
+                    attributes: vec![],
+                    children: vec![],
+                },
+            }],
+        };
+        assert!(validate_di_extension(&content).is_ok());
+        assert!(validate_extension(&content).is_err());
+        let di = "http://www.omg.org/spec/DD/20100524/DI";
+        let content = XmlContent {
+            namespaces: vec![NamespaceBinding {
+                prefix: "d".into(),
+                uri: di.into(),
+            }],
+            nodes: vec![XmlNode::Element {
+                element: XmlElement {
+                    namespace: di.into(),
+                    local: "Node".parse().unwrap(),
+                    prefix: Some("d".parse().unwrap()),
+                    namespaces: vec![],
+                    attributes: vec![],
+                    children: vec![],
+                },
+            }],
+        };
+        assert!(validate_di_extension(&content).is_err());
+        assert!(validate_extension(&content).is_ok());
+    }
+    #[test]
+    fn di_foreign_attributes_exclude_di_and_unqualified_but_allow_bpmndi() {
+        let di = "http://www.omg.org/spec/DD/20100524/DI";
+        let bpmndi = "http://www.omg.org/spec/BPMN/20100524/DI";
+        let namespaces = vec![
+            NamespaceBinding {
+                prefix: "di".into(),
+                uri: di.into(),
+            },
+            NamespaceBinding {
+                prefix: "bpmndi".into(),
+                uri: bpmndi.into(),
+            },
+        ];
+        let attr = |namespace: &str, prefix: Option<&str>| XmlAttribute {
+            namespace: namespace.into(),
+            local: "flag".parse().unwrap(),
+            prefix: prefix.map(|value| value.parse().unwrap()),
+            value: "x".into(),
+        };
+        assert!(validate_di_foreign_attributes(&[attr("", None)], &namespaces).is_err());
+        assert!(validate_di_foreign_attributes(&[attr(di, Some("di"))], &namespaces).is_err());
+        assert!(
+            validate_di_foreign_attributes(&[attr(bpmndi, Some("bpmndi"))], &namespaces).is_ok()
+        );
     }
 }

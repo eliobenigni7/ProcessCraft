@@ -39,6 +39,187 @@ pub(super) struct State {
     cancel: Option<Arc<AtomicBool>>,
     pub(super) preview: Option<(LayoutProposal, Arc<BpmnDocument>)>,
 }
+const COMPARISON_PAGE_SIZE: usize = 100;
+const PREVIEW_LIMIT: usize = 500;
+
+/// Serialize only a bounded prefix. Large values are fully serialized only on an explicit copy.
+fn value_preview(value: &serde_json::Value) -> (String, bool) {
+    if value.is_null() {
+        return ("Unset".into(), false);
+    }
+    if let Some(text) = value.as_str() {
+        let mut chars = text.chars();
+        let preview = chars.by_ref().take(PREVIEW_LIMIT).collect();
+        return (preview, chars.next().is_some());
+    }
+    struct Prefix {
+        bytes: Vec<u8>,
+        truncated: bool,
+    }
+    impl std::io::Write for Prefix {
+        fn write(&mut self, data: &[u8]) -> std::io::Result<usize> {
+            let remaining = PREVIEW_LIMIT.saturating_sub(self.bytes.len());
+            if data.len() > remaining {
+                self.bytes.extend_from_slice(&data[..remaining]);
+                self.truncated = true;
+                return Err(std::io::Error::other("preview complete"));
+            }
+            self.bytes.extend_from_slice(data);
+            Ok(data.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut prefix = Prefix {
+        bytes: Vec::with_capacity(PREVIEW_LIMIT),
+        truncated: false,
+    };
+    let _ = serde_json::to_writer(&mut prefix, value);
+    (
+        String::from_utf8_lossy(&prefix.bytes).into_owned(),
+        prefix.truncated,
+    )
+}
+fn copy_value(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::Null => "Unset".into(),
+        serde_json::Value::String(text) => text.clone(),
+        value => value.to_string(),
+    }
+}
+fn property_detail_ui(
+    ui: &mut egui::Ui,
+    property: &processcraft_core::queries::PropertyDifference,
+) {
+    let (before, before_short) = value_preview(&property.before);
+    let (after, after_short) = value_preview(&property.after);
+    let label = property
+        .property
+        .trim_matches('/')
+        .replace(['_', '.', '/'], " ");
+    ui.label(
+        egui::RichText::new(if label.is_empty() {
+            "Whole value"
+        } else {
+            &label
+        })
+        .strong(),
+    );
+    ui.label(format!("Before: {before}"));
+    ui.label(format!("After: {after}"));
+    if before_short || after_short {
+        ui.label("Preview shortened to 500 characters. Copy a value to inspect it in full.");
+    }
+    ui.horizontal(|ui| {
+        if ui.small_button("Copy previous value").clicked() {
+            ui.ctx().copy_text(copy_value(&property.before));
+        }
+        if ui.small_button("Copy current value").clicked() {
+            ui.ctx().copy_text(copy_value(&property.after));
+        }
+    });
+}
+fn semantic_property_page(
+    changes: &[processcraft_core::queries::ElementChange],
+    page: usize,
+) -> impl Iterator<
+    Item = (
+        usize,
+        &processcraft_core::queries::ElementChange,
+        &processcraft_core::queries::PropertyDifference,
+    ),
+> {
+    changes
+        .iter()
+        .flat_map(|change| {
+            change
+                .properties
+                .iter()
+                .map(move |property| (change, property))
+        })
+        .enumerate()
+        .skip(page.saturating_mul(COMPARISON_PAGE_SIZE))
+        .take(COMPARISON_PAGE_SIZE)
+        .map(|(index, (change, property))| (index, change, property))
+}
+fn diagram_property_page(
+    changes: &[processcraft_core::queries::DiagramChange],
+    page: usize,
+) -> impl Iterator<
+    Item = (
+        usize,
+        &processcraft_core::queries::DiagramChange,
+        &processcraft_core::queries::PropertyDifference,
+    ),
+> {
+    changes
+        .iter()
+        .flat_map(|change| {
+            change
+                .properties
+                .iter()
+                .map(move |property| (change, property))
+        })
+        .enumerate()
+        .skip(page.saturating_mul(COMPARISON_PAGE_SIZE))
+        .take(COMPARISON_PAGE_SIZE)
+        .map(|(index, (change, property))| (index, change, property))
+}
+fn diagram_label(document: &BpmnDocument, selector: &ElementSelector) -> String {
+    document
+        .diagrams
+        .iter()
+        .enumerate()
+        .find(|(_, diagram)| diagram.id == *selector)
+        .map_or_else(
+            || "Unavailable diagram".into(),
+            |(i, diagram)| {
+                diagram
+                    .name
+                    .as_deref()
+                    .filter(|name| !name.is_empty())
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| format!("Diagram {}", i + 1))
+            },
+        )
+}
+fn diagram_representation_label(
+    document: &BpmnDocument,
+    diagram_id: &ElementSelector,
+    representation_id: &ElementSelector,
+) -> String {
+    let Some(diagram) = document
+        .diagrams
+        .iter()
+        .find(|diagram| diagram.id == *diagram_id)
+    else {
+        return "Unavailable representation".into();
+    };
+    if let Some((i, shape)) = diagram
+        .shapes
+        .iter()
+        .enumerate()
+        .find(|(_, shape)| shape.id == *representation_id)
+    {
+        return shape.id.xml_id().map_or_else(
+            || format!("Shape {}", i + 1),
+            |id| format!("Shape {} · {id}", i + 1),
+        );
+    }
+    if let Some((i, edge)) = diagram
+        .edges
+        .iter()
+        .enumerate()
+        .find(|(_, edge)| edge.id == *representation_id)
+    {
+        return edge.id.xml_id().map_or_else(
+            || format!("Edge {}", i + 1),
+            |id| format!("Edge {} · {id}", i + 1),
+        );
+    }
+    "Unavailable representation".into()
+}
 struct ReferenceImage {
     key: String,
     pixels: Result<(Vec<u8>, usize, usize), String>,
@@ -459,7 +640,7 @@ impl ProcessCraft {
                 for (i, doc) in checkpoint.content.documents.iter().enumerate() { ui.selectable_value(&mut index, i, &doc.name); }
             });
             let node_count = checkpoint.content.documents.get(index).map_or(0,|d|processcraft_core::queries::scopes(d).iter().map(|s|s.nodes.len()).sum::<usize>());
-            let pages = node_count.max(checkpoint.content.dictionary_entries.len()).max(checkpoint.content.comments.len()).div_ceil(100).max(1);
+            let pages = node_count.max(checkpoint.content.dictionary_entries.len()).max(checkpoint.content.comments.len()).div_ceil(COMPARISON_PAGE_SIZE).max(1);
             self.m3.reference_page = self.m3.reference_page.min(pages-1);
             ui.horizontal(|ui| {
                 if ui.add_enabled(self.m3.reference_page > 0,egui::Button::new("Previous frozen details")).clicked() {self.m3.reference_page-=1;}
@@ -597,17 +778,37 @@ impl ProcessCraft {
                     diff.links_changed,
                     diff.project_properties_changed
                 ));
+                let semantic_property_count = diff
+                    .changed_properties
+                    .iter()
+                    .fold(0usize, |count, change| {
+                        count.saturating_add(change.properties.len())
+                    });
+                let diagram_property_count =
+                    diff.changed_diagrams.iter().fold(0usize, |count, change| {
+                        count.saturating_add(change.properties.len())
+                    });
                 let sections = [
+                    semantic_property_count,
+                    diagram_property_count,
                     diff.added_elements.len(),
                     diff.removed_elements.len(),
                     diff.renamed_elements.len(),
                     diff.changed_properties.len(),
                     diff.moved_shapes.len(),
                     diff.rerouted_edges.len(),
-                    diff.added_links.len() + diff.removed_links.len(),
-                    diff.added_dictionary_links.len() + diff.removed_dictionary_links.len(),
+                    diff.added_links
+                        .len()
+                        .saturating_add(diff.removed_links.len())
+                        .saturating_add(diff.added_dictionary_links.len())
+                        .saturating_add(diff.removed_dictionary_links.len()),
                 ];
-                let pages = sections.into_iter().max().unwrap_or(0).div_ceil(100).max(1);
+                let pages = sections
+                    .into_iter()
+                    .max()
+                    .unwrap_or(0)
+                    .div_ceil(COMPARISON_PAGE_SIZE)
+                    .max(1);
                 self.m3.comparison_page = self.m3.comparison_page.min(pages - 1);
                 ui.horizontal(|ui| {
                     if ui
@@ -634,30 +835,165 @@ impl ProcessCraft {
                         self.m3.comparison_page += 1;
                     }
                 });
+                let frozen = snap
+                    .project
+                    .checkpoints
+                    .iter()
+                    .find(|checkpoint| checkpoint.id == id);
                 for (title, changes) in [
                     ("Added elements", &diff.added_elements),
                     ("Removed elements", &diff.removed_elements),
                     ("Renamed elements", &diff.renamed_elements),
                     ("Changed properties", &diff.changed_properties),
                 ] {
-                    egui::CollapsingHeader::new(format!("{title} · {}", changes.len())).show(ui, |ui| {
-                        // Keep one frame bounded; CLI/MCP expose the full structured comparison.
-                        for change in changes.iter().skip(self.m3.comparison_page*100).take(100) {
-                            ui.label(format!("{} · {} → {}", change.key.xml_id, change.before_name.as_deref().unwrap_or("—"), change.after_name.as_deref().unwrap_or("—")));
-                            for property in &change.properties {
-                                let value = |value: &serde_json::Value| match value { serde_json::Value::Null => "Unset".into(), serde_json::Value::String(s) => s.clone(), value => value.to_string() };
-                                let before = value(&property.before); let after = value(&property.after);
-                                ui.label(egui::RichText::new(property.property.replace(['_','.']," ")).strong());
-                                ui.label(format!("Before: {}",before.chars().take(500).collect::<String>()));
-                                ui.label(format!("After: {}",after.chars().take(500).collect::<String>()));
-                                if before.chars().count() > 500 || after.chars().count() > 500 { ui.label("Preview shortened to 500 characters. Copy a value to inspect it in full."); }
-                                ui.horizontal(|ui| { if ui.small_button("Copy previous value").clicked() {ui.ctx().copy_text(before.clone());}
-                                if ui.small_button("Copy current value").clicked() {ui.ctx().copy_text(after.clone());} });
+                    egui::CollapsingHeader::new(format!("{title} · {}", changes.len())).show(
+                        ui,
+                        |ui| {
+                            // Keep one frame bounded; CLI/MCP expose the full structured comparison.
+                            for (index, change) in changes
+                                .iter()
+                                .enumerate()
+                                .skip(self.m3.comparison_page * COMPARISON_PAGE_SIZE)
+                                .take(COMPARISON_PAGE_SIZE)
+                            {
+                                let document = snap
+                                    .project
+                                    .documents
+                                    .iter()
+                                    .find(|document| document.id == change.key.document_id)
+                                    .or_else(|| {
+                                        frozen.and_then(|checkpoint| {
+                                            checkpoint.content.documents.iter().find(|document| {
+                                                document.id == change.key.document_id
+                                            })
+                                        })
+                                    });
+                                let owner = change
+                                    .after_name
+                                    .as_deref()
+                                    .filter(|name| !name.is_empty())
+                                    .or_else(|| {
+                                        change
+                                            .before_name
+                                            .as_deref()
+                                            .filter(|name| !name.is_empty())
+                                    })
+                                    .map(str::to_owned)
+                                    .or_else(|| {
+                                        document
+                                            .and_then(|document| {
+                                                processcraft_core::queries::element_identity(
+                                                    document,
+                                                    &change.key.xml_id,
+                                                )
+                                            })
+                                            .and_then(|identity| identity.xml_id())
+                                            .map(ToString::to_string)
+                                    })
+                                    .unwrap_or_else(|| format!("Element {}", index + 1));
+                                ui.label(format!(
+                                    "{} · {owner} · {} → {}",
+                                    document.map_or("Unavailable model", |document| document
+                                        .name
+                                        .as_str()),
+                                    change.before_name.as_deref().unwrap_or("—"),
+                                    change.after_name.as_deref().unwrap_or("—")
+                                ));
                             }
-                        }
-
-                    });
+                        },
+                    );
                 }
+                egui::CollapsingHeader::new(format!(
+                    "Semantic property details · {semantic_property_count}"
+                ))
+                .show(ui, |ui| {
+                    for (index, change, property) in
+                        semantic_property_page(&diff.changed_properties, self.m3.comparison_page)
+                    {
+                        let document = snap
+                            .project
+                            .documents
+                            .iter()
+                            .find(|document| document.id == change.key.document_id)
+                            .or_else(|| {
+                                frozen.and_then(|checkpoint| {
+                                    checkpoint
+                                        .content
+                                        .documents
+                                        .iter()
+                                        .find(|document| document.id == change.key.document_id)
+                                })
+                            });
+                        let owner = change
+                            .after_name
+                            .as_deref()
+                            .filter(|name| !name.is_empty())
+                            .or_else(|| {
+                                change
+                                    .before_name
+                                    .as_deref()
+                                    .filter(|name| !name.is_empty())
+                            })
+                            .map(str::to_owned)
+                            .or_else(|| {
+                                document
+                                    .and_then(|document| {
+                                        processcraft_core::queries::element_identity(
+                                            document,
+                                            &change.key.xml_id,
+                                        )
+                                    })
+                                    .and_then(|identity| identity.xml_id())
+                                    .map(ToString::to_string)
+                            })
+                            .unwrap_or_else(|| format!("Element {}", index + 1));
+                        ui.push_id(("semantic", index), |ui| {
+                            ui.separator();
+                            ui.label(format!(
+                                "{} · {owner}",
+                                document
+                                    .map_or("Unavailable model", |document| document.name.as_str())
+                            ));
+                            property_detail_ui(ui, property);
+                        });
+                    }
+                });
+                egui::CollapsingHeader::new(format!(
+                    "Diagram property details · {diagram_property_count}"
+                ))
+                .show(ui, |ui| {
+                    for (index, change, property) in
+                        diagram_property_page(&diff.changed_diagrams, self.m3.comparison_page)
+                    {
+                        let document = snap
+                            .project
+                            .documents
+                            .iter()
+                            .find(|document| document.id == change.document_id)
+                            .or_else(|| {
+                                frozen.and_then(|checkpoint| {
+                                    checkpoint
+                                        .content
+                                        .documents
+                                        .iter()
+                                        .find(|document| document.id == change.document_id)
+                                })
+                            });
+                        let label = document.map_or_else(
+                            || "Unavailable diagram".into(),
+                            |document| diagram_label(document, &change.diagram_id),
+                        );
+                        ui.push_id(("diagram", index), |ui| {
+                            ui.separator();
+                            ui.label(format!(
+                                "{} · {label}",
+                                document
+                                    .map_or("Unavailable model", |document| document.name.as_str())
+                            ));
+                            property_detail_ui(ui, property);
+                        });
+                    }
+                });
                 for (title, changes) in [
                     ("Moved shapes", &diff.moved_shapes),
                     ("Rerouted connections", &diff.rerouted_edges),
@@ -668,12 +1004,47 @@ impl ProcessCraft {
                             for change in
                                 changes.iter().skip(self.m3.comparison_page * 100).take(100)
                             {
+                                let document =
+                                    snap.project
+                                        .documents
+                                        .iter()
+                                        .find(|document| document.id == change.document_id)
+                                        .or_else(|| {
+                                            frozen.and_then(|checkpoint| {
+                                                checkpoint.content.documents.iter().find(
+                                                    |document| document.id == change.document_id,
+                                                )
+                                            })
+                                        });
+                                let diagram = document.map_or_else(
+                                    || "Unavailable diagram".into(),
+                                    |document| diagram_label(document, &change.diagram_id),
+                                );
+                                let element = document
+                                    .and_then(|document| {
+                                        processcraft_core::queries::element_name(
+                                            document,
+                                            &change.element_id,
+                                        )
+                                    })
+                                    .filter(|name| !name.is_empty())
+                                    .map(str::to_owned)
+                                    .unwrap_or_else(|| "Unnamed element".into());
+                                let representation = document.map_or_else(
+                                    || "Unavailable representation".into(),
+                                    |document| {
+                                        diagram_representation_label(
+                                            document,
+                                            &change.diagram_id,
+                                            &change.representation_id,
+                                        )
+                                    },
+                                );
                                 ui.label(format!(
-                                    "{} / {} · {} ({})",
-                                    change.document_id,
-                                    change.diagram_id,
-                                    change.element_id,
-                                    change.representation_id
+                                    "{} · {diagram} · {element} · {representation}",
+                                    document.map_or("Unavailable model", |document| document
+                                        .name
+                                        .as_str())
                                 ));
                             }
                         },
@@ -690,18 +1061,16 @@ impl ProcessCraft {
                             .added_links
                             .iter()
                             .map(|link| ("Added", link))
-                            .chain(diff.removed_links.iter().map(|link| ("Removed", link)));
-                        for (action, link) in
-                            navigation.skip(self.m3.comparison_page * 100).take(100)
-                        {
-                            ui.label(format!(
-                                "{action} · {} / {} → {} · {}",
-                                link.source.document_id,
-                                link.source.xml_id,
-                                link.target,
-                                link.label
-                            ));
-                        }
+                            .chain(diff.removed_links.iter().map(|link| ("Removed", link)))
+                            .map(|(action, link)| {
+                                format!(
+                                    "{action} · {} / {} → {} · {}",
+                                    link.source.document_id,
+                                    link.source.xml_id,
+                                    link.target,
+                                    link.label
+                                )
+                            });
                         let dictionary = diff
                             .added_dictionary_links
                             .iter()
@@ -710,14 +1079,22 @@ impl ProcessCraft {
                                 diff.removed_dictionary_links
                                     .iter()
                                     .map(|link| ("Removed", link)),
-                            );
-                        for (action, link) in
-                            dictionary.skip(self.m3.comparison_page * 100).take(100)
+                            )
+                            .map(|(action, link)| {
+                                format!(
+                                    "{action} · {} / {} · {:?} → {:?}",
+                                    link.source.document_id,
+                                    link.source.xml_id,
+                                    link.kind,
+                                    link.target
+                                )
+                            });
+                        for label in navigation
+                            .chain(dictionary)
+                            .skip(self.m3.comparison_page.saturating_mul(COMPARISON_PAGE_SIZE))
+                            .take(COMPARISON_PAGE_SIZE)
                         {
-                            ui.label(format!(
-                                "{action} · {} / {} · {:?} → {:?}",
-                                link.source.document_id, link.source.xml_id, link.kind, link.target
-                            ));
+                            ui.label(label);
                         }
                     },
                 );
@@ -767,6 +1144,87 @@ impl ProcessCraft {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn comparison_property_pages_bound_both_owner_types() {
+        use processcraft_core::queries::{DiagramChange, ElementChange, PropertyDifference};
+        let app = ProcessCraft::default();
+        let snapshot = app.ctl.session.snapshot();
+        let document = &snapshot.project.documents[0];
+        let properties = (0..251)
+            .map(|i| PropertyDifference {
+                property: format!("field/{i}"),
+                before: serde_json::Value::Null,
+                after: serde_json::json!(i),
+            })
+            .collect::<Vec<_>>();
+        let semantic = vec![ElementChange {
+            key: ElementKey {
+                document_id: document.id,
+                xml_id: document.processes[0].id.selector(),
+            },
+            before_name: None,
+            after_name: None,
+            properties: properties.clone(),
+        }];
+        let diagrams = vec![DiagramChange {
+            document_id: document.id,
+            diagram_id: document.diagrams[0].id.selector(),
+            properties,
+        }];
+        assert_eq!(semantic_property_page(&semantic, 0).count(), 100);
+        assert_eq!(semantic_property_page(&semantic, 1).next().unwrap().0, 100);
+        assert_eq!(semantic_property_page(&semantic, 2).count(), 51);
+        assert_eq!(diagram_property_page(&diagrams, 0).count(), 100);
+        assert_eq!(diagram_property_page(&diagrams, 1).next().unwrap().0, 100);
+        assert_eq!(diagram_property_page(&diagrams, 2).count(), 51);
+    }
+    #[test]
+    fn checkpoint_plane_changes_reach_diagram_detail_pages() {
+        let mut app = ProcessCraft::default();
+        let snapshot = app.ctl.session.snapshot();
+        let document_id = snapshot.project.documents[0].id;
+        let diagram_id = snapshot.project.documents[0].diagrams[0].id.selector();
+        let checkpoint = CheckpointId::new();
+        assert!(app.ctl.mutate(vec![Mutation::CreateCheckpoint {
+            id: checkpoint,
+            name: "Before".into(),
+            created_unix_ms: 1
+        }]));
+        assert!(app.ctl.mutate(vec![Mutation::SetDiagramPlaneMetadata {
+            document_id,
+            diagram_id,
+            metadata: Some(processcraft_core::model::DiElementMetadata::default())
+        }]));
+        let comparison = processcraft_core::queries::compare_checkpoint(
+            &app.ctl.session.snapshot().project,
+            checkpoint,
+        )
+        .unwrap();
+        let rows = diagram_property_page(&comparison.changed_diagrams, 0).collect::<Vec<_>>();
+        assert!(!rows.is_empty());
+        assert!(
+            rows.iter()
+                .any(|(_, _, property)| property.property.contains("plane_metadata"))
+        );
+    }
+    #[test]
+    fn comparison_value_preview_is_bounded_and_copy_remains_complete() {
+        let text = "界".repeat(200_000);
+        let value = serde_json::Value::String(text.clone());
+        let (preview, short) = value_preview(&value);
+        assert!(short);
+        assert_eq!(preview.chars().count(), 500);
+        assert_eq!(copy_value(&value), text);
+        let nested = serde_json::json!({"large":"x".repeat(2_000_000)});
+        let (preview, short) = value_preview(&nested);
+        assert!(short);
+        assert!(preview.chars().count() <= 500);
+        assert!(copy_value(&nested).len() > 2_000_000);
+        assert_eq!(
+            value_preview(&serde_json::Value::Null),
+            ("Unset".into(), false)
+        );
+    }
     #[test]
     fn frozen_details_can_reach_the_second_page() {
         let mut app = ProcessCraft::default();

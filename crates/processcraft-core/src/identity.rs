@@ -26,7 +26,22 @@ fn bounds(b: &Bounds) -> Result<(), String> {
         fail("invalid geometry")
     }
 }
+fn di_metadata(metadata: &Option<crate::model::DiElementMetadata>) -> Result<(), String> {
+    if let Some(metadata) = metadata {
+        crate::bpmn_xml::validate_di_foreign_attributes(
+            &metadata.foreign_attributes,
+            &metadata.namespaces,
+        )?;
+        if let Some(extension) = &metadata.extension {
+            crate::bpmn_xml::validate_di_extension(extension)?;
+        }
+    }
+    Ok(())
+}
 fn label(l: &Option<Label>) -> Result<(), String> {
+    if let Some(value) = l {
+        di_metadata(&value.di_metadata)?;
+    }
     if let Some(l) = l
         && let Some(b) = &l.bounds
     {
@@ -550,8 +565,16 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
     });
     metadata_error?;
     let identities = d.element_identities();
+    let anonymous_multiplicities = d
+        .collaboration
+        .iter()
+        .flat_map(|c| &c.participants)
+        .chain(d.choreographies.iter().flat_map(|c| &c.participants))
+        .filter(|p| p.multiplicity.as_ref().is_some_and(|m| m.id.is_none()))
+        .count();
     if identities
         .len()
+        .saturating_add(anonymous_multiplicities)
         .saturating_add(crate::activity_read::activity_read(d).anonymous_owners)
         > 10_000
     {
@@ -647,6 +670,36 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
         }
         for reference in relationship.sources.iter().chain(&relationship.targets) {
             check_qname(reference)?;
+        }
+    }
+    let check_flow_message = |flow: &Flow| -> Result<(), String> {
+        if let Some(reference) = &flow.message_ref {
+            if flow.kind != FlowKind::Message {
+                return fail("messageRef requires a message flow");
+            }
+            if let crate::bpmn_activity::ModelReference::Qualified(qname) = reference {
+                check_qname(qname)?;
+            }
+        }
+        Ok(())
+    };
+    for scope in crate::queries::scopes(d) {
+        for flow in scope.flows {
+            check_flow_message(flow)?;
+        }
+    }
+    if let Some(collaboration) = &d.collaboration {
+        for flow in &collaboration.flows {
+            check_flow_message(flow)?;
+        }
+    }
+    for choreography in &d.choreographies {
+        for flow in choreography
+            .message_flows
+            .iter()
+            .chain(&choreography.sequence_flows)
+        {
+            check_flow_message(flow)?;
         }
     }
     let catalog = &d.catalog;
@@ -2337,6 +2390,19 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             definitions_text(name)?;
         }
         add(&mut ids, &diagram.plane_id)?;
+        di_metadata(&diagram.plane_metadata)?;
+        if let Some(order) = &diagram.plane_order {
+            let expected: HashSet<_> = diagram
+                .shapes
+                .iter()
+                .map(|s| s.id.selector())
+                .chain(diagram.edges.iter().map(|e| e.id.selector()))
+                .collect();
+            let actual: HashSet<_> = order.iter().cloned().collect();
+            if actual.len() != order.len() || actual != expected {
+                return fail("Plane order must contain each representation exactly once");
+            }
+        }
         for style in &diagram.label_styles {
             if let Some(id) = &style.id {
                 add(&mut ids, id)?;
@@ -2395,6 +2461,39 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             }
         }
         for s in &diagram.shapes {
+            di_metadata(&s.di_metadata)?;
+            if let Some(reference) = &s.choreography_activity_shape {
+                let owner = match reference {
+                    crate::model::DiReference::Local(selector) => {
+                        diagram.shapes.iter().find(|shape| shape.id == *selector)
+                    }
+                    crate::model::DiReference::Qualified(qname) => {
+                        check_qname(qname)?;
+                        if local(qname) {
+                            diagram
+                                .shapes
+                                .iter()
+                                .find(|shape| shape.id.xml_id() == Some(&qname.local))
+                        } else {
+                            None
+                        }
+                    }
+                };
+                let external = matches!(reference, crate::model::DiReference::Qualified(qname) if !local(qname));
+                if !external
+                    && !owner.is_some_and(|shape| {
+                        d.choreographies.iter().any(|c| {
+                            c.activities
+                                .iter()
+                                .any(|activity| activity.id == shape.element)
+                        })
+                    })
+                {
+                    return fail(
+                        "Participant band must reference a choreography activity shape in its diagram",
+                    );
+                }
+            }
             add(&mut ids, &s.id)?;
             let global_store = d
                 .data_stores
@@ -2425,6 +2524,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             .chain(diagram.edges.iter().map(|edge| edge.id.selector()))
             .collect();
         for e in &diagram.edges {
+            di_metadata(&e.di_metadata)?;
             add(&mut ids, &e.id)?;
             if e.source_element
                 .iter()

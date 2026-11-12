@@ -74,10 +74,16 @@ impl ProcessCraft {
             (self.camera, self.zoom) = fit(diagram, size);
             ui.ctx().data_mut(|data| data.insert_temp(fit_id, key));
         }
-        egui::Frame::new()
+        let frame = egui::Frame::new()
             .fill(self.theme.palette().canvas)
             .inner_margin(12)
             .show(ui, |ui| self.canvas_render(ui, size, true));
+        #[cfg(test)]
+        ui.ctx().data_mut(|data| {
+            data.insert_temp(egui::Id::unique("test_canvas_rect"), frame.response.rect)
+        });
+        #[cfg(not(test))]
+        let _ = frame;
     }
     pub(super) fn diagram_preview(&mut self, ui: &mut egui::Ui, height: f32) {
         self.canvas_render(
@@ -237,11 +243,10 @@ impl ProcessCraft {
                     );
                 }
                 if interactive {
-                    for shape in diagram
-                        .shapes
-                        .iter()
-                        .filter(|s| self.multi.contains(&s.element))
-                    {
+                    for shape in diagram.shapes.iter().filter(|s| {
+                        self.representation_diagram.as_ref() == Some(&diagram.id.selector())
+                            && self.representation_selection.contains(&s.id.selector())
+                    }) {
                         let b = &shape.bounds;
                         let min = Pos2::new(
                             rect.left() + ((b.x - camera.0) as f32 * zoom),
@@ -268,19 +273,44 @@ impl ProcessCraft {
                     {
                         let x = camera.0 + (pos.x - rect.left()) as f64 / zoom as f64;
                         let y = camera.1 + (pos.y - rect.top()) as f64 / zoom as f64;
-                        let hit = self
-                            .hits
-                            .iter()
-                            .rev()
-                            .find(|h| h.contains(x, y, 5.0 / zoom as f64))
-                            .cloned();
+                        let tolerance = 5.0 / zoom as f64;
+                        let hit = if ctx.input(|i| i.modifiers.alt) {
+                            self.hits
+                                .iter()
+                                .rev()
+                                .find(|h| h.is_label && h.contains(x, y, tolerance))
+                                .or_else(|| {
+                                    self.hits.iter().rev().find(|h| h.contains(x, y, tolerance))
+                                })
+                        } else {
+                            self.hits.iter().rev().find(|h| h.contains(x, y, tolerance))
+                        }
+                        .cloned();
                         if let Some(h) = hit {
                             let id = h.key.xml_id;
-                            if ctx.input(|i| i.modifiers.shift) && self.multi.is_empty() {
+                            let representation = h.diagram_element_id;
+                            let diagram_id = diagram.id.selector();
+                            let shift = ctx.input(|i| i.modifiers.shift);
+                            let same_diagram =
+                                self.representation_diagram.as_ref() == Some(&diagram_id);
+                            if !shift
+                                && (!same_diagram
+                                    || !self.representation_selection.contains(&representation))
+                            {
                                 self.select(Some(id.clone()));
-                            } else if ctx.input(|i| i.modifiers.shift) {
+                                self.representation_selection = vec![representation.clone()];
+                            } else if shift {
+                                if self.multi.is_empty() {
+                                    self.select(Some(id.clone()));
+                                }
                                 if !self.multi.contains(&id) {
                                     self.multi.push(id.clone());
+                                }
+                                if !same_diagram {
+                                    self.representation_selection.clear();
+                                }
+                                if !self.representation_selection.contains(&representation) {
+                                    self.representation_selection.push(representation.clone());
                                 }
                                 self.ctl.session.set_selection(
                                     self.multi
@@ -292,24 +322,84 @@ impl ProcessCraft {
                                         })
                                         .collect(),
                                 );
-                            } else if !self.multi.contains(&id) {
-                                self.select(Some(id.clone()));
                             }
+                            self.representation_diagram = Some(diagram_id.clone());
                             if editable && response.drag_started() {
-                                self.drag = begin_drag(
-                                    &response,
-                                    &ctx,
+                                let inside_shape = diagram
+                                    .shapes
+                                    .iter()
+                                    .find(|s| s.id == representation)
+                                    .is_some_and(|s| {
+                                        x >= s.bounds.x
+                                            && x <= s.bounds.x + s.bounds.width
+                                            && y >= s.bounds.y
+                                            && y <= s.bounds.y + s.bounds.height
+                                    });
+                                let label_drag =
+                                    h.is_label && (!inside_shape || ctx.input(|i| i.modifiers.alt));
+                                let items = if label_drag {
                                     diagram
                                         .shapes
                                         .iter()
-                                        .filter(|s| self.multi.contains(&s.element))
+                                        .find(|s| s.id == representation)
+                                        .and_then(|s| s.label.as_ref())
+                                        .or_else(|| {
+                                            diagram
+                                                .edges
+                                                .iter()
+                                                .find(|e| e.id == representation)
+                                                .and_then(|e| e.label.as_ref())
+                                        })
+                                        .and_then(|l| l.bounds.clone())
+                                        .or_else(|| match &h.geometry {
+                                            processcraft_render::HitGeometry::Shape(bounds) => {
+                                                Some(bounds.clone())
+                                            }
+                                            _ => None,
+                                        })
+                                        .map(|b| vec![(representation.clone(), b)])
+                                        .unwrap_or_default()
+                                } else {
+                                    diagram
+                                        .shapes
+                                        .iter()
+                                        .filter(|s| {
+                                            self.representation_selection.contains(&s.id.selector())
+                                        })
                                         .map(|s| (s.id.selector(), s.bounds.clone()))
-                                        .collect(),
-                                );
+                                        .collect()
+                                };
+                                if label_drag && items.is_empty() {
+                                    self.ctl.error = "Set label bounds in Diagram representation properties before dragging the label.".into();
+                                } else if self.ctl.session.snapshot().generation != snap.generation
+                                {
+                                    self.ctl.error =
+                                        "Properties changed; start the move again.".into();
+                                } else if !items.is_empty() {
+                                    self.drag = begin_drag(&response, &ctx, items);
+                                    if let Some(drag) = &mut self.drag {
+                                        drag.context = Some((snap.generation, d.id, diagram_id));
+                                        drag.label = label_drag;
+                                    }
+                                }
                             }
                         } else {
                             self.select(None);
                         }
+                    }
+                    if self
+                        .drag
+                        .as_ref()
+                        .and_then(|drag| drag.context.as_ref())
+                        .is_some_and(|(generation, document, diagram_id)| {
+                            *generation != self.ctl.session.snapshot().generation
+                                || *document != d.id
+                                || *diagram_id != diagram.id.selector()
+                        })
+                    {
+                        self.drag = None;
+                        self.ctl.error =
+                            "The diagram changed while dragging. Start the move again.".into();
                     }
                     advance_drag(&mut self.drag, &ctx);
                     if response.dragged()
@@ -336,10 +426,57 @@ impl ProcessCraft {
                     if let Some(drag) = finish_drag(&response, &mut self.drag) {
                         let delta = drag.offset / zoom;
                         if delta.length() > 1.0 {
-                            self.move_shapes(drag.items, delta.x as f64, delta.y as f64);
+                            if drag.label {
+                                if let Some((representation_id, mut bounds)) =
+                                    drag.items.into_iter().next()
+                                {
+                                    bounds.x += delta.x as f64;
+                                    bounds.y += delta.y as f64;
+                                    use processcraft_core::commands::Mutation;
+                                    let mutation =
+                                        if let Some(shape) = diagram.shapes.iter().find(|s| {
+                                            s.id == representation_id && s.label.is_none()
+                                        }) {
+                                            Mutation::SetShapeLabel {
+                                                document_id: d.id,
+                                                diagram_id: diagram.id.selector(),
+                                                shape_id: representation_id,
+                                                label: Some(processcraft_core::model::Label {
+                                                    bounds: Some(bounds),
+                                                    ..Default::default()
+                                                }),
+                                                label_visibility: shape.label_visibility,
+                                            }
+                                        } else if let Some(edge) = diagram.edges.iter().find(|e| {
+                                            e.id == representation_id && e.label.is_none()
+                                        }) {
+                                            Mutation::SetEdgeLabel {
+                                                document_id: d.id,
+                                                diagram_id: diagram.id.selector(),
+                                                edge_id: representation_id,
+                                                label: Some(processcraft_core::model::Label {
+                                                    bounds: Some(bounds),
+                                                    ..Default::default()
+                                                }),
+                                                label_visibility: edge.label_visibility,
+                                            }
+                                        } else {
+                                            Mutation::SetLabelBounds {
+                                                document_id: d.id,
+                                                diagram_id: diagram.id.selector(),
+                                                representation_id,
+                                                bounds,
+                                            }
+                                        };
+                                    self.ctl.mutate(vec![mutation]);
+                                }
+                            } else {
+                                self.move_shapes(drag.items, delta.x as f64, delta.y as f64);
+                            }
                         }
                     }
                     if response.hovered() {
+                        response.clone().on_hover_text("Drag a shape to move it. Alt-drag its label to move the label separately.");
                         let scroll = ctx.input(|i| i.smooth_scroll_delta);
                         if scroll != Vec2::ZERO {
                             camera.0 -= scroll.x as f64 / zoom as f64;

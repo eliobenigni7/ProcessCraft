@@ -6,6 +6,42 @@ use processcraft_core::{
 use std::sync::Arc;
 
 #[test]
+fn choreography_selection_queries_return_real_names_and_flow_documents() {
+    use serde_json::json;
+    let mut doc = BpmnDocument::new("Model".into(), "Definitions".parse().unwrap());
+    doc.choreographies.push(serde_json::from_value(json!({
+        "id":"Choreography","name":"Interaction",
+        "participants":[{"id":"Buyer","name":"Buyer","process":null},{"id":"Seller","name":null,"process":null}],
+        "message_flows":[{"id":"Request","kind":"Message","source":"Buyer","target":"Seller","name":"Order","documentation":"Request documentation","condition":null}],
+        "activities":[{"id":"Exchange","name":"Review exchange","participant_refs":["Buyer","Seller"],"initiating_participant":"Buyer","message_flow_refs":["Request"]}],
+        "sequence_flows":[{"id":"Repeat","kind":"Sequence","source":"Exchange","target":"Exchange","name":"Repeat","documentation":"Repeat documentation","condition":null}]
+    })).unwrap());
+    let before = serde_json::to_value(&doc).unwrap();
+    for (selector, expected) in [
+        ("Choreography", "Interaction"),
+        ("Buyer", "Buyer"),
+        ("Seller", ""),
+        ("Exchange", "Review exchange"),
+        ("Request", "Order"),
+        ("Repeat", "Repeat"),
+    ] {
+        assert_eq!(
+            queries::element_name(&doc, &selector.parse().unwrap()),
+            Some(expected)
+        );
+    }
+    for (selector, expected) in [
+        ("Request", "Request documentation"),
+        ("Repeat", "Repeat documentation"),
+    ] {
+        let flow = queries::find_flow(&doc, &selector.parse().unwrap()).unwrap();
+        assert_eq!(flow.documentation.plain_text(), Some(expected));
+    }
+    assert_eq!(serde_json::to_value(&doc).unwrap(), before);
+    assert!(doc.choreographies[0].participants[1].name.is_none());
+}
+
+#[test]
 fn anonymous_native_elements_remain_queryable_without_promoting_or_naming_them() {
     let mut document = BpmnDocument::new("Native model".into(), ElementIdentity::anonymous());
     let process = ElementIdentity::anonymous();

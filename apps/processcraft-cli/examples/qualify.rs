@@ -63,6 +63,10 @@ fn fixture(docs: usize, nodes: usize, active: usize, resource: usize) -> Project
             });
             if j == 0 && i < active {
                 shapes.push(Shape {
+                    di_metadata: None,
+                    is_message_visible: None,
+                    participant_band_kind: None,
+                    choreography_activity_shape: None,
                     label_visibility: None,
                     is_horizontal: None,
                     is_marker_visible: None,
@@ -98,6 +102,8 @@ fn fixture(docs: usize, nodes: usize, active: usize, resource: usize) -> Project
             flows: vec![],
         });
         d.diagrams.push(Diagram {
+            plane_metadata: None,
+            plane_order: None,
             documentation: None,
             resolution: None,
             label_styles: vec![],

@@ -12,6 +12,38 @@ use processcraft_core::{
 };
 use tiny_skia::PathBuilder;
 
+const DI_EXTENSION_DIAGNOSTIC: &str = "DI extensions/foreign attributes are preserved in BPMN; their visual effects are not interpreted.";
+
+fn has_uninterpreted_di(diagram: &processcraft_core::model::Diagram) -> bool {
+    use processcraft_core::bpmn_xml::XmlNode;
+    let opaque = |metadata: Option<&processcraft_core::model::DiElementMetadata>| {
+        metadata.is_some_and(|m| {
+            !m.foreign_attributes.is_empty()
+                || m.extension.as_ref().is_some_and(|xml| {
+                    xml.nodes.iter().any(|node| {
+                        matches!(
+                            node,
+                            XmlNode::Element { .. } | XmlNode::ProcessingInstruction { .. }
+                        )
+                    })
+                })
+        })
+    };
+    opaque(diagram.plane_metadata.as_ref())
+        || diagram.shapes.iter().any(|s| {
+            opaque(s.di_metadata.as_ref())
+                || s.label
+                    .as_ref()
+                    .is_some_and(|l| opaque(l.di_metadata.as_ref()))
+        })
+        || diagram.edges.iter().any(|e| {
+            opaque(e.di_metadata.as_ref())
+                || e.label
+                    .as_ref()
+                    .is_some_and(|l| opaque(l.di_metadata.as_ref()))
+        })
+}
+
 struct SemanticIndex<'a> {
     groups: Vec<&'a processcraft_core::bpmn_model::Group>,
     nodes: Vec<(&'a Node, usize)>,
@@ -285,6 +317,8 @@ pub struct HitRegion {
     pub diagram_element_id: ElementSelector,
     /// Independent BPMNLabel identity when this hit addresses an explicitly identified label.
     pub label_id: Option<ElementSelector>,
+    /// True for label hits even when the BPMNLabel has no independent ID.
+    pub is_label: bool,
     pub geometry: HitGeometry,
 }
 impl HitRegion {
@@ -630,6 +664,10 @@ impl BpmnScene {
             }
             include(b.x, b.y)?;
             include(b.x + b.width, b.y + b.height)?;
+            if shape.is_message_visible == Some(true) && shape.participant_band_kind.is_some() {
+                include(b.x + b.width / 2.0 - 12.0, b.y - 24.0)?;
+                include(b.x + b.width / 2.0 + 12.0, b.y + b.height + 24.0)?;
+            }
             if let Some(b) = shape.label.as_ref().and_then(|label| label.bounds.as_ref()) {
                 include(b.x, b.y)?;
                 include(b.x + b.width, b.y + b.height)?;
@@ -688,6 +726,16 @@ impl BpmnScene {
         scene.add_background_rect(0.0, 0.0, scene.width(), scene.height(), bg)?;
         let mut hits = Vec::new();
         let mut diagnostics = Vec::new();
+        if has_uninterpreted_di(diagram) {
+            diagnostics.push(DI_EXTENSION_DIAGNOSTIC.into());
+        }
+        let paint_ranks = diagram.plane_order.as_ref().map(|order| {
+            order
+                .iter()
+                .enumerate()
+                .map(|(i, id)| (id.clone(), i + 1))
+                .collect::<std::collections::BTreeMap<_, _>>()
+        });
         let mut ordered_shapes: Vec<_> = diagram
             .shapes
             .iter()
@@ -710,8 +758,207 @@ impl BpmnScene {
             }
         });
         for shape in ordered_shapes {
+            if let Some(ranks) = &paint_ranks {
+                scene.set_paint_rank(
+                    *ranks
+                        .get(&shape.id.selector())
+                        .unwrap_or(&(ranks.len() + 1)),
+                );
+            }
             if semantics.activity_ports.contains(&shape.element) {
                 diagnostics.push(format!("Activity-local or event-local data port {} cannot be depicted as a BPMN shape; only process ports can be shown", shape.element));
+                continue;
+            }
+            if let Some(band_kind) = shape.participant_band_kind {
+                use processcraft_core::model::{DiReference, ParticipantBandKind};
+                let owner = match &shape.choreography_activity_shape {
+                    Some(DiReference::Local(id)) => diagram.shapes.iter().find(|s| &s.id == id),
+                    Some(DiReference::Qualified(q))
+                        if document
+                            .definitions
+                            .as_ref()
+                            .is_some_and(|defs| defs.target_namespace == q.namespace) =>
+                    {
+                        diagram
+                            .shapes
+                            .iter()
+                            .find(|s| s.id.xml_id() == Some(&q.local))
+                    }
+                    _ => None,
+                };
+                let context = owner.and_then(|owner| semantics.choreography(&owner.element));
+                let participant = context.and_then(|(scope, _)| {
+                    scope.participants.iter().find(|p| p.id == shape.element)
+                });
+                let Some(participant) = participant else {
+                    diagnostics.push(format!("Participant band {} has an unresolved activity representation or participant", shape.id));
+                    continue;
+                };
+                let b = &shape.bounds;
+                let (x, y, w, h) = (
+                    (b.x - origin.0) as f32,
+                    (b.y - origin.1) as f32,
+                    b.width as f32,
+                    b.height as f32,
+                );
+                let non_initiating = matches!(
+                    band_kind,
+                    ParticipantBandKind::TopNonInitiating
+                        | ParticipantBandKind::MiddleNonInitiating
+                        | ParticipantBandKind::BottomNonInitiating
+                );
+                let default_band_fill = if non_initiating {
+                    [225, 225, 225]
+                } else {
+                    fill
+                };
+                let band_fill = color(
+                    shape.style.as_ref().and_then(|s| s.fill.as_deref()),
+                    default_band_fill,
+                );
+                scene.add_background_rect(x, y, w, h, band_fill)?;
+                let band_fg = if non_initiating {
+                    if low_contrast([26, 37, 52], band_fill) {
+                        [255, 255, 255]
+                    } else {
+                        [26, 37, 52]
+                    }
+                } else {
+                    fg
+                };
+                let explicit_stroke = shape.style.as_ref().and_then(|s| s.stroke.as_deref());
+                let stroke = color(explicit_stroke, band_fg);
+                if non_initiating && explicit_stroke.is_some() && low_contrast(stroke, band_fill) {
+                    diagnostics.push(format!(
+                        "Participant band {} explicit stroke has low contrast against its fill",
+                        shape.id
+                    ));
+                }
+                let label_style = shape
+                    .label
+                    .as_ref()
+                    .and_then(|label| label.style.as_ref())
+                    .or(shape.style.as_ref());
+                if non_initiating
+                    && label_style
+                        .and_then(|s| s.font.as_deref())
+                        .is_some_and(|value| low_contrast(color(Some(value), band_fg), band_fill))
+                {
+                    diagnostics.push(format!("Participant band {} explicit label color has low contrast against its fill", shape.id));
+                }
+                lines(
+                    &mut scene,
+                    &[(x, y), (x + w, y), (x + w, y + h), (x, y + h), (x, y)],
+                    stroke,
+                    1.0,
+                )?;
+                if participant
+                    .multiplicity
+                    .as_ref()
+                    .and_then(|m| m.maximum)
+                    .is_some_and(|n| n > 1)
+                {
+                    for offset in [-3.0, 0.0, 3.0] {
+                        lines(
+                            &mut scene,
+                            &[
+                                (x + w / 2.0 + offset, y + h - 7.0),
+                                (x + w / 2.0 + offset, y + h - 2.0),
+                            ],
+                            stroke,
+                            1.0,
+                        )?;
+                    }
+                }
+                let fallback = b;
+                let lb = shape
+                    .label
+                    .as_ref()
+                    .and_then(|l| l.bounds.as_ref())
+                    .unwrap_or(fallback);
+                let name = participant.name.as_deref().unwrap_or("");
+                if shape_labels && label_visible(shape.label.as_ref(), shape.label_visibility) {
+                    label(
+                        &mut scene,
+                        fonts,
+                        family,
+                        name,
+                        lb,
+                        origin,
+                        label_style,
+                        label_font(document, diagram, shape.label.as_ref(), &mut diagnostics),
+                        band_fg,
+                        true,
+                        &mut diagnostics,
+                    )?;
+                }
+                hits.push(HitRegion {
+                    key: ElementKey {
+                        document_id: document.id,
+                        xml_id: shape.element.clone(),
+                    },
+                    diagram_element_id: shape.id.selector(),
+                    label_id: None,
+                    is_label: false,
+                    geometry: HitGeometry::Shape(b.clone()),
+                });
+                if shape_labels
+                    && shape.label.is_some()
+                    && label_visible(shape.label.as_ref(), shape.label_visibility)
+                    && !name.is_empty()
+                {
+                    hits.push(HitRegion {
+                        key: ElementKey {
+                            document_id: document.id,
+                            xml_id: shape.element.clone(),
+                        },
+                        diagram_element_id: shape.id.selector(),
+                        label_id: shape
+                            .label
+                            .as_ref()
+                            .and_then(|l| l.id.as_ref())
+                            .map(|id| id.selector()),
+                        is_label: true,
+                        geometry: HitGeometry::Shape(lb.clone()),
+                    });
+                }
+                if shape.is_message_visible == Some(true) {
+                    let bottom = matches!(
+                        band_kind,
+                        ParticipantBandKind::BottomInitiating
+                            | ParticipantBandKind::BottomNonInitiating
+                    );
+                    if matches!(
+                        band_kind,
+                        ParticipantBandKind::MiddleInitiating
+                            | ParticipantBandKind::MiddleNonInitiating
+                    ) {
+                        diagnostics.push(format!("Participant band {} message visibility cannot be depicted on a middle band", shape.id));
+                    } else if context.is_some_and(|(scope, activity)| {
+                        activity.message_flow_refs.iter().any(|id| {
+                            scope
+                                .message_flows
+                                .iter()
+                                .any(|flow| &flow.id == id && flow.source == shape.element)
+                        })
+                    }) {
+                        let cy = if bottom { y + h + 13.0 } else { y - 13.0 };
+                        let edge_y = if bottom { y + h } else { y };
+                        let envelope_y = if bottom { cy - 7.0 } else { cy + 7.0 };
+                        dashed_lines(
+                            &mut scene,
+                            &[(x + w / 2.0, edge_y), (x + w / 2.0, envelope_y)],
+                            stroke,
+                            2.0,
+                        )?;
+                        envelope(&mut scene, x + w / 2.0, cy, stroke, non_initiating, fill)?;
+                    } else {
+                        diagnostics.push(format!(
+                            "Participant band {} has no resolved outgoing choreography message",
+                            shape.id
+                        ));
+                    }
+                }
                 continue;
             }
             if semantics.groups.iter().any(|g| g.id == shape.element) {
@@ -790,6 +1037,7 @@ impl BpmnScene {
                                 .as_ref()
                                 .and_then(|label| label.id.as_ref())
                                 .map(|id| id.selector()),
+                            is_label: true,
                             geometry: HitGeometry::Shape(bounds.clone()),
                         });
                     }
@@ -801,6 +1049,7 @@ impl BpmnScene {
                     },
                     diagram_element_id: shape.id.selector(),
                     label_id: None,
+                    is_label: false,
                     geometry: HitGeometry::Shape(b.clone()),
                 });
                 continue;
@@ -1407,7 +1656,32 @@ impl BpmnScene {
                     }
                 }
             }
-            if let Some((scope, activity)) = choreography {
+            let has_explicit_bands =
+                diagram
+                    .shapes
+                    .iter()
+                    .any(|band| match &band.choreography_activity_shape {
+                        Some(processcraft_core::model::DiReference::Local(id)) => {
+                            id == &shape.id.selector()
+                        }
+                        Some(processcraft_core::model::DiReference::Qualified(q)) => {
+                            document
+                                .definitions
+                                .as_ref()
+                                .is_some_and(|defs| defs.target_namespace == q.namespace)
+                                && shape.id.xml_id() == Some(&q.local)
+                        }
+                        None => false,
+                    });
+            if choreography.is_some() && !has_explicit_bands && diagram.plane_order.is_some() {
+                diagnostics.push(format!(
+                    "Choreography {} has no explicit participant band representations",
+                    shape.element
+                ));
+            }
+            if let Some((scope, activity)) =
+                choreography.filter(|_| !has_explicit_bands && diagram.plane_order.is_none())
+            {
                 if activity.participant_refs.len() != 2 {
                     diagnostics.push(format!(
                         "Choreography {} participant band order is not represented",
@@ -1574,6 +1848,26 @@ impl BpmnScene {
                             .iter()
                             .any(|participant| participant.id == shape.element)
                     });
+            if document
+                .collaboration
+                .as_ref()
+                .and_then(|c| c.participants.iter().find(|p| p.id == shape.element))
+                .and_then(|p| p.multiplicity.as_ref())
+                .and_then(|m| m.maximum)
+                .is_some_and(|maximum| maximum > 1)
+            {
+                for offset in [-3.0_f32, 0.0, 3.0] {
+                    lines(
+                        &mut scene,
+                        &[
+                            (x + w / 2.0 + offset, y + h - 9.0),
+                            (x + w / 2.0 + offset, y + h - 3.0),
+                        ],
+                        stroke,
+                        1.0,
+                    )?;
+                }
+            }
             let fallback_label = if is_lane_or_pool {
                 if shape.is_horizontal == Some(false) {
                     Bounds {
@@ -1634,24 +1928,52 @@ impl BpmnScene {
                 .and_then(|l| l.style.as_ref())
                 .or(shape.style.as_ref());
             if shape_labels && label_visible(shape.label.as_ref(), shape.label_visibility) {
+                let rotate_pool_label = is_lane_or_pool
+                    && shape.is_horizontal != Some(false)
+                    && shape
+                        .label
+                        .as_ref()
+                        .and_then(|l| l.bounds.as_ref())
+                        .is_none();
+                let rotated_bounds = Bounds {
+                    x: 0.0,
+                    y: 0.0,
+                    width: lb.height,
+                    height: lb.width,
+                };
                 label(
                     &mut scene,
                     fonts,
                     family,
                     name,
-                    lb,
-                    origin,
+                    if rotate_pool_label {
+                        &rotated_bounds
+                    } else {
+                        lb
+                    },
+                    if rotate_pool_label {
+                        (0.0, 0.0)
+                    } else {
+                        origin
+                    },
                     style,
                     label_font(document, diagram, shape.label.as_ref(), &mut diagnostics),
                     fg,
-                    shape
-                        .label
-                        .as_ref()
-                        .and_then(|label| label.bounds.as_ref())
-                        .is_none()
-                        && is_task_kind(marker_kind),
+                    rotate_pool_label
+                        || shape
+                            .label
+                            .as_ref()
+                            .and_then(|label| label.bounds.as_ref())
+                            .is_none()
+                            && is_task_kind(marker_kind),
                     &mut diagnostics,
                 )?;
+                if rotate_pool_label && !name.is_empty() {
+                    scene.rotate_last_label(
+                        (lb.x - origin.0) as f32,
+                        (lb.y + lb.height - origin.1) as f32,
+                    );
+                }
             }
             hits.push(HitRegion {
                 key: ElementKey {
@@ -1660,6 +1982,7 @@ impl BpmnScene {
                 },
                 diagram_element_id: shape.id.selector(),
                 label_id: None,
+                is_label: false,
                 geometry: match kind {
                     Some(
                         NodeKind::StartEvent
@@ -1697,11 +2020,15 @@ impl BpmnScene {
                         .as_ref()
                         .and_then(|label| label.id.as_ref())
                         .map(|id| id.selector()),
+                    is_label: true,
                     geometry: HitGeometry::Shape(lb.clone()),
                 });
             }
         }
         for edge in &diagram.edges {
+            if let Some(ranks) = &paint_ranks {
+                scene.set_paint_rank(*ranks.get(&edge.id.selector()).unwrap_or(&(ranks.len() + 1)));
+            }
             if semantics.hidden(&edge.element, diagram) {
                 continue;
             }
@@ -1721,6 +2048,7 @@ impl BpmnScene {
                     },
                     diagram_element_id: edge.id.selector(),
                     label_id: None,
+                    is_label: false,
                     geometry: HitGeometry::Edge(edge.waypoints.clone()),
                 });
                 continue;
@@ -1777,6 +2105,7 @@ impl BpmnScene {
                                 .as_ref()
                                 .and_then(|label| label.id.as_ref())
                                 .map(|id| id.selector()),
+                            is_label: true,
                             geometry: HitGeometry::Shape(bounds.clone()),
                         });
                     }
@@ -1788,6 +2117,7 @@ impl BpmnScene {
                     },
                     diagram_element_id: edge.id.selector(),
                     label_id: None,
+                    is_label: false,
                     geometry: HitGeometry::Edge(edge.waypoints.clone()),
                 });
                 continue;
@@ -1819,6 +2149,25 @@ impl BpmnScene {
             }
             if matches!(flow.kind, FlowKind::Sequence) && semantics.is_default_flow(flow) {
                 draw_default_slash(&mut scene, &pts, stroke)?;
+            }
+            if matches!(flow.kind, FlowKind::Message)
+                && let Some(visible) = edge.message_visible_kind
+                && let Some((cx, cy)) = polyline_midpoint(&pts)
+            {
+                let filled = matches!(
+                    visible,
+                    processcraft_core::model::MessageVisibleKind::NonInitiating
+                );
+                let explicit = edge.style.as_ref().and_then(|s| s.stroke.as_deref());
+                let envelope_stroke = if filled && explicit.is_none() {
+                    [26, 37, 52]
+                } else {
+                    stroke
+                };
+                if filled && explicit.is_some() && low_contrast(envelope_stroke, [225, 225, 225]) {
+                    diagnostics.push(format!("Message edge {} explicit stroke has low contrast against the envelope fill", edge.id));
+                }
+                envelope(&mut scene, cx, cy, envelope_stroke, filled, bg)?;
             }
             if matches!(flow.kind, FlowKind::Message) || semantics.conditional_flow_marker(flow) {
                 draw_flow_source_marker(
@@ -1902,6 +2251,7 @@ impl BpmnScene {
                             .as_ref()
                             .and_then(|label| label.id.as_ref())
                             .map(|id| id.selector()),
+                        is_label: true,
                         geometry: HitGeometry::Shape(bounds.clone()),
                     });
                 }
@@ -1913,7 +2263,15 @@ impl BpmnScene {
                 },
                 diagram_element_id: edge.id.selector(),
                 label_id: None,
+                is_label: false,
                 geometry: HitGeometry::Edge(edge.waypoints.clone()),
+            });
+        }
+        if let Some(ranks) = &paint_ranks {
+            hits.sort_by_key(|hit| {
+                *ranks
+                    .get(&hit.diagram_element_id)
+                    .unwrap_or(&(ranks.len() + 1))
             });
         }
         Ok(Self {
@@ -1968,6 +2326,21 @@ fn color(value: Option<&str>, default: [u8; 3]) -> [u8; 3] {
         })
         .unwrap_or(default)
 }
+fn low_contrast(a: [u8; 3], b: [u8; 3]) -> bool {
+    fn luminance(c: [u8; 3]) -> f64 {
+        let channel = |v: u8| {
+            let x = f64::from(v) / 255.0;
+            if x <= 0.04045 {
+                x / 12.92
+            } else {
+                ((x + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        channel(c[0]) * 0.2126 + channel(c[1]) * 0.7152 + channel(c[2]) * 0.0722
+    }
+    let (a, b) = (luminance(a), luminance(b));
+    (a.max(b) + 0.05) / (a.min(b) + 0.05) < 3.0
+}
 #[allow(clippy::too_many_arguments)]
 fn label(
     scene: &mut DiagramScene,
@@ -2002,15 +2375,25 @@ fn label(
     request.italic = di_font.is_some_and(|font| font.is_italic == Some(true));
     request.center = center;
     let mut layout = fonts.layout(request)?;
+    // Preserve glyph descenders when the text itself fits the label box.
+    // Padding is discretionary and must not consume space needed by outlines.
+    let required_height = layout
+        .glyphs()
+        .iter()
+        .filter_map(|g| g.outline.as_ref())
+        .fold(layout.height(), |height, path| {
+            height.max(path.bounds().bottom())
+        });
+    let vertical_padding = (((b.height as f32) - required_height) / 2.0).clamp(0.0, 4.0);
     let vertical_offset = if center {
-        (((b.height as f32) - 8.0 - layout.height()) / 2.0).max(0.0)
+        (((b.height as f32) - vertical_padding * 2.0 - required_height) / 2.0).max(0.0)
     } else {
         0.0
     };
     diagnostics.extend(layout.diagnostics().iter().cloned());
     if layout.clip_to_bounds(
         ((b.width as f32) - 8.0).max(0.0),
-        ((b.height as f32) - 8.0 - vertical_offset).max(0.0),
+        ((b.height as f32) - vertical_padding * 2.0 - vertical_offset).max(0.0),
     ) {
         diagnostics.push(format!(
             "Label clipped because it exceeds its bounds: {text}"
@@ -2018,7 +2401,7 @@ fn label(
     }
     let (x, y) = (
         (b.x - origin.0) as f32 + 4.0,
-        (b.y - origin.1) as f32 + 4.0 + vertical_offset,
+        (b.y - origin.1) as f32 + vertical_padding + vertical_offset,
     );
     let ink = color(style.and_then(|s| s.font.as_deref()), fg);
     let mut decorations = Vec::new();
@@ -2689,6 +3072,60 @@ fn draw_new_markers(
     }
     Ok(())
 }
+fn polyline_midpoint(points: &[(f32, f32)]) -> Option<(f32, f32)> {
+    let total: f32 = points
+        .windows(2)
+        .map(|p| (p[1].0 - p[0].0).hypot(p[1].1 - p[0].1))
+        .sum();
+    if !total.is_finite() || total <= 0.0 {
+        return None;
+    }
+    let mut remaining = total / 2.0;
+    for pair in points.windows(2) {
+        let length = (pair[1].0 - pair[0].0).hypot(pair[1].1 - pair[0].1);
+        if length > 0.0 && remaining <= length {
+            let t = remaining / length;
+            return Some((
+                pair[0].0 + (pair[1].0 - pair[0].0) * t,
+                pair[0].1 + (pair[1].1 - pair[0].1) * t,
+            ));
+        }
+        remaining -= length;
+    }
+    None
+}
+
+fn envelope(
+    scene: &mut DiagramScene,
+    x: f32,
+    y: f32,
+    stroke: [u8; 3],
+    filled: bool,
+    background: [u8; 3],
+) -> Result<(), RenderError> {
+    let fill = if filled { [225, 225, 225] } else { background };
+    scene.add_background_rect(x - 10.0, y - 6.0, 20.0, 12.0, fill)?;
+    let line = stroke;
+    lines(
+        scene,
+        &[
+            (x - 10.0, y - 6.0),
+            (x + 10.0, y - 6.0),
+            (x + 10.0, y + 6.0),
+            (x - 10.0, y + 6.0),
+            (x - 10.0, y - 6.0),
+        ],
+        stroke,
+        1.0,
+    )?;
+    lines(
+        scene,
+        &[(x - 10.0, y - 6.0), (x, y + 1.0), (x + 10.0, y - 6.0)],
+        line,
+        1.0,
+    )
+}
+
 fn marker_polygon(
     scene: &mut DiagramScene,
     points: &[(f32, f32)],
@@ -3020,6 +3457,21 @@ impl BpmnViewport {
             .iter()
             .find(|d| &d.id == diagram_id)
             .ok_or(RenderError("Diagram not found"))?;
+        if has_uninterpreted_di(original)
+            && !built
+                .diagnostics
+                .iter()
+                .any(|d| d == DI_EXTENSION_DIAGNOSTIC)
+        {
+            built.diagnostics.push(DI_EXTENSION_DIAGNOSTIC.into());
+        }
+        let paint_ranks = original.plane_order.as_ref().map(|order| {
+            order
+                .iter()
+                .enumerate()
+                .map(|(i, id)| (id.clone(), i + 1))
+                .collect::<std::collections::BTreeMap<_, _>>()
+        });
         let fg = if matches!(appearance, Appearance::Dark) {
             [230, 234, 240]
         } else {
@@ -3028,6 +3480,13 @@ impl BpmnViewport {
         let semantics = SemanticIndex::new(document)?;
         // Labels are culled independently of their owning shape.
         for shape in &original.shapes {
+            if let Some(ranks) = &paint_ranks {
+                built.scene.set_paint_rank(
+                    *ranks
+                        .get(&shape.id.selector())
+                        .unwrap_or(&(ranks.len() + 1)),
+                );
+            }
             if semantics.activity_ports.contains(&shape.element)
                 || semantics.hidden(&shape.element, original)
             {
@@ -3071,6 +3530,14 @@ impl BpmnViewport {
                     semantics
                         .lane(&shape.element)
                         .map(|(lane, _)| lane.name.as_deref().unwrap_or(""))
+                })
+                .or_else(|| {
+                    semantics
+                        .choreographies
+                        .iter()
+                        .flat_map(|c| &c.participants)
+                        .find(|p| p.id == shape.element)
+                        .map(|p| p.name.as_deref().unwrap_or(""))
                 });
             if let Some(c) = &document.collaboration {
                 for p in &c.participants {
@@ -3198,13 +3665,39 @@ impl BpmnViewport {
                     shape.element
                 ));
             }
+            let is_lane_or_pool = semantics.lane(&shape.element).is_some()
+                || document
+                    .collaboration
+                    .as_ref()
+                    .is_some_and(|c| c.participants.iter().any(|p| p.id == shape.element));
+            let rotate_pool_label = is_lane_or_pool
+                && shape.is_horizontal != Some(false)
+                && shape
+                    .label
+                    .as_ref()
+                    .and_then(|l| l.bounds.as_ref())
+                    .is_none();
+            let rotated_bounds = Bounds {
+                x: 0.0,
+                y: 0.0,
+                width: bounds.height,
+                height: bounds.width,
+            };
             label(
                 &mut built.scene,
                 fonts,
                 family,
                 name,
-                bounds,
-                (view.x + built.origin.0, view.y + built.origin.1),
+                if rotate_pool_label {
+                    &rotated_bounds
+                } else {
+                    bounds
+                },
+                if rotate_pool_label {
+                    (0.0, 0.0)
+                } else {
+                    (view.x + built.origin.0, view.y + built.origin.1)
+                },
                 shape
                     .label
                     .as_ref()
@@ -3216,15 +3709,42 @@ impl BpmnViewport {
                     shape.label.as_ref(),
                     &mut built.diagnostics,
                 ),
-                fg,
-                shape
-                    .label
-                    .as_ref()
-                    .and_then(|label| label.bounds.as_ref())
-                    .is_none()
-                    && is_task_kind(marker_kind),
+                if matches!(
+                    shape.participant_band_kind,
+                    Some(
+                        processcraft_core::model::ParticipantBandKind::TopNonInitiating
+                            | processcraft_core::model::ParticipantBandKind::MiddleNonInitiating
+                            | processcraft_core::model::ParticipantBandKind::BottomNonInitiating
+                    )
+                ) {
+                    let band_fill = color(
+                        shape.style.as_ref().and_then(|s| s.fill.as_deref()),
+                        [225, 225, 225],
+                    );
+                    if low_contrast([26, 37, 52], band_fill) {
+                        [255, 255, 255]
+                    } else {
+                        [26, 37, 52]
+                    }
+                } else {
+                    fg
+                },
+                rotate_pool_label
+                    || shape.participant_band_kind.is_some()
+                    || shape
+                        .label
+                        .as_ref()
+                        .and_then(|label| label.bounds.as_ref())
+                        .is_none()
+                        && is_task_kind(marker_kind),
                 &mut built.diagnostics,
             )?;
+            if rotate_pool_label {
+                built.scene.rotate_last_label(
+                    (bounds.x - view.x - built.origin.0) as f32,
+                    (bounds.y + bounds.height - view.y - built.origin.1) as f32,
+                );
+            }
             if shape.label.is_some() {
                 let mut local = bounds.clone();
                 rebase(&mut local);
@@ -3239,11 +3759,17 @@ impl BpmnViewport {
                         .as_ref()
                         .and_then(|label| label.id.as_ref())
                         .map(|id| id.selector()),
+                    is_label: true,
                     geometry: HitGeometry::Shape(local),
                 });
             }
         }
         for edge in &original.edges {
+            if let Some(ranks) = &paint_ranks {
+                built
+                    .scene
+                    .set_paint_rank(*ranks.get(&edge.id.selector()).unwrap_or(&(ranks.len() + 1)));
+            }
             if semantics.hidden(&edge.element, original) {
                 continue;
             }
@@ -3292,6 +3818,7 @@ impl BpmnViewport {
                         },
                         diagram_element_id: edge.id.selector(),
                         label_id: None,
+                        is_label: false,
                         geometry: HitGeometry::Edge(edge.waypoints.clone()),
                     });
                 }
@@ -3368,6 +3895,7 @@ impl BpmnViewport {
                                     .as_ref()
                                     .and_then(|label| label.id.as_ref())
                                     .map(|id| id.selector()),
+                                is_label: true,
                                 geometry: HitGeometry::Shape(local),
                             });
                         }
@@ -3381,6 +3909,7 @@ impl BpmnViewport {
                         },
                         diagram_element_id: edge.id.selector(),
                         label_id: None,
+                        is_label: false,
                         geometry: HitGeometry::Edge(edge.waypoints.clone()),
                     });
                 }
@@ -3433,6 +3962,56 @@ impl BpmnViewport {
             }
             if let Some(path) = path.finish() {
                 outline(&mut built.scene, &path, stroke, 1.5)?;
+            }
+            if matches!(flow.kind, FlowKind::Message)
+                && let Some(visible) = edge.message_visible_kind
+            {
+                let points: Vec<_> = edge
+                    .waypoints
+                    .iter()
+                    .map(|p| {
+                        (
+                            (p.x - view.x - built.origin.0) as f32,
+                            (p.y - view.y - built.origin.1) as f32,
+                        )
+                    })
+                    .collect();
+                if let Some((cx, cy)) = polyline_midpoint(&points)
+                    && cx >= -64.0
+                    && cy >= -64.0
+                    && cx <= view.width as f32 + 64.0
+                    && cy <= view.height as f32 + 64.0
+                {
+                    let background = if matches!(appearance, Appearance::Dark) {
+                        [27, 31, 38]
+                    } else {
+                        [255, 255, 255]
+                    };
+                    let filled = matches!(
+                        visible,
+                        processcraft_core::model::MessageVisibleKind::NonInitiating
+                    );
+                    let explicit = edge.style.as_ref().and_then(|s| s.stroke.as_deref());
+                    let envelope_stroke = if filled && explicit.is_none() {
+                        [26, 37, 52]
+                    } else {
+                        stroke
+                    };
+                    if filled
+                        && explicit.is_some()
+                        && low_contrast(envelope_stroke, [225, 225, 225])
+                    {
+                        built.diagnostics.push(format!("Message edge {} explicit stroke has low contrast against the envelope fill", edge.id));
+                    }
+                    envelope(
+                        &mut built.scene,
+                        cx,
+                        cy,
+                        envelope_stroke,
+                        filled,
+                        background,
+                    )?;
+                }
             }
             if segments > 0
                 && matches!(flow.kind, FlowKind::Sequence)
@@ -3583,6 +4162,7 @@ impl BpmnViewport {
                             .as_ref()
                             .and_then(|label| label.id.as_ref())
                             .map(|id| id.selector()),
+                        is_label: true,
                         geometry: HitGeometry::Shape(local),
                     });
                     label(
@@ -3618,6 +4198,7 @@ impl BpmnViewport {
                 },
                 diagram_element_id: edge.id.selector(),
                 label_id: None,
+                is_label: false,
                 geometry: HitGeometry::Edge(edge.waypoints.clone()),
             });
         }
@@ -3641,6 +4222,13 @@ impl BpmnViewport {
             view.zoom,
         )?;
         let mut hits = built.hits;
+        if let Some(ranks) = &paint_ranks {
+            hits.sort_by_key(|hit| {
+                *ranks
+                    .get(&hit.diagram_element_id)
+                    .unwrap_or(&(ranks.len() + 1))
+            });
+        }
         for h in &mut hits {
             match &mut h.geometry {
                 HitGeometry::Shape(b)
@@ -3705,6 +4293,56 @@ fn clip_segment(a: &Point, b: &Point, v: Viewport) -> Option<((f64, f64), (f64, 
 #[cfg(test)]
 mod source_marker_tests {
     use super::*;
+    #[test]
+    fn message_envelope_uses_arc_midpoint_and_bounded_vector() {
+        let midpoint = polyline_midpoint(&[(0.0, 0.0), (80.0, 0.0), (80.0, 20.0)]).unwrap();
+        assert_eq!(midpoint, (50.0, 0.0));
+        let mut scene = DiagramScene::new(100.0, 100.0).unwrap();
+        envelope(
+            &mut scene,
+            midpoint.0,
+            midpoint.1 + 20.0,
+            [1, 2, 3],
+            true,
+            [255, 255, 255],
+        )
+        .unwrap();
+        let paths: Vec<_> = scene.paths().collect();
+        assert_eq!(paths[0].color, [225, 225, 225]);
+        assert_eq!(
+            (
+                paths[0].path.bounds().left(),
+                paths[0].path.bounds().right()
+            ),
+            (40.0, 60.0)
+        );
+        assert_eq!(
+            (
+                paths[0].path.bounds().top(),
+                paths[0].path.bounds().bottom()
+            ),
+            (14.0, 26.0)
+        );
+    }
+    #[test]
+    fn explicit_paint_rank_interleaves_paths_and_glyphs() {
+        let mut scene = DiagramScene::new(20.0, 20.0).unwrap();
+        scene
+            .add_background_rect(0.0, 0.0, 20.0, 20.0, [255, 255, 255])
+            .unwrap();
+        scene.set_paint_rank(2);
+        scene
+            .add_background_rect(1.0, 1.0, 10.0, 10.0, [255, 0, 0])
+            .unwrap();
+        scene.set_paint_rank(1);
+        scene
+            .add_background_rect(1.0, 1.0, 10.0, 10.0, [0, 0, 255])
+            .unwrap();
+        assert_eq!(
+            scene.paths().map(|p| p.color).collect::<Vec<_>>(),
+            vec![[255, 255, 255], [0, 0, 255], [255, 0, 0]]
+        );
+    }
     #[test]
     fn source_markers_have_expected_bounds_and_distinct_outlines() {
         let mut diamond = DiagramScene::new(100.0, 100.0).unwrap();

@@ -35,6 +35,8 @@ pub fn blank_document() -> BpmnDocument {
         flows: vec![],
     };
     d.diagrams.push(Diagram {
+        plane_metadata: None,
+        plane_order: None,
         documentation: None,
         label_styles: Vec::new(),
         resolution: None,
@@ -495,6 +497,7 @@ mod lifecycle {
             Mutation::CreateParticipant {
                 document_id: d.id,
                 participant: Participant {
+                    multiplicity: None,
                     base: None,
                     id: participant.clone().into(),
                     name: Some("Pool".into()),
@@ -505,6 +508,10 @@ mod lifecycle {
                 document_id: d.id,
                 diagram_id: diagram.id.selector(),
                 shape: Shape {
+                    di_metadata: None,
+                    is_message_visible: None,
+                    participant_band_kind: None,
+                    choreography_activity_shape: None,
                     label_visibility: None,
                     is_horizontal: None,
                     is_marker_visible: None,

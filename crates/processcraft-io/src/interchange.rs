@@ -44,9 +44,9 @@ pub fn prepare_import(bytes: &[u8], source_name: &str) -> Result<PreparedImport,
     let resource = Resource::new(rid.clone(), "application/xml".into(), Arc::from(bytes));
     let initial = parse_profile(bytes);
     let projected = initial.and_then(|document| {
-        let check = document
-            .has_semantic_common_metadata_features()
-            .then(|| export_document(&document, std::slice::from_ref(&resource), true));
+        let check = (document.has_semantic_common_metadata_features()
+            || document.has_di_choreography_features())
+        .then(|| export_document(&document, std::slice::from_ref(&resource), true));
         if let Some(Err(_)) = check {
             None
         } else {
@@ -291,6 +291,7 @@ fn supported_base_owner(name: &str) -> bool {
             | "resourceParameter"
             | "collaboration"
             | "participant"
+            | "participantMultiplicity"
             | "conversation"
             | "subConversation"
             | "callConversation"
@@ -603,6 +604,7 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
             Event::Start(e) => {
                 let opaque = stack.last().is_some_and(|parent| {
                     parent.opaque
+                        || (parent.ns == DI && parent.name == "extension")
                         || (parent.ns == B
                             && matches!(
                                 parent.name.as_str(),
@@ -757,7 +759,7 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                                     "oneBehaviorEventRef" | "noneBehaviorEventRef"
                                 )
                                 | ("serviceTask" | "sendTask" | "receiveTask", "operationRef")
-                                | ("sendTask" | "receiveTask", "messageRef")
+                                | ("sendTask" | "receiveTask" | "messageFlow", "messageRef")
                                 | ("dataStoreReference", "dataStoreRef")
                                 | ("message", "itemRef")
                                 | ("signal" | "error" | "escalation", "structureRef")
@@ -779,7 +781,10 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                                     "itemSubjectRef"
                                 )
                         ))
-                        || (item.ns == BD && item.name == "BPMNLabel" && key == "labelStyle")
+                        || (item.ns == BD
+                            && ((item.name == "BPMNLabel" && key == "labelStyle")
+                                || (item.name == "BPMNShape"
+                                    && key == "choreographyActivityShape")))
                     {
                         let (resolved, local) = r.resolver().resolve_element(QName(value.trim()));
                         let namespace = match resolved {
@@ -1102,17 +1107,54 @@ fn bounds(e: &Elem) -> Option<Bounds> {
         height: number(e, "height")?,
     })
 }
-fn parse_label(e: &Elem, target_namespace: &str) -> Option<Label> {
-    if e.ns != BD
-        || e.name != "BPMNLabel"
-        || !attrs(e, &["id", "labelStyle"])
-        || e.children.len() > 1
+fn di_attrs(e: &Elem, allowed: &[&str]) -> bool {
+    e.attrs.keys().all(|key| allowed.contains(&key.as_str()))
+}
+fn parse_di_metadata(
+    e: &Elem,
+) -> Option<(Option<processcraft_core::model::DiElementMetadata>, usize)> {
+    let extension = if let Some(child) = e
+        .children
+        .first()
+        .filter(|child| child.ns == DI && child.name == "extension")
     {
+        if !attrs(child, &[]) || !child.foreign_attributes.is_empty() {
+            return None;
+        }
+        let content = xml_content(child)?;
+        processcraft_core::bpmn_xml::validate_di_extension(&content).ok()?;
+        Some(content)
+    } else {
+        None
+    };
+    let offset = usize::from(extension.is_some());
+    if e.foreign_attributes.is_empty() && extension.is_none() {
+        return Some((None, offset));
+    }
+    let namespaces = xml_namespaces(e);
+    processcraft_core::bpmn_xml::validate_di_foreign_attributes(&e.foreign_attributes, &namespaces)
+        .ok()?;
+    Some((
+        Some(processcraft_core::model::DiElementMetadata {
+            namespaces,
+            foreign_attributes: e.foreign_attributes.clone(),
+            extension,
+        }),
+        offset,
+    ))
+}
+fn parse_label(e: &Elem, target_namespace: &str) -> Option<Label> {
+    if e.ns != BD || e.name != "BPMNLabel" || !di_attrs(e, &["id", "labelStyle"]) {
+        return None;
+    }
+    let (di_metadata, offset) = parse_di_metadata(e)?;
+    if e.children.len() > offset + 1 {
         return None;
     }
     Some(Label {
+        di_metadata,
         id: optional_id(e)?,
-        bounds: if let Some(child) = e.children.first() {
+        bounds: if let Some(child) = e.children.get(offset) {
             Some(bounds(child)?)
         } else {
             None
@@ -2791,6 +2833,7 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
                 _ => return None,
             };
             p.flows.push(Flow {
+                message_ref: None,
                 flow_metadata: take_flow_metadata(n),
                 base_extras: anonymous_extras(n),
                 id: element_identity(n)?,
@@ -3128,6 +3171,7 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
             && attrs(n, &["id", "name", "sourceRef", "targetRef", "isImmediate"])
         {
             p.flows.push(Flow {
+                message_ref: None,
                 flow_metadata: take_flow_metadata(n),
                 base_extras: anonymous_extras(n),
                 association_direction: None,
@@ -3274,6 +3318,50 @@ fn parse_conversation(
     });
     Some(())
 }
+fn parse_participant(e: &Elem) -> Option<Participant> {
+    if !attrs(e, &["id", "name", "processRef"]) || e.children.len() > 1 {
+        return None;
+    }
+    let multiplicity = if let Some(child) = e.children.first() {
+        if child.ns != B
+            || child.name != "participantMultiplicity"
+            || !attrs(child, &["id", "minimum", "maximum"])
+            || !child.children.is_empty()
+        {
+            return None;
+        }
+        Some(processcraft_core::model::ParticipantMultiplicity {
+            id: optional_id(child)?,
+            base: take_anonymous_base(child),
+            minimum: child
+                .attrs
+                .get("minimum")
+                .map(|v| v.parse())
+                .transpose()
+                .ok()?,
+            maximum: child
+                .attrs
+                .get("maximum")
+                .map(|v| v.parse())
+                .transpose()
+                .ok()?,
+        })
+    } else {
+        None
+    };
+    Some(Participant {
+        multiplicity,
+        base: take_anonymous_base(e),
+        id: element_identity(e)?,
+        name: e.attrs.get("name").cloned(),
+        process: e
+            .attrs
+            .get("processRef")
+            .map(|v| v.parse())
+            .transpose()
+            .ok()?,
+    })
+}
 fn parse_collaboration(e: &Elem, namespace: &str) -> Option<Collaboration> {
     use processcraft_core::bpmn_collaboration::ConversationLink;
     if !attrs(e, &["id", "name"]) {
@@ -3294,23 +3382,18 @@ fn parse_collaboration(e: &Elem, namespace: &str) -> Option<Collaboration> {
             return None;
         }
         match child.name.as_str() {
-            "participant"
-                if attrs(child, &["id", "name", "processRef"]) && child.children.is_empty() =>
+            "participant" => c.participants.push(parse_participant(child)?),
+            "messageFlow"
+                if attrs(
+                    child,
+                    &["id", "name", "sourceRef", "targetRef", "messageRef"],
+                ) =>
             {
-                c.participants.push(Participant {
-                    base: take_anonymous_base(child),
-                    id: element_identity(child)?,
-                    name: child.attrs.get("name").cloned(),
-                    process: child
-                        .attrs
-                        .get("processRef")
-                        .map(|v| v.parse())
-                        .transpose()
-                        .ok()?,
-                })
-            }
-            "messageFlow" if attrs(child, &["id", "name", "sourceRef", "targetRef"]) => {
                 c.flows.push(Flow {
+                    message_ref: child
+                        .catalog_qnames
+                        .get("messageRef")
+                        .map(|q| event_reference(q, namespace)),
                     flow_metadata: take_flow_metadata(child),
                     base_extras: anonymous_extras(child),
                     association_direction: None,
@@ -3368,23 +3451,18 @@ fn parse_choreography(
             return None;
         }
         match child.name.as_str() {
-            "participant"
-                if attrs(child, &["id", "name", "processRef"]) && child.children.is_empty() =>
+            "participant" => c.participants.push(parse_participant(child)?),
+            "messageFlow"
+                if attrs(
+                    child,
+                    &["id", "name", "sourceRef", "targetRef", "messageRef"],
+                ) =>
             {
-                c.participants.push(Participant {
-                    base: take_anonymous_base(child),
-                    id: element_identity(child)?,
-                    name: child.attrs.get("name").cloned(),
-                    process: child
-                        .attrs
-                        .get("processRef")
-                        .map(|v| v.parse())
-                        .transpose()
-                        .ok()?,
-                })
-            }
-            "messageFlow" if attrs(child, &["id", "name", "sourceRef", "targetRef"]) => {
                 c.message_flows.push(Flow {
+                    message_ref: child
+                        .catalog_qnames
+                        .get("messageRef")
+                        .map(|q| event_reference(q, namespace)),
                     flow_metadata: take_flow_metadata(child),
                     base_extras: anonymous_extras(child),
                     association_direction: None,
@@ -3439,6 +3517,7 @@ fn parse_choreography(
                 ) =>
             {
                 c.sequence_flows.push(Flow {
+                    message_ref: None,
                     flow_metadata: take_flow_metadata(child),
                     base_extras: anonymous_extras(child),
                     association_direction: None,
@@ -3650,7 +3729,16 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
     extract_flow_metadata(&mut root, &target_namespace)?;
     // Until every owner has a metadata writer, foreign attributes must remain source-preserved.
     fn has_foreign_attributes(e: &Elem) -> bool {
-        !e.foreign_attributes.is_empty() || e.children.iter().any(has_foreign_attributes)
+        if e.opaque || (e.ns == DI && e.name == "extension") {
+            return false;
+        }
+        let supported_di = e.ns == BD
+            && matches!(
+                e.name.as_str(),
+                "BPMNPlane" | "BPMNShape" | "BPMNEdge" | "BPMNLabel"
+            );
+        (!supported_di && !e.foreign_attributes.is_empty())
+            || e.children.iter().any(has_foreign_attributes)
     }
     if root.children.iter().any(has_foreign_attributes) {
         return None;
@@ -3982,11 +4070,14 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                 let plane = &e.children[0];
                 if plane.ns != BD
                     || plane.name != "BPMNPlane"
-                    || !attrs(plane, &["id", "bpmnElement"])
+                    || !di_attrs(plane, &["id", "bpmnElement"])
                 {
                     return None;
                 }
+                let (plane_metadata, plane_offset) = parse_di_metadata(plane)?;
                 let mut diagram = Diagram {
+                    plane_metadata,
+                    plane_order: Some(Vec::new()),
                     id: element_identity(e)?,
                     name: e.attrs.get("name").cloned(),
                     documentation: e.attrs.get("documentation").cloned(),
@@ -4040,9 +4131,9 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                         }),
                     });
                 }
-                for item in &plane.children {
+                for item in &plane.children[plane_offset..] {
                     if item.ns != BD
-                        || !attrs(
+                        || !di_attrs(
                             item,
                             if item.name == "BPMNShape" {
                                 &[
@@ -4051,22 +4142,34 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                                     "isExpanded",
                                     "isHorizontal",
                                     "isMarkerVisible",
+                                    "isMessageVisible",
+                                    "participantBandKind",
+                                    "choreographyActivityShape",
                                 ]
                             } else {
-                                &["id", "bpmnElement", "sourceElement", "targetElement"]
+                                &[
+                                    "id",
+                                    "bpmnElement",
+                                    "sourceElement",
+                                    "targetElement",
+                                    "messageVisibleKind",
+                                ]
                             },
                         )
                     {
                         return None;
                     }
+                    let (di_metadata, offset) = parse_di_metadata(item)?;
+                    let identity = element_identity(item)?;
+                    diagram.plane_order.as_mut()?.push(identity.selector());
                     match item.name.as_str() {
                         "BPMNShape" => {
-                            if !(1..=2).contains(&item.children.len()) {
+                            if !(offset + 1..=offset + 2).contains(&item.children.len()) {
                                 return None;
                             }
-                            let label = if item.children.len() == 2 {
+                            let label = if item.children.len() == offset + 2 {
                                 Some(parse_label(
-                                    &item.children[1],
+                                    &item.children[offset + 1],
                                     root.attrs.get("targetNamespace")?,
                                 )?)
                             } else {
@@ -4079,15 +4182,53 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                                 Some("false" | "0") => Some(false),
                                 _ => return None,
                             };
+                            let participant_band_kind =
+                                match item.attrs.get("participantBandKind").map(String::as_str) {
+                                    None => None,
+                                    Some("top_initiating") => {
+                                        Some(ParticipantBandKind::TopInitiating)
+                                    }
+                                    Some("middle_initiating") => {
+                                        Some(ParticipantBandKind::MiddleInitiating)
+                                    }
+                                    Some("bottom_initiating") => {
+                                        Some(ParticipantBandKind::BottomInitiating)
+                                    }
+                                    Some("top_non_initiating") => {
+                                        Some(ParticipantBandKind::TopNonInitiating)
+                                    }
+                                    Some("middle_non_initiating") => {
+                                        Some(ParticipantBandKind::MiddleNonInitiating)
+                                    }
+                                    Some("bottom_non_initiating") => {
+                                        Some(ParticipantBandKind::BottomNonInitiating)
+                                    }
+                                    _ => return None,
+                                };
                             diagram.shapes.push(Shape {
-                                id: element_identity(item)?,
+                                di_metadata,
+                                is_message_visible: optional_bool(
+                                    item.attrs.get("isMessageVisible"),
+                                )?,
+                                participant_band_kind,
+                                choreography_activity_shape: item
+                                    .catalog_qnames
+                                    .get("choreographyActivityShape")
+                                    .map(|q| {
+                                        if q.namespace == target_namespace {
+                                            DiStyleRef::Local(q.local.clone().into())
+                                        } else {
+                                            DiStyleRef::Qualified(q.clone())
+                                        }
+                                    }),
+                                id: identity,
                                 element: selector(item, "bpmnElement")?,
                                 is_expanded,
                                 is_horizontal: optional_bool(item.attrs.get("isHorizontal"))?,
                                 is_marker_visible: optional_bool(
                                     item.attrs.get("isMarkerVisible"),
                                 )?,
-                                bounds: bounds(&item.children[0])?,
+                                bounds: bounds(&item.children[offset])?,
                                 label,
                                 label_visibility: Some(DiLabelVisibility::Explicit),
                                 style: None,
@@ -4096,7 +4237,7 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                         "BPMNEdge" => {
                             let mut points = vec![];
                             let mut label = None;
-                            for pt in &item.children {
+                            for pt in &item.children[offset..] {
                                 if pt.ns == BD && pt.name == "BPMNLabel" && label.is_none() {
                                     label =
                                         Some(parse_label(pt, root.attrs.get("targetNamespace")?)?);
@@ -4120,8 +4261,19 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                             if points.len() < 2 {
                                 return None;
                             }
+                            let message_visible_kind =
+                                match item.attrs.get("messageVisibleKind").map(String::as_str) {
+                                    None => None,
+                                    Some("initiating") => Some(MessageVisibleKind::Initiating),
+                                    Some("non_initiating") => {
+                                        Some(MessageVisibleKind::NonInitiating)
+                                    }
+                                    _ => return None,
+                                };
                             diagram.edges.push(Edge {
-                                id: element_identity(item)?,
+                                di_metadata,
+                                message_visible_kind,
+                                id: identity,
                                 element: selector(item, "bpmnElement")?,
                                 source_element: item
                                     .attrs
@@ -5029,10 +5181,57 @@ fn write_participant(
             local_qname_value(xml_reference(document, process), namespace)
         ));
     }
-    finish_anonymous_base_empty(xml, &tag, Some(&participant.id), participant.base.as_ref());
+    anonymous_base_attributes(xml, Some(&participant.id), participant.base.as_ref());
+    xml.push('>');
+    anonymous_base_children(xml, Some(&participant.id), participant.base.as_ref());
+    if let Some(value) = &participant.multiplicity {
+        xml.push_str(&format!("<participantMultiplicity xmlns=\"{B}\""));
+        if let Some(id) = &value.id {
+            write_xml_id(xml, id);
+        }
+        if let Some(minimum) = value.minimum {
+            xml.push_str(&format!(" minimum=\"{minimum}\""));
+        }
+        if let Some(maximum) = value.maximum {
+            xml.push_str(&format!(" maximum=\"{maximum}\""));
+        }
+        finish_anonymous_base_empty(
+            xml,
+            "participantMultiplicity",
+            value.id.as_ref(),
+            value.base.as_ref(),
+        );
+    }
+    xml.push_str(&format!("</{tag}>"));
 }
 fn write_message_flow(xml: &mut String, flow: &Flow, namespace: &str, document: &ExportContext) {
-    let tag = write_local_qname_open(xml, "messageFlow", namespace);
+    let message_qname = flow
+        .message_ref
+        .as_ref()
+        .map(|r| event_reference_qname(r, namespace, document));
+    let empty_message_ns = message_qname
+        .as_ref()
+        .is_some_and(|q| q.namespace.is_empty());
+    let tag = if empty_message_ns && !namespace.is_empty() {
+        xml.push_str(&format!(
+            "<pc_message:messageFlow xmlns:pc_message=\"{B}\" xmlns=\"\" xmlns:tns=\"{}\"",
+            esc(namespace)
+        ));
+        "pc_message:messageFlow".to_owned()
+    } else {
+        write_local_qname_open(xml, "messageFlow", namespace)
+    };
+    if let Some(q) = &message_qname {
+        if q.namespace.is_empty() {
+            xml.push_str(&format!(" messageRef=\"{}\"", q.local));
+        } else {
+            xml.push_str(&format!(
+                " xmlns:pc_message_ref=\"{}\" messageRef=\"pc_message_ref:{}\"",
+                esc(&q.namespace),
+                q.local
+            ));
+        }
+    }
     write_xml_id(xml, &flow.id);
     write_xml_name(xml, flow.name.as_deref());
     xml.push_str(&format!(
@@ -7501,7 +7700,28 @@ fn missing_xml_reference(document: &ExportContext) -> Option<ElementSelector> {
             }
         }
     }
+    for flow in document.collaboration.iter().flat_map(|c| &c.flows).chain(
+        document
+            .choreographies
+            .iter()
+            .flat_map(|c| &c.message_flows),
+    ) {
+        if let Some(missing) = flow
+            .message_ref
+            .as_ref()
+            .and_then(|reference| check_ref(document, reference))
+        {
+            return Some(missing);
+        }
+    }
     for diagram in &document.diagrams {
+        for shape in &diagram.shapes {
+            if let Some(DiStyleRef::Local(reference)) = &shape.choreography_activity_shape
+                && let Some(missing) = check(document, reference)
+            {
+                return Some(missing);
+            }
+        }
         if let Some(missing) = check(document, &diagram.plane) {
             return Some(missing);
         }
@@ -7566,6 +7786,43 @@ fn export_document(
             .blocked
             .push("Original source resource is missing".into());
         return Err(ExportFailure { report });
+    }
+    if document.diagrams.iter().any(|d| {
+        d.plane_metadata
+            .as_ref()
+            .and_then(|m| m.extension.as_ref())
+            .is_some()
+            || d.shapes.iter().any(|s| {
+                s.di_metadata
+                    .as_ref()
+                    .and_then(|m| m.extension.as_ref())
+                    .is_some()
+                    || s.label
+                        .as_ref()
+                        .and_then(|l| l.di_metadata.as_ref())
+                        .and_then(|m| m.extension.as_ref())
+                        .is_some()
+            })
+            || d.edges.iter().any(|e| {
+                e.di_metadata
+                    .as_ref()
+                    .and_then(|m| m.extension.as_ref())
+                    .is_some()
+                    || e.label
+                        .as_ref()
+                        .and_then(|l| l.di_metadata.as_ref())
+                        .and_then(|m| m.extension.as_ref())
+                        .is_some()
+            })
+    }) {
+        report.retained.push(
+            "DI extension payloads retained; foreign-schema validation is not verified".into(),
+        );
+    }
+    if document.diagrams.iter().any(|d| d.plane_order.is_none()) {
+        report
+            .transformed
+            .push("Legacy diagram child grouping represented as explicit plane order".into());
     }
     if !matches!(document.capability, Capability::Editable) {
         report
@@ -8244,8 +8501,40 @@ fn export_document(
     }
     for d in &document.diagrams {
         let ns_binding = format!(" xmlns=\"{}\"", esc(&namespace));
+        let metadata_contexts: Vec<_> = d
+            .plane_metadata
+            .iter()
+            .chain(d.shapes.iter().filter_map(|s| s.di_metadata.as_ref()))
+            .chain(d.edges.iter().filter_map(|e| e.di_metadata.as_ref()))
+            .chain(
+                d.shapes
+                    .iter()
+                    .filter_map(|s| s.label.as_ref().and_then(|l| l.di_metadata.as_ref())),
+            )
+            .chain(
+                d.edges
+                    .iter()
+                    .filter_map(|e| e.label.as_ref().and_then(|l| l.di_metadata.as_ref())),
+            )
+            .collect();
+        let di_prefix = metadata_contexts
+            .first()
+            .and_then(|m| {
+                m.namespaces.iter().find(|n| {
+                    !n.prefix.is_empty()
+                        && n.prefix != "xml"
+                        && metadata_contexts.iter().all(|other| {
+                            other
+                                .namespaces
+                                .iter()
+                                .any(|candidate| candidate.prefix == n.prefix)
+                        })
+                })
+            })
+            .map(|n| n.prefix.as_str())
+            .unwrap_or("bpmndi");
         xml.push_str(&format!(
-            "<bpmndi:BPMNDiagram xmlns:bpmndi=\"{BD}\" xmlns:dc=\"{DC}\" xmlns:di=\"{DI}\""
+            "<{di_prefix}:BPMNDiagram xmlns:{di_prefix}=\"{BD}\""
         ));
         write_xml_id(&mut xml, &d.id);
         write_xml_name(&mut xml, d.name.as_deref());
@@ -8255,82 +8544,221 @@ fn export_document(
         if let Some(resolution) = d.resolution {
             xml.push_str(&format!(" resolution=\"{resolution}\""));
         }
-        xml.push_str("><bpmndi:BPMNPlane");
-        xml.push_str(&ns_binding);
+        let plane_prefix = di_owner_prefix(d.plane_metadata.as_ref(), di_prefix);
+        xml.push_str(&format!("><{plane_prefix}:BPMNPlane"));
+        if d.plane_metadata.is_some() {
+            write_di_attributes(&mut xml, d.plane_metadata.as_ref());
+        } else {
+            xml.push_str(&ns_binding);
+        }
         write_xml_id(&mut xml, &d.plane_id);
-        xml.push_str(&format!(
-            " bpmnElement=\"{}\">",
-            xml_reference(&context, &d.plane)
-        ));
-        for s in &d.shapes {
-            let b = &s.bounds;
-            xml.push_str("<bpmndi:BPMNShape");
-            xml.push_str(&ns_binding);
-            write_xml_id(&mut xml, &s.id);
-            xml.push_str(&format!(
-                " bpmnElement=\"{}\"",
-                xml_reference(&context, &s.element)
-            ));
-            if let Some(expanded) = s.is_expanded {
-                xml.push_str(&format!(" isExpanded=\"{}\"", expanded));
-            }
-            if let Some(horizontal) = s.is_horizontal {
-                xml.push_str(&format!(" isHorizontal=\"{}\"", horizontal));
-            }
-            if let Some(marker) = s.is_marker_visible {
-                xml.push_str(&format!(" isMarkerVisible=\"{}\"", marker));
-            }
-            xml.push_str(&format!(
-                "><dc:Bounds x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\"/>",
-                b.x, b.y, b.width, b.height
-            ));
-            if let Some(label) = &s.label {
-                write_label(&mut xml, label, &namespace, &context);
-            } else if s.label_visibility.is_none() {
-                xml.push_str("<bpmndi:BPMNLabel/>");
-            }
-            xml.push_str("</bpmndi:BPMNShape>");
-        }
-        for e in &d.edges {
-            xml.push_str("<bpmndi:BPMNEdge");
-            xml.push_str(&ns_binding);
-            write_xml_id(&mut xml, &e.id);
-            xml.push_str(&format!(
-                " bpmnElement=\"{}\"",
-                xml_reference(&context, &e.element)
-            ));
-            if let Some(source) = &e.source_element {
+        write_di_qname(
+            &mut xml,
+            "bpmnElement",
+            &namespace,
+            xml_reference(&context, &d.plane),
+            d.plane_metadata.as_ref(),
+        );
+        xml.push('>');
+        write_di_extension(&mut xml, d.plane_metadata.as_ref());
+        let order: Vec<_> = d.plane_order.clone().unwrap_or_else(|| {
+            d.shapes
+                .iter()
+                .map(|s| s.id.selector())
+                .chain(d.edges.iter().map(|e| e.id.selector()))
+                .collect()
+        });
+        let shapes: std::collections::HashMap<_, _> = d
+            .shapes
+            .iter()
+            .map(|shape| (shape.id.selector(), shape))
+            .collect();
+        let edges: std::collections::HashMap<_, _> = d
+            .edges
+            .iter()
+            .map(|edge| (edge.id.selector(), edge))
+            .collect();
+        for selector in order {
+            if let Some(s) = shapes.get(&selector) {
+                let b = &s.bounds;
+                let shape_prefix = di_owner_prefix(s.di_metadata.as_ref(), plane_prefix);
+                xml.push_str(&format!("<{shape_prefix}:BPMNShape"));
+                let empty_band_namespace = s.di_metadata.is_none()
+                    && !namespace.is_empty()
+                    && matches!(&s.choreography_activity_shape, Some(DiStyleRef::Qualified(q)) if q.namespace.is_empty());
+                let semantic_prefix = s
+                    .label
+                    .as_ref()
+                    .and_then(|label| label.di_metadata.as_ref())
+                    .and_then(|metadata| {
+                        metadata
+                            .namespaces
+                            .iter()
+                            .find(|binding| {
+                                !binding.prefix.is_empty()
+                                    && binding.prefix != shape_prefix
+                                    && binding.uri == namespace
+                            })
+                            .or_else(|| {
+                                metadata.namespaces.iter().find(|binding| {
+                                    !binding.prefix.is_empty()
+                                        && binding.prefix != "xml"
+                                        && binding.prefix != shape_prefix
+                                })
+                            })
+                    })
+                    .map(|binding| binding.prefix.as_str())
+                    .unwrap_or("pc_semantic");
+                if s.di_metadata.is_some() {
+                    write_di_attributes(&mut xml, s.di_metadata.as_ref());
+                } else if empty_band_namespace {
+                    xml.push_str(&format!(
+                        " xmlns=\"\" xmlns:{semantic_prefix}=\"{}\"",
+                        esc(&namespace)
+                    ));
+                } else {
+                    xml.push_str(&ns_binding);
+                }
+                write_xml_id(&mut xml, &s.id);
+                if empty_band_namespace {
+                    xml.push_str(&format!(
+                        " bpmnElement=\"{semantic_prefix}:{}\"",
+                        xml_reference(&context, &s.element)
+                    ));
+                } else {
+                    write_di_qname(
+                        &mut xml,
+                        "bpmnElement",
+                        &namespace,
+                        xml_reference(&context, &s.element),
+                        s.di_metadata.as_ref(),
+                    );
+                }
+                if let Some(expanded) = s.is_expanded {
+                    xml.push_str(&format!(" isExpanded=\"{}\"", expanded));
+                }
+                if let Some(horizontal) = s.is_horizontal {
+                    xml.push_str(&format!(" isHorizontal=\"{}\"", horizontal));
+                }
+                if let Some(marker) = s.is_marker_visible {
+                    xml.push_str(&format!(" isMarkerVisible=\"{}\"", marker));
+                }
+                if let Some(value) = s.is_message_visible {
+                    xml.push_str(&format!(" isMessageVisible=\"{value}\""));
+                }
+                if let Some(value) = s.participant_band_kind {
+                    let token = match value {
+                        ParticipantBandKind::TopInitiating => "top_initiating",
+                        ParticipantBandKind::MiddleInitiating => "middle_initiating",
+                        ParticipantBandKind::BottomInitiating => "bottom_initiating",
+                        ParticipantBandKind::TopNonInitiating => "top_non_initiating",
+                        ParticipantBandKind::MiddleNonInitiating => "middle_non_initiating",
+                        ParticipantBandKind::BottomNonInitiating => "bottom_non_initiating",
+                    };
+                    xml.push_str(&format!(" participantBandKind=\"{token}\""));
+                }
+                if let Some(reference) = &s.choreography_activity_shape {
+                    let q = match reference {
+                        DiStyleRef::Local(id) => QNameRef {
+                            namespace: namespace.clone(),
+                            local: xml_reference(&context, id).clone(),
+                        },
+                        DiStyleRef::Qualified(q) => q.clone(),
+                    };
+                    if s.di_metadata.is_some() {
+                        write_di_qname(
+                            &mut xml,
+                            "choreographyActivityShape",
+                            &q.namespace,
+                            &q.local,
+                            s.di_metadata.as_ref(),
+                        );
+                    } else if q.namespace == namespace
+                        || (empty_band_namespace && q.namespace.is_empty())
+                    {
+                        xml.push_str(&format!(" choreographyActivityShape=\"{}\"", q.local));
+                    } else {
+                        xml.push_str(&format!(" xmlns:pc_band_ref=\"{}\" choreographyActivityShape=\"pc_band_ref:{}\"", esc(&q.namespace), q.local));
+                    }
+                }
+                xml.push('>');
+                write_di_extension(&mut xml, s.di_metadata.as_ref());
                 xml.push_str(&format!(
-                    " sourceElement=\"{}\"",
-                    xml_reference(&context, source)
+                    "<dc:Bounds xmlns:dc=\"{DC}\" x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\"/>",
+                    b.x, b.y, b.width, b.height
                 ));
+                if let Some(label) = &s.label {
+                    write_label(&mut xml, label, &namespace, &context, shape_prefix);
+                } else if s.label_visibility.is_none() {
+                    xml.push_str(&format!("<{shape_prefix}:BPMNLabel/>"));
+                }
+                xml.push_str(&format!("</{shape_prefix}:BPMNShape>"));
+            } else if let Some(e) = edges.get(&selector) {
+                let edge_prefix = di_owner_prefix(e.di_metadata.as_ref(), plane_prefix);
+                xml.push_str(&format!("<{edge_prefix}:BPMNEdge"));
+                if e.di_metadata.is_some() {
+                    write_di_attributes(&mut xml, e.di_metadata.as_ref());
+                } else {
+                    xml.push_str(&ns_binding);
+                }
+                write_xml_id(&mut xml, &e.id);
+                write_di_qname(
+                    &mut xml,
+                    "bpmnElement",
+                    &namespace,
+                    xml_reference(&context, &e.element),
+                    e.di_metadata.as_ref(),
+                );
+                if let Some(source) = &e.source_element {
+                    write_di_qname(
+                        &mut xml,
+                        "sourceElement",
+                        &namespace,
+                        xml_reference(&context, source),
+                        e.di_metadata.as_ref(),
+                    );
+                }
+                if let Some(target) = &e.target_element {
+                    write_di_qname(
+                        &mut xml,
+                        "targetElement",
+                        &namespace,
+                        xml_reference(&context, target),
+                        e.di_metadata.as_ref(),
+                    );
+                }
+                if let Some(value) = e.message_visible_kind {
+                    let token = match value {
+                        MessageVisibleKind::Initiating => "initiating",
+                        MessageVisibleKind::NonInitiating => "non_initiating",
+                    };
+                    xml.push_str(&format!(" messageVisibleKind=\"{token}\""));
+                }
+                xml.push('>');
+                write_di_extension(&mut xml, e.di_metadata.as_ref());
+                for p in &e.waypoints {
+                    xml.push_str(&format!(
+                        "<di:waypoint xmlns:di=\"{DI}\" x=\"{}\" y=\"{}\"/>",
+                        p.x, p.y
+                    ));
+                }
+                if let Some(label) = &e.label {
+                    write_label(&mut xml, label, &namespace, &context, edge_prefix);
+                } else if e.label_visibility.is_none() {
+                    xml.push_str(&format!("<{edge_prefix}:BPMNLabel/>"));
+                }
+                xml.push_str(&format!("</{edge_prefix}:BPMNEdge>"));
             }
-            if let Some(target) = &e.target_element {
-                xml.push_str(&format!(
-                    " targetElement=\"{}\"",
-                    xml_reference(&context, target)
-                ));
-            }
-            xml.push('>');
-            for p in &e.waypoints {
-                xml.push_str(&format!("<di:waypoint x=\"{}\" y=\"{}\"/>", p.x, p.y));
-            }
-            if let Some(label) = &e.label {
-                write_label(&mut xml, label, &namespace, &context);
-            } else if e.label_visibility.is_none() {
-                xml.push_str("<bpmndi:BPMNLabel/>");
-            }
-            xml.push_str("</bpmndi:BPMNEdge>");
         }
-        xml.push_str("</bpmndi:BPMNPlane>");
+        xml.push_str(&format!("</{plane_prefix}:BPMNPlane>"));
         for style in &d.label_styles {
-            xml.push_str("<bpmndi:BPMNLabelStyle");
+            xml.push_str(&format!("<{di_prefix}:BPMNLabelStyle"));
             if let Some(id) = &style.id {
                 write_xml_id(&mut xml, id);
             }
             xml.push('>');
             if let Some(font) = &style.font {
-                xml.push_str("<dc:Font");
+                xml.push_str(&format!("<dc:Font xmlns:dc=\"{DC}\""));
                 if let Some(name) = &font.name {
                     xml.push_str(&format!(" name=\"{}\"", esc(name)));
                 }
@@ -8349,9 +8777,9 @@ fn export_document(
                 }
                 xml.push_str("/>");
             }
-            xml.push_str("</bpmndi:BPMNLabelStyle>");
+            xml.push_str(&format!("</{di_prefix}:BPMNLabelStyle>"));
         }
-        xml.push_str("</bpmndi:BPMNDiagram>");
+        xml.push_str(&format!("</{di_prefix}:BPMNDiagram>"));
     }
     for relationship in &document.relationships {
         xml.push_str("<relationship");
@@ -8986,8 +9414,97 @@ fn write_expression(xml: &mut String, tag: &str, expression: &Expression, legacy
     }
     xml.push_str(&format!("</{tag_name}>"));
 }
-fn write_label(xml: &mut String, label: &Label, namespace: &str, document: &ExportContext) {
-    xml.push_str("<bpmndi:BPMNLabel");
+fn di_owner_prefix<'a>(
+    metadata: Option<&'a processcraft_core::model::DiElementMetadata>,
+    fallback: &'a str,
+) -> &'a str {
+    metadata
+        .and_then(|m| {
+            m.namespaces
+                .iter()
+                .find(|n| !n.prefix.is_empty() && n.uri == BD)
+                .map(|n| n.prefix.as_str())
+        })
+        .unwrap_or(fallback)
+}
+fn write_di_attributes(
+    xml: &mut String,
+    metadata: Option<&processcraft_core::model::DiElementMetadata>,
+) {
+    if let Some(metadata) = metadata {
+        write_namespace_context(xml, &metadata.namespaces);
+        for attr in &metadata.foreign_attributes {
+            xml.push(' ');
+            if let Some(prefix) = &attr.prefix {
+                xml.push_str(&prefix.to_string());
+                xml.push(':');
+            }
+            xml.push_str(&attr.local.to_string());
+            xml.push_str(&format!("=\"{}\"", esc(&attr.value)));
+        }
+    }
+}
+fn write_di_extension(
+    xml: &mut String,
+    metadata: Option<&processcraft_core::model::DiElementMetadata>,
+) {
+    if let Some(content) = metadata.and_then(|m| m.extension.as_ref()) {
+        let tag = if content
+            .namespaces
+            .iter()
+            .any(|n| n.prefix.is_empty() && n.uri == DI)
+        {
+            "extension".to_owned()
+        } else {
+            format!(
+                "{}:extension",
+                content
+                    .namespaces
+                    .iter()
+                    .find(|n| !n.prefix.is_empty() && n.uri == DI)
+                    .map(|n| n.prefix.as_str())
+                    .unwrap_or("!")
+            )
+        };
+        xml.push('<');
+        xml.push_str(&tag);
+        write_namespace_context(xml, &content.namespaces);
+        xml.push('>');
+        write_xml_nodes(xml, &content.nodes);
+        xml.push_str(&format!("</{tag}>"));
+    }
+}
+fn write_di_qname(
+    xml: &mut String,
+    name: &str,
+    uri: &str,
+    local: &XmlId,
+    metadata: Option<&processcraft_core::model::DiElementMetadata>,
+) {
+    if let Some(metadata) = metadata {
+        write_context_qname_attribute(
+            xml,
+            name,
+            &QNameRef {
+                namespace: uri.to_owned(),
+                local: local.clone(),
+            },
+            &metadata.namespaces,
+        );
+    } else {
+        xml.push_str(&format!(" {name}=\"{local}\""));
+    }
+}
+fn write_label(
+    xml: &mut String,
+    label: &Label,
+    namespace: &str,
+    document: &ExportContext,
+    di_prefix: &str,
+) {
+    let di_prefix = di_owner_prefix(label.di_metadata.as_ref(), di_prefix);
+    xml.push_str(&format!("<{di_prefix}:BPMNLabel"));
+    write_di_attributes(xml, label.di_metadata.as_ref());
     if let Some(id) = &label.id {
         write_xml_id(xml, id);
     }
@@ -8998,20 +9515,27 @@ fn write_label(xml: &mut String, label: &Label, namespace: &str, document: &Expo
             }
             DiStyleRef::Qualified(q) => (q.namespace.as_str(), q.local.to_string()),
         };
-        xml.push_str(&format!(
-            " xmlns=\"{}\" labelStyle=\"{}\"",
-            esc(uri),
-            esc(&local)
-        ));
+        if let Some(metadata) = &label.di_metadata {
+            if let Ok(local) = local.parse() {
+                write_di_qname(xml, "labelStyle", uri, &local, Some(metadata));
+            }
+        } else {
+            xml.push_str(&format!(
+                " xmlns=\"{}\" labelStyle=\"{}\"",
+                esc(uri),
+                esc(&local)
+            ));
+        }
     }
     xml.push('>');
+    write_di_extension(xml, label.di_metadata.as_ref());
     if let Some(b) = &label.bounds {
         xml.push_str(&format!(
-            "<dc:Bounds x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\"/>",
+            "<dc:Bounds xmlns:dc=\"{DC}\" x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\"/>",
             b.x, b.y, b.width, b.height
         ));
     }
-    xml.push_str("</bpmndi:BPMNLabel>");
+    xml.push_str(&format!("</{di_prefix}:BPMNLabel>"));
 }
 
 fn documentation(e: &Elem) -> Option<String> {

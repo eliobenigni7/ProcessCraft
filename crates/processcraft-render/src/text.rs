@@ -80,6 +80,15 @@ pub struct TextLayout {
     height: f32,
 }
 impl TextLayout {
+    pub(crate) fn rotate_counterclockwise(&mut self) {
+        let transform = tiny_skia::Transform::from_row(0.0, -1.0, 1.0, 0.0, 0.0, 0.0);
+        for glyph in &mut self.glyphs {
+            glyph.outline = glyph
+                .outline
+                .take()
+                .and_then(|path| path.transform(transform));
+        }
+    }
     pub(crate) fn clip_to_bounds(&mut self, width: f32, height: f32) -> bool {
         let before = self.glyphs.len();
         self.glyphs.retain(|glyph| {

@@ -20,6 +20,69 @@ fn project() -> ProjectData {
 }
 
 #[test]
+fn di_choreography_capability_covers_live_and_checkpoint_planes() {
+    use processcraft_core::{
+        ids::CheckpointId,
+        model::{Checkpoint, DiElementMetadata, FrozenProject},
+    };
+    let baseline =
+        include_bytes!("../../../tests/fixtures/native/identity-baseline-2f0f770.processcraft");
+    let mut project = load_bytes(baseline).unwrap().project;
+    Arc::make_mut(&mut project.documents[0]).diagrams[0].plane_metadata =
+        Some(DiElementMetadata::default());
+    let snapshot = FrozenProject::capture(&project);
+    for frozen_only in [false, true] {
+        if frozen_only {
+            Arc::make_mut(&mut project.documents[0]).diagrams[0].plane_metadata = None;
+            project.checkpoints.push(Checkpoint {
+                id: CheckpointId::new(),
+                name: "DI snapshot".into(),
+                created_unix_ms: 0,
+                content: snapshot.clone(),
+            });
+        }
+        let bytes = write_bytes(&project).unwrap();
+        assert_eq!(
+            load_bytes(&bytes)
+                .unwrap()
+                .project
+                .content_identity()
+                .unwrap(),
+            project.content_identity().unwrap()
+        );
+        let mut contents = entries(&bytes);
+        let manifest: serde_json::Value = serde_json::from_slice(
+            &contents
+                .iter()
+                .find(|(name, _)| name == "manifest.json")
+                .unwrap()
+                .1,
+        )
+        .unwrap();
+        assert!(
+            manifest["required_capabilities"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|capability| capability == "bpmn-di-choreography-v1")
+        );
+        edit_json(&mut contents, "manifest.json", |manifest| {
+            manifest["required_capabilities"]
+                .as_array_mut()
+                .unwrap()
+                .retain(|capability| capability != "bpmn-di-choreography-v1")
+        });
+        assert!(
+            load_bytes(&archive(&contents))
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("DI and choreography representation requires capability")
+        );
+    }
+}
+
+#[test]
 fn expanded_activity_capability_covers_live_and_frozen_documents() {
     use processcraft_core::{
         bpmn_activity::{CallableMetadata, GlobalTask, GlobalTaskKind},
@@ -780,6 +843,7 @@ fn structured_expression_capability_covers_live_and_checkpoint_documents() {
         nodes: vec![node("a"), node("b")],
         lanes: vec![],
         flows: vec![Flow {
+            message_ref: None,
             flow_metadata: None,
             base_extras: None,
             id: "flow".parse().unwrap(),
@@ -1584,6 +1648,8 @@ fn identity_capability_covers_independent_new_fields() {
                 })
             }
             _ => Arc::make_mut(&mut p.documents[0]).diagrams.push(Diagram {
+                plane_metadata: None,
+                plane_order: None,
                 documentation: None,
                 resolution: None,
                 label_styles: vec![],
@@ -1708,6 +1774,8 @@ fn expanded_events_and_di_capability_round_trips_live_and_checkpoint() {
         flows: vec![],
     });
     doc.diagrams.push(Diagram {
+        plane_metadata: None,
+        plane_order: None,
         documentation: None,
         resolution: None,
         label_styles: vec![],
@@ -1716,6 +1784,10 @@ fn expanded_events_and_di_capability_round_trips_live_and_checkpoint() {
         plane_id: "plane".parse().unwrap(),
         plane: "process".parse().unwrap(),
         shapes: vec![Shape {
+            di_metadata: None,
+            is_message_visible: None,
+            participant_band_kind: None,
+            choreography_activity_shape: None,
             label_visibility: None,
             id: "shape".parse().unwrap(),
             element: "event".parse().unwrap(),

@@ -345,6 +345,9 @@ pub fn visit_base_metadata_mut(
         metadata(Some(&c.id), &mut c.base, &mut visit);
         for p in &mut c.participants {
             metadata(Some(&p.id), &mut p.base, &mut visit);
+            if let Some(multiplicity) = &mut p.multiplicity {
+                metadata(multiplicity.id.as_ref(), &mut multiplicity.base, &mut visit);
+            }
         }
         for n in &mut c.conversation_nodes {
             keys(&mut n.correlation_keys, &mut visit);
@@ -358,6 +361,9 @@ pub fn visit_base_metadata_mut(
         metadata(Some(&c.id), &mut c.base, &mut visit);
         for p in &mut c.participants {
             metadata(Some(&p.id), &mut p.base, &mut visit);
+            if let Some(multiplicity) = &mut p.multiplicity {
+                metadata(multiplicity.id.as_ref(), &mut multiplicity.base, &mut visit);
+            }
         }
         for a in &mut c.activities {
             flow_metadata(&mut a.flow_metadata, &mut visit);

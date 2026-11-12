@@ -21,6 +21,42 @@ pub struct Envelope {
 #[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
 #[allow(clippy::large_enum_variant)]
 pub enum Mutation {
+    SetDiagramPlaneMetadata {
+        document_id: DocumentId,
+        diagram_id: ElementSelector,
+        metadata: Option<DiElementMetadata>,
+    },
+    SetDiagramPlaneOrder {
+        document_id: DocumentId,
+        diagram_id: ElementSelector,
+        order: Option<Vec<ElementSelector>>,
+    },
+    SetShapeRepresentationMetadata {
+        document_id: DocumentId,
+        diagram_id: ElementSelector,
+        shape_id: ElementSelector,
+        metadata: Option<DiElementMetadata>,
+        is_message_visible: Option<bool>,
+        participant_band_kind: Option<ParticipantBandKind>,
+        choreography_activity_shape: Option<DiReference>,
+    },
+    SetEdgeRepresentationMetadata {
+        document_id: DocumentId,
+        diagram_id: ElementSelector,
+        edge_id: ElementSelector,
+        metadata: Option<DiElementMetadata>,
+        message_visible_kind: Option<MessageVisibleKind>,
+    },
+    SetParticipantMultiplicity {
+        document_id: DocumentId,
+        participant_id: ElementSelector,
+        multiplicity: Option<ParticipantMultiplicity>,
+    },
+    SetMessageFlowReference {
+        document_id: DocumentId,
+        flow_id: ElementSelector,
+        message_ref: Option<crate::bpmn_activity::ModelReference>,
+    },
     SetGlobalTasks {
         document_id: DocumentId,
         global_tasks: Vec<crate::bpmn_activity::GlobalTask>,
@@ -486,6 +522,11 @@ pub enum Mutation {
         diagram_id: ElementSelector,
         shape: Shape,
     },
+    DeleteShape {
+        document_id: DocumentId,
+        diagram_id: ElementSelector,
+        shape_id: ElementSelector,
+    },
     CreateEdge {
         document_id: DocumentId,
         diagram_id: ElementSelector,
@@ -690,10 +731,23 @@ impl Session {
         let mut promoted_identities = Vec::new();
         match request {
             Request::Batch { mutations } => {
+                let explicit_plane_orders: Vec<_> = mutations
+                    .iter()
+                    .filter_map(|mutation| match mutation {
+                        Mutation::SetDiagramPlaneOrder {
+                            document_id,
+                            diagram_id,
+                            ..
+                        } => Some((*document_id, diagram_id.clone())),
+                        _ => None,
+                    })
+                    .collect();
                 let cleanup_activity_navigation = mutations.iter().any(|mutation| {
                     matches!(
                         mutation,
                         Mutation::SetGlobalTasks { .. }
+                            | Mutation::DeleteChoreographyActivity { .. }
+                            | Mutation::SetParticipantMultiplicity { .. }
                             | Mutation::SetCorrelationProperties { .. }
                             | Mutation::SetProcessActivityMetadata { .. }
                             | Mutation::SetNodeFlowMetadata { .. }
@@ -783,12 +837,6 @@ impl Session {
                         }
                     }
                 }
-                reject_newly_dangling_relationships(&self.project, &candidate)?;
-                reject_new_activity_reference_issues(
-                    &self.project,
-                    &candidate,
-                    &selector_mappings,
-                )?;
                 if cleanup_activity_navigation {
                     prune_removed_activity_navigation(
                         &self.project,
@@ -796,6 +844,18 @@ impl Session {
                         &selector_mappings,
                     );
                 }
+                reconcile_plane_orders(
+                    &self.project,
+                    &mut candidate,
+                    &selector_mappings,
+                    &explicit_plane_orders,
+                );
+                reject_newly_dangling_relationships(&self.project, &candidate)?;
+                reject_new_activity_reference_issues(
+                    &self.project,
+                    &candidate,
+                    &selector_mappings,
+                )?;
                 let id = candidate
                     .content_identity()
                     .map_err(CommandError::InvalidParams)?;
@@ -1058,6 +1118,91 @@ fn prune_removed_activity_navigation(
         });
     }
 }
+fn reconcile_plane_orders(
+    old: &ProjectData,
+    candidate: &mut ProjectData,
+    mappings: &[SelectorMapping],
+    explicit: &[(DocumentId, ElementSelector)],
+) {
+    let remap = |document_id, selector: &ElementSelector| {
+        mappings
+            .iter()
+            .filter(|mapping| mapping.document_id == document_id)
+            .fold(selector.clone(), |current, mapping| {
+                if current == mapping.from {
+                    mapping.to.clone()
+                } else {
+                    current
+                }
+            })
+    };
+    for document in &mut candidate.documents {
+        let Some(previous) = old.documents.iter().find(|old| old.id == document.id) else {
+            continue;
+        };
+        let document_id = document.id;
+        let is_explicit = |diagram: &Diagram| {
+            explicit.iter().any(|(id, selector)| {
+                *id == document_id && remap(document_id, selector) == diagram.id.selector()
+            })
+        };
+        let needs_update = document.diagrams.iter().any(|diagram| {
+            if is_explicit(diagram) {
+                return false;
+            }
+            let old_diagram = previous
+                .diagrams
+                .iter()
+                .find(|old| remap(document_id, &old.id.selector()) == diagram.id.selector());
+            let Some(order) = diagram
+                .plane_order
+                .as_ref()
+                .filter(|_| old_diagram.is_some_and(|old| old.plane_order.is_some()))
+            else {
+                return false;
+            };
+            let available: Vec<_> = diagram
+                .shapes
+                .iter()
+                .map(|shape| shape.id.selector())
+                .chain(diagram.edges.iter().map(|edge| edge.id.selector()))
+                .collect();
+            order.iter().any(|id| !available.contains(id))
+                || available.iter().any(|id| !order.contains(id))
+        });
+        if !needs_update {
+            continue;
+        }
+        let document = Arc::make_mut(document);
+        for diagram in &mut document.diagrams {
+            if is_explicit(diagram) {
+                continue;
+            }
+            let old_diagram = previous
+                .diagrams
+                .iter()
+                .find(|old| remap(document_id, &old.id.selector()) == diagram.id.selector());
+            if !old_diagram.is_some_and(|old| old.plane_order.is_some()) {
+                continue;
+            }
+            let Some(order) = &mut diagram.plane_order else {
+                continue;
+            };
+            let available: Vec<_> = diagram
+                .shapes
+                .iter()
+                .map(|shape| shape.id.selector())
+                .chain(diagram.edges.iter().map(|edge| edge.id.selector()))
+                .collect();
+            order.retain(|id| available.contains(id));
+            for id in available {
+                if !order.contains(&id) {
+                    order.push(id);
+                }
+            }
+        }
+    }
+}
 fn reject_newly_dangling_relationships(
     old: &ProjectData,
     candidate: &ProjectData,
@@ -1154,6 +1299,10 @@ fn documentation_is_structured(d: &BpmnDocument, id: &ElementSelector) -> bool {
                 .iter()
                 .any(|f| f.id == *id && matches!(f.documentation, DocumentationSet::Structured(_)))
         })
+        || d.choreographies
+            .iter()
+            .flat_map(|c| c.sequence_flows.iter().chain(&c.message_flows))
+            .any(|f| f.id == *id && matches!(f.documentation, DocumentationSet::Structured(_)))
 }
 fn replace_nested_documentation(
     nodes: &mut [Node],
@@ -1832,7 +1981,12 @@ fn flow_mut<'a>(
         }
     }
     for choreography in &mut d.choreographies {
-        if let Some(flow) = choreography.sequence_flows.iter_mut().find(|f| &f.id == id) {
+        if let Some(flow) = choreography
+            .sequence_flows
+            .iter_mut()
+            .chain(&mut choreography.message_flows)
+            .find(|f| &f.id == id)
+        {
             return Ok(flow);
         }
     }
@@ -1850,8 +2004,112 @@ fn diagram<'a>(
         .find(|p| &p.id == id)
         .ok_or_else(|| invalid("diagram not found"))
 }
+fn remove_di_shapes(
+    diagram: &mut Diagram,
+    owners: &std::collections::HashSet<ElementSelector>,
+    namespace: Option<&str>,
+) {
+    let owner_xml_ids: std::collections::HashSet<_> = diagram
+        .shapes
+        .iter()
+        .filter(|shape| owners.contains(&shape.id.selector()))
+        .filter_map(|shape| shape.id.xml_id().cloned())
+        .collect();
+    diagram.shapes.retain(|shape| {
+        if owners.contains(&shape.id.selector()) {
+            return false;
+        }
+        match &shape.choreography_activity_shape {
+            Some(DiReference::Local(id)) => !owners.contains(id),
+            Some(DiReference::Qualified(qname)) => {
+                !(namespace == Some(qname.namespace.as_str())
+                    && owner_xml_ids.contains(&qname.local))
+            }
+            None => true,
+        }
+    });
+}
 fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
     match m {
+        Mutation::SetDiagramPlaneMetadata {
+            document_id,
+            diagram_id,
+            metadata,
+        } => {
+            diagram(doc(p, document_id, true)?, &diagram_id)?.plane_metadata = metadata;
+        }
+        Mutation::SetDiagramPlaneOrder {
+            document_id,
+            diagram_id,
+            order,
+        } => {
+            diagram(doc(p, document_id, true)?, &diagram_id)?.plane_order = order;
+        }
+        Mutation::SetShapeRepresentationMetadata {
+            document_id,
+            diagram_id,
+            shape_id,
+            metadata,
+            is_message_visible,
+            participant_band_kind,
+            choreography_activity_shape,
+        } => {
+            let shape = diagram(doc(p, document_id, true)?, &diagram_id)?
+                .shapes
+                .iter_mut()
+                .find(|shape| shape.id == shape_id)
+                .ok_or_else(|| invalid("shape not found"))?;
+            shape.di_metadata = metadata;
+            shape.is_message_visible = is_message_visible;
+            shape.participant_band_kind = participant_band_kind;
+            shape.choreography_activity_shape = choreography_activity_shape;
+        }
+        Mutation::SetEdgeRepresentationMetadata {
+            document_id,
+            diagram_id,
+            edge_id,
+            metadata,
+            message_visible_kind,
+        } => {
+            let edge = diagram(doc(p, document_id, true)?, &diagram_id)?
+                .edges
+                .iter_mut()
+                .find(|edge| edge.id == edge_id)
+                .ok_or_else(|| invalid("edge not found"))?;
+            edge.di_metadata = metadata;
+            edge.message_visible_kind = message_visible_kind;
+        }
+        Mutation::SetParticipantMultiplicity {
+            document_id,
+            participant_id,
+            multiplicity,
+        } => {
+            let document = doc(p, document_id, true)?;
+            let participant = document
+                .collaboration
+                .iter_mut()
+                .flat_map(|c| &mut c.participants)
+                .chain(
+                    document
+                        .choreographies
+                        .iter_mut()
+                        .flat_map(|c| &mut c.participants),
+                )
+                .find(|participant| participant.id == participant_id)
+                .ok_or_else(|| invalid("participant not found"))?;
+            participant.multiplicity = multiplicity;
+        }
+        Mutation::SetMessageFlowReference {
+            document_id,
+            flow_id,
+            message_ref,
+        } => {
+            let flow = flow_mut(doc(p, document_id, true)?, &flow_id)?;
+            if flow.kind != FlowKind::Message {
+                return Err(invalid("message reference requires a message flow"));
+            }
+            flow.message_ref = message_ref;
+        }
         Mutation::SetGlobalTasks {
             document_id,
             global_tasks,
@@ -2187,8 +2445,20 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                     .iter_mut()
                     .find(|flow| flow.id == element_id)
             {
-                flow.documentation = documentation;
+                flow.documentation = documentation.clone();
                 found = true;
+            }
+            for choreography in &mut d.choreographies {
+                for flow in choreography
+                    .sequence_flows
+                    .iter_mut()
+                    .chain(&mut choreography.message_flows)
+                {
+                    if flow.id == element_id {
+                        flow.documentation = documentation.clone();
+                        found = true;
+                    }
+                }
             }
             if !found {
                 return Err(invalid("element has no legacy documentation field"));
@@ -2717,13 +2987,33 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             choreography_id,
             activity_id,
         } => {
-            let c = choreography_mut(doc(p, document_id, true)?, &choreography_id)?;
+            let document = doc(p, document_id, true)?;
+            let c = choreography_mut(document, &choreography_id)?;
             let index = c
                 .activities
                 .iter()
                 .position(|a| a.id == activity_id)
                 .ok_or_else(|| invalid("choreography activity not found"))?;
             c.activities.remove(index);
+            let namespace = document
+                .definitions
+                .as_ref()
+                .map(|d| d.target_namespace.clone())
+                .or_else(|| {
+                    document
+                        .provenance
+                        .is_none()
+                        .then(|| GENERATED_TARGET_NAMESPACE.to_string())
+                });
+            for diagram in &mut document.diagrams {
+                let owners = diagram
+                    .shapes
+                    .iter()
+                    .filter(|shape| shape.element == activity_id)
+                    .map(|shape| shape.id.selector())
+                    .collect();
+                remove_di_shapes(diagram, &owners, namespace.as_deref());
+            }
         }
         Mutation::CreateConversationNode { document_id, node } => {
             collaboration_mut(doc(p, document_id, true)?)?
@@ -3185,16 +3475,50 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             document_id,
             diagram_id,
             shape,
-        } => diagram(doc(p, document_id, true)?, &diagram_id)?
-            .shapes
-            .push(shape),
+        } => {
+            let diagram = diagram(doc(p, document_id, true)?, &diagram_id)?;
+            if let Some(order) = &mut diagram.plane_order {
+                order.push(shape.id.selector());
+            }
+            diagram.shapes.push(shape);
+        }
+        Mutation::DeleteShape {
+            document_id,
+            diagram_id,
+            shape_id,
+        } => {
+            let document = doc(p, document_id, true)?;
+            let namespace = document
+                .definitions
+                .as_ref()
+                .map(|d| d.target_namespace.clone())
+                .or_else(|| {
+                    document
+                        .provenance
+                        .is_none()
+                        .then(|| GENERATED_TARGET_NAMESPACE.to_string())
+                });
+            let diagram = diagram(document, &diagram_id)?;
+            if !diagram.shapes.iter().any(|shape| shape.id == shape_id) {
+                return Err(invalid("shape not found"));
+            }
+            remove_di_shapes(
+                diagram,
+                &std::collections::HashSet::from([shape_id]),
+                namespace.as_deref(),
+            );
+        }
         Mutation::CreateEdge {
             document_id,
             diagram_id,
             edge,
-        } => diagram(doc(p, document_id, true)?, &diagram_id)?
-            .edges
-            .push(edge),
+        } => {
+            let diagram = diagram(doc(p, document_id, true)?, &diagram_id)?;
+            if let Some(order) = &mut diagram.plane_order {
+                order.push(edge.id.selector());
+            }
+            diagram.edges.push(edge);
+        }
         Mutation::CreateProcess {
             document_id,
             process: value,
@@ -3296,6 +3620,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                     || d.has_data_qname_refs()
                     || d.has_event_qname_refs()
                     || d.has_activity_qname_refs()
+                    || d.has_di_choreography_qname_refs()
                     || d.extensions.iter().any(|e| e.definition.is_some())
                     || d.relationships
                         .iter()
@@ -3385,6 +3710,34 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                     }
                 }
             }
+            for choreography in &mut d.choreographies {
+                if choreography.id == element_id {
+                    choreography.name = name.clone();
+                    found = true;
+                }
+                for participant in &mut choreography.participants {
+                    if participant.id == element_id {
+                        participant.name = name.clone();
+                        found = true;
+                    }
+                }
+                for activity in &mut choreography.activities {
+                    if activity.id == element_id {
+                        activity.name = name.clone();
+                        found = true;
+                    }
+                }
+                for flow in choreography
+                    .sequence_flows
+                    .iter_mut()
+                    .chain(&mut choreography.message_flows)
+                {
+                    if flow.id == element_id {
+                        flow.name = name.clone();
+                        found = true;
+                    }
+                }
+            }
             if !found {
                 return Err(invalid("element not found"));
             }
@@ -3424,6 +3777,18 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                 for f in &mut c.flows {
                     if f.id == element_id {
                         f.documentation = documentation.clone().into();
+                        found = true;
+                    }
+                }
+            }
+            for choreography in &mut d.choreographies {
+                for flow in choreography
+                    .sequence_flows
+                    .iter_mut()
+                    .chain(&mut choreography.message_flows)
+                {
+                    if flow.id == element_id {
+                        flow.documentation = documentation.clone().into();
                         found = true;
                     }
                 }
@@ -3569,6 +3934,12 @@ pub struct CommandParam {
 }
 macro_rules! descriptor { ($id:literal,$label:literal $(,$name:literal:$ty:literal)* $(,)?) => { CommandDescriptor { id: $id, serde_tag: $id, label: $label, params: &[$(CommandParam {name:$name,value_type:$ty,required:true}),*] } }; }
 static COMMAND_DESCRIPTORS: &[CommandDescriptor] = &[
+    descriptor!("setDiagramPlaneMetadata", "Set plane metadata", "document_id":"DocumentId", "diagram_id":"ElementSelector", "metadata":"DiElementMetadata|null"),
+    descriptor!("setDiagramPlaneOrder", "Set plane representation order", "document_id":"DocumentId", "diagram_id":"ElementSelector", "order":"ElementSelector[]|null"),
+    descriptor!("setShapeRepresentationMetadata", "Set shape representation metadata", "document_id":"DocumentId", "diagram_id":"ElementSelector", "shape_id":"ElementSelector", "metadata":"DiElementMetadata|null", "is_message_visible":"bool|null", "participant_band_kind":"ParticipantBandKind|null", "choreography_activity_shape":"DiReference|null"),
+    descriptor!("setEdgeRepresentationMetadata", "Set edge representation metadata", "document_id":"DocumentId", "diagram_id":"ElementSelector", "edge_id":"ElementSelector", "metadata":"DiElementMetadata|null", "message_visible_kind":"MessageVisibleKind|null"),
+    descriptor!("setParticipantMultiplicity", "Set participant multiplicity", "document_id":"DocumentId", "participant_id":"ElementSelector", "multiplicity":"ParticipantMultiplicity|null"),
+    descriptor!("setMessageFlowReference", "Set message flow reference", "document_id":"DocumentId", "flow_id":"ElementSelector", "message_ref":"ModelReference|null"),
     descriptor!("setGlobalTasks", "Set global callable tasks", "document_id":"DocumentId", "global_tasks":"GlobalTask[]"),
     descriptor!("setCorrelationProperties", "Set correlation properties", "document_id":"DocumentId", "correlation_properties":"CorrelationProperty[]"),
     descriptor!("setExpression", "Set structured expression", "document_id":"DocumentId", "expression_id":"ElementSelector", "expression":"Expression"),
@@ -3673,6 +4044,7 @@ static COMMAND_DESCRIPTORS: &[CommandDescriptor] = &[
     descriptor!("createFlow","Create flow","document_id":"DocumentId","process_id":"ElementSelector|null","flow":"Flow"),
     descriptor!("createDiagram","Create diagram","document_id":"DocumentId","diagram":"Diagram"),
     descriptor!("createShape","Create shape","document_id":"DocumentId","diagram_id":"ElementSelector","shape":"Shape"),
+    descriptor!("deleteShape","Delete shape representation","document_id":"DocumentId","diagram_id":"ElementSelector","shape_id":"ElementSelector"),
     descriptor!("createEdge","Create edge","document_id":"DocumentId","diagram_id":"ElementSelector","edge":"Edge"),
     descriptor!("deleteDocument","Delete document","document_id":"DocumentId"),
     descriptor!("projectProperties","Project properties","name":"string","description":"string"),
@@ -3702,6 +4074,10 @@ mod shape_label_tests {
     #[test]
     fn moving_shape_translates_label_without_resizing_it() {
         let mut shape = Shape {
+            di_metadata: None,
+            is_message_visible: None,
+            participant_band_kind: None,
+            choreography_activity_shape: None,
             label_visibility: None,
             is_horizontal: None,
             is_marker_visible: None,
@@ -3715,6 +4091,7 @@ mod shape_label_tests {
                 height: 40.0,
             },
             label: Some(Label {
+                di_metadata: None,
                 id: None,
                 style_ref: None,
                 bounds: Some(Bounds {

@@ -86,6 +86,10 @@ fn lane_membership_is_not_a_duplicate_node() {
 fn multiple_diagrams_share_semantics() {
     let mut p = sample();
     let shape = Shape {
+        di_metadata: None,
+        is_message_visible: None,
+        participant_band_kind: None,
+        choreography_activity_shape: None,
         label_visibility: None,
         is_horizontal: None,
         is_marker_visible: None,
@@ -104,6 +108,8 @@ fn multiple_diagrams_share_semantics() {
     std::sync::Arc::make_mut(&mut p.documents[0])
         .diagrams
         .push(Diagram {
+            plane_metadata: None,
+            plane_order: None,
             documentation: None,
             resolution: None,
             label_styles: vec![],
@@ -119,6 +125,8 @@ fn multiple_diagrams_share_semantics() {
     std::sync::Arc::make_mut(&mut p.documents[0])
         .diagrams
         .push(Diagram {
+            plane_metadata: None,
+            plane_order: None,
             documentation: None,
             resolution: None,
             label_styles: vec![],
@@ -166,6 +174,10 @@ fn invalid_ids_cannot_be_deserialized() {
 fn geometry_must_be_finite_and_negative_zero_is_canonical() {
     let mut p = sample();
     let shape = Shape {
+        di_metadata: None,
+        is_message_visible: None,
+        participant_band_kind: None,
+        choreography_activity_shape: None,
         label_visibility: None,
         is_horizontal: None,
         is_marker_visible: None,
@@ -184,6 +196,8 @@ fn geometry_must_be_finite_and_negative_zero_is_canonical() {
     std::sync::Arc::make_mut(&mut p.documents[0])
         .diagrams
         .push(Diagram {
+            plane_metadata: None,
+            plane_order: None,
             documentation: None,
             resolution: None,
             label_styles: vec![],
@@ -210,6 +224,7 @@ fn incomplete_process_and_cycles_in_sequence_are_valid() {
     std::sync::Arc::make_mut(&mut p.documents[0]).processes[0]
         .flows
         .push(Flow {
+            message_ref: None,
             flow_metadata: None,
             base_extras: None,
             association_direction: None,
@@ -250,6 +265,7 @@ fn endpoint_plane_and_resource_boundaries() {
     std::sync::Arc::make_mut(&mut p.documents[0]).processes[0]
         .flows
         .push(Flow {
+            message_ref: None,
             flow_metadata: None,
             base_extras: None,
             association_direction: None,
@@ -272,6 +288,8 @@ fn endpoint_plane_and_resource_boundaries() {
     std::sync::Arc::make_mut(&mut p.documents[0])
         .diagrams
         .push(Diagram {
+            plane_metadata: None,
+            plane_order: None,
             documentation: None,
             resolution: None,
             label_styles: vec![],
@@ -330,6 +348,8 @@ fn identity_changes_for_persistent_categories() {
     std::sync::Arc::make_mut(&mut p.documents[0])
         .diagrams
         .push(Diagram {
+            plane_metadata: None,
+            plane_order: None,
             documentation: None,
             resolution: None,
             label_styles: vec![],
@@ -338,6 +358,10 @@ fn identity_changes_for_persistent_categories() {
             plane_id: id("diagram_plane"),
             plane: id("process"),
             shapes: vec![Shape {
+                di_metadata: None,
+                is_message_visible: None,
+                participant_band_kind: None,
+                choreography_activity_shape: None,
                 label_visibility: None,
                 is_horizontal: None,
                 is_marker_visible: None,
@@ -351,6 +375,7 @@ fn identity_changes_for_persistent_categories() {
                     height: 4.,
                 },
                 label: Some(Label {
+                    di_metadata: None,
                     id: None,
                     style_ref: None,
                     bounds: Some(Bounds {
@@ -445,6 +470,8 @@ fn plane_identity_is_unique_and_persistent() {
     std::sync::Arc::make_mut(&mut p.documents[0])
         .diagrams
         .push(Diagram {
+            plane_metadata: None,
+            plane_order: None,
             documentation: None,
             resolution: None,
             label_styles: vec![],
@@ -495,6 +522,8 @@ fn collaboration_and_diagram_names_preserve_omission_and_empty_values() {
         conversation_links: vec![],
     });
     doc.diagrams.push(Diagram {
+        plane_metadata: None,
+        plane_order: None,
         documentation: None,
         resolution: None,
         label_styles: vec![],

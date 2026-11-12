@@ -28,6 +28,11 @@ pub struct DiagramScene {
     labels: Vec<Label>,
     glyph_count: usize,
     segment_count: usize,
+    ordering: bool,
+    active_rank: usize,
+    sequence: usize,
+    background_order: Vec<(usize, usize)>,
+    label_order: Vec<(usize, usize)>,
 }
 impl DiagramScene {
     pub fn new(width: f32, height: f32) -> Result<Self, RenderError> {
@@ -53,6 +58,11 @@ impl DiagramScene {
             labels: Vec::new(),
             glyph_count: 0,
             segment_count: 0,
+            ordering: false,
+            active_rank: 0,
+            sequence: 0,
+            background_order: Vec::new(),
+            label_order: Vec::new(),
         })
     }
     pub fn width(&self) -> f32 {
@@ -90,6 +100,8 @@ impl DiagramScene {
             y,
             color: [26, 37, 52],
         });
+        self.label_order.push((self.active_rank, self.sequence));
+        self.sequence += 1;
         Ok(())
     }
     pub fn add_background_rect(
@@ -108,6 +120,9 @@ impl DiagramScene {
         }
         let rect = Rect::from_xywh(x, y, width, height).ok_or(RenderError("Invalid rectangle"))?;
         self.backgrounds.push((PathBuilder::from_rect(rect), color));
+        self.background_order
+            .push((self.active_rank, self.sequence));
+        self.sequence += 1;
         Ok(())
     }
     pub(crate) fn prepend_background_rect(
@@ -122,6 +137,7 @@ impl DiagramScene {
             .ok_or(RenderError("Invalid viewport background"))?;
         self.backgrounds
             .insert(0, (PathBuilder::from_rect(rect), color));
+        self.background_order.insert(0, (0, 0));
         Ok(())
     }
     pub fn add_colored_label(
@@ -135,6 +151,14 @@ impl DiagramScene {
         self.labels.last_mut().expect("label just added").color = color;
         Ok(())
     }
+    pub(crate) fn rotate_last_label(&mut self, x: f32, bottom: f32) {
+        if let Some(label) = self.labels.last_mut() {
+            label.layout.rotate_counterclockwise();
+            let (old_x, old_y) = (label.x, label.y);
+            label.x = x + old_y;
+            label.y = bottom - old_x;
+        }
+    }
     pub fn add_path(&mut self, path: Path, color: [u8; 3]) -> Result<(), RenderError> {
         let segments = path.segments().count();
         if self.backgrounds.len() >= 16384 || self.segment_count + segments > 1_000_000 {
@@ -142,10 +166,18 @@ impl DiagramScene {
         }
         self.segment_count += segments;
         self.backgrounds.push((path, color));
+        self.background_order
+            .push((self.active_rank, self.sequence));
+        self.sequence += 1;
         Ok(())
     }
+    pub(crate) fn set_paint_rank(&mut self, rank: usize) {
+        self.ordering = true;
+        self.active_rank = rank;
+    }
     pub fn paths(&self) -> impl Iterator<Item = ScenePath<'_>> {
-        self.backgrounds
+        let legacy = self
+            .backgrounds
             .iter()
             .map(|(path, color)| ScenePath {
                 path,
@@ -162,7 +194,43 @@ impl DiagramScene {
                         color: label.color,
                     })
                 })
-            }))
+            }));
+        if !self.ordering {
+            return legacy.collect::<Vec<_>>().into_iter();
+        }
+        let mut ordered = Vec::new();
+        for ((path, color), order) in self.backgrounds.iter().zip(&self.background_order) {
+            ordered.push((
+                *order,
+                ScenePath {
+                    path,
+                    x: 0.0,
+                    y: 0.0,
+                    color: *color,
+                },
+            ));
+        }
+        for (label, order) in self.labels.iter().zip(&self.label_order) {
+            for glyph in label.layout.glyphs() {
+                if let Some(path) = &glyph.outline {
+                    ordered.push((
+                        *order,
+                        ScenePath {
+                            path,
+                            x: label.x,
+                            y: label.y,
+                            color: label.color,
+                        },
+                    ));
+                }
+            }
+        }
+        ordered.sort_by_key(|(order, _)| *order);
+        ordered
+            .into_iter()
+            .map(|(_, path)| path)
+            .collect::<Vec<_>>()
+            .into_iter()
     }
     /// Outlined, font-independent SVG with escaped source labels as metadata.
     pub fn to_svg(&self) -> String {

@@ -432,6 +432,9 @@ impl BpmnDocument {
             out.push(&collaboration.id);
             for p in &collaboration.participants {
                 out.push(&p.id);
+                if let Some(multiplicity) = &p.multiplicity {
+                    out.extend(multiplicity.id.iter());
+                }
             }
             for flow in &collaboration.flows {
                 out.push(&flow.id);
@@ -447,6 +450,9 @@ impl BpmnDocument {
             out.push(&choreography.id);
             for p in &choreography.participants {
                 out.push(&p.id);
+                if let Some(multiplicity) = &p.multiplicity {
+                    out.extend(multiplicity.id.iter());
+                }
             }
             for f in choreography
                 .message_flows
@@ -479,6 +485,69 @@ impl BpmnDocument {
             }
         }
         out
+    }
+    /// Features requiring a DI/choreography-aware native reader.
+    pub fn has_di_choreography_features(&self) -> bool {
+        self.collaboration.as_ref().is_some_and(|c| {
+            c.participants.iter().any(|p| p.multiplicity.is_some())
+                || c.flows.iter().any(|f| f.message_ref.is_some())
+        }) || self.choreographies.iter().any(|c| {
+            c.participants.iter().any(|p| p.multiplicity.is_some())
+                || c.message_flows
+                    .iter()
+                    .chain(&c.sequence_flows)
+                    .any(|f| f.message_ref.is_some())
+        }) || crate::queries::scopes(self)
+            .iter()
+            .any(|scope| scope.flows.iter().any(|f| f.message_ref.is_some()))
+            || self.diagrams.iter().any(|d| {
+                d.plane_metadata.is_some()
+                    || d.plane_order.is_some()
+                    || d.shapes.iter().any(|s| {
+                        s.di_metadata.is_some()
+                            || s.is_message_visible.is_some()
+                            || s.participant_band_kind.is_some()
+                            || s.choreography_activity_shape.is_some()
+                            || s.label.as_ref().is_some_and(|l| l.di_metadata.is_some())
+                    })
+                    || d.edges.iter().any(|e| {
+                        e.di_metadata.is_some()
+                            || e.message_visible_kind.is_some()
+                            || e.label.as_ref().is_some_and(|l| l.di_metadata.is_some())
+                    })
+            })
+    }
+    /// Qualified DI references must not be silently retargeted.
+    pub fn has_di_choreography_qname_refs(&self) -> bool {
+        self.diagrams.iter().any(|d| {
+            d.shapes.iter().any(|s| {
+                matches!(
+                    s.choreography_activity_shape,
+                    Some(DiReference::Qualified(_))
+                )
+            })
+        }) || self.collaboration.as_ref().is_some_and(|c| {
+            c.flows.iter().any(|f| {
+                matches!(
+                    f.message_ref,
+                    Some(crate::bpmn_activity::ModelReference::Qualified(_))
+                )
+            })
+        }) || self.choreographies.iter().any(|c| {
+            c.message_flows.iter().chain(&c.sequence_flows).any(|f| {
+                matches!(
+                    f.message_ref,
+                    Some(crate::bpmn_activity::ModelReference::Qualified(_))
+                )
+            })
+        }) || crate::queries::scopes(self).iter().any(|scope| {
+            scope.flows.iter().any(|f| {
+                matches!(
+                    f.message_ref,
+                    Some(crate::bpmn_activity::ModelReference::Qualified(_))
+                )
+            })
+        })
     }
     pub fn xml_id_for_selector(&self, selector: &crate::ids::ElementSelector) -> Option<&XmlId> {
         self.element_identities()
@@ -516,19 +585,18 @@ impl BpmnDocument {
             if scope.lanes.iter().any(|l| {
                 l.parent.as_ref().is_some_and(|r| r.is_native())
                     || l.members.iter().any(|r| r.is_native())
+            }) || scope.flows.iter().any(|f| {
+                f.source.is_native()
+                    || f.target.is_native()
+                    || f.message_ref.as_ref().is_some_and(|r| r.is_native())
+            }) || scope.data_associations.iter().any(|a| {
+                a.owner.is_native()
+                    || a.target.is_native()
+                    || a.sources.iter().any(|r| r.is_native())
             }) || scope
-                .flows
+                .groups
                 .iter()
-                .any(|f| f.source.is_native() || f.target.is_native())
-                || scope.data_associations.iter().any(|a| {
-                    a.owner.is_native()
-                        || a.target.is_native()
-                        || a.sources.iter().any(|r| r.is_native())
-                })
-                || scope
-                    .groups
-                    .iter()
-                    .any(|g| g.category_value_ref.as_ref().is_some_and(|r| r.is_native()))
+                .any(|g| g.category_value_ref.as_ref().is_some_and(|r| r.is_native()))
             {
                 return true;
             }
@@ -657,6 +725,8 @@ impl BpmnDocument {
         }
         if self.diagrams.iter().any(|d| {
             d.plane.is_native()
+                || d.plane_order.as_ref().is_some_and(|order| order.iter().any(|id| id.is_native()))
+                || d.shapes.iter().any(|shape| matches!(&shape.choreography_activity_shape, Some(DiReference::Local(id)) if id.is_native()))
                 || d.shapes.iter().any(|s| {
                     s.element.is_native()
                         || s.label.as_ref().is_some_and(
@@ -683,9 +753,11 @@ impl BpmnDocument {
             c.participants
                 .iter()
                 .any(|p| p.process.as_ref().is_some_and(|r| r.is_native()))
-                || c.flows
-                    .iter()
-                    .any(|f| f.source.is_native() || f.target.is_native())
+                || c.flows.iter().any(|f| {
+                    f.source.is_native()
+                        || f.target.is_native()
+                        || f.message_ref.as_ref().is_some_and(|r| r.is_native())
+                })
                 || c.conversation_nodes.iter().any(|n| {
                     n.parent.as_ref().is_some_and(|r| r.is_native())
                         || n.participant_refs.iter().any(|r| r.is_native())
@@ -700,10 +772,11 @@ impl BpmnDocument {
             c.participants
                 .iter()
                 .any(|p| p.process.as_ref().is_some_and(|r| r.is_native()))
-                || c.message_flows
-                    .iter()
-                    .chain(&c.sequence_flows)
-                    .any(|f| f.source.is_native() || f.target.is_native())
+                || c.message_flows.iter().chain(&c.sequence_flows).any(|f| {
+                    f.source.is_native()
+                        || f.target.is_native()
+                        || f.message_ref.as_ref().is_some_and(|r| r.is_native())
+                })
                 || c.activities.iter().any(|a| {
                     a.initiating_participant.is_native()
                         || a.participant_refs
@@ -1298,6 +1371,8 @@ pub struct Collaboration {
 #[serde(deny_unknown_fields)]
 pub struct Participant {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub multiplicity: Option<ParticipantMultiplicity>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub base: Option<crate::bpmn_metadata::BaseMetadata>,
 
     pub id: crate::ids::ElementIdentity,
@@ -1307,6 +1382,8 @@ pub struct Participant {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Flow {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message_ref: Option<crate::bpmn_activity::ModelReference>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub flow_metadata: Option<crate::bpmn_activity::FlowElementMetadata>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1328,9 +1405,49 @@ pub enum FlowKind {
     Message,
     Association,
 }
+/// Inherited DI DiagramElement payload (not semantic BPMN BaseElement metadata).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct DiElementMetadata {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub namespaces: Vec<crate::bpmn_xml::NamespaceBinding>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub foreign_attributes: Vec<crate::bpmn_xml::XmlAttribute>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extension: Option<crate::bpmn_xml::XmlContent>,
+}
+pub type DiReference = DiStyleRef;
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ParticipantBandKind {
+    TopInitiating,
+    MiddleInitiating,
+    BottomInitiating,
+    TopNonInitiating,
+    MiddleNonInitiating,
+    BottomNonInitiating,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MessageVisibleKind {
+    Initiating,
+    NonInitiating,
+}
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ParticipantMultiplicity {
+    pub id: Option<crate::ids::ElementIdentity>,
+    pub base: Option<crate::bpmn_metadata::BaseMetadata>,
+    pub minimum: Option<i32>,
+    pub maximum: Option<i32>,
+}
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Diagram {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plane_metadata: Option<DiElementMetadata>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plane_order: Option<Vec<crate::ids::ElementSelector>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1370,6 +1487,8 @@ pub struct Style {
 #[serde(deny_unknown_fields)]
 pub struct Label {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub di_metadata: Option<DiElementMetadata>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<crate::ids::ElementIdentity>,
     pub bounds: Option<Bounds>,
     pub style: Option<Style>,
@@ -1405,6 +1524,14 @@ pub struct DiFont {
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Shape {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub di_metadata: Option<DiElementMetadata>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub is_message_visible: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub participant_band_kind: Option<ParticipantBandKind>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub choreography_activity_shape: Option<DiReference>,
     pub id: crate::ids::ElementIdentity,
     pub element: crate::ids::ElementSelector,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1422,6 +1549,10 @@ pub struct Shape {
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Edge {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub di_metadata: Option<DiElementMetadata>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message_visible_kind: Option<MessageVisibleKind>,
     pub id: crate::ids::ElementIdentity,
     pub element: crate::ids::ElementSelector,
     #[serde(default, skip_serializing_if = "Option::is_none")]

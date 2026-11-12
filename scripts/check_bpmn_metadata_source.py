@@ -14,8 +14,9 @@ BPMN = "http://www.omg.org/spec/BPMN/20100524/MODEL"
 XSI_TYPE = "{http://www.w3.org/2001/XMLSchema-instance}type"
 XML = "http://www.w3.org/XML/1998/namespace"
 DI = "http://www.omg.org/spec/DD/20100524/DI"
-STANDARD_NAMESPACES = {BPMN, "http://www.omg.org/spec/BPMN/20100524/DI", DI,
-                       "http://www.omg.org/spec/DD/20100524/DC"}
+BPMNDI = "http://www.omg.org/spec/BPMN/20100524/DI"
+DC = "http://www.omg.org/spec/DD/20100524/DC"
+STANDARD_NAMESPACES = {BPMN, BPMNDI, DI, DC}
 OPAQUE = {"documentation", "extensionElements", "script", "text"}
 BODIES = {"script", "text", "conditionExpression", "condition", "timeDate", "timeDuration",
           "timeCycle", "loopCondition", "loopCardinality", "completionCondition",
@@ -83,6 +84,27 @@ def activity_attributes(element):
     return result
 
 
+def diagram_attributes(element):
+    result = attributes(element)
+    tag = E.QName(element)
+    qnames = {"bpmnElement", "sourceElement", "targetElement", "labelStyle", "choreographyActivityShape"}
+    if tag.namespace == BPMN and tag.localname == "messageFlow":
+        qnames = {"sourceRef", "targetRef", "messageRef"}
+    if tag.namespace == BPMN and tag.localname == "participant":
+        qnames = {"processRef"}
+    for name, value in result.items():
+        if name in qnames:
+            result[name] = expanded_qname(element, value)
+        elif name in {"isHorizontal", "isExpanded", "isMarkerVisible", "isMessageVisible",
+                      "isBold", "isItalic", "isUnderline", "isStrikeThrough"}:
+            result[name] = value.strip() in {"true", "1"}
+        elif tag.namespace == BPMN and name in {"minimum", "maximum"}:
+            result[name] = int(value)
+        elif tag.namespace in {DC, DI, BPMNDI} and name in {"x", "y", "width", "height", "size", "resolution"}:
+            result[name] = float(value)
+    return result
+
+
 def namespace_map(element):
     bindings = {prefix or "": uri or "" for prefix, uri in element.nsmap.items()}
     bindings.setdefault("", "")
@@ -109,7 +131,7 @@ def body(element):
             "children": [{"node": body(child), "tail": child.tail or ""} for child in element]}
 
 
-def records(tree, activity_fields=False):
+def records(tree, activity_fields=False, diagram_fields=False):
     result = {}
 
     def visit(element, path, opaque):
@@ -117,6 +139,24 @@ def records(tree, activity_fields=False):
             return
         tag = E.QName(element)
         semantic = tag.namespace == BPMN and not opaque
+        if diagram_fields and not opaque:
+            if (tag.namespace in {BPMNDI, DC, DI}
+                    or tag.namespace == BPMN and tag.localname in {"participant", "participantMultiplicity", "messageFlow"}):
+                result[path + "/diagramAttributes"] = diagram_attributes(element)
+            if tag.namespace == BPMNDI and tag.localname in {"BPMNPlane", "BPMNShape", "BPMNEdge", "BPMNLabel"}:
+                extension = element.find("{" + DI + "}extension")
+                foreign = {key: value for key, value in element.attrib.items()
+                           if key.startswith("{") and key != XSI_TYPE}
+                if extension is not None or foreign:
+                    result[path + "/diagramMetadata"] = {
+                        "extension": None if extension is None else body(extension),
+                        "foreignAttributes": foreign,
+                        "foreignAttributeContext": namespace_map(element) if foreign else None,
+                    }
+                if tag.localname == "BPMNPlane":
+                    result[path + "/planeChildren"] = [
+                        {"tag": child.tag, "idPresent": "id" in child.attrib, "id": child.get("id")}
+                        for child in element if isinstance(child.tag, str) and child.tag != "{" + DI + "}extension"]
         if not opaque and tag.namespace in STANDARD_NAMESPACES:
             result[path + "/xmlIdentity"] = {"idPresent": "id" in element.attrib,
                                               "id": element.get("id")}
@@ -163,6 +203,8 @@ def main():
     parser.add_argument("output", type=Path)
     parser.add_argument("--activity-fields", action="store_true",
                         help="Also compare selected activity attributes and scoped QName text")
+    parser.add_argument("--diagram-fields", action="store_true",
+                        help="Also compare DI metadata, child order, geometry and participant/message fields")
     arguments = parser.parse_args()
     schema = E.XMLSchema(E.parse(str(ROOT / "tests/fixtures/bpmn20-schema/BPMN20.xsd")))
     trees = []
@@ -172,13 +214,14 @@ def main():
             parser.error("DTD content is not accepted")
         schema.assertValid(tree)
         trees.append(tree)
-    expected, actual = [records(tree, arguments.activity_fields) for tree in trees]
+    expected, actual = [records(tree, arguments.activity_fields, arguments.diagram_fields) for tree in trees]
     differences = [{"path": path, "before": expected.get(path), "after": actual.get(path)}
                    for path in sorted(expected.keys() | actual.keys()) if expected.get(path) != actual.get(path)]
     print(json.dumps({"source": str(arguments.source), "output": str(arguments.output),
                       "sourceOwnerAndBodyRecords": sum(path.endswith(("/metadata", "/mixedBody")) for path in expected),
                       "standardElementIdentityRecords": sum(path.endswith("/xmlIdentity") for path in expected),
                       "activityFieldRecords": sum(path.endswith(("/activityAttributes", "/activityQName")) for path in expected),
+                      "diagramFieldRecords": sum(path.endswith(("/diagramAttributes", "/diagramMetadata", "/planeChildren")) for path in expected),
                       "anonymousOwnerRecords": sum(path.endswith("/metadata") and not value["idPresent"]
                                                    for path, value in expected.items()),
                       "differences": differences}, indent=2))

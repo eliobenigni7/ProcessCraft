@@ -383,6 +383,9 @@ fn document_selectors(d: &mut BpmnDocument, visit: &mut impl FnMut(&mut ElementS
             }
         }
         for flow in &mut collaboration.flows {
+            if let Some(reference) = &mut flow.message_ref {
+                event_ref_selector(reference, visit);
+            }
             flow_metadata_selectors(&mut flow.flow_metadata, visit);
             visit(&mut flow.source);
             visit(&mut flow.target);
@@ -412,6 +415,9 @@ fn document_selectors(d: &mut BpmnDocument, visit: &mut impl FnMut(&mut ElementS
             .iter_mut()
             .chain(&mut choreography.message_flows)
         {
+            if let Some(reference) = &mut flow.message_ref {
+                event_ref_selector(reference, visit);
+            }
             flow_metadata_selectors(&mut flow.flow_metadata, visit);
             visit(&mut flow.source);
             visit(&mut flow.target);
@@ -430,8 +436,16 @@ fn document_selectors(d: &mut BpmnDocument, visit: &mut impl FnMut(&mut ElementS
     }
     for diagram in &mut d.diagrams {
         visit(&mut diagram.plane);
+        if let Some(order) = &mut diagram.plane_order {
+            for id in order {
+                visit(id);
+            }
+        }
         for shape in &mut diagram.shapes {
             visit(&mut shape.element);
+            if let Some(DiReference::Local(reference)) = &mut shape.choreography_activity_shape {
+                visit(reference);
+            }
             if let Some(Label {
                 style_ref: Some(DiStyleRef::Local(reference)),
                 ..
@@ -898,6 +912,9 @@ fn document_ids(d: &mut BpmnDocument, visit: &mut impl FnMut(&mut ElementIdentit
         visit(&mut collaboration.id);
         for participant in &mut collaboration.participants {
             visit(&mut participant.id);
+            if let Some(multiplicity) = &mut participant.multiplicity {
+                optional_identity(&mut multiplicity.id, visit);
+            }
         }
         for flow in &mut collaboration.flows {
             flow_id(flow, visit);
@@ -914,6 +931,9 @@ fn document_ids(d: &mut BpmnDocument, visit: &mut impl FnMut(&mut ElementIdentit
         visit(&mut choreography.id);
         for participant in &mut choreography.participants {
             visit(&mut participant.id);
+            if let Some(multiplicity) = &mut participant.multiplicity {
+                optional_identity(&mut multiplicity.id, visit);
+            }
         }
         for flow in choreography
             .sequence_flows
@@ -972,6 +992,7 @@ enum QNameKind {
     Collaboration,
     DataElement,
     SequenceFlow,
+    DiShape,
 }
 fn role_qnames(
     roles: &mut [crate::bpmn_activity::ResourceRole],
@@ -1084,6 +1105,9 @@ fn flow_qnames(
     flow: &mut Flow,
     visit: &mut impl FnMut(&mut crate::bpmn_model::QNameRef, QNameKind),
 ) {
+    if let Some(reference) = &mut flow.message_ref {
+        event_ref_qname(reference, QNameKind::Message, visit);
+    }
     flow_metadata_qnames(&mut flow.flow_metadata, visit);
     if let Some(value) = &mut flow.condition {
         expression_qnames(value, visit);
@@ -1359,6 +1383,10 @@ fn document_qnames(
     }
     for diagram in &mut d.diagrams {
         for shape in &mut diagram.shapes {
+            if let Some(DiReference::Qualified(reference)) = &mut shape.choreography_activity_shape
+            {
+                visit(reference, QNameKind::DiShape);
+            }
             if let Some(Label {
                 style_ref: Some(DiStyleRef::Qualified(reference)),
                 ..
@@ -1525,7 +1553,14 @@ pub(crate) fn set_xml_id(
     use crate::bpmn_model::EventResource;
     let selected_id =
         |id: &Option<ElementIdentity>| id.as_ref().is_some_and(|id| id.selector() == *selected);
-    let target_kind = if crate::queries::scopes(doc)
+    let target_kind = if doc
+        .diagrams
+        .iter()
+        .flat_map(|diagram| &diagram.shapes)
+        .any(|shape| shape.id.selector() == *selected)
+    {
+        Some(QNameKind::DiShape)
+    } else if crate::queries::scopes(doc)
         .iter()
         .flat_map(|scope| scope.flows)
         .any(|flow| flow.kind == FlowKind::Sequence && flow.id.selector() == *selected)

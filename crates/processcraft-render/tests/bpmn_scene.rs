@@ -42,6 +42,8 @@ fn fixture() -> BpmnDocument {
         flows: vec![],
     });
     d.diagrams.push(Diagram {
+        plane_metadata: None,
+        plane_order: None,
         name: None,
         documentation: None,
         resolution: None,
@@ -50,6 +52,10 @@ fn fixture() -> BpmnDocument {
         plane_id: id("plane"),
         plane: id("process"),
         shapes: vec![Shape {
+            di_metadata: None,
+            is_message_visible: None,
+            participant_band_kind: None,
+            choreography_activity_shape: None,
             label_visibility: None,
             is_horizontal: None,
             is_marker_visible: None,
@@ -185,6 +191,7 @@ fn preserved_source_is_not_presented_as_semantic_preview() {
 fn named_flow_without_di_label_is_visible() {
     let mut d = fixture();
     d.processes[0].flows.push(processcraft_core::model::Flow {
+        message_ref: None,
         flow_metadata: None,
         association_direction: None,
         id: id("flow"),
@@ -197,6 +204,8 @@ fn named_flow_without_di_label_is_visible() {
         condition: None,
     });
     d.diagrams[0].edges.push(processcraft_core::model::Edge {
+        di_metadata: None,
+        message_visible_kind: None,
         id: id("edge"),
         element: id("flow"),
         source_element: None,
@@ -228,6 +237,7 @@ fn large_diagram_renders_viewport_without_full_allocation() {
 fn small_label_bounds_report_omission() {
     let mut d = fixture();
     d.diagrams[0].shapes[0].label = Some(processcraft_core::model::Label {
+        di_metadata: None,
         id: None,
         style_ref: None,
         bounds: Some(Bounds {
@@ -252,6 +262,7 @@ fn many_dashed_edges_fit_path_budget() {
     for i in 0..250 {
         let key: processcraft_core::ids::ElementIdentity = id(&format!("flow{i}"));
         d.processes[0].flows.push(processcraft_core::model::Flow {
+            message_ref: None,
             flow_metadata: None,
             association_direction: None,
             id: key.clone(),
@@ -264,6 +275,8 @@ fn many_dashed_edges_fit_path_budget() {
             condition: None,
         });
         d.diagrams[0].edges.push(processcraft_core::model::Edge {
+            di_metadata: None,
+            message_visible_kind: None,
             id: id(&format!("edge{i}")),
             element: key.selector(),
             source_element: None,
@@ -335,6 +348,7 @@ fn viewport_clips_polyline_without_intermediate_arrows_or_duplicate_label() {
     let mut d = fixture();
     d.diagrams[0].shapes.clear();
     d.processes[0].flows.push(Flow {
+        message_ref: None,
         flow_metadata: None,
         association_direction: None,
         id: id("f"),
@@ -347,6 +361,8 @@ fn viewport_clips_polyline_without_intermediate_arrows_or_duplicate_label() {
         condition: None,
     });
     d.diagrams[0].edges.push(Edge {
+        di_metadata: None,
+        message_visible_kind: None,
         id: id("e"),
         element: id("f"),
         source_element: None,
@@ -359,6 +375,7 @@ fn viewport_clips_polyline_without_intermediate_arrows_or_duplicate_label() {
             Point { x: 200., y: 90. },
         ],
         label: Some(Label {
+            di_metadata: None,
             id: None,
             style_ref: None,
             bounds: Some(Bounds {
@@ -440,6 +457,7 @@ fn viewport_displays_explicit_shape_label_when_shape_is_offscreen() {
     let mut d = fixture();
     d.diagrams[0].shapes[0].bounds.x = 500.;
     d.diagrams[0].shapes[0].label = Some(Label {
+        di_metadata: None,
         id: None,
         style_ref: None,
         bounds: Some(Bounds {
@@ -477,6 +495,7 @@ fn viewport_does_not_fallback_when_explicit_shape_label_is_offscreen() {
     use processcraft_render::{BpmnViewport, Viewport};
     let mut d = fixture();
     d.diagrams[0].shapes[0].label = Some(Label {
+        di_metadata: None,
         id: None,
         style_ref: None,
         bounds: Some(Bounds {
@@ -511,6 +530,7 @@ fn viewport_displays_explicit_edge_label_when_edge_is_offscreen() {
     let mut d = fixture();
     d.diagrams[0].shapes.clear();
     d.processes[0].flows.push(Flow {
+        message_ref: None,
         flow_metadata: None,
         association_direction: None,
         id: id("f"),
@@ -523,6 +543,8 @@ fn viewport_displays_explicit_edge_label_when_edge_is_offscreen() {
         condition: None,
     });
     d.diagrams[0].edges.push(Edge {
+        di_metadata: None,
+        message_visible_kind: None,
         id: id("e"),
         element: id("f"),
         source_element: None,
@@ -530,6 +552,7 @@ fn viewport_displays_explicit_edge_label_when_edge_is_offscreen() {
         target_element: None,
         waypoints: vec![Point { x: 500., y: 500. }, Point { x: 600., y: 500. }],
         label: Some(Label {
+            di_metadata: None,
             id: None,
             style_ref: None,
             bounds: Some(Bounds {
@@ -569,6 +592,7 @@ fn viewport_clicks_external_label_of_visible_shape() {
     use processcraft_render::{BpmnViewport, Viewport};
     let mut d = fixture();
     d.diagrams[0].shapes[0].label = Some(Label {
+        di_metadata: None,
         id: None,
         style_ref: None,
         bounds: Some(Bounds {
@@ -881,6 +905,7 @@ fn nested_flow_and_called_activity_use_semantic_ids() {
         }),
     });
     let flow = Flow {
+        message_ref: None,
         flow_metadata: None,
         association_direction: None,
         id: id("inner_flow"),
@@ -919,6 +944,8 @@ fn nested_flow_and_called_activity_use_semantic_ids() {
     b.bounds.x = 300.0;
     d.diagrams[0].shapes.extend([a, b]);
     d.diagrams[0].edges.push(Edge {
+        di_metadata: None,
+        message_visible_kind: None,
         id: id("inner_di"),
         element: id("inner_flow"),
         source_element: None,
@@ -1008,6 +1035,7 @@ fn conversation_hexagons_and_links_render_with_semantic_hits() {
         name: None,
         id: id("collab"),
         participants: vec![Participant {
+            multiplicity: None,
             base: None,
             id: id("participant"),
             name: Some("Buyer".into()),
@@ -1046,6 +1074,10 @@ fn conversation_hexagons_and_links_render_with_semantic_hits() {
     diagram.plane = id("collab");
     diagram.shapes.clear();
     diagram.shapes.push(Shape {
+        di_metadata: None,
+        is_message_visible: None,
+        participant_band_kind: None,
+        choreography_activity_shape: None,
         id: id("conversation_di"),
         element: id("conversation"),
         label_visibility: None,
@@ -1062,6 +1094,10 @@ fn conversation_hexagons_and_links_render_with_semantic_hits() {
         style: None,
     });
     diagram.shapes.push(Shape {
+        di_metadata: None,
+        is_message_visible: None,
+        participant_band_kind: None,
+        choreography_activity_shape: None,
         id: id("inner_di"),
         element: id("inner"),
         label_visibility: None,
@@ -1078,6 +1114,8 @@ fn conversation_hexagons_and_links_render_with_semantic_hits() {
         style: None,
     });
     diagram.edges.push(Edge {
+        di_metadata: None,
+        message_visible_kind: None,
         id: id("link_di"),
         element: id("link"),
         source_element: None,
@@ -1162,6 +1200,8 @@ fn data_store_and_association_are_drawn_in_scene_and_viewport() {
         target: id("task"),
     });
     d.diagrams[0].edges.push(Edge {
+        di_metadata: None,
+        message_visible_kind: None,
         id: id("assoc_di"),
         element: id("assoc"),
         source_element: None,
@@ -1213,12 +1253,14 @@ fn choreography_task_shows_participant_bands_and_sequence_flow() {
         name: Some("Choreography".into()),
         participants: vec![
             Participant {
+                multiplicity: None,
                 base: None,
                 id: id("buyer"),
                 name: Some("Buyer".into()),
                 process: None,
             },
             Participant {
+                multiplicity: None,
                 base: None,
                 id: id("seller"),
                 name: Some("Seller".into()),
@@ -1237,6 +1279,7 @@ fn choreography_task_shows_participant_bands_and_sequence_flow() {
             message_flow_refs: vec![],
         }],
         sequence_flows: vec![Flow {
+            message_ref: None,
             flow_metadata: None,
             association_direction: None,
             id: id("seq"),
@@ -1260,6 +1303,8 @@ fn choreography_task_shows_participant_bands_and_sequence_flow() {
     };
     diag.shapes[0].label = None;
     diag.edges.push(Edge {
+        di_metadata: None,
+        message_visible_kind: None,
         id: id("seq_di"),
         element: id("seq"),
         source_element: None,
@@ -1281,6 +1326,335 @@ fn choreography_task_shows_participant_bands_and_sequence_flow() {
             .any(|h| h.key.xml_id == id::<processcraft_core::ids::ElementSelector>("seq"))
     );
     assert!(!scene.diagnostics.iter().any(|v| v.contains("Unknown")));
+    // Explicit DI bands have independent representation and label identities.
+    let diag = &mut d.diagrams[0];
+    let owner = diag.shapes[0].id.selector();
+    for (band_id, participant, kind, y) in [
+        (
+            "buyer_band",
+            "buyer",
+            processcraft_core::model::ParticipantBandKind::TopInitiating,
+            0.0,
+        ),
+        (
+            "seller_band",
+            "seller",
+            processcraft_core::model::ParticipantBandKind::BottomNonInitiating,
+            116.0,
+        ),
+    ] {
+        let mut band = diag.shapes[0].clone();
+        band.id = id(band_id);
+        band.element = id(participant);
+        band.style = None;
+        band.bounds = Bounds {
+            x: 0.0,
+            y,
+            width: 260.0,
+            height: 24.0,
+        };
+        band.participant_band_kind = Some(kind);
+        band.choreography_activity_shape =
+            Some(processcraft_core::model::DiReference::Local(owner.clone()));
+        diag.shapes.push(band);
+    }
+    let explicit = build(&d, Appearance::Light);
+    assert!(explicit.hits.iter().any(|h| h.diagram_element_id
+        == id::<processcraft_core::ids::ElementSelector>("seller_band")
+        && h.contains(10.0, 120.0, 0.0)));
+    assert!(explicit.scene.paths().any(|p| p.color == [225, 225, 225]));
+    assert_eq!(explicit.scene.to_svg().matches("Buyer").count(), 1);
+    assert_eq!(explicit.scene.to_svg().matches("Seller").count(), 1);
+    let buyer = d.diagrams[0]
+        .shapes
+        .iter_mut()
+        .find(|s| s.id == id::<processcraft_core::ids::ElementSelector>("buyer_band"))
+        .unwrap();
+    buyer.label_visibility = Some(processcraft_core::model::DiLabelVisibility::Explicit);
+    buyer.label = Some(processcraft_core::model::Label {
+        di_metadata: None,
+        id: Some(id("buyer_label")),
+        bounds: Some(Bounds {
+            x: 10.0,
+            y: 2.0,
+            width: 120.0,
+            height: 20.0,
+        }),
+        style_ref: None,
+        style: None,
+    });
+    d.diagrams[0].plane_order = Some(vec![
+        id("shape"),
+        id("seq_di"),
+        id("buyer_band"),
+        id("seller_band"),
+    ]);
+    let source_mode = build(&d, Appearance::Light);
+    let label = source_mode
+        .scene
+        .labels()
+        .iter()
+        .find(|l| l.layout.text() == "Buyer")
+        .unwrap();
+    assert!(
+        label
+            .layout
+            .glyphs()
+            .iter()
+            .filter(|g| g.outline.is_some())
+            .count()
+            >= 5
+    );
+    assert!(
+        source_mode
+            .hits
+            .iter()
+            .any(|h| h.label_id.as_ref() == Some(&id("buyer_label")))
+    );
+    assert!(
+        !source_mode
+            .diagnostics
+            .iter()
+            .any(|d| d.contains("Label clipped") && d.contains("Buyer"))
+    );
+    // Native creation uses a 25-pixel band and an explicit label with no
+    // bounds; descenders must remain visible in both scene and viewport.
+    d.choreographies[0].participants[0].name = Some("Buyer Gyp".into());
+    let buyer = d.diagrams[0]
+        .shapes
+        .iter_mut()
+        .find(|s| s.id == id::<processcraft_core::ids::ElementSelector>("buyer_band"))
+        .unwrap();
+    buyer.bounds.height = 25.0;
+    buyer.label.as_mut().unwrap().bounds = None;
+    let native_band = build(&d, Appearance::Light);
+    let native_label = native_band
+        .scene
+        .labels()
+        .iter()
+        .find(|l| l.layout.text() == "Buyer Gyp")
+        .unwrap();
+    assert_eq!(
+        native_label
+            .layout
+            .glyphs()
+            .iter()
+            .filter(|g| g.outline.is_some())
+            .count(),
+        8
+    );
+    assert!(
+        !native_band
+            .diagnostics
+            .iter()
+            .any(|d| d.contains("Label clipped") && d.contains("Buyer Gyp"))
+    );
+    let viewport = processcraft_render::BpmnViewport::build(
+        &d,
+        &id("diagram"),
+        Appearance::Light,
+        &mut TextEngine::new(),
+        "Noto Sans",
+        processcraft_render::Viewport {
+            x: -16.0,
+            y: -16.0,
+            width: 320.0,
+            height: 220.0,
+            zoom: 1.0,
+        },
+    )
+    .unwrap();
+    let full = native_band.scene.rasterize(1.0).unwrap();
+    for y in 3..23 {
+        for x in 95..165 {
+            let a = full
+                .pixel(
+                    (x as f64 - native_band.origin.0) as u32,
+                    (y as f64 - native_band.origin.1) as u32,
+                )
+                .unwrap();
+            let b = viewport
+                .pixels
+                .pixel((x + 16) as u32, (y + 16) as u32)
+                .unwrap();
+            assert_eq!(a, b, "viewport glyph at {x},{y}");
+        }
+    }
+    d.choreographies[0].participants[0].name = Some("Buyer".into());
+
+    let mut response = d.choreographies[0].sequence_flows[0].clone();
+    response.id = id("response");
+    response.kind = FlowKind::Message;
+    response.source = id("seller");
+    response.target = id("buyer");
+    d.choreographies[0].message_flows.push(response);
+    d.choreographies[0].activities[0]
+        .message_flow_refs
+        .push(id("response"));
+    d.diagrams[0]
+        .shapes
+        .iter_mut()
+        .find(|s| s.id == id::<processcraft_core::ids::ElementSelector>("seller_band"))
+        .unwrap()
+        .is_message_visible = Some(true);
+    let seller = d.diagrams[0]
+        .shapes
+        .iter_mut()
+        .find(|s| s.id == id::<processcraft_core::ids::ElementSelector>("seller_band"))
+        .unwrap();
+    seller.style = None;
+    seller.label_visibility = Some(processcraft_core::model::DiLabelVisibility::Explicit);
+    seller.label = Some(processcraft_core::model::Label {
+        di_metadata: None,
+        id: Some(id("seller_label")),
+        bounds: Some(Bounds {
+            x: 10.0,
+            y: 118.0,
+            width: 120.0,
+            height: 20.0,
+        }),
+        style_ref: None,
+        style: None,
+    });
+    d.diagrams[0].edges.push(Edge {
+        di_metadata: None,
+        message_visible_kind: Some(processcraft_core::model::MessageVisibleKind::NonInitiating),
+        id: id("response_edge"),
+        element: id("response"),
+        source_element: None,
+        target_element: None,
+        waypoints: vec![Point { x: 0.0, y: 200.0 }, Point { x: 100.0, y: 200.0 }],
+        label: None,
+        label_visibility: None,
+        style: None,
+    });
+    d.diagrams[0]
+        .plane_order
+        .as_mut()
+        .unwrap()
+        .push(id("response_edge"));
+    let with_response = build(&d, Appearance::Light);
+    assert!(
+        with_response
+            .scene
+            .paths()
+            .any(|p| p.color == [225, 225, 225]
+                && (p.path.bounds().width() - 20.0).abs() < 0.01
+                && (p.path.bounds().height() - 12.0).abs() < 0.01)
+    );
+    for appearance in [Appearance::Light, Appearance::Dark] {
+        let scene = build(&d, appearance);
+        let seller = scene
+            .scene
+            .labels()
+            .iter()
+            .find(|label| label.layout.text() == "Seller")
+            .unwrap();
+        assert_eq!(seller.color, [26, 37, 52]);
+        assert!(
+            seller
+                .layout
+                .glyphs()
+                .iter()
+                .filter(|g| g.outline.is_some())
+                .count()
+                >= 6
+        );
+        assert!(scene.scene.paths().any(|path| path.color == [26, 37, 52]
+            && path.path.bounds().width() >= 20.0
+            && path.path.bounds().height() >= 12.0));
+        let raster = scene.scene.rasterize(1.0).unwrap();
+        let dark_pixels = (120..136)
+            .flat_map(|y| (12..128).map(move |x| (x, y)))
+            .filter(|(x, y)| {
+                let pixel = raster
+                    .pixel(
+                        (*x as f64 - scene.origin.0) as u32,
+                        (*y as f64 - scene.origin.1) as u32,
+                    )
+                    .unwrap();
+                pixel.red() < 100 && pixel.green() < 100 && pixel.blue() < 100
+            })
+            .count();
+        assert!(
+            dark_pixels > 10,
+            "participant text remains dark over the light band"
+        );
+        let x = (50.0 - scene.origin.0) as u32;
+        let y = (200.0 - scene.origin.1) as u32;
+        let contrasting = (y - 5..y + 5)
+            .flat_map(|py| (x - 9..x + 9).map(move |px| (px, py)))
+            .filter(|(px, py)| {
+                let p = raster.pixel(*px, *py).unwrap();
+                p.red() < 160 && p.green() < 160 && p.blue() < 160
+            })
+            .count();
+        assert!(
+            contrasting > 8,
+            "return envelope fold must contrast with its light fill"
+        );
+    }
+    d.diagrams[0].edges.pop();
+    d.diagrams[0].plane_order.as_mut().unwrap().pop();
+    d.diagrams[0]
+        .shapes
+        .iter_mut()
+        .find(|s| s.id == id::<processcraft_core::ids::ElementSelector>("seller_band"))
+        .unwrap()
+        .style = Some(Style {
+        fill: None,
+        stroke: Some("#ffffff".into()),
+        font: Some("#ffffff".into()),
+    });
+    let explicit_white = build(&d, Appearance::Dark);
+    assert!(
+        explicit_white
+            .diagnostics
+            .iter()
+            .any(|d| d.contains("explicit stroke has low contrast"))
+    );
+    assert!(
+        explicit_white
+            .diagnostics
+            .iter()
+            .any(|d| d.contains("explicit label color has low contrast"))
+    );
+    assert_eq!(
+        explicit_white
+            .scene
+            .labels()
+            .iter()
+            .find(|label| label.layout.text() == "Seller")
+            .unwrap()
+            .color,
+        [255, 255, 255]
+    );
+    d.choreographies[0].message_flows[0].source = id("buyer");
+    let wrong_sender = build(&d, Appearance::Light);
+    assert!(
+        wrong_sender
+            .diagnostics
+            .iter()
+            .any(|v| v.contains("no resolved outgoing choreography message"))
+    );
+    assert!(
+        !wrong_sender
+            .scene
+            .paths()
+            .any(|p| p.color == [225, 225, 225]
+                && (p.path.bounds().width() - 20.0).abs() < 0.01
+                && (p.path.bounds().height() - 12.0).abs() < 0.01)
+    );
+    d.diagrams[0].shapes.truncate(1);
+    d.diagrams[0].plane_order = Some(vec![id("shape"), id("seq_di")]);
+    let missing = build(&d, Appearance::Light);
+    assert!(
+        missing
+            .diagnostics
+            .iter()
+            .any(|v| v.contains("no explicit participant band representations"))
+    );
+    assert!(!missing.scene.to_svg().contains("Buyer"));
 }
 #[test]
 fn data_object_collection_marker_comes_from_referenced_definition() {
@@ -1314,6 +1688,7 @@ fn gateway_default_flow_marker_uses_semantic_owner_and_shared_exports() {
     d.processes[0].nodes[0].kind = NodeKind::ExclusiveGateway;
     d.processes[0].nodes[0].name = Some(String::new());
     d.processes[0].flows.push(Flow {
+        message_ref: None,
         flow_metadata: None,
         association_direction: None,
         id: id("default"),
@@ -1326,6 +1701,8 @@ fn gateway_default_flow_marker_uses_semantic_owner_and_shared_exports() {
         condition: None,
     });
     d.diagrams[0].edges.push(Edge {
+        di_metadata: None,
+        message_visible_kind: None,
         id: id("edge_di"),
         element: id("default"),
         source_element: None,
@@ -1437,6 +1814,10 @@ fn group_is_drawn_and_keeps_contained_node_selectable() {
         category_value_ref: None,
     });
     d.diagrams[0].shapes.push(Shape {
+        di_metadata: None,
+        is_message_visible: None,
+        participant_band_kind: None,
+        choreography_activity_shape: None,
         label_visibility: None,
         is_horizontal: None,
         is_marker_visible: None,
@@ -1482,6 +1863,7 @@ fn association_directions_change_shared_vector_markers() {
     };
     let mut d = fixture();
     d.processes[0].flows.push(Flow {
+        message_ref: None,
         flow_metadata: None,
         association_direction: None,
         id: id("assoc"),
@@ -1494,6 +1876,8 @@ fn association_directions_change_shared_vector_markers() {
         condition: None,
     });
     d.diagrams[0].edges.push(Edge {
+        di_metadata: None,
+        message_visible_kind: None,
         id: id("assoc_edge"),
         element: id("assoc"),
         source_element: None,
@@ -1536,6 +1920,10 @@ fn group_category_label_uses_di_bounds_style_and_viewport_hit() {
         category_value_ref: Some(id("value")),
     });
     d.diagrams[0].shapes.push(Shape {
+        di_metadata: None,
+        is_message_visible: None,
+        participant_band_kind: None,
+        choreography_activity_shape: None,
         label_visibility: None,
         is_horizontal: None,
         is_marker_visible: None,
@@ -1549,6 +1937,7 @@ fn group_category_label_uses_di_bounds_style_and_viewport_hit() {
             height: 120.,
         },
         label: Some(Label {
+            di_metadata: None,
             id: None,
             style_ref: None,
             bounds: Some(Bounds {
@@ -1646,6 +2035,7 @@ fn activity_properties_change_shared_vectors_and_viewport() {
     d.processes[0].nodes[0].kind = NodeKind::SubProcess;
     d.diagrams[0].shapes[0].is_expanded = Some(true);
     d.processes[0].flows.push(Flow {
+        message_ref: None,
         flow_metadata: None,
         association_direction: None,
         id: id("default_flow"),
@@ -1658,6 +2048,8 @@ fn activity_properties_change_shared_vectors_and_viewport() {
         condition: None,
     });
     d.diagrams[0].edges.push(Edge {
+        di_metadata: None,
+        message_visible_kind: None,
         id: id("edge"),
         element: id("default_flow"),
         source_element: None,
@@ -2274,6 +2666,7 @@ fn activity_port_shape_is_diagnosed_without_scene_or_viewport_hit() {
     });
     d.diagrams[0].shapes[0].element = id("activity_input");
     d.diagrams[0].shapes[0].label = Some(processcraft_core::model::Label {
+        di_metadata: None,
         id: None,
         style_ref: None,
         bounds: Some(Bounds {
@@ -2319,6 +2712,7 @@ fn conditional_source_marker_only_appears_for_nongateway_source() {
     let mut d = fixture();
     d.processes[0].nodes[0].name = None;
     d.processes[0].flows.push(Flow {
+        message_ref: None,
         flow_metadata: None,
         id: id("conditional"),
         kind: FlowKind::Sequence,
@@ -2331,6 +2725,8 @@ fn conditional_source_marker_only_appears_for_nongateway_source() {
         association_direction: None,
     });
     d.diagrams[0].edges.push(Edge {
+        di_metadata: None,
+        message_visible_kind: None,
         id: id("conditional_di"),
         element: id("conditional"),
         source_element: None,
@@ -2473,7 +2869,7 @@ fn lane_orientation_places_divider_on_corresponding_axis() {
         child_lane_set_id: None,
         child_lane_set_base: None,
         id: id("lane"),
-        name: None,
+        name: Some("Pool".into()),
         parent: None,
         members: vec![],
     });
@@ -2487,6 +2883,32 @@ fn lane_orientation_places_divider_on_corresponding_axis() {
     d.diagrams[0].shapes[0].is_horizontal = None;
     assert_valid_event_document(&d);
     let horizontal = build(&d, Appearance::Light);
+    let pool_label = horizontal
+        .scene
+        .labels()
+        .iter()
+        .find(|label| label.layout.text() == "Pool")
+        .unwrap();
+    assert_eq!(pool_label.layout.line_count(), 1);
+    let first = pool_label
+        .layout
+        .glyphs()
+        .iter()
+        .find_map(|glyph| glyph.outline.as_ref())
+        .unwrap()
+        .bounds();
+    let last = pool_label
+        .layout
+        .glyphs()
+        .iter()
+        .rev()
+        .find_map(|glyph| glyph.outline.as_ref())
+        .unwrap()
+        .bounds();
+    assert!(
+        last.top() < first.top(),
+        "glyphs advance upward in the rotated title band"
+    );
     let x = (24.0 - horizontal.origin.0) as f32;
     assert!(horizontal.scene.paths().any(|path| {
         let b = path.path.bounds();
@@ -2639,6 +3061,7 @@ fn explicit_label_presence_and_shared_di_font_are_rendered_without_mutation() {
     let hidden = build(&d, Appearance::Light);
     assert!(hidden.scene.labels().is_empty());
     d.diagrams[0].shapes[0].label = Some(Label {
+        di_metadata: None,
         id: Some(id("label")),
         bounds: None,
         style_ref: Some(DiStyleRef::Local(id("style"))),
@@ -2729,6 +3152,7 @@ fn explicit_external_label_hit_keeps_independent_identity_in_scene_and_viewport(
     let shape = &mut d.diagrams[0].shapes[0];
     shape.label_visibility = Some(DiLabelVisibility::Explicit);
     shape.label = Some(Label {
+        di_metadata: None,
         id: Some(id("label")),
         bounds: Some(Bounds {
             x: 150.0,
@@ -2742,6 +3166,7 @@ fn explicit_external_label_hit_keeps_independent_identity_in_scene_and_viewport(
     assert_valid_event_document(&d);
     let scene = build(&d, Appearance::Light);
     let hit = scene.hit_test(170.0, 35.0, 0.0).unwrap();
+    assert!(hit.is_label);
     assert_eq!(hit.label_id, Some(id("label")));
     assert_eq!(
         hit.diagram_element_id,
@@ -2766,6 +3191,13 @@ fn explicit_external_label_hit_keeps_independent_identity_in_scene_and_viewport(
         viewport.hit_test(170.0, 35.0, 0.0).unwrap().label_id,
         Some(id("label"))
     );
+    assert!(viewport.hit_test(170.0, 35.0, 0.0).unwrap().is_label);
+    d.diagrams[0].shapes[0].label.as_mut().unwrap().id = None;
+    let scene = build(&d, Appearance::Light);
+    let anonymous = scene.hit_test(170.0, 35.0, 0.0).unwrap();
+    assert!(anonymous.is_label);
+    assert!(anonymous.label_id.is_none());
+    assert!(!scene.hit_test(0.0, 35.0, 0.0).unwrap().is_label);
 }
 
 #[test]
@@ -2794,6 +3226,7 @@ fn di_font_absence_and_unsupported_values_have_explicit_fallbacks() {
     });
     d.diagrams[0].shapes[0].label_visibility = Some(DiLabelVisibility::Explicit);
     d.diagrams[0].shapes[0].label = Some(Label {
+        di_metadata: None,
         id: None,
         bounds: None,
         style_ref: Some(DiStyleRef::Local(id("style"))),
@@ -2866,6 +3299,7 @@ fn explicit_absent_flow_label_is_hidden_but_legacy_implicit_is_visible() {
     let mut d = fixture();
     d.processes[0].nodes[0].name = None;
     d.processes[0].flows.push(Flow {
+        message_ref: None,
         flow_metadata: None,
         id: id("flow"),
         base_extras: None,
@@ -2878,6 +3312,8 @@ fn explicit_absent_flow_label_is_hidden_but_legacy_implicit_is_visible() {
         association_direction: None,
     });
     d.diagrams[0].edges.push(Edge {
+        di_metadata: None,
+        message_visible_kind: None,
         id: id("edge"),
         element: id("flow"),
         source_element: None,
@@ -3200,4 +3636,51 @@ fn local_process_call_defaults_to_collapsed_without_writing_di() {
         omitted.scene.paths().count(),
         build(&d, Appearance::Light).scene.paths().count() + 3
     );
+}
+
+#[test]
+fn authored_plane_order_controls_overlapping_shapes_and_viewport_hits() {
+    use processcraft_render::{BpmnViewport, Viewport};
+    let mut d = fixture();
+    d.processes[0].nodes[0].name = None;
+    let diagram = &mut d.diagrams[0];
+    diagram.shapes[0].style.as_mut().unwrap().fill = Some("#ff0000".into());
+    let mut second = diagram.shapes[0].clone();
+    second.id = id("second");
+    second.style.as_mut().unwrap().fill = Some("#0000ff".into());
+    diagram.shapes.push(second);
+    diagram.plane_order = Some(vec![id("second"), id("shape")]);
+    let full = build(&d, Appearance::Light);
+    assert_eq!(
+        full.hit_test(20.0, 50.0, 0.0).unwrap().diagram_element_id,
+        id::<processcraft_core::ids::ElementSelector>("shape")
+    );
+    let pix = full.scene.rasterize(1.0).unwrap();
+    let pixel = pix
+        .pixel((20.0 - full.origin.0) as u32, (50.0 - full.origin.1) as u32)
+        .unwrap();
+    assert_eq!((pixel.red(), pixel.green(), pixel.blue()), (255, 0, 0));
+    let view = BpmnViewport::build(
+        &d,
+        &id("diagram"),
+        Appearance::Light,
+        &mut TextEngine::new(),
+        "Noto Sans",
+        Viewport {
+            x: -40.0,
+            y: 0.0,
+            width: 150.0,
+            height: 110.0,
+            zoom: 1.0,
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        view.hit_test(20.0, 50.0, 0.0).unwrap().diagram_element_id,
+        id::<processcraft_core::ids::ElementSelector>("shape")
+    );
+    let pixel = view.pixels.pixel(60, 50).unwrap();
+    assert_eq!((pixel.red(), pixel.green(), pixel.blue()), (255, 0, 0));
+    let svg = full.scene.to_svg();
+    assert!(svg.find("#0000ff").unwrap() < svg.find("#ff0000").unwrap());
 }

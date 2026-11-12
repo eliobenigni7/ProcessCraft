@@ -49,7 +49,16 @@ fn activity_commands_use_real_stdio_pages_and_exact_history() {
     assert!(apply["inputSchema"]["$defs"]["GlobalTask"].is_object());
     let inspect = |id| json!({"jsonrpc":"2.0","id":id,"method":"tools/call","params":{"name":"inspect","arguments":{}}});
     let session = call(inspect(3))["result"]["structuredContent"]["sessionId"].clone();
-    let doc = BpmnDocument::new("Model".into(), "Definitions".parse().unwrap());
+    let mut doc = BpmnDocument::new("Model".into(), "Definitions".parse().unwrap());
+    doc.processes.push(
+        serde_json::from_value(json!({
+            "id":"Process","name":null,"documentation":"","nodes":[],"lanes":[],"flows":[]
+        }))
+        .unwrap(),
+    );
+    doc.diagrams.push(serde_json::from_value(json!({
+        "id":"Diagram","plane_id":"Plane","plane":"Process","plane_order":[],"shapes":[],"edges":[]
+    })).unwrap());
     let document_id = doc.id;
     let envelope = |id, request_id: &str, generation, request| {
         json!({"jsonrpc":"2.0","id":id,"method":"tools/call","params":{"name":"apply","arguments":{
@@ -135,8 +144,88 @@ fn activity_commands_use_real_stdio_pages_and_exact_history() {
     for (id, generation, kind, expected) in [(2000, 2, "undo", &before), (2002, 3, "redo", &after)]
     {
         assert_eq!(
-            call(envelope(id, kind, generation, json!({"type":kind})))["result"]["structuredContent"]
-                ["ok"],
+            call(envelope(
+                id,
+                &format!("{kind}-global"),
+                generation,
+                json!({"type":kind})
+            ))["result"]["structuredContent"]["ok"],
+            true
+        );
+        assert_eq!(
+            call(inspect(id + 1))["result"]["structuredContent"]["contentId"],
+            expected["result"]["structuredContent"]["contentId"]
+        );
+    }
+    let checkpoint = processcraft_core::ids::CheckpointId::new();
+    assert_eq!(
+        call(envelope(
+            2100,
+            "checkpoint-di",
+            4,
+            json!({"type":"batch","mutations":[{
+                "type":"createCheckpoint","id":checkpoint,"name":"Before DI metadata","created_unix_ms":1
+            }]})
+        ))["result"]["structuredContent"]["ok"],
+        true
+    );
+    let before_di = call(inspect(2101));
+    let changed_di = call(envelope(
+        2102,
+        "plane-metadata",
+        5,
+        json!({"type":"batch","mutations":[{
+            "type":"setDiagramPlaneMetadata","document_id":document_id,"diagram_id":"Diagram",
+            "metadata":{"namespaces":[{"prefix":"v","uri":"urn:vendor"}],
+                "foreign_attributes":[{"namespace":"urn:vendor","local":"layer","prefix":"v","value":"review-layer"}]}
+        }]}),
+    ));
+    assert_eq!(
+        changed_di["result"]["structuredContent"]["ok"], true,
+        "{changed_di}"
+    );
+    let after_di = call(inspect(2103));
+    let mut offset = 0;
+    let mut found = false;
+    loop {
+        let response = call(
+            json!({"jsonrpc":"2.0","id":2200+offset,"method":"tools/call","params":{"name":"query","arguments":{
+                "kind":"checkpointFields","checkpointId":checkpoint,"offset":offset,"limit":5
+            }}}),
+        );
+        let page = &response["result"]["structuredContent"];
+        assert_eq!(page["generation"], 6, "{response}");
+        assert_eq!(
+            page["contentId"],
+            after_di["result"]["structuredContent"]["contentId"]
+        );
+        let items = page["items"].as_array().unwrap();
+        assert!(items.len() <= 5);
+        found |= items.iter().any(|row| {
+            row["path"]
+                .as_str()
+                .unwrap()
+                .starts_with("/changed_diagrams/")
+                && row["value"] == "review-layer"
+        });
+        if let Some(next) = page["nextOffset"].as_u64() {
+            assert!(next as usize > offset);
+            offset = next as usize;
+        } else {
+            break;
+        }
+    }
+    assert!(found);
+    for (id, generation, kind, expected) in
+        [(3000, 6, "undo", &before_di), (3002, 7, "redo", &after_di)]
+    {
+        assert_eq!(
+            call(envelope(
+                id,
+                &format!("{kind}-di"),
+                generation,
+                json!({"type":kind})
+            ))["result"]["structuredContent"]["ok"],
             true
         );
         assert_eq!(

@@ -532,6 +532,59 @@ pub fn prepare_move(
             }
         }
     }
+    // Bands belong to a particular activity representation, not to every
+    // representation of the same semantic activity.
+    let owners = bounds.clone();
+    for owner in owners {
+        let source = diagram
+            .shapes
+            .iter()
+            .find(|s| s.id == owner.shape_id)
+            .ok_or("shape not found")?;
+        for band in diagram
+            .shapes
+            .iter()
+            .filter(|shape| match &shape.choreography_activity_shape {
+                Some(crate::model::DiReference::Local(id)) => id == &owner.shape_id,
+                Some(crate::model::DiReference::Qualified(q)) => {
+                    document
+                        .definitions
+                        .as_ref()
+                        .is_some_and(|defs| defs.target_namespace == q.namespace)
+                        && source.id.xml_id() == Some(&q.local)
+                }
+                None => false,
+            })
+        {
+            if !valid_bounds(&source.bounds)
+                || !valid_bounds(&band.bounds)
+                || !valid_bounds(&owner.bounds)
+            {
+                return Err("invalid choreography or participant band bounds");
+            }
+            let sx = owner.bounds.width / source.bounds.width;
+            let sy = owner.bounds.height / source.bounds.height;
+            let mut translated = band.bounds.clone();
+            translated.x = owner.bounds.x + (band.bounds.x - source.bounds.x) * sx;
+            translated.y = owner.bounds.y + (band.bounds.y - source.bounds.y) * sy;
+            translated.width *= sx;
+            translated.height *= sy;
+            if !valid_bounds(&translated) {
+                return Err("resized participant band exceeds geometry limits");
+            }
+            if let Some(existing) = bounds.iter().find(|b| b.shape_id == band.id) {
+                if existing.bounds != translated {
+                    return Err("conflicting choreography and participant band moves");
+                }
+            } else {
+                bounds.push(ShapeBounds {
+                    diagram_id: diagram_id.clone(),
+                    shape_id: band.id.selector(),
+                    bounds: translated,
+                });
+            }
+        }
+    }
     let mut moved = Vec::new();
     for b in &bounds {
         if &b.diagram_id != diagram_id

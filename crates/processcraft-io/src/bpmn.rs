@@ -233,6 +233,7 @@ pub fn import_bpmn(bytes: &[u8]) -> Result<PreservedBpmn, ImportError> {
                     semantic_name: (modeled && ns == Some(BPMN)).then(|| local.to_owned()),
                     opaque_children: opaque
                         || !standard
+                        || (ns == Some(DI) && local == "extension")
                         || (ns == Some(BPMN)
                             && matches!(
                                 local,

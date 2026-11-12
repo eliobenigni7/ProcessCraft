@@ -108,6 +108,10 @@ fn session_fixture() -> (
     };
     session.apply(env(&session), fixture).unwrap();
     let shape = |id: &str, element: &str, x| Shape {
+        di_metadata: None,
+        is_message_visible: None,
+        participant_band_kind: None,
+        choreography_activity_shape: None,
         label_visibility: None,
         is_horizontal: None,
         is_marker_visible: None,
@@ -119,6 +123,8 @@ fn session_fixture() -> (
         style: None,
     };
     let diagram = Diagram {
+        plane_metadata: None,
+        plane_order: None,
         name: None,
         documentation: None,
         resolution: None,
@@ -131,6 +137,8 @@ fn session_fixture() -> (
             shape("shape_review", "review", 30.0),
         ],
         edges: vec![Edge {
+            di_metadata: None,
+            message_visible_kind: None,
             id: "edge".parse().unwrap(),
             element: "flow_start_review".parse().unwrap(),
             source_element: None,
@@ -353,6 +361,10 @@ fn nested_session() -> processcraft_core::commands::Session {
         .find(|d| d.id.to_string() == "diagram")
         .unwrap();
     diagram.shapes.push(Shape {
+        di_metadata: None,
+        is_message_visible: None,
+        participant_band_kind: None,
+        choreography_activity_shape: None,
         id: "sub_di".parse().unwrap(),
         element: "subprocess".parse().unwrap(),
         label_visibility: None,
@@ -364,6 +376,7 @@ fn nested_session() -> processcraft_core::commands::Session {
         style: None,
     });
     diagram.edges[0].label = Some(Label {
+        di_metadata: None,
         id: None,
         style_ref: None,
         bounds: Some(rect(14.0, 12.0, 20.0, 8.0)),
@@ -656,6 +669,10 @@ fn data_geometry_session() -> processcraft_core::commands::Session {
         .find(|d| d.id.to_string() == "diagram")
         .unwrap();
     diagram.shapes.push(Shape {
+        di_metadata: None,
+        is_message_visible: None,
+        participant_band_kind: None,
+        choreography_activity_shape: None,
         id: "shape_data".parse().unwrap(),
         element: "data_ref".parse().unwrap(),
         label_visibility: None,
@@ -679,6 +696,8 @@ fn data_geometry_session() -> processcraft_core::commands::Session {
         ),
     ] {
         diagram.edges.push(Edge {
+            di_metadata: None,
+            message_visible_kind: None,
             id: id.parse().unwrap(),
             element: element.parse().unwrap(),
             source_element: None,
@@ -686,6 +705,7 @@ fn data_geometry_session() -> processcraft_core::commands::Session {
             target_element: None,
             waypoints: points,
             label: Some(Label {
+                di_metadata: None,
                 id: None,
                 style_ref: None,
                 bounds: Some(rect(45.0, 10.0, 8.0, 4.0)),
@@ -745,6 +765,7 @@ fn conversation_geometry_session() -> processcraft_core::commands::Session {
         name: None,
         id: "collaboration".parse().unwrap(),
         participants: vec![Participant {
+            multiplicity: None,
             base: None,
             id: "buyer".parse().unwrap(),
             name: Some("Buyer".into()),
@@ -769,6 +790,10 @@ fn conversation_geometry_session() -> processcraft_core::commands::Session {
         }],
     });
     let shape = |id: &str, element: &str, x| Shape {
+        di_metadata: None,
+        is_message_visible: None,
+        participant_band_kind: None,
+        choreography_activity_shape: None,
         id: id.parse().unwrap(),
         element: element.parse().unwrap(),
         label_visibility: None,
@@ -780,6 +805,8 @@ fn conversation_geometry_session() -> processcraft_core::commands::Session {
         style: None,
     };
     doc.diagrams.push(Diagram {
+        plane_metadata: None,
+        plane_order: None,
         name: None,
         documentation: None,
         resolution: None,
@@ -792,6 +819,8 @@ fn conversation_geometry_session() -> processcraft_core::commands::Session {
             shape("conversation_shape", "conversation", 30.0),
         ],
         edges: vec![Edge {
+            di_metadata: None,
+            message_visible_kind: None,
             id: "link_edge".parse().unwrap(),
             element: "link".parse().unwrap(),
             source_element: None,
@@ -799,6 +828,7 @@ fn conversation_geometry_session() -> processcraft_core::commands::Session {
             target_element: None,
             waypoints: vec![p(10.0, 5.0), p(20.0, 5.0), p(20.0, 8.0), p(30.0, 8.0)],
             label: Some(Label {
+                di_metadata: None,
                 id: None,
                 style_ref: None,
                 bounds: Some(rect(15.0, 10.0, 8.0, 4.0)),
@@ -912,6 +942,10 @@ fn moving_activity_translates_visible_port_and_repairs_association() {
         .find(|d| d.id.to_string() == "diagram")
         .unwrap();
     diagram.shapes.push(Shape {
+        di_metadata: None,
+        is_message_visible: None,
+        participant_band_kind: None,
+        choreography_activity_shape: None,
         id: "input_shape".parse().unwrap(),
         element: "input_port".parse().unwrap(),
         label_visibility: None,
@@ -1211,6 +1245,8 @@ fn edge_representation_endpoint_move_is_refused_atomically() {
         .find(|d| d.id.to_string() == "diagram")
         .unwrap();
     let other = Edge {
+        di_metadata: None,
+        message_visible_kind: None,
         id: "anchor_edge".parse().unwrap(),
         ..diagram.edges[0].clone()
     };
@@ -1269,6 +1305,7 @@ fn association_edge_attachment_follows_rerouted_sequence_with_undo() {
     annotation.details = None;
     process.nodes.push(annotation);
     process.flows.push(Flow {
+        message_ref: None,
         flow_metadata: None,
         id: "association".parse().unwrap(),
         kind: FlowKind::Association,
@@ -1286,6 +1323,10 @@ fn association_edge_attachment_follows_rerouted_sequence_with_undo() {
         .find(|d| d.id.to_string() == "diagram")
         .unwrap();
     diagram.shapes.push(Shape {
+        di_metadata: None,
+        is_message_visible: None,
+        participant_band_kind: None,
+        choreography_activity_shape: None,
         id: "note_shape".parse().unwrap(),
         element: "note".parse().unwrap(),
         is_expanded: None,
@@ -1297,6 +1338,8 @@ fn association_edge_attachment_follows_rerouted_sequence_with_undo() {
         style: None,
     });
     diagram.edges.push(Edge {
+        di_metadata: None,
+        message_visible_kind: None,
         id: "association_edge".parse().unwrap(),
         element: "association".parse().unwrap(),
         source_element: Some("note_shape".parse().unwrap()),
@@ -1304,6 +1347,7 @@ fn association_edge_attachment_follows_rerouted_sequence_with_undo() {
         target_element: Some("edge".parse().unwrap()),
         waypoints: vec![p(20.0, 40.0), p(20.0, 5.0)],
         label: Some(Label {
+            di_metadata: None,
             id: None,
             style_ref: None,
             bounds: Some(rect(22.0, 20.0, 10.0, 5.0)),
@@ -1411,6 +1455,7 @@ fn nested_move_translates_edge_attachment_and_label_as_one_gesture() {
     note.details = None;
     content.nodes.push(note);
     content.flows.push(Flow {
+        message_ref: None,
         flow_metadata: None,
         id: "association".parse().unwrap(),
         kind: FlowKind::Association,
@@ -1428,6 +1473,10 @@ fn nested_move_translates_edge_attachment_and_label_as_one_gesture() {
         .find(|d| d.id.to_string() == "diagram")
         .unwrap();
     diagram.shapes.push(Shape {
+        di_metadata: None,
+        is_message_visible: None,
+        participant_band_kind: None,
+        choreography_activity_shape: None,
         id: "note_shape".parse().unwrap(),
         element: "note".parse().unwrap(),
         is_expanded: None,
@@ -1439,6 +1488,8 @@ fn nested_move_translates_edge_attachment_and_label_as_one_gesture() {
         style: None,
     });
     diagram.edges.push(Edge {
+        di_metadata: None,
+        message_visible_kind: None,
         id: "association_edge".parse().unwrap(),
         element: "association".parse().unwrap(),
         source_element: Some("note_shape".parse().unwrap()),
@@ -1446,6 +1497,7 @@ fn nested_move_translates_edge_attachment_and_label_as_one_gesture() {
         target_element: Some("edge".parse().unwrap()),
         waypoints: vec![p(20.0, 20.0), p(20.0, 5.0)],
         label: Some(Label {
+            di_metadata: None,
             id: None,
             style_ref: None,
             bounds: Some(rect(22.0, 10.0, 10.0, 5.0)),
@@ -1535,6 +1587,166 @@ fn nested_move_keeps_unbounded_label_unmaterialized_and_undoable() {
     let label = diagram.edges[0].label.as_ref().unwrap();
     assert!(label.bounds.is_none());
     assert_eq!(label.id.as_ref().unwrap().to_string(), "edge_label");
+    apply_session(&mut session, Request::Undo);
+    assert_eq!(session.snapshot().content_id, before.content_id);
+    apply_session(&mut session, Request::Redo);
+    assert_eq!(session.snapshot().content_id, after.content_id);
+}
+
+#[test]
+fn participant_band_follows_only_its_own_di_representation() {
+    use processcraft_core::{
+        commands::{Mutation, Request, ShapeBounds},
+        model::{DiReference, ParticipantBandKind},
+    };
+    let (session, _) = session_fixture();
+    let snapshot = session.snapshot();
+    let mut doc = (*snapshot.project.documents[0]).clone();
+    let diagram = &mut doc.diagrams[0];
+    diagram.shapes[0].bounds = rect(0.0, 0.0, 10.0, 10.0);
+    let owner = diagram.shapes[0].id.selector();
+    let mut band = diagram.shapes[0].clone();
+    band.id = "band".parse().unwrap();
+    band.element = "band_participant".parse().unwrap();
+    band.bounds = rect(0.0, 0.0, 10.0, 2.0);
+    band.participant_band_kind = Some(ParticipantBandKind::TopInitiating);
+    band.choreography_activity_shape = Some(DiReference::Local(owner.clone()));
+    let mut external = band.clone();
+    external.id = "external_band".parse().unwrap();
+    external.choreography_activity_shape = Some(DiReference::Qualified(
+        processcraft_core::bpmn_model::QNameRef {
+            namespace: "urn:external".into(),
+            local: diagram.shapes[0].id.xml_id().unwrap().clone(),
+        },
+    ));
+    diagram.shapes.push(band);
+    diagram.shapes.push(external);
+    let diagram_id = diagram.id.selector();
+    let request = prepare_move(
+        &doc,
+        &diagram_id,
+        vec![ShapeBounds {
+            diagram_id: diagram_id.clone(),
+            shape_id: owner,
+            bounds: rect(3.0, 4.0, 20.0, 20.0),
+        }],
+    )
+    .unwrap()
+    .request;
+    let Request::Batch { mutations } = request else {
+        panic!("expected batch")
+    };
+    assert!(mutations.iter().any(|m| matches!(m, Mutation::MoveShape { shape_id, bounds, .. } if shape_id == &"band".parse::<processcraft_core::ids::ElementSelector>().unwrap() && *bounds == rect(3.0, 4.0, 20.0, 4.0))));
+    assert!(!mutations.iter().any(|m| matches!(m, Mutation::MoveShape { shape_id, .. } if shape_id == &"external_band".parse::<processcraft_core::ids::ElementSelector>().unwrap())));
+}
+
+#[test]
+fn valid_choreography_band_moves_with_only_its_owner_and_undoes() {
+    use processcraft_core::{
+        bpmn_collaboration::{Choreography, ChoreographyActivity},
+        commands::{Request, Session, ShapeBounds},
+        model::{DiReference, Flow, FlowKind, Label, Participant, ParticipantBandKind},
+    };
+    let (source, _) = session_fixture();
+    let mut project = (*source.snapshot().project).clone();
+    let document = std::sync::Arc::make_mut(&mut project.documents[0]);
+    let participant = |id: &str| Participant {
+        id: id.parse().unwrap(),
+        name: Some(id.into()),
+        process: None,
+        base: None,
+        multiplicity: None,
+    };
+    document.choreographies.push(Choreography {
+        id: "choreo".parse().unwrap(),
+        name: None,
+        base: None,
+        participants: vec![participant("buyer"), participant("seller")],
+        message_flows: vec![Flow {
+            id: "message".parse().unwrap(),
+            source: "buyer".parse().unwrap(),
+            target: "seller".parse().unwrap(),
+            kind: FlowKind::Message,
+            name: None,
+            documentation: String::new().into(),
+            base_extras: None,
+            condition: None,
+            flow_metadata: None,
+            association_direction: None,
+            message_ref: None,
+        }],
+        activities: vec![ChoreographyActivity {
+            id: "exchange".parse().unwrap(),
+            name: Some("Exchange".into()),
+            participant_refs: vec!["buyer".parse().unwrap(), "seller".parse().unwrap()],
+            initiating_participant: "buyer".parse().unwrap(),
+            message_flow_refs: vec!["message".parse().unwrap()],
+            base: None,
+            correlation_keys: vec![],
+            flow_metadata: None,
+        }],
+        sequence_flows: vec![],
+    });
+    let mut diagram = document.diagrams.last().unwrap().clone();
+    diagram.id = "choreo_diagram".parse().unwrap();
+    diagram.plane_id = "choreo_plane".parse().unwrap();
+    diagram.plane = "choreo".parse().unwrap();
+    diagram.edges.clear();
+    diagram.plane_order = None;
+    let mut owner = diagram.shapes[0].clone();
+    owner.id = "owner1".parse().unwrap();
+    owner.element = "exchange".parse().unwrap();
+    owner.bounds = rect(0.0, 0.0, 120.0, 100.0);
+    owner.label = None;
+    let mut owner2 = owner.clone();
+    owner2.id = "owner2".parse().unwrap();
+    owner2.bounds.x = 300.0;
+    let mut band = owner.clone();
+    band.id = "band1".parse().unwrap();
+    band.element = "buyer".parse().unwrap();
+    band.bounds = rect(0.0, 0.0, 120.0, 20.0);
+    band.participant_band_kind = Some(ParticipantBandKind::TopInitiating);
+    band.choreography_activity_shape = Some(DiReference::Local(owner.id.selector()));
+    band.label = Some(Label {
+        id: Some("band_label".parse().unwrap()),
+        bounds: Some(rect(5.0, 2.0, 100.0, 16.0)),
+        style: None,
+        style_ref: None,
+        di_metadata: None,
+    });
+    let mut band2 = band.clone();
+    band2.id = "band2".parse().unwrap();
+    band2.bounds.x = 300.0;
+    band2.label = None;
+    band2.choreography_activity_shape = Some(DiReference::Local(owner2.id.selector()));
+    diagram.shapes = vec![owner, band, owner2, band2];
+    document.diagrams.push(diagram);
+    project.validate().unwrap();
+    let mut session = Session::new(project).unwrap();
+    let before = session.snapshot();
+    let document = &before.project.documents[0];
+    let diagram_id = document.diagrams.last().unwrap().id.selector();
+    let request = prepare_move(
+        document,
+        &diagram_id,
+        vec![ShapeBounds {
+            diagram_id: diagram_id.clone(),
+            shape_id: "owner1".parse().unwrap(),
+            bounds: rect(10.0, 15.0, 120.0, 100.0),
+        }],
+    )
+    .unwrap()
+    .request;
+    apply_session(&mut session, request);
+    let after = session.snapshot();
+    after.project.validate().unwrap();
+    let shapes = &after.project.documents[0].diagrams.last().unwrap().shapes;
+    assert_eq!(shapes[1].bounds, rect(10.0, 15.0, 120.0, 20.0));
+    assert_eq!(
+        shapes[1].label.as_ref().unwrap().bounds,
+        Some(rect(15.0, 17.0, 100.0, 16.0))
+    );
+    assert_eq!(shapes[3].bounds, rect(300.0, 0.0, 120.0, 20.0));
     apply_session(&mut session, Request::Undo);
     assert_eq!(session.snapshot().content_id, before.content_id);
     apply_session(&mut session, Request::Redo);

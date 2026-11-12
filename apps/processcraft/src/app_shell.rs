@@ -329,6 +329,40 @@ impl ProcessCraft {
         let footer = Rect::from_min_max(egui::pos2(body.left(), content.bottom()), body.max);
         self.shell_panel(ui, "footer", footer, p.panel, |app, ui| {
             ui.horizontal(|ui| {
+                if !app.ctl.error.is_empty() {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let dismiss = ui.small_button("Dismiss message");
+                        #[cfg(test)]
+                        ui.ctx().data_mut(|data| {
+                            data.insert_temp(egui::Id::unique("test_dismiss_rect"), dismiss.rect)
+                        });
+                        if dismiss.clicked() {
+                            app.ctl.error.clear();
+                        }
+                        if app.ctl.uncertain && ui.small_button("Check save outcome").clicked() {
+                            app.ctl.reconcile();
+                        }
+                        if !app.ctl.error.is_empty() {
+                            let message = app.ctl.error.clone();
+                            let label = ui.add(
+                                egui::Label::new(egui::RichText::new(&message).color(p.warning))
+                                    .truncate(),
+                            );
+                            label.widget_info(|| {
+                                egui::WidgetInfo::labeled(
+                                    egui::Role::Label,
+                                    ui.is_enabled(),
+                                    &message,
+                                )
+                            });
+                            label.on_hover_text(&message);
+                        }
+                    });
+                    return;
+                }
+                if app.ctl.uncertain && ui.small_button("Check save outcome").clicked() {
+                    app.ctl.reconcile();
+                }
                 widgets::icon(ui, Icon::HardDrive, 16.0, p.muted);
                 if let Some(file) = &app.ctl.file {
                     ui.add_sized(
@@ -1010,6 +1044,11 @@ fn palette_item(ui: &mut egui::Ui, kind: NodeKind, label: &str) -> egui::Respons
     let (rect, response) =
         ui.allocate_exact_size(egui::vec2(ui.available_width(), 29.0), egui::Sense::click());
     response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, ui.is_enabled(), label));
+    #[cfg(test)]
+    if kind == NodeKind::Task {
+        ui.ctx()
+            .data_mut(|data| data.insert_temp(egui::Id::unique("test_task_palette_rect"), rect));
+    }
     let visuals = ui.style().interact(&response);
     if response.hovered() || response.has_focus() {
         ui.painter().rect_filled(rect, 4, visuals.bg_fill);
@@ -1072,6 +1111,86 @@ fn palette_item(ui: &mut egui::Ui, kind: NodeKind, label: &str) -> egui::Respons
 mod tests {
     use super::*;
 
+    #[test]
+    fn status_arrival_and_dismissal_do_not_move_canvas_or_task_controls() {
+        for theme in [Theme::Light, Theme::Dark] {
+            for size in [Vec2::new(1560.0, 975.0), Vec2::new(780.0, 487.5)] {
+                let mut app = ProcessCraft {
+                    theme,
+                    ..Default::default()
+                };
+                app.shell.project = size.x < 980.0;
+                let context = egui::Context::default();
+                context.enable_accesskit();
+                app.apply_theme(&context);
+                let frame = |app: &mut ProcessCraft, events: Vec<egui::Event>| {
+                    let mut output = context.run_ui(
+                        egui::RawInput {
+                            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)),
+                            events,
+                            ..Default::default()
+                        },
+                        |ui| app.workbench_ui(ui),
+                    );
+                    let canvas = context
+                        .data(|data| data.get_temp::<Rect>(egui::Id::unique("test_canvas_rect")))
+                        .expect("canvas");
+                    let task = context
+                        .data(|data| {
+                            data.get_temp::<Rect>(egui::Id::unique("test_task_palette_rect"))
+                        })
+                        .expect("task control");
+                    output.textures_delta.clear();
+                    (output, canvas, task)
+                };
+                // Stabilize window placement before sampling.
+                let _ = frame(&mut app, vec![]);
+                let (_, canvas_before, task_before) = frame(&mut app, vec![]);
+                let message =
+                    "Recovery snapshot failed: a detailed error that must stay accessible";
+                app.ctl.error = message.into();
+                let (output, canvas_error, task_error) = frame(&mut app, vec![]);
+                assert_eq!(canvas_error, canvas_before);
+                assert_eq!(task_error, task_before);
+                let tree = output
+                    .platform_output
+                    .accesskit_update
+                    .expect("accessibility update");
+                assert!(
+                    tree.nodes
+                        .iter()
+                        .any(|(_, node)| node.label() == Some(message)
+                            || node.value() == Some(message)),
+                    "full status text is accessible: {:?}",
+                    tree.nodes
+                        .iter()
+                        .filter_map(|(_, node)| node.label())
+                        .collect::<Vec<_>>()
+                );
+                let dismiss = context
+                    .data(|data| data.get_temp::<Rect>(egui::Id::unique("test_dismiss_rect")))
+                    .expect("dismiss control")
+                    .center();
+                let button = |pressed| egui::Event::PointerButton {
+                    pos: dismiss,
+                    button: egui::PointerButton::Primary,
+                    pressed,
+                    modifiers: egui::Modifiers::NONE,
+                };
+                let _ = frame(
+                    &mut app,
+                    vec![egui::Event::PointerMoved(dismiss), button(true)],
+                );
+                let (_, canvas_after, task_after) = frame(&mut app, vec![button(false)]);
+                assert!(
+                    app.ctl.error.is_empty(),
+                    "dismiss did not fire: size={size:?}, at={dismiss:?}"
+                );
+                assert_eq!(canvas_after, canvas_before);
+                assert_eq!(task_after, task_before);
+            }
+        }
+    }
     #[test]
     fn short_viewport_keeps_canvas_usable_in_both_themes() {
         let mut app = ProcessCraft::default();

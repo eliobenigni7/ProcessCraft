@@ -719,3 +719,30 @@ fn concrete_callable_root_uses_expanded_xsi_type_for_reference_context() {
         external.as_bytes()
     );
 }
+
+#[test]
+fn di_extension_contents_are_inert_even_in_standard_namespaces() {
+    // Structural preservation probes, not claims of vendor XSD validity.
+    let payload = |body: &str| {
+        wrap(&format!(
+            "<p:BPMNDiagram xmlns:p='http://www.omg.org/spec/BPMN/20100524/DI'><p:BPMNPlane><d:extension xmlns:d='http://www.omg.org/spec/DD/20100524/DI'>{body}</d:extension></p:BPMNPlane></p:BPMNDiagram>"
+        ))
+    };
+    for body in [
+        "<b:sequenceFlow id='sample' sourceRef='Missing' targetRef='Elsewhere'/>",
+        "<di:Bounds x='sample' y='sample'/>",
+    ] {
+        let bytes = payload(body);
+        let imported = import_bpmn(&bytes).unwrap();
+        assert_eq!(imported.export_source(), bytes);
+        assert!(
+            !imported
+                .report()
+                .qname_values
+                .iter()
+                .any(|value| value.local_name == "Missing")
+        );
+    }
+    let bytes = payload("<b:task id='duplicate'/><b:task id='duplicate'/>");
+    assert_eq!(import_bpmn(&bytes).unwrap_err().kind, ImportErrorKind::Id);
+}

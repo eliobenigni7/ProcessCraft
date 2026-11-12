@@ -30,6 +30,283 @@ fn project() -> Session {
     Session::new(ProjectData::new("Project".into())).unwrap()
 }
 #[test]
+fn explicit_order_does_not_block_other_diagram_cleanup_after_rename() {
+    let mut session = project();
+    fixture(&mut session);
+    let snapshot = session.snapshot();
+    let original = &snapshot.project.documents[0].diagrams[0];
+    let diagram_a = original.id.selector();
+    let order_a: Vec<_> = original
+        .shapes
+        .iter()
+        .map(|shape| shape.id.selector())
+        .chain(original.edges.iter().map(|edge| edge.id.selector()))
+        .collect();
+    let mut shape_one = original.shapes[0].clone();
+    shape_one.id = id("other_shape_one");
+    let mut shape_two = original.shapes[1].clone();
+    shape_two.id = id("other_shape_two");
+    let diagram_b = Diagram {
+        id: id("other_diagram"),
+        plane_id: id("other_plane"),
+        plane: original.plane.clone(),
+        name: None,
+        documentation: None,
+        resolution: None,
+        label_styles: vec![],
+        plane_metadata: None,
+        plane_order: Some(vec![id("other_shape_one"), id("other_shape_two")]),
+        shapes: vec![shape_one, shape_two],
+        edges: vec![],
+    };
+    apply(
+        &mut session,
+        batch(vec![
+            Mutation::CreateDiagram {
+                document_id: docid(),
+                diagram: diagram_b,
+            },
+            Mutation::SetDiagramPlaneOrder {
+                document_id: docid(),
+                diagram_id: diagram_a.clone(),
+                order: Some(order_a.clone()),
+            },
+        ]),
+    )
+    .unwrap();
+    let before = session.snapshot().content_id;
+    let mut reversed = order_a.clone();
+    reversed.reverse();
+    let result = apply(
+        &mut session,
+        batch(vec![
+            Mutation::SetDiagramPlaneOrder {
+                document_id: docid(),
+                diagram_id: diagram_a.clone(),
+                order: Some(reversed.clone()),
+            },
+            Mutation::SetElementXmlId {
+                document_id: docid(),
+                element_id: diagram_a,
+                xml_id: Some(id("renamed_diagram")),
+            },
+            Mutation::DeleteShape {
+                document_id: docid(),
+                diagram_id: id("other_diagram"),
+                shape_id: id("other_shape_one"),
+            },
+        ]),
+    )
+    .unwrap();
+    let after = session.snapshot().content_id;
+    let snapshot = session.snapshot();
+    let document = &snapshot.project.documents[0];
+    let renamed = &result.selector_mappings[0].to;
+    assert_eq!(
+        document
+            .diagrams
+            .iter()
+            .find(|diagram| diagram.id == *renamed)
+            .unwrap()
+            .plane_order,
+        Some(reversed.clone())
+    );
+    assert_eq!(
+        document
+            .diagrams
+            .iter()
+            .find(|diagram| diagram.id
+                == id::<processcraft_core::ids::ElementSelector>("other_diagram"))
+            .unwrap()
+            .plane_order,
+        Some(vec![id("other_shape_two")])
+    );
+    let mut malformed = reversed;
+    malformed.push(malformed[0].clone());
+    assert!(
+        apply(
+            &mut session,
+            batch(vec![
+                Mutation::SetDiagramPlaneOrder {
+                    document_id: docid(),
+                    diagram_id: renamed.clone(),
+                    order: Some(malformed)
+                },
+                Mutation::DeleteShape {
+                    document_id: docid(),
+                    diagram_id: id("other_diagram"),
+                    shape_id: id("other_shape_two")
+                },
+            ])
+        )
+        .is_err()
+    );
+    assert_eq!(session.snapshot().content_id, after);
+    apply(&mut session, Request::Undo).unwrap();
+    assert_eq!(session.snapshot().content_id, before);
+    apply(&mut session, Request::Redo).unwrap();
+    assert_eq!(session.snapshot().content_id, after);
+}
+#[test]
+fn clearing_multiplicity_removes_documentation_navigation_and_keeps_comment() {
+    use processcraft_core::{
+        bpmn_metadata::{BaseMetadata, Documentation},
+        bpmn_xml::MixedXml,
+        ids::CommentId,
+    };
+    let mut initial = project();
+    fixture(&mut initial);
+    let mut data = (*initial.snapshot().project).clone();
+    Arc::make_mut(&mut data.documents[0]).collaboration = Some(Collaboration {
+        id: id("collaboration"),
+        base: None,
+        name: None,
+        correlation_keys: vec![],
+        flows: vec![],
+        conversation_nodes: vec![],
+        conversation_links: vec![],
+        participants: vec![Participant {
+            id: id("participant"),
+            base: None,
+            name: Some("Participant".into()),
+            process: None,
+            multiplicity: Some(ParticipantMultiplicity {
+                id: Some(id("multiplicity")),
+                minimum: Some(0),
+                maximum: Some(2),
+                base: Some(BaseMetadata {
+                    documentation: vec![Documentation {
+                        id: Some(id("multiplicity_doc")),
+                        text_format: None,
+                        content: MixedXml::Text("note".into()),
+                    }],
+                    ..Default::default()
+                }),
+            }),
+        }],
+    });
+    let target = ElementKey {
+        document_id: docid(),
+        xml_id: id("multiplicity_doc"),
+    };
+    data.links.push(NavigationLink {
+        source: target.clone(),
+        target: docid(),
+        label: "note".into(),
+    });
+    data.comments.push(Comment {
+        id: CommentId::new(),
+        target,
+        author: "Author".into(),
+        text: "Keep".into(),
+    });
+    let mut session = Session::new(data).unwrap();
+    let before = session.snapshot().content_id;
+    apply(
+        &mut session,
+        batch(vec![Mutation::SetParticipantMultiplicity {
+            document_id: docid(),
+            participant_id: id("participant"),
+            multiplicity: None,
+        }]),
+    )
+    .unwrap();
+    let snapshot = session.snapshot();
+    assert!(snapshot.project.links.is_empty());
+    assert_eq!(snapshot.project.comments.len(), 1);
+    apply(&mut session, Request::Undo).unwrap();
+    assert_eq!(session.snapshot().content_id, before);
+}
+#[test]
+fn explicit_plane_order_preserves_creation_order_and_rejects_invalid_order() {
+    let mut session = project();
+    fixture(&mut session);
+    let snapshot = session.snapshot();
+    let diagram = &snapshot.project.documents[0].diagrams[0];
+    let diagram_id = diagram.id.selector();
+    let mut order: Vec<_> = diagram
+        .shapes
+        .iter()
+        .map(|shape| shape.id.selector())
+        .chain(diagram.edges.iter().map(|edge| edge.id.selector()))
+        .collect();
+    order.reverse();
+    let mut shape = diagram.shapes[0].clone();
+    shape.id = id("new_representation_shape");
+    let mut edge = diagram.edges[0].clone();
+    edge.id = id("new_representation_edge");
+    apply(
+        &mut session,
+        batch(vec![Mutation::SetDiagramPlaneOrder {
+            document_id: docid(),
+            diagram_id: diagram_id.clone(),
+            order: Some(order.clone()),
+        }]),
+    )
+    .unwrap();
+    let before = session.snapshot().content_id;
+    apply(
+        &mut session,
+        batch(vec![
+            Mutation::CreateEdge {
+                document_id: docid(),
+                diagram_id: diagram_id.clone(),
+                edge,
+            },
+            Mutation::CreateShape {
+                document_id: docid(),
+                diagram_id: diagram_id.clone(),
+                shape,
+            },
+        ]),
+    )
+    .unwrap();
+    order.push(id("new_representation_edge"));
+    order.push(id("new_representation_shape"));
+    assert_eq!(
+        session.snapshot().project.documents[0].diagrams[0]
+            .plane_order
+            .as_ref(),
+        Some(&order)
+    );
+    let after = session.snapshot().content_id;
+    order.push(id("new_representation_shape"));
+    assert!(
+        apply(
+            &mut session,
+            batch(vec![Mutation::SetDiagramPlaneOrder {
+                document_id: docid(),
+                diagram_id,
+                order: Some(order)
+            }])
+        )
+        .is_err()
+    );
+    assert_eq!(session.snapshot().content_id, after);
+    apply(&mut session, Request::Undo).unwrap();
+    assert_eq!(session.snapshot().content_id, before);
+    apply(&mut session, Request::Redo).unwrap();
+    assert_eq!(session.snapshot().content_id, after);
+    let changed = apply(
+        &mut session,
+        batch(vec![Mutation::SetElementXmlId {
+            document_id: docid(),
+            element_id: id("new_representation_shape"),
+            xml_id: Some(id("renamed_representation_shape")),
+        }]),
+    )
+    .unwrap();
+    assert!(
+        session.snapshot().project.documents[0].diagrams[0]
+            .plane_order
+            .as_ref()
+            .unwrap()
+            .contains(&changed.selector_mappings[0].to)
+    );
+    apply(&mut session, Request::Undo).unwrap();
+    assert_eq!(session.snapshot().content_id, after);
+}
+#[test]
 fn activity_metadata_rejects_new_dangling_reference_and_undoes() {
     use processcraft_core::bpmn_activity::{ModelReference, ProcessActivityMetadata};
     let mut s = project();
@@ -406,6 +683,7 @@ fn choreography_sequence_flow_metadata_is_undoable_and_message_flow_rejected() {
     let participants = ["buyer", "seller"]
         .into_iter()
         .map(|name| Participant {
+            multiplicity: None,
             id: id(name),
             base: None,
             name: Some(name.into()),
@@ -423,6 +701,7 @@ fn choreography_sequence_flow_metadata_is_undoable_and_message_flow_rejected() {
         message_flow_refs: vec![],
     };
     let flow = |name, kind, source, target| Flow {
+        message_ref: None,
         id: id(name),
         kind,
         source: id(source),
@@ -482,6 +761,125 @@ fn choreography_sequence_flow_metadata_is_undoable_and_message_flow_rejected() {
     assert_eq!(session.snapshot().content_id, before);
     apply(&mut session, Request::Redo).unwrap();
     assert_eq!(session.snapshot().content_id, after);
+    use processcraft_core::bpmn_model::{EventReference, QNameRef};
+    let reference = EventReference::Qualified(QNameRef {
+        namespace: "urn:external".into(),
+        local: id("Message"),
+    });
+    apply(
+        &mut session,
+        batch(vec![
+            Mutation::SetParticipantMultiplicity {
+                document_id: docid(),
+                participant_id: id("buyer"),
+                multiplicity: Some(ParticipantMultiplicity {
+                    id: Some(id("multiplicity")),
+                    base: None,
+                    minimum: Some(0),
+                    maximum: Some(2),
+                }),
+            },
+            Mutation::SetMessageFlowReference {
+                document_id: docid(),
+                flow_id: id("message"),
+                message_ref: Some(reference.clone()),
+            },
+        ]),
+    )
+    .unwrap();
+    let snapshot = session.snapshot();
+    assert_eq!(
+        snapshot.project.documents[0].choreographies[0].message_flows[0].message_ref,
+        Some(reference)
+    );
+    assert_eq!(
+        snapshot.project.documents[0].choreographies[0].participants[0]
+            .multiplicity
+            .as_ref()
+            .unwrap()
+            .maximum,
+        Some(2)
+    );
+    apply(&mut session, Request::Undo).unwrap();
+    assert_eq!(session.snapshot().content_id, after);
+    use processcraft_core::{
+        bpmn_metadata::{Documentation, DocumentationSet},
+        bpmn_xml::MixedXml,
+    };
+    let rich = DocumentationSet::Structured(vec![Documentation {
+        id: Some(id("choreo_doc")),
+        text_format: None,
+        content: MixedXml::Text("retained".into()),
+    }]);
+    apply(
+        &mut session,
+        batch(vec![Mutation::ReplaceDocumentation {
+            document_id: docid(),
+            element_id: id("sequence"),
+            documentation: rich.clone(),
+        }]),
+    )
+    .unwrap();
+    let before_names = session.snapshot().content_id;
+    apply(
+        &mut session,
+        batch(vec![
+            Mutation::Rename {
+                document_id: docid(),
+                element_id: id("choreo"),
+                name: Some("Choreography".into()),
+            },
+            Mutation::Rename {
+                document_id: docid(),
+                element_id: id("buyer"),
+                name: None,
+            },
+            Mutation::Rename {
+                document_id: docid(),
+                element_id: id("first"),
+                name: Some("Task".into()),
+            },
+            Mutation::Rename {
+                document_id: docid(),
+                element_id: id("message"),
+                name: Some("Message".into()),
+            },
+            Mutation::Documentation {
+                document_id: docid(),
+                element_id: id("message"),
+                documentation: "Flow documentation".into(),
+            },
+        ]),
+    )
+    .unwrap();
+    let changed = session.snapshot().content_id;
+    let snapshot = session.snapshot();
+    let choreography = &snapshot.project.documents[0].choreographies[0];
+    assert_eq!(choreography.participants[0].name, None);
+    assert_eq!(choreography.activities[0].name.as_deref(), Some("Task"));
+    assert_eq!(
+        choreography.message_flows[0].name.as_deref(),
+        Some("Message")
+    );
+    assert_eq!(
+        choreography.message_flows[0].documentation,
+        DocumentationSet::Legacy("Flow documentation".into())
+    );
+    assert_eq!(choreography.sequence_flows[0].documentation, rich);
+    assert!(
+        apply(
+            &mut session,
+            batch(vec![Mutation::Documentation {
+                document_id: docid(),
+                element_id: id("sequence"),
+                documentation: "overwrite".into()
+            }])
+        )
+        .is_err()
+    );
+    assert_eq!(session.snapshot().content_id, changed);
+    apply(&mut session, Request::Undo).unwrap();
+    assert_eq!(session.snapshot().content_id, before_names);
 }
 fn fixture(s: &mut Session) {
     let r: Request = serde_json::from_str(include_str!(
@@ -1484,6 +1882,7 @@ fn failed_batch_preserves_state_and_history() {
         document_id: docid(),
         process_id: Some(id("procurement")),
         flow: Flow {
+            message_ref: None,
             flow_metadata: None,
             base_extras: None,
             association_direction: None,
@@ -1849,6 +2248,12 @@ fn flow_condition_changes_identity_and_protected_document_rejects_it() {
 fn descriptors_match_protocol_tags() {
     let descriptors = processcraft_core::commands::command_descriptors();
     let expected = [
+        "setDiagramPlaneMetadata",
+        "setDiagramPlaneOrder",
+        "setShapeRepresentationMetadata",
+        "setEdgeRepresentationMetadata",
+        "setParticipantMultiplicity",
+        "setMessageFlowReference",
         "setGlobalTasks",
         "setCorrelationProperties",
         "setExpression",
@@ -1953,6 +2358,7 @@ fn descriptors_match_protocol_tags() {
         "createFlow",
         "createDiagram",
         "createShape",
+        "deleteShape",
         "createEdge",
         "deleteDocument",
         "projectProperties",
@@ -3618,6 +4024,7 @@ fn diagram_label_style_identity_rename_updates_local_reference_and_undo() {
                 diagram_id: id("procurement_diagram"),
                 shape_id: id("pc_shape_start"),
                 label: Some(Label {
+                    di_metadata: None,
                     id: Some(id("label")),
                     bounds: None,
                     style: None,

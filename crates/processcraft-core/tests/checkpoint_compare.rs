@@ -2,6 +2,107 @@ use processcraft_core::{ids::CheckpointId, model::*, queries};
 use std::sync::Arc;
 
 #[test]
+fn diagram_details_report_order_and_metadata_without_fabricating_semantic_changes() {
+    use processcraft_core::{
+        bpmn_xml::{NamespaceBinding, XmlAttribute},
+        ids::ElementIdentity,
+    };
+    use serde_json::json;
+    let mut doc = BpmnDocument::new("Model".into(), "Definitions".parse().unwrap());
+    doc.processes.push(serde_json::from_value(json!({
+        "id":"Process", "name":null, "documentation":"", "lanes":[], "flows":[],
+        "nodes":[{"id":"Task","kind":"Task","name":"Review","documentation":"","owner":"","contact":""}]
+    })).unwrap());
+    let first = ElementIdentity::anonymous();
+    let second = ElementIdentity::anonymous();
+    doc.diagrams.push(serde_json::from_value(json!({
+        "id":"Diagram", "plane_id":"Plane", "plane":"Process", "edges":[],
+        "plane_order":[first.selector(),second.selector()],
+        "shapes":[
+            {"id":first,"element":"Task","bounds":{"x":0.0,"y":0.0,"width":100.0,"height":70.0},"label":null,"style":null},
+            {"id":second,"element":"Task","bounds":{"x":200.0,"y":0.0,"width":100.0,"height":70.0},"label":null,"style":null}
+        ]
+    })).unwrap());
+    doc.diagrams[0].plane_metadata = Some(DiElementMetadata {
+        namespaces: vec![NamespaceBinding {
+            prefix: "v".into(),
+            uri: "urn:vendor".into(),
+        }],
+        foreign_attributes: vec![XmlAttribute {
+            namespace: "urn:vendor".into(),
+            local: "layer".parse().unwrap(),
+            prefix: Some("v".parse().unwrap()),
+            value: "front".into(),
+        }],
+        extension: None,
+    });
+    let mut project = ProjectData::new("Diagram comparison".into());
+    project.documents.push(Arc::new(doc));
+    let checkpoint = CheckpointId::new();
+    project.checkpoints.push(Checkpoint {
+        id: checkpoint,
+        name: "Before".into(),
+        created_unix_ms: 1,
+        content: FrozenProject::capture(&project),
+    });
+    project.validate().unwrap();
+    let diagram = &mut Arc::make_mut(&mut project.documents[0]).diagrams[0];
+    diagram.plane_order.as_mut().unwrap().swap(0, 1);
+    diagram.plane_metadata.as_mut().unwrap().foreign_attributes[0].value = "rear".into();
+    diagram.shapes[0].bounds.x = 20.0;
+    let before_query = project.content_identity().unwrap();
+    let compared = queries::compare_checkpoint(&project, checkpoint).unwrap();
+    assert!(compared.added_elements.is_empty());
+    assert!(compared.removed_elements.is_empty());
+    assert!(compared.changed_properties.is_empty());
+    assert_eq!(compared.changed_diagrams.len(), 1);
+    assert_eq!(compared.moved_shapes.len(), 1);
+    let fields = &compared.changed_diagrams[0].properties;
+    assert!(fields.iter().any(|field| field.property
+        == "/plane_metadata/foreign_attributes/0/value"
+        && field.before == "front"
+        && field.after == "rear"));
+    assert!(
+        fields
+            .iter()
+            .any(|field| field.property == "/shapes/0/bounds/x"
+                && field.before == 0.0
+                && field.after == 20.0)
+    );
+    assert!(
+        fields
+            .iter()
+            .any(|field| field.property == "/plane_order/0/native_id")
+    );
+    let mut offset = 0;
+    let mut seen = false;
+    loop {
+        let page = queries::checkpoint_fields_page(&project, checkpoint, offset, 5)
+            .unwrap()
+            .unwrap();
+        assert!(page.items.len() <= 5);
+        seen |= page
+            .items
+            .iter()
+            .any(|field| field.value == "/plane_metadata/foreign_attributes/0/value");
+        if let Some(next) = page.next_offset {
+            assert!(next > offset);
+            offset = next;
+        } else {
+            break;
+        }
+    }
+    assert!(seen);
+    assert_eq!(project.content_identity().unwrap(), before_query);
+    assert!(
+        project.documents[0].diagrams[0]
+            .shapes
+            .iter()
+            .all(|shape| shape.id.xml_id().is_none())
+    );
+}
+
+#[test]
 fn comparison_keeps_native_element_identity_while_reporting_xml_id_changes() {
     use processcraft_core::ids::{ElementIdentity, ElementSelector, NativeElementId};
     let native_id = NativeElementId::new();
@@ -175,6 +276,8 @@ fn comparison_separates_rename_properties_geometry_and_frozen_context() {
         flows: vec![],
     });
     document.diagrams.push(Diagram {
+        plane_metadata: None,
+        plane_order: None,
         documentation: None,
         resolution: None,
         label_styles: vec![],
@@ -183,6 +286,10 @@ fn comparison_separates_rename_properties_geometry_and_frozen_context() {
         plane_id: "Plane".parse().unwrap(),
         plane: "Process".parse().unwrap(),
         shapes: vec![Shape {
+            di_metadata: None,
+            is_message_visible: None,
+            participant_band_kind: None,
+            choreography_activity_shape: None,
             label_visibility: None,
             is_horizontal: None,
             is_marker_visible: None,

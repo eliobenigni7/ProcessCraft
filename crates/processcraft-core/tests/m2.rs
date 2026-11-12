@@ -299,6 +299,7 @@ fn splice_is_one_undo_and_rejects_branches() {
     };
     pr.nodes.push(node("target"));
     let flow = |name: &str, source: &str, target: &str| Flow {
+        message_ref: None,
         flow_metadata: None,
         base_extras: None,
         association_direction: None,
@@ -313,6 +314,8 @@ fn splice_is_one_undo_and_rejects_branches() {
     pr.flows.push(flow("old", "activity", "target"));
     let pt = |x: f64| Point { x, y: 0. };
     d.diagrams.push(Diagram {
+        plane_metadata: None,
+        plane_order: None,
         documentation: None,
         resolution: None,
         label_styles: vec![],
@@ -322,6 +325,8 @@ fn splice_is_one_undo_and_rejects_branches() {
         plane: id("process"),
         shapes: vec![],
         edges: vec![Edge {
+            di_metadata: None,
+            message_visible_kind: None,
             label_visibility: None,
             source_element: None,
             target_element: None,
@@ -340,6 +345,10 @@ fn splice_is_one_undo_and_rejects_branches() {
         new_flow: flow("newflow", "inserted", "target"),
         diagram_id: id("diagram"),
         shape: Shape {
+            di_metadata: None,
+            is_message_visible: None,
+            participant_band_kind: None,
+            choreography_activity_shape: None,
             label_visibility: None,
             is_horizontal: None,
             is_marker_visible: None,
@@ -357,6 +366,8 @@ fn splice_is_one_undo_and_rejects_branches() {
         },
         old_waypoints: vec![pt(0.), pt(2.)],
         new_edge: Edge {
+            di_metadata: None,
+            message_visible_kind: None,
             label_visibility: None,
             source_element: None,
             target_element: None,
@@ -743,6 +754,7 @@ fn nested_scope_edits_and_cross_scope_flows_are_atomic() {
     );
     let before = session.snapshot().content_id;
     let cross = Flow {
+        message_ref: None,
         flow_metadata: None,
         base_extras: None,
         association_direction: None,
@@ -921,6 +933,7 @@ fn conversation_crud_checks_references_and_undoes_atomically() {
         name: None,
         id: id("collaboration"),
         participants: vec![Participant {
+            multiplicity: None,
             base: None,
             id: id("participant"),
             name: Some("Buyer".into()),
@@ -1034,12 +1047,14 @@ fn choreography_crud_rejects_cross_scope_references_and_undoes() {
         name: Some("Exchange".into()),
         participants: vec![
             Participant {
+                multiplicity: None,
                 base: None,
                 id: id("buyer"),
                 name: Some("Buyer".into()),
                 process: None,
             },
             Participant {
+                multiplicity: None,
                 base: None,
                 id: id("seller"),
                 name: Some("Seller".into()),
@@ -1248,6 +1263,8 @@ fn nested_data_associations_resolve_ancestor_and_global_endpoints() {
         item_aware: None,
     });
     doc.diagrams.push(Diagram {
+        plane_metadata: None,
+        plane_order: None,
         documentation: None,
         resolution: None,
         label_styles: vec![],
@@ -1256,6 +1273,10 @@ fn nested_data_associations_resolve_ancestor_and_global_endpoints() {
         plane_id: id("plane"),
         plane: id("process"),
         shapes: vec![Shape {
+            di_metadata: None,
+            is_message_visible: None,
+            participant_band_kind: None,
+            choreography_activity_shape: None,
             label_visibility: None,
             is_horizontal: None,
             is_marker_visible: None,
@@ -1500,6 +1521,7 @@ fn conversation_delete_removes_di_and_undo_restores_it() {
         name: None,
         id: id("collaboration"),
         participants: vec![Participant {
+            multiplicity: None,
             base: None,
             id: id("buyer"),
             name: Some("Buyer".into()),
@@ -1524,6 +1546,8 @@ fn conversation_delete_removes_di_and_undo_restores_it() {
         }],
     });
     doc.diagrams.push(Diagram {
+        plane_metadata: None,
+        plane_order: None,
         documentation: None,
         resolution: None,
         label_styles: vec![],
@@ -1532,6 +1556,10 @@ fn conversation_delete_removes_di_and_undo_restores_it() {
         plane_id: id("plane"),
         plane: id("collaboration"),
         shapes: vec![Shape {
+            di_metadata: None,
+            is_message_visible: None,
+            participant_band_kind: None,
+            choreography_activity_shape: None,
             label_visibility: None,
             is_horizontal: None,
             is_marker_visible: None,
@@ -1548,6 +1576,8 @@ fn conversation_delete_removes_di_and_undo_restores_it() {
             style: None,
         }],
         edges: vec![Edge {
+            di_metadata: None,
+            message_visible_kind: None,
             label_visibility: None,
             source_element: None,
             target_element: None,
@@ -1623,6 +1653,8 @@ fn label_bounds_update_preserves_style_and_undo() {
     let mut project = (*initial.snapshot().project).clone();
     let doc = Arc::make_mut(&mut project.documents[0]);
     doc.diagrams.push(Diagram {
+        plane_metadata: None,
+        plane_order: None,
         documentation: None,
         resolution: None,
         label_styles: vec![],
@@ -1631,6 +1663,10 @@ fn label_bounds_update_preserves_style_and_undo() {
         plane_id: id("plane_label"),
         plane: id("process"),
         shapes: vec![Shape {
+            di_metadata: None,
+            is_message_visible: None,
+            participant_band_kind: None,
+            choreography_activity_shape: None,
             label_visibility: None,
             is_horizontal: None,
             is_marker_visible: None,
@@ -1644,6 +1680,7 @@ fn label_bounds_update_preserves_style_and_undo() {
                 height: 60.0,
             },
             label: Some(Label {
+                di_metadata: None,
                 id: None,
                 style_ref: None,
                 bounds: Some(Bounds {
@@ -1734,6 +1771,7 @@ fn descriptive_commands_validate_references_and_undo_atomically() {
         contact: String::new(),
     };
     let association = Flow {
+        message_ref: None,
         flow_metadata: None,
         base_extras: None,
         id: id("association"),
@@ -1854,6 +1892,8 @@ fn deleting_group_removes_di_and_undo_restores_both() {
             Mutation::CreateDiagram {
                 document_id: key.document_id,
                 diagram: Diagram {
+                    plane_metadata: None,
+                    plane_order: None,
                     documentation: None,
                     resolution: None,
                     label_styles: vec![],
@@ -1862,6 +1902,10 @@ fn deleting_group_removes_di_and_undo_restores_both() {
                     plane_id: id("group_plane"),
                     plane: id("process"),
                     shapes: vec![Shape {
+                        di_metadata: None,
+                        is_message_visible: None,
+                        participant_band_kind: None,
+                        choreography_activity_shape: None,
                         label_visibility: None,
                         is_horizontal: None,
                         is_marker_visible: None,
@@ -1930,6 +1974,7 @@ fn activity_properties_validate_scope_and_kind_and_undo() {
         contact: String::new(),
     };
     let flow = Flow {
+        message_ref: None,
         flow_metadata: None,
         base_extras: None,
         id: id("activity_default"),

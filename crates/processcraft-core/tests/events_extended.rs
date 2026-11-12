@@ -347,6 +347,7 @@ fn di_endpoints_resolve_representation_ids_within_the_same_diagram() {
     let mut p = fixture();
     let d = Arc::make_mut(&mut p.documents[0]);
     d.processes[0].flows.push(Flow {
+        message_ref: None,
         flow_metadata: None,
         base_extras: None,
         id: ident("flow"),
@@ -359,6 +360,10 @@ fn di_endpoints_resolve_representation_ids_within_the_same_diagram() {
         association_direction: None,
     });
     let shape = |id: &str, element: &str| Shape {
+        choreography_activity_shape: None,
+        di_metadata: None,
+        is_message_visible: None,
+        participant_band_kind: None,
         label_visibility: None,
         id: ident(id),
         element: selector(element),
@@ -375,6 +380,8 @@ fn di_endpoints_resolve_representation_ids_within_the_same_diagram() {
         style: None,
     };
     d.diagrams.push(Diagram {
+        plane_metadata: None,
+        plane_order: None,
         documentation: None,
         label_styles: vec![],
         resolution: None,
@@ -384,6 +391,8 @@ fn di_endpoints_resolve_representation_ids_within_the_same_diagram() {
         plane: selector("process"),
         shapes: vec![shape("shape_start", "start"), shape("shape_throw", "throw")],
         edges: vec![Edge {
+            di_metadata: None,
+            message_visible_kind: None,
             label_visibility: None,
             id: ident("edge"),
             element: selector("flow"),
@@ -402,6 +411,8 @@ fn di_endpoints_resolve_representation_ids_within_the_same_diagram() {
     let mut cross = p;
     let d = Arc::make_mut(&mut cross.documents[0]);
     d.diagrams.push(Diagram {
+        plane_metadata: None,
+        plane_order: None,
         documentation: None,
         label_styles: vec![],
         resolution: None,
@@ -438,6 +449,7 @@ fn annotation_association_may_target_sequence_flow_and_its_di_edge() {
         contact: String::new(),
     });
     d.processes[0].flows.push(Flow {
+        message_ref: None,
         flow_metadata: None,
         base_extras: None,
         id: ident("sequence"),
@@ -450,6 +462,7 @@ fn annotation_association_may_target_sequence_flow_and_its_di_edge() {
         association_direction: None,
     });
     d.processes[0].flows.push(Flow {
+        message_ref: None,
         flow_metadata: None,
         base_extras: None,
         id: ident("association"),
@@ -462,6 +475,10 @@ fn annotation_association_may_target_sequence_flow_and_its_di_edge() {
         association_direction: None,
     });
     let shape = |id: &str, element: &str| Shape {
+        choreography_activity_shape: None,
+        di_metadata: None,
+        is_message_visible: None,
+        participant_band_kind: None,
         label_visibility: None,
         id: ident(id),
         element: selector(element),
@@ -478,6 +495,8 @@ fn annotation_association_may_target_sequence_flow_and_its_di_edge() {
         style: None,
     };
     let edge = |id: &str, element: &str, source: &str, target: &str| Edge {
+        di_metadata: None,
+        message_visible_kind: None,
         label_visibility: None,
         id: ident(id),
         element: selector(element),
@@ -488,6 +507,8 @@ fn annotation_association_may_target_sequence_flow_and_its_di_edge() {
         style: None,
     };
     d.diagrams.push(Diagram {
+        plane_metadata: None,
+        plane_order: None,
         documentation: None,
         label_styles: vec![],
         resolution: None,
@@ -553,6 +574,7 @@ fn annotation_association_may_target_sequence_flow_and_its_di_edge() {
         nodes: vec![task("other_a"), task("other_b")],
         lanes: vec![],
         flows: vec![Flow {
+            message_ref: None,
             flow_metadata: None,
             base_extras: None,
             id: ident("other_sequence"),

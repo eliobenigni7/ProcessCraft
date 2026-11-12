@@ -245,7 +245,11 @@ pub(crate) fn validate(document: &BpmnDocument, effective_namespace: &str) -> Re
     }
     for resolution in processcraft_core::validation::activity_family_reference_resolutions(&checked)
     {
-        if matches!(resolution.reference.target, EventReference::Local(_)) {
+        // Plane order is native representation bookkeeping, not an XML IDREF.
+        // XML emits children in that order without referencing their XML IDs.
+        if resolution.reference.field != "di.planeOrder"
+            && matches!(resolution.reference.target, EventReference::Local(_))
+        {
             check.selector(&resolution.resolved_target, resolution.reference.field)?;
         }
     }

@@ -91,6 +91,10 @@ fn main() -> Result<(), Box<dyn Error>> {
             contact: String::new(),
         });
         shapes.push(Shape {
+            di_metadata: None,
+            is_message_visible: None,
+            participant_band_kind: None,
+            choreography_activity_shape: None,
             label_visibility: None,
             is_horizontal: None,
             is_marker_visible: None,
@@ -155,6 +159,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut edges = Vec::new();
     for (i, (key, source, target, kind, pts)) in specs.into_iter().enumerate() {
         flows.push(Flow {
+            message_ref: None,
             flow_metadata: None,
             association_direction: None,
             id: id(key),
@@ -167,6 +172,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             condition: None,
         });
         edges.push(Edge {
+            di_metadata: None,
+            message_visible_kind: None,
             id: id(&format!("edge_{i}")),
             element: id(key),
             source_element: None,
@@ -195,6 +202,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         flows,
     });
     d.diagrams.push(Diagram {
+        plane_metadata: None,
+        plane_order: None,
         name: None,
         documentation: None,
         resolution: None,

@@ -330,8 +330,10 @@ fn normalize(value: &mut Value, targets: &HashMap<NativeElementId, Target>) -> R
                 object.remove("contact");
             }
             object.retain(|key, value| {
-                !matches!(key.as_str(), "base" | "base_extras")
-                    || !value.as_object().is_some_and(serde_json::Map::is_empty)
+                !matches!(
+                    key.as_str(),
+                    "base" | "base_extras" | "di_metadata" | "plane_metadata"
+                ) || !value.as_object().is_some_and(serde_json::Map::is_empty)
             });
             if let Some(text) =
                 canonical_text_representation(object).or_else(|| bare_expression(object))
@@ -353,6 +355,31 @@ fn normalize_legacy_di(value: &mut Value) -> Result<(), String> {
         return Ok(());
     };
     for diagram in diagrams {
+        if diagram.get("plane_order").is_none_or(Value::is_null) {
+            let mut order = Vec::new();
+            for key in ["shapes", "edges"] {
+                let representations = diagram
+                    .get(key)
+                    .and_then(Value::as_array)
+                    .ok_or("Diagram representations must be typed arrays")?;
+                for representation in representations {
+                    let identity: ElementIdentity = serde_json::from_value(
+                        representation
+                            .get("id")
+                            .ok_or("DI identity missing")?
+                            .clone(),
+                    )
+                    .map_err(|error| format!("Invalid DI identity: {error}"))?;
+                    order.push(json!(identity.selector()));
+                }
+            }
+            // The legacy exporter grouped shapes before edges. This is a
+            // comparison-only bridge; explicit authored order is never sorted.
+            diagram
+                .as_object_mut()
+                .ok_or("Diagram must be a typed object")?
+                .insert("plane_order".into(), Value::Array(order));
+        }
         for key in ["shapes", "edges"] {
             let Some(representations) = diagram.get_mut(key).and_then(Value::as_array_mut) else {
                 continue;

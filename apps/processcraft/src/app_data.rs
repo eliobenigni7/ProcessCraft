@@ -1348,6 +1348,10 @@ impl ProcessCraft {
                             {
                                 let diagram = diagram.expect("enabled only with matching diagram");
                                 let shape = Shape {
+                                    di_metadata: None,
+                                    is_message_visible: None,
+                                    participant_band_kind: None,
+                                    choreography_activity_shape: None,
                                     label_visibility: Some(DiLabelVisibility::Explicit),
                                     is_horizontal: None,
                                     is_marker_visible: None,
@@ -1410,6 +1414,10 @@ impl ProcessCraft {
                             {
                                 let diagram = diagram.expect("enabled only with matching diagram");
                                 let shape = Shape {
+                                    di_metadata: None,
+                                    is_message_visible: None,
+                                    participant_band_kind: None,
+                                    choreography_activity_shape: None,
                                     label_visibility: Some(DiLabelVisibility::Explicit),
                                     is_horizontal: None,
                                     is_marker_visible: None,

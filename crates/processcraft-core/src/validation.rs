@@ -223,6 +223,154 @@ impl ProjectData {
                     "Choreography semantics are only partially checked; BPMN 2.0.2 §2.5 and Clause 11.",
                 );
             }
+            let participants = doc
+                .collaboration
+                .iter()
+                .flat_map(|collaboration| &collaboration.participants)
+                .chain(
+                    doc.choreographies
+                        .iter()
+                        .flat_map(|choreography| &choreography.participants),
+                );
+            for participant in participants {
+                if let Some(multiplicity) = &participant.multiplicity {
+                    let minimum = multiplicity.minimum.unwrap_or(0);
+                    let maximum = multiplicity.maximum.unwrap_or(1);
+                    if maximum < 1 || maximum < minimum {
+                        emit(
+                            multiplicity
+                                .id
+                                .as_ref()
+                                .map_or_else(|| participant.id.selector(), |id| id.selector()),
+                            "participantMultiplicityRange",
+                            "Participant maximum must be at least one and no less than minimum; BPMN 2.0.2 §9.3.1, Table 9.5.",
+                        );
+                    }
+                }
+            }
+            for diagram in &doc.diagrams {
+                for shape in &diagram.shapes {
+                    if shape.participant_band_kind.is_none()
+                        && (shape.is_message_visible.is_some()
+                            || shape.choreography_activity_shape.is_some())
+                    {
+                        emit(
+                            shape.id.selector(),
+                            "participantBandMetadataWithoutBand",
+                            "Message visibility and choreography shape references apply to participant bands; BPMN 2.0.2 §12.2.3.4.",
+                        );
+                    }
+                    if shape.participant_band_kind.is_some()
+                        && let Some(crate::model::DiReference::Local(reference)) =
+                            &shape.choreography_activity_shape
+                        && let Some(owner) = diagram
+                            .shapes
+                            .iter()
+                            .find(|candidate| candidate.id.selector() == *reference)
+                    {
+                        let a = &shape.bounds;
+                        let b = &owner.bounds;
+                        if a.x + a.width < b.x
+                            || b.x + b.width < a.x
+                            || a.y + a.height < b.y
+                            || b.y + b.height < a.y
+                        {
+                            emit(
+                                shape.id.selector(),
+                                "participantBandGeometryDisjoint",
+                                "Participant band and owning choreography shape do not touch (layout advisory); BPMN 2.0.2 §12.3.2, Table 12.33.",
+                            );
+                        }
+                        if shape.is_message_visible == Some(true)
+                            && let Some((choreography, activity)) =
+                                doc.choreographies.iter().find_map(|c| {
+                                    c.activities
+                                        .iter()
+                                        .find(|activity| activity.id.selector() == owner.element)
+                                        .map(|activity| (c, activity))
+                                })
+                            && activity.participant_refs.contains(&shape.element)
+                        {
+                            use crate::model::ParticipantBandKind;
+                            if matches!(
+                                shape.participant_band_kind,
+                                Some(
+                                    ParticipantBandKind::MiddleInitiating
+                                        | ParticipantBandKind::MiddleNonInitiating
+                                )
+                            ) {
+                                emit(
+                                    shape.id.selector(),
+                                    "participantBandMiddleMessage",
+                                    "A middle participant band cannot show a message envelope; BPMN 2.0.2 §12.2.3.6.",
+                                );
+                            }
+                            let flows: Option<Vec<_>> = activity
+                                .message_flow_refs
+                                .iter()
+                                .map(|reference| {
+                                    choreography.message_flows.iter().find(|flow| {
+                                        flow.id.selector() == *reference
+                                            && flow.kind == FlowKind::Message
+                                    })
+                                })
+                                .collect();
+                            if let Some(flows) = flows
+                                && !flows.is_empty()
+                                && !flows.iter().any(|flow| flow.source == shape.element)
+                            {
+                                emit(
+                                    shape.id.selector(),
+                                    "participantBandMessageMissing",
+                                    "The visible message envelope has no task message flow sent by this participant; BPMN 2.0.2 §11.5.1.",
+                                );
+                            }
+                        }
+                    }
+                    if shape.participant_band_kind.is_some()
+                        && shape.choreography_activity_shape.is_none()
+                    {
+                        emit(
+                            shape.id.selector(),
+                            "participantBandMissingOwner",
+                            "Participant band needs its owning choreography activity shape (editing advisory); BPMN 2.0.2 §12.2.3.4.",
+                        );
+                    }
+                    if shape.participant_band_kind.is_some()
+                        && !doc.choreographies.iter().any(|choreography| {
+                            choreography
+                                .participants
+                                .iter()
+                                .any(|participant| participant.id.selector() == shape.element)
+                        })
+                    {
+                        emit(
+                            shape.id.selector(),
+                            "participantBandInvalidParticipant",
+                            "A participant band should depict a choreography participant; BPMN 2.0.2 §12.2.3.4.",
+                        );
+                    }
+                }
+                for edge in &diagram.edges {
+                    if edge.message_visible_kind.is_some() {
+                        let is_message = doc
+                            .collaboration
+                            .iter()
+                            .flat_map(|c| &c.flows)
+                            .chain(doc.choreographies.iter().flat_map(|c| &c.message_flows))
+                            .any(|flow| {
+                                flow.id.selector() == edge.element && flow.kind == FlowKind::Message
+                            });
+                        if !is_message {
+                            emit(
+                                edge.id.selector(),
+                                "messageDecoratorWrongElement",
+                                "Message visibility applies only to Message Flow; BPMN 2.0.2 §12.2.3.6.",
+                            );
+                        }
+                    }
+                }
+            }
             if !doc.data_stores.is_empty() {
                 emit(
                     doc.definitions_id.selector(),
@@ -447,6 +595,15 @@ impl ProjectData {
                 }
                 let mut incoming: HashMap<&ElementSelector, Vec<_>> = HashMap::new();
                 let mut outgoing: HashMap<&ElementSelector, Vec<_>> = HashMap::new();
+                for flow in scope.flows {
+                    if flow.message_ref.is_some() && flow.kind != FlowKind::Message {
+                        emit(
+                            flow.id.selector(),
+                            "messageReferenceWrongFlow",
+                            "messageRef applies to Message Flow; BPMN 2.0.2 §9.4, Table 9.8.",
+                        );
+                    }
+                }
                 for flow in scope.flows.iter().filter(|f| f.kind == FlowKind::Sequence) {
                     incoming.entry(&flow.target).or_default().push(flow);
                     outgoing.entry(&flow.source).or_default().push(flow);
@@ -1513,6 +1670,84 @@ fn activity_family_reference_scan(
                     "correlationRetrieval.messageRef",
                     reference,
                     messages.clone(),
+                );
+            }
+        }
+    }
+    // Message references are semantic; band ownership and plane order point to
+    // representations and are resolved only within their owning diagram.
+    if let Some(collaboration) = &doc.collaboration {
+        for flow in &collaboration.flows {
+            if let Some(reference) = &flow.message_ref {
+                check(
+                    flow.id.selector(),
+                    "messageFlow.messageRef",
+                    reference,
+                    messages.clone(),
+                );
+            }
+        }
+    }
+    for choreography in &doc.choreographies {
+        for flow in &choreography.message_flows {
+            if let Some(reference) = &flow.message_ref {
+                check(
+                    flow.id.selector(),
+                    "messageFlow.messageRef",
+                    reference,
+                    messages.clone(),
+                );
+            }
+        }
+    }
+    for diagram in &doc.diagrams {
+        let representation_ids: Vec<_> = diagram
+            .shapes
+            .iter()
+            .map(|shape| &shape.id)
+            .chain(diagram.edges.iter().map(|edge| &edge.id))
+            .collect();
+        if let Some(order) = &diagram.plane_order {
+            for reference in order {
+                check(
+                    diagram.plane_id.selector(),
+                    "di.planeOrder",
+                    &ModelReference::Local(reference.clone()),
+                    representation_ids.clone(),
+                );
+            }
+        }
+        for shape in &diagram.shapes {
+            if let Some(reference) = &shape.choreography_activity_shape {
+                let candidates: Vec<_> = diagram
+                    .shapes
+                    .iter()
+                    .filter(|candidate| {
+                        doc.choreographies.iter().any(|choreography| {
+                            choreography.activities.iter().any(|activity| {
+                                activity.id.selector() == candidate.element
+                                    && (shape.participant_band_kind.is_none()
+                                        || (choreography.participants.iter().any(|participant| {
+                                            participant.id.selector() == shape.element
+                                        }) && activity
+                                            .participant_refs
+                                            .contains(&shape.element)))
+                            })
+                        })
+                    })
+                    .map(|candidate| &candidate.id)
+                    .collect();
+                let reference = match reference {
+                    crate::model::DiReference::Local(id) => ModelReference::Local(id.clone()),
+                    crate::model::DiReference::Qualified(name) => {
+                        ModelReference::Qualified(name.clone())
+                    }
+                };
+                check(
+                    shape.id.selector(),
+                    "di.choreographyActivityShape",
+                    &reference,
+                    candidates,
                 );
             }
         }

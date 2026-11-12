@@ -49,6 +49,8 @@ fn fixture() -> BpmnDocument {
         flows: vec![],
     });
     d.diagrams.push(Diagram {
+        plane_metadata: None,
+        plane_order: None,
         documentation: None,
         resolution: None,
         label_styles: vec![],
@@ -60,6 +62,10 @@ fn fixture() -> BpmnDocument {
             .iter()
             .enumerate()
             .map(|(i, s)| Shape {
+                di_metadata: None,
+                is_message_visible: None,
+                participant_band_kind: None,
+                choreography_activity_shape: None,
                 label_visibility: None,
                 is_horizontal: None,
                 is_marker_visible: None,
@@ -82,6 +88,7 @@ fn fixture() -> BpmnDocument {
 }
 fn flow(d: &mut BpmnDocument, name: &str, a: &str, b: &str) {
     d.processes[0].flows.push(Flow {
+        message_ref: None,
         flow_metadata: None,
         base_extras: None,
         association_direction: None,
@@ -94,6 +101,8 @@ fn flow(d: &mut BpmnDocument, name: &str, a: &str, b: &str) {
         condition: None,
     });
     d.diagrams[0].edges.push(Edge {
+        di_metadata: None,
+        message_visible_kind: None,
         label_visibility: None,
         source_element: None,
         target_element: None,
@@ -271,6 +280,10 @@ fn lane_membership_and_unlaned_nodes_use_separate_bands() {
         members: vec![id("a"), id("b")],
     });
     d.diagrams[0].shapes.push(Shape {
+        di_metadata: None,
+        is_message_visible: None,
+        participant_band_kind: None,
+        choreography_activity_shape: None,
         label_visibility: None,
         is_horizontal: None,
         is_marker_visible: None,
@@ -337,6 +350,7 @@ fn external_labels_keep_sizes_and_styles() {
         font: None,
     });
     d.diagrams[0].shapes[0].label = Some(Label {
+        di_metadata: None,
         id: None,
         style_ref: None,
         bounds: Some(Bounds {
@@ -348,6 +362,7 @@ fn external_labels_keep_sizes_and_styles() {
         style: style.clone(),
     });
     d.diagrams[0].edges[0].label = Some(Label {
+        di_metadata: None,
         id: None,
         style_ref: None,
         bounds: Some(Bounds {
@@ -406,6 +421,10 @@ fn maximum_shape_count_is_bounded_and_above_limits_refused() {
             contact: String::new(),
         });
         d.diagrams[0].shapes.push(Shape {
+            di_metadata: None,
+            is_message_visible: None,
+            participant_band_kind: None,
+            choreography_activity_shape: None,
             label_visibility: None,
             is_horizontal: None,
             is_marker_visible: None,
@@ -474,6 +493,7 @@ fn one_pool_contains_lanes_and_unlaned_band() {
         conversation_nodes: vec![],
         conversation_links: vec![],
         participants: vec![Participant {
+            multiplicity: None,
             base: None,
             id: id("pool"),
             name: Some(String::new()),
@@ -483,6 +503,10 @@ fn one_pool_contains_lanes_and_unlaned_band() {
     });
     for (shape, element) in [("lane_di", "lane"), ("pool_di", "pool")] {
         d.diagrams[0].shapes.push(Shape {
+            di_metadata: None,
+            is_message_visible: None,
+            participant_band_kind: None,
+            choreography_activity_shape: None,
             label_visibility: None,
             is_horizontal: None,
             is_marker_visible: None,
@@ -529,6 +553,7 @@ fn impossible_long_labels_are_refused_without_changes() {
     let mut d = fixture();
     for shape in &mut d.diagrams[0].shapes {
         shape.label = Some(Label {
+            di_metadata: None,
             id: None,
             style_ref: None,
             bounds: Some(Bounds {
@@ -681,6 +706,7 @@ fn layout_keeps_explicit_label_without_inventing_bounds() {
     let mut doc = fixture();
     flow(&mut doc, "ab", "a", "b");
     doc.diagrams[0].shapes[0].label = Some(Label {
+        di_metadata: None,
         id: None,
         bounds: None,
         style: None,

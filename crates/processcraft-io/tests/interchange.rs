@@ -1883,6 +1883,7 @@ fn legacy_implicit_di_label_keeps_existing_geometry() {
     let shape = &mut imported.document.diagrams[0].shapes[0];
     shape.label_visibility = None;
     shape.label = Some(Label {
+        di_metadata: None,
         id: None,
         bounds: Some(Bounds {
             x: 12.0,
@@ -2162,6 +2163,8 @@ fn activity_port_di_is_preserved_or_refused_while_process_port_di_roundtrips() {
 
     let mut parsed = prepare_import(source.as_bytes(), "native activity port").unwrap();
     parsed.document.diagrams.push(Diagram {
+        plane_metadata: None,
+        plane_order: None,
         documentation: None,
         resolution: None,
         label_styles: Vec::new(),
@@ -2170,6 +2173,10 @@ fn activity_port_di_is_preserved_or_refused_while_process_port_di_roundtrips() {
         plane_id: "plane".parse().unwrap(),
         plane: "process".parse().unwrap(),
         shapes: vec![Shape {
+            di_metadata: None,
+            is_message_visible: None,
+            participant_band_kind: None,
+            choreography_activity_shape: None,
             label_visibility: None,
             id: "portShape".parse().unwrap(),
             element: "input".parse().unwrap(),
@@ -2984,4 +2991,245 @@ fn multi_instance_behavior_qnames_preserve_empty_namespace_and_shadowed_prefixes
     );
     let xml = std::str::from_utf8(&output.bytes).unwrap();
     assert!(!xml.contains("xmlns:pc_loop_0=\"\""));
+}
+
+#[test]
+fn choreography_di_representation_preserves_order_bands_and_metadata() {
+    use processcraft_core::model::{DiStyleRef, MessageVisibleKind, ParticipantBandKind};
+    let source = include_bytes!("../../../tests/fixtures/bpmn/di-choreography-representation.bpmn");
+    let parsed = prepare_import(source, "choreography").unwrap();
+    assert!(parsed.report.editable);
+    let choreography = &parsed.document.choreographies[0];
+    let multiplicity = choreography.participants[0].multiplicity.as_ref().unwrap();
+    assert_eq!(
+        (multiplicity.minimum, multiplicity.maximum),
+        (Some(0), Some(3))
+    );
+    assert!(choreography.message_flows[0].message_ref.is_some());
+    let diagram = &parsed.document.diagrams[0];
+    assert_eq!(diagram.plane_order.as_ref().unwrap().len(), 4);
+    assert!(diagram.plane_metadata.as_ref().unwrap().extension.is_some());
+    assert_eq!(
+        diagram.edges[0].message_visible_kind,
+        Some(MessageVisibleKind::NonInitiating)
+    );
+    assert_eq!(
+        diagram.shapes[1].participant_band_kind,
+        Some(ParticipantBandKind::TopInitiating)
+    );
+    assert!(matches!(
+        diagram.shapes[1].choreography_activity_shape,
+        Some(DiStyleRef::Local(_))
+    ));
+    assert!(
+        diagram.shapes[1]
+            .label
+            .as_ref()
+            .unwrap()
+            .di_metadata
+            .is_some()
+    );
+    let output = export(&parsed);
+    assert!(
+        output
+            .report
+            .retained
+            .iter()
+            .any(|v| v.contains("foreign-schema validation"))
+    );
+    let again = prepare_import(&output.bytes, "again").unwrap();
+    assert!(again.report.editable);
+    assert_eq!(
+        processcraft_io::interchange_compare::xml_model_value(&parsed.document).unwrap(),
+        processcraft_io::interchange_compare::xml_model_value(&again.document).unwrap()
+    );
+}
+
+#[test]
+fn invalid_di_extension_namespace_stays_preserved() {
+    let source = std::str::from_utf8(include_bytes!(
+        "../../../tests/fixtures/bpmn/di-choreography-representation.bpmn"
+    ))
+    .unwrap();
+    let bad = source.replace(
+        "<dc:Bounds x=\"1\" y=\"2\" width=\"3\" height=\"4\"/>",
+        "<di:waypoint x=\"1\" y=\"2\"/>",
+    );
+    let parsed = prepare_import(bad.as_bytes(), "invalid di extension").unwrap();
+    assert!(!parsed.report.editable);
+    assert_eq!(export(&parsed).bytes, bad.as_bytes());
+}
+
+#[test]
+fn diagram_metadata_keeps_noncanonical_namespace_context() {
+    let source = std::str::from_utf8(include_bytes!(
+        "../../../tests/fixtures/bpmn/di-choreography-representation.bpmn"
+    ))
+    .unwrap()
+    .replace("bpmndi:", "graph:")
+    .replace("xmlns:bpmndi=", "xmlns:graph=")
+    .replace("dc:", "geom:")
+    .replace("xmlns:dc=", "xmlns:geom=")
+    .replace("di:", "drawing:")
+    .replace("xmlns:di=", "xmlns:drawing=");
+    let parsed = prepare_import(source.as_bytes(), "custom prefixes").unwrap();
+    assert!(parsed.report.editable);
+    let output = export(&parsed);
+    let again = prepare_import(&output.bytes, "again").unwrap();
+    assert!(again.report.editable);
+    assert_eq!(
+        processcraft_io::interchange_compare::xml_model_value(&parsed.document).unwrap(),
+        processcraft_io::interchange_compare::xml_model_value(&again.document).unwrap()
+    );
+}
+
+#[test]
+fn diagram_owner_prefix_shadowing_is_preserved() {
+    let source = std::str::from_utf8(include_bytes!(
+        "../../../tests/fixtures/bpmn/di-choreography-representation.bpmn"
+    ))
+    .unwrap();
+    let start = source.find("<bpmndi:BPMNShape id=\"BuyerBand\"").unwrap();
+    let end =
+        source[start..].find("</bpmndi:BPMNShape>").unwrap() + start + "</bpmndi:BPMNShape>".len();
+    let modified = source[start..end].replace("bpmndi:", "alt:").replacen("<alt:BPMNShape", "<alt:BPMNShape xmlns:alt=\"http://www.omg.org/spec/BPMN/20100524/DI\" xmlns:bpmndi=\"urn:shadow\"", 1);
+    let source = format!("{}{}{}", &source[..start], modified, &source[end..]);
+    let parsed = prepare_import(source.as_bytes(), "prefix shadow").unwrap();
+    assert!(parsed.report.editable);
+    let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+    assert!(again.report.editable);
+    assert_eq!(
+        processcraft_io::interchange_compare::xml_model_value(&parsed.document).unwrap(),
+        processcraft_io::interchange_compare::xml_model_value(&again.document).unwrap()
+    );
+}
+
+#[test]
+fn choreography_band_foreign_same_local_reference_is_not_retargeted() {
+    use processcraft_core::model::DiStyleRef;
+    let source = std::str::from_utf8(include_bytes!(
+        "../../../tests/fixtures/bpmn/di-choreography-representation.bpmn"
+    ))
+    .unwrap()
+    .replacen(
+        "choreographyActivityShape=\"tns:TaskShape\"",
+        "xmlns:foreign=\"urn:foreign\" choreographyActivityShape=\"foreign:TaskShape\"",
+        1,
+    );
+    let parsed = prepare_import(source.as_bytes(), "foreign band").unwrap();
+    assert!(parsed.report.editable);
+    assert!(
+        matches!(&parsed.document.diagrams[0].shapes[1].choreography_activity_shape, Some(DiStyleRef::Qualified(q)) if q.namespace == "urn:foreign")
+    );
+    let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+    assert!(again.report.editable);
+    assert!(
+        matches!(&again.document.diagrams[0].shapes[1].choreography_activity_shape, Some(DiStyleRef::Qualified(q)) if q.namespace == "urn:foreign")
+    );
+}
+
+#[test]
+fn choreography_band_empty_namespace_reference_stays_empty() {
+    use processcraft_core::model::DiStyleRef;
+    let source = std::str::from_utf8(include_bytes!(
+        "../../../tests/fixtures/bpmn/di-choreography-representation.bpmn"
+    ))
+    .unwrap()
+    .replacen(
+        "<bpmndi:BPMNShape id=\"BuyerBand\"",
+        "<bpmndi:BPMNShape xmlns=\"\" id=\"BuyerBand\"",
+        1,
+    )
+    .replacen(
+        "choreographyActivityShape=\"tns:TaskShape\"",
+        "choreographyActivityShape=\"TaskShape\"",
+        1,
+    )
+    .replacen(" v:band=\"B\"", "", 1);
+    let parsed = prepare_import(source.as_bytes(), "empty band").unwrap();
+    assert!(parsed.report.editable);
+    assert!(
+        matches!(&parsed.document.diagrams[0].shapes[1].choreography_activity_shape, Some(DiStyleRef::Qualified(q)) if q.namespace.is_empty())
+    );
+    let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+    assert!(again.report.editable);
+    assert!(
+        matches!(&again.document.diagrams[0].shapes[1].choreography_activity_shape, Some(DiStyleRef::Qualified(q)) if q.namespace.is_empty())
+    );
+}
+
+#[test]
+fn choreography_message_reference_preserves_external_and_empty_namespaces() {
+    use processcraft_core::bpmn_activity::ModelReference;
+    let source = std::str::from_utf8(include_bytes!(
+        "../../../tests/fixtures/bpmn/di-choreography-representation.bpmn"
+    ))
+    .unwrap();
+    for (attribute, namespace) in [
+        (
+            "xmlns:external=\"urn:external\" messageRef=\"external:Message\"",
+            "urn:external",
+        ),
+        ("xmlns=\"\" messageRef=\"Message\"", ""),
+    ] {
+        let source = source.replacen("messageRef=\"tns:Message\"", attribute, 1);
+        let source = if namespace.is_empty() {
+            source.replacen(
+                "<messageFlow id=",
+                "<b:messageFlow xmlns:b=\"http://www.omg.org/spec/BPMN/20100524/MODEL\" id=",
+                1,
+            )
+        } else {
+            source
+        };
+        let parsed = prepare_import(source.as_bytes(), "foreign message").unwrap();
+        assert!(parsed.report.editable);
+        let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+        assert!(again.report.editable);
+        assert!(
+            matches!(&again.document.choreographies[0].message_flows[0].message_ref, Some(ModelReference::Qualified(q)) if q.namespace == namespace)
+        );
+    }
+}
+
+#[test]
+fn all_participant_band_and_edge_message_visibility_values_roundtrip() {
+    let source = std::str::from_utf8(include_bytes!(
+        "../../../tests/fixtures/bpmn/di-choreography-representation.bpmn"
+    ))
+    .unwrap();
+    for band in [
+        "top_initiating",
+        "middle_initiating",
+        "bottom_initiating",
+        "top_non_initiating",
+        "middle_non_initiating",
+        "bottom_non_initiating",
+    ] {
+        for visible in ["initiating", "non_initiating"] {
+            let input = source
+                .replacen(
+                    "participantBandKind=\"top_initiating\"",
+                    &format!("participantBandKind=\"{band}\""),
+                    1,
+                )
+                .replacen(
+                    "messageVisibleKind=\"non_initiating\"",
+                    &format!("messageVisibleKind=\"{visible}\""),
+                    1,
+                );
+            let parsed = prepare_import(input.as_bytes(), "band variants").unwrap();
+            assert!(parsed.report.editable, "{band} {visible}");
+            let again = prepare_import(&export(&parsed).bytes, "again").unwrap();
+            assert!(again.report.editable, "{band} {visible}");
+            assert_eq!(
+                parsed.document.diagrams[0].shapes[1].participant_band_kind,
+                again.document.diagrams[0].shapes[1].participant_band_kind
+            );
+            assert_eq!(
+                parsed.document.diagrams[0].edges[0].message_visible_kind,
+                again.document.diagrams[0].edges[0].message_visible_kind
+            );
+        }
+    }
 }

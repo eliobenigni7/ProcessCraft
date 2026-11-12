@@ -36,6 +36,8 @@ fn document() -> BpmnDocument {
         flows: vec![],
     });
     d.diagrams.push(Diagram {
+        plane_metadata: None,
+        plane_order: None,
         name: None,
         documentation: None,
         resolution: None,
@@ -44,6 +46,10 @@ fn document() -> BpmnDocument {
         plane_id: "plane".parse().unwrap(),
         plane: "p".parse().unwrap(),
         shapes: vec![Shape {
+            di_metadata: None,
+            is_message_visible: None,
+            participant_band_kind: None,
+            choreography_activity_shape: None,
             label_visibility: None,
             is_horizontal: None,
             is_marker_visible: None,
@@ -229,6 +235,7 @@ fn styled_label_uses_same_scene_in_svg_png_and_pdf() {
     });
     d.diagrams[0].shapes[0].label_visibility = Some(DiLabelVisibility::Explicit);
     d.diagrams[0].shapes[0].label = Some(Label {
+        di_metadata: None,
         id: Some("label".parse().unwrap()),
         bounds: None,
         style_ref: Some(DiStyleRef::Local("style".parse().unwrap())),
@@ -261,4 +268,97 @@ fn styled_label_uses_same_scene_in_svg_png_and_pdf() {
             .iter()
             .any(|message| message.contains("unavailable") || message.contains("unresolved"))
     );
+}
+
+#[test]
+fn opaque_di_visual_effects_require_export_acknowledgement() {
+    use processcraft_core::{
+        bpmn_xml::{NamespaceBinding, XmlContent, XmlElement, XmlNode},
+        model::DiElementMetadata,
+    };
+    let mut d = document();
+    d.diagrams[0].plane_metadata = Some(DiElementMetadata {
+        namespaces: vec![NamespaceBinding {
+            prefix: "vendor".into(),
+            uri: "urn:vendor".into(),
+        }],
+        foreign_attributes: vec![],
+        extension: Some(XmlContent {
+            namespaces: vec![],
+            nodes: vec![XmlNode::Comment {
+                text: "inert".into(),
+            }],
+        }),
+    });
+    let id = "d".parse().unwrap();
+    let options = ExportOptions {
+        format: ExportFormat::Png,
+        appearance: Appearance::Light,
+        scale: 1.0,
+        acknowledge_diagnostics: false,
+    };
+    let baseline = export_diagram(&d, &id, options, &mut TextEngine::new(), "Noto Sans").unwrap();
+    d.diagrams[0]
+        .plane_metadata
+        .as_mut()
+        .unwrap()
+        .extension
+        .as_mut()
+        .unwrap()
+        .nodes
+        .push(XmlNode::ProcessingInstruction {
+            target: "vendor".into(),
+            data: Some("opaque".into()),
+        });
+    assert!(export_diagram(&d, &id, options, &mut TextEngine::new(), "Noto Sans").is_err());
+    let output = export_diagram(
+        &d,
+        &id,
+        ExportOptions {
+            acknowledge_diagnostics: true,
+            ..options
+        },
+        &mut TextEngine::new(),
+        "Noto Sans",
+    )
+    .unwrap();
+    assert!(
+        output
+            .diagnostics
+            .iter()
+            .any(|v| v.contains("visual effects are not interpreted"))
+    );
+    assert_eq!(&output.bytes[..8], b"\x89PNG\r\n\x1a\n");
+    assert_eq!(output.bytes, baseline.bytes);
+    d.diagrams[0].plane_metadata = None;
+    d.diagrams[0].shapes[0].di_metadata = Some(DiElementMetadata {
+        namespaces: vec![],
+        foreign_attributes: vec![],
+        extension: Some(XmlContent {
+            namespaces: vec![],
+            nodes: vec![XmlNode::Element {
+                element: XmlElement {
+                    namespace: "http://www.omg.org/spec/DD/20100524/DC".into(),
+                    local: "Bounds".parse().unwrap(),
+                    prefix: Some("dc".parse().unwrap()),
+                    namespaces: vec![],
+                    attributes: vec![],
+                    children: vec![],
+                },
+            }],
+        }),
+    });
+    assert!(export_diagram(&d, &id, options, &mut TextEngine::new(), "Noto Sans").is_err());
+    let inert = export_diagram(
+        &d,
+        &id,
+        ExportOptions {
+            acknowledge_diagnostics: true,
+            ..options
+        },
+        &mut TextEngine::new(),
+        "Noto Sans",
+    )
+    .unwrap();
+    assert_eq!(inert.bytes, baseline.bytes);
 }

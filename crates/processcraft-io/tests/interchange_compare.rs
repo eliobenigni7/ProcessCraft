@@ -581,3 +581,44 @@ fn native_implicit_formal_path_preserves_omitted_type_and_language() {
     );
     assert_eq!(project.content_identity().unwrap(), before);
 }
+
+#[test]
+fn legacy_plane_order_bridge_preserves_explicit_mixed_order_and_native_identity() {
+    let imported = processcraft_io::interchange::prepare_import(
+        include_bytes!("../../../tests/fixtures/bpmn/interop-process.bpmn"),
+        "Order",
+    )
+    .unwrap();
+    assert!(imported.report.editable);
+    let mut legacy = imported.document;
+    legacy.diagrams[0].plane_order = None;
+    let before = serde_json::to_value(&legacy).unwrap();
+    let mut explicit = legacy.clone();
+    explicit.diagrams[0].plane_order = Some(
+        explicit.diagrams[0]
+            .shapes
+            .iter()
+            .map(|shape| shape.id.selector())
+            .chain(
+                explicit.diagrams[0]
+                    .edges
+                    .iter()
+                    .map(|edge| edge.id.selector()),
+            )
+            .collect(),
+    );
+    assert_eq!(
+        xml_model_value(&legacy).unwrap(),
+        xml_model_value(&explicit).unwrap()
+    );
+    explicit.diagrams[0]
+        .plane_order
+        .as_mut()
+        .unwrap()
+        .swap(0, 3);
+    assert_ne!(
+        xml_model_value(&legacy).unwrap(),
+        xml_model_value(&explicit).unwrap()
+    );
+    assert_eq!(serde_json::to_value(&legacy).unwrap(), before);
+}

@@ -854,7 +854,7 @@ impl ProcessCraft {
                                 let mut mutations = vec![Mutation::CreateLane {  document_id: d.id, process_id: p.id.selector(), lane: Lane { base: None, child_lane_set_base: None,
     child_lane_set_id: None, id: lane_id.into(), name: Some(role.name.clone()), parent: None, members: vec![] } }, Mutation::SetDictionaryLinks { source: processcraft_core::ids::ElementKey { document_id: d.id, xml_id: lane.clone() }, kind: DictionaryKind::Role, targets: vec![DictionaryTarget::Entry(role.id)] }];
                                 if let Some(diagram) = d.diagrams.iter().find(|diagram| self.diagram_id.as_ref().is_none_or(|id| &diagram.id == id)) {
-                                    mutations.push(Mutation::CreateShape {  document_id: d.id, diagram_id: diagram.id.selector(), shape: Shape { label_visibility: Some(DiLabelVisibility::Explicit), is_horizontal: None, is_marker_visible: None,
+                                    mutations.push(Mutation::CreateShape {  document_id: d.id, diagram_id: diagram.id.selector(), shape: Shape { di_metadata: None, is_message_visible: None, participant_band_kind: None, choreography_activity_shape: None, label_visibility: Some(DiLabelVisibility::Explicit), is_horizontal: None, is_marker_visible: None,
     is_expanded: None, id: controller::id("LaneShape").into(), element: lane.clone(), bounds: lane_bounds, label: Some(Label::default()), style: None } });
                                 }
                                 mutations.extend(moves);
@@ -959,6 +959,7 @@ impl ProcessCraft {
                 contact: String::new(),
             },
             new_flow: Flow {
+                message_ref: None,
                 flow_metadata: None,
                 base_extras: None,
                 association_direction: None,
@@ -972,6 +973,10 @@ impl ProcessCraft {
             },
             diagram_id: diagram.id.selector(),
             shape: Shape {
+                di_metadata: None,
+                is_message_visible: None,
+                participant_band_kind: None,
+                choreography_activity_shape: None,
                 label_visibility: Some(DiLabelVisibility::Explicit),
                 is_horizontal: None,
                 is_marker_visible: None,
@@ -989,6 +994,8 @@ impl ProcessCraft {
             },
             old_waypoints: vec![a.clone(), enter],
             new_edge: Edge {
+                di_metadata: None,
+                message_visible_kind: None,
                 label_visibility: Some(DiLabelVisibility::Explicit),
                 source_element: None,
                 target_element: None,
@@ -1327,6 +1334,7 @@ mod tests {
             members: vec![],
         });
         p.flows.push(Flow {
+            message_ref: None,
             flow_metadata: None,
             base_extras: None,
             association_direction: None,
@@ -1341,6 +1349,10 @@ mod tests {
         let diagram = &mut d.diagrams[0];
         for (id, x) in [(&node, 0.0), (&target, 300.0)] {
             diagram.shapes.push(Shape {
+                di_metadata: None,
+                is_message_visible: None,
+                participant_band_kind: None,
+                choreography_activity_shape: None,
                 label_visibility: None,
                 is_horizontal: None,
                 is_marker_visible: None,
@@ -1358,6 +1370,8 @@ mod tests {
             });
         }
         diagram.edges.push(Edge {
+            di_metadata: None,
+            message_visible_kind: None,
             label_visibility: None,
             source_element: None,
             target_element: None,

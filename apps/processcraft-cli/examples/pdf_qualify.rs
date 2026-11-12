@@ -36,6 +36,10 @@ fn sample(tiled: bool) -> BpmnDocument {
             contact: String::new(),
         });
         shapes.push(Shape {
+            di_metadata: None,
+            is_message_visible: None,
+            participant_band_kind: None,
+            choreography_activity_shape: None,
             label_visibility: None,
             is_horizontal: None,
             is_marker_visible: None,
@@ -74,6 +78,8 @@ fn sample(tiled: bool) -> BpmnDocument {
         flows: vec![],
     });
     d.diagrams.push(Diagram {
+        plane_metadata: None,
+        plane_order: None,
         documentation: None,
         resolution: None,
         label_styles: vec![],

@@ -94,6 +94,8 @@ struct DragGesture {
     items: Vec<(ElementSelector, Bounds)>,
     origin: Pos2,
     offset: Vec2,
+    context: Option<(u64, processcraft_core::ids::DocumentId, ElementSelector)>,
+    label: bool,
 }
 impl DragGesture {
     fn new(items: Vec<(ElementSelector, Bounds)>, origin: Pos2) -> Self {
@@ -101,6 +103,8 @@ impl DragGesture {
             items,
             origin,
             offset: Vec2::ZERO,
+            context: None,
+            label: false,
         }
     }
     fn update(&mut self, position: Option<Pos2>) {
@@ -162,6 +166,8 @@ pub struct ProcessCraft {
     dictionary_kind: DictionaryKind,
     selected: Option<ElementSelector>,
     multi: Vec<ElementSelector>,
+    representation_selection: Vec<ElementSelector>,
+    representation_diagram: Option<ElementSelector>,
     draft: String,
     draft_name_present: bool,
     bpmn_details: Option<processcraft_core::bpmn_model::NodeDetails>,
@@ -199,6 +205,9 @@ pub struct ProcessCraft {
     correlation_keys_draft: Option<correlation_keys::CorrelationKeysDraft>,
     loop_advanced_draft: Option<loop_advanced::LoopAdvancedDraft>,
     choreography_flow_draft: Option<choreography_flow::ChoreographyFlowDraft>,
+    multiplicity_draft: Option<participant_di::MultiplicityDraft>,
+    message_ref_draft: Option<participant_di::MessageRefDraft>,
+    band_draft: Option<band_create::BandDraft>,
     event_draft: Option<event::EventDraft>,
     event_catalog_draft: Option<event::EventCatalogDraft>,
     identity_page: usize,
@@ -285,6 +294,8 @@ impl Default for ProcessCraft {
             dictionary_kind: DictionaryKind::Role,
             selected: None,
             multi: vec![],
+            representation_selection: vec![],
+            representation_diagram: None,
             draft: String::new(),
             draft_name_present: false,
             bpmn_details: None,
@@ -322,6 +333,9 @@ impl Default for ProcessCraft {
             correlation_keys_draft: None,
             loop_advanced_draft: None,
             choreography_flow_draft: None,
+            multiplicity_draft: None,
+            message_ref_draft: None,
+            band_draft: None,
             event_draft: None,
             event_catalog_draft: None,
             identity_page: 0,
@@ -401,12 +415,17 @@ impl ProcessCraft {
             || self.correlation_keys_draft.is_some()
             || self.loop_advanced_draft.is_some()
             || self.choreography_flow_draft.is_some()
+            || self.multiplicity_draft.is_some()
+            || self.message_ref_draft.is_some()
+            || self.band_draft.is_some()
             || self.event_draft.is_some()
             || self.event_catalog_draft.is_some())
             && !self.commit_draft()
         {
             return;
         }
+        self.representation_selection.clear();
+        self.representation_diagram = None;
         self.multi = id.clone().into_iter().collect();
         self.selected = id.clone();
         self.draft.clear();
@@ -553,6 +572,45 @@ impl ProcessCraft {
                 }
             }
         }
+        if let Some(document) = snap.project.documents.get(self.doc)
+            && let Some(selected) = &id
+        {
+            for choreography in &document.choreographies {
+                if let Some(participant) = choreography
+                    .participants
+                    .iter()
+                    .find(|participant| participant.id == *selected)
+                {
+                    self.draft_name_present = participant.name.is_some();
+                    self.draft = participant.name.clone().unwrap_or_default();
+                }
+                if let Some(activity) = choreography
+                    .activities
+                    .iter()
+                    .find(|activity| activity.id == *selected)
+                {
+                    self.draft_name_present = activity.name.is_some();
+                    self.draft = activity.name.clone().unwrap_or_default();
+                }
+                if let Some(flow) = choreography
+                    .message_flows
+                    .iter()
+                    .chain(&choreography.sequence_flows)
+                    .find(|flow| flow.id == *selected)
+                {
+                    self.draft_name_present = flow.name.is_some();
+                    self.draft = flow.name.clone().unwrap_or_default();
+                    self.docs = flow
+                        .documentation
+                        .plain_text()
+                        .unwrap_or_default()
+                        .to_owned();
+                    self.condition = flow.condition.clone();
+                    self.is_flow = true;
+                    self.association_direction = flow.association_direction;
+                }
+            }
+        }
         self.ctl.session.set_selection(
             id.map(|xml_id| processcraft_core::ids::ElementKey {
                 document_id: snap.project.documents[self.doc].id,
@@ -565,6 +623,14 @@ impl ProcessCraft {
     fn commit_draft(&mut self) -> bool {
         if self.event_draft.is_some() || self.event_catalog_draft.is_some() {
             self.ctl.error = "Apply or cancel the event draft first.".into();
+            return false;
+        }
+        if self.multiplicity_draft.is_some()
+            || self.message_ref_draft.is_some()
+            || self.band_draft.is_some()
+        {
+            self.ctl.error =
+                "Apply or cancel the participant, band, or message draft first.".into();
             return false;
         }
         if self.choreography_flow_draft.is_some() {
@@ -868,13 +934,18 @@ impl ProcessCraft {
             for value in [
                 &mut self.process_id,
                 &mut self.diagram_id,
+                &mut self.representation_diagram,
                 &mut self.selected,
             ] {
                 if value.as_ref() == Some(&mapping.from) {
                     *value = Some(mapping.to.clone());
                 }
             }
-            for value in &mut self.multi {
+            for value in self
+                .multi
+                .iter_mut()
+                .chain(self.representation_selection.iter_mut())
+            {
                 if *value == mapping.from {
                     *value = mapping.to.clone();
                 }
@@ -921,6 +992,9 @@ impl ProcessCraft {
             || self.correlation_keys_draft.is_some()
             || self.loop_advanced_draft.is_some()
             || self.choreography_flow_draft.is_some()
+            || self.multiplicity_draft.is_some()
+            || self.message_ref_draft.is_some()
+            || self.band_draft.is_some()
     }
     fn has_drafts(&self) -> bool {
         self.collaboration.has_draft()
@@ -944,6 +1018,9 @@ impl ProcessCraft {
             || self.correlation_keys_draft.is_some()
             || self.loop_advanced_draft.is_some()
             || self.choreography_flow_draft.is_some()
+            || self.multiplicity_draft.is_some()
+            || self.message_ref_draft.is_some()
+            || self.band_draft.is_some()
             || self.event_draft.is_some()
             || self.event_catalog_draft.is_some()
             || self.m3.has_draft()
@@ -1022,6 +1099,9 @@ impl ProcessCraft {
         self.correlation_keys_draft = None;
         self.loop_advanced_draft = None;
         self.choreography_flow_draft = None;
+        self.multiplicity_draft = None;
+        self.message_ref_draft = None;
+        self.band_draft = None;
         self.event_draft = None;
         self.event_catalog_draft = None;
         self.definitions_dirty = false;
@@ -1229,6 +1309,10 @@ impl ProcessCraft {
             )
         };
         let shape = Shape {
+            di_metadata: None,
+            is_message_visible: None,
+            participant_band_kind: None,
+            choreography_activity_shape: None,
             label_visibility: Some(DiLabelVisibility::Explicit),
             is_horizontal: None,
             is_marker_visible: None,
@@ -1243,6 +1327,7 @@ impl ProcessCraft {
             },
             label: if event || gateway {
                 Some(Label {
+                    di_metadata: None,
                     id: None,
                     style_ref: None,
                     bounds: Some(Bounds {
@@ -1331,6 +1416,7 @@ impl ProcessCraft {
         batch.push(Mutation::CreateParticipant {
             document_id: d.id,
             participant: Participant {
+                multiplicity: None,
                 base: None,
                 id: participant.clone().into(),
                 name: Some("Pool".into()),
@@ -1341,6 +1427,10 @@ impl ProcessCraft {
             document_id: d.id,
             diagram_id: diagram.id.selector(),
             shape: Shape {
+                di_metadata: None,
+                is_message_visible: None,
+                participant_band_kind: None,
+                choreography_activity_shape: None,
                 label_visibility: Some(DiLabelVisibility::Explicit),
                 is_horizontal: None,
                 is_marker_visible: None,
@@ -1394,6 +1484,10 @@ impl ProcessCraft {
                 document_id: d.id,
                 diagram_id: diagram.id.selector(),
                 shape: Shape {
+                    di_metadata: None,
+                    is_message_visible: None,
+                    participant_band_kind: None,
+                    choreography_activity_shape: None,
                     label_visibility: Some(DiLabelVisibility::Explicit),
                     is_horizontal: None,
                     is_marker_visible: None,
@@ -1502,10 +1596,33 @@ impl ProcessCraft {
         else {
             return;
         };
+        let selected = if self.representation_diagram.as_ref() == Some(&diagram.id.selector())
+            && !self.representation_selection.is_empty()
+        {
+            self.representation_selection.clone()
+        } else {
+            let mut selected = Vec::new();
+            for semantic in &self.multi {
+                let matches: Vec<_> = diagram
+                    .shapes
+                    .iter()
+                    .filter(|s| &s.element == semantic)
+                    .collect();
+                if matches.len() > 1 {
+                    self.ctl.error =
+                        "Select a specific representation on the diagram before moving it.".into();
+                    return;
+                }
+                if let Some(shape) = matches.first() {
+                    selected.push(shape.id.selector());
+                }
+            }
+            selected
+        };
         let items = diagram
             .shapes
             .iter()
-            .filter(|s| self.multi.contains(&s.element))
+            .filter(|s| selected.contains(&s.id.selector()))
             .map(|s| (s.id.selector(), s.bounds.clone()))
             .collect();
         self.move_shapes(items, dx, dy);
@@ -1601,6 +1718,7 @@ impl ProcessCraft {
                 document_id: d.id,
                 process_id: Some(p.id.selector()),
                 flow: Flow {
+                    message_ref: None,
                     flow_metadata: None,
                     base_extras: None,
                     association_direction: None,
@@ -1617,6 +1735,8 @@ impl ProcessCraft {
                 document_id: d.id,
                 diagram_id: diagram.id.selector(),
                 edge: Edge {
+                    di_metadata: None,
+                    message_visible_kind: None,
                     label_visibility: Some(DiLabelVisibility::Explicit),
                     source_element: None,
                     target_element: None,
@@ -1879,17 +1999,6 @@ impl eframe::App for ProcessCraft {
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::N)) {
             self.new_or_open("new");
         }
-        if self.ctl.uncertain && ui.button("Check save outcome").clicked() {
-            self.ctl.reconcile();
-        }
-        if !self.ctl.error.is_empty() {
-            ui.horizontal_wrapped(|ui| {
-                ui.colored_label(self.theme.palette().warning, &self.ctl.error);
-                if ui.small_button("Dismiss message").clicked() {
-                    self.ctl.error.clear();
-                }
-            });
-        }
         if let Some(lost) = &self.export_lost {
             egui::Window::new("Export outcome unknown").collapsible(false).show(&ctx, |ui| {
                 ui.label("The export worker stopped and the write outcome cannot be established automatically. Inspect the destination and retained artifacts; this operation cannot be safely retried or dismissed.");
@@ -2051,6 +2160,487 @@ mod tests {
     use super::*;
 
     #[test]
+    fn clicking_choreography_band_preserves_participant_name_through_di_history() {
+        use processcraft_core::bpmn_collaboration::{Choreography, ChoreographyActivity};
+        let mut app = ProcessCraft::default();
+        let document_id = app.ctl.session.snapshot().project.documents[0].id;
+        let participant = |id: &str, name: Option<&str>| Participant {
+            id: id.parse().unwrap(),
+            name: name.map(str::to_owned),
+            base: None,
+            process: None,
+            multiplicity: None,
+        };
+        let choreography = Choreography {
+            id: "Choreography".parse().unwrap(),
+            name: None,
+            base: None,
+            participants: vec![
+                participant("Buyer", Some("Buyer")),
+                participant("Seller", None),
+            ],
+            message_flows: vec![Flow {
+                id: "Message".parse().unwrap(),
+                kind: FlowKind::Message,
+                source: "Buyer".parse().unwrap(),
+                target: "Seller".parse().unwrap(),
+                name: Some(String::new()),
+                documentation: "Original documentation".into(),
+                base_extras: None,
+                flow_metadata: None,
+                condition: None,
+                association_direction: None,
+                message_ref: None,
+            }],
+            activities: vec![ChoreographyActivity {
+                id: "Task".parse().unwrap(),
+                name: Some("Order".into()),
+                base: None,
+                flow_metadata: None,
+                correlation_keys: vec![],
+                participant_refs: vec!["Buyer".parse().unwrap(), "Seller".parse().unwrap()],
+                initiating_participant: "Buyer".parse().unwrap(),
+                message_flow_refs: vec!["Message".parse().unwrap()],
+            }],
+            sequence_flows: vec![],
+        };
+        let shape = |id: &str,
+                     element: &str,
+                     bounds: Bounds,
+                     band: Option<ParticipantBandKind>,
+                     owner: Option<DiReference>| Shape {
+            id: id.parse().unwrap(),
+            element: element.parse().unwrap(),
+            bounds,
+            di_metadata: None,
+            is_message_visible: None,
+            participant_band_kind: band,
+            choreography_activity_shape: owner,
+            is_expanded: None,
+            is_horizontal: None,
+            is_marker_visible: None,
+            label: Some(Label::default()),
+            label_visibility: Some(DiLabelVisibility::Explicit),
+            style: None,
+        };
+        let diagram = Diagram {
+            id: "ChoreographyDiagram".parse().unwrap(),
+            plane_id: "ChoreographyPlane".parse().unwrap(),
+            plane: "Choreography".parse().unwrap(),
+            name: None,
+            documentation: None,
+            resolution: None,
+            label_styles: vec![],
+            plane_metadata: None,
+            plane_order: Some(vec![
+                "ActivityShape".parse().unwrap(),
+                "BuyerBand".parse().unwrap(),
+                "OtherShape".parse().unwrap(),
+                "OtherBand".parse().unwrap(),
+            ]),
+            shapes: vec![
+                shape(
+                    "ActivityShape",
+                    "Task",
+                    Bounds {
+                        x: 50.,
+                        y: 50.,
+                        width: 160.,
+                        height: 100.,
+                    },
+                    None,
+                    None,
+                ),
+                shape(
+                    "BuyerBand",
+                    "Buyer",
+                    Bounds {
+                        x: 50.,
+                        y: 50.,
+                        width: 160.,
+                        height: 30.,
+                    },
+                    Some(ParticipantBandKind::TopInitiating),
+                    Some(DiReference::Local("ActivityShape".parse().unwrap())),
+                ),
+                shape(
+                    "OtherShape",
+                    "Task",
+                    Bounds {
+                        x: 350.,
+                        y: 50.,
+                        width: 160.,
+                        height: 100.,
+                    },
+                    None,
+                    None,
+                ),
+                shape(
+                    "OtherBand",
+                    "Seller",
+                    Bounds {
+                        x: 350.,
+                        y: 50.,
+                        width: 160.,
+                        height: 30.,
+                    },
+                    Some(ParticipantBandKind::TopNonInitiating),
+                    Some(DiReference::Local("OtherShape".parse().unwrap())),
+                ),
+            ],
+            edges: vec![],
+        };
+        assert!(app.ctl.mutate(vec![
+            Mutation::CreateChoreography {
+                document_id,
+                choreography
+            },
+            Mutation::CreateDiagram {
+                document_id,
+                diagram
+            }
+        ]));
+        app.diagram_id = Some("ChoreographyDiagram".parse().unwrap());
+        let context = egui::Context::default();
+        let frame = |app: &mut ProcessCraft, events| {
+            let mut output = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(900., 600.))),
+                    events,
+                    ..Default::default()
+                },
+                |ui| app.canvas_ui(ui),
+            );
+            output.textures_delta.clear();
+        };
+        for _ in 0..300 {
+            frame(&mut app, vec![]);
+            if app
+                .hits
+                .iter()
+                .any(|h| h.diagram_element_id == "BuyerBand".parse::<ElementSelector>().unwrap())
+            {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        let hit = app
+            .hits
+            .iter()
+            .rev()
+            .find(|h| h.contains(130., 65., 0.))
+            .expect("band hit");
+        assert_eq!(
+            hit.diagram_element_id,
+            "BuyerBand".parse::<ElementSelector>().unwrap()
+        );
+        let canvas = context
+            .data(|data| data.get_temp::<Rect>(egui::Id::unique("test_canvas_rect")))
+            .unwrap();
+        let point = Pos2::new(
+            canvas.left() + 12. + ((130. - app.camera.0) as f32 * app.zoom),
+            canvas.top() + 12. + ((65. - app.camera.1) as f32 * app.zoom),
+        );
+        let button = |pressed| egui::Event::PointerButton {
+            pos: point,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        };
+        frame(
+            &mut app,
+            vec![egui::Event::PointerMoved(point), button(true)],
+        );
+        frame(&mut app, vec![button(false)]);
+        assert_eq!(app.selected, Some("Buyer".parse().unwrap()));
+        assert!(app.draft_name_present);
+        assert_eq!(app.draft, "Buyer");
+        // Dragging one of two representations of the same task must not move the other.
+        let owner_point = Pos2::new(
+            canvas.left() + 12. + ((130. - app.camera.0) as f32 * app.zoom),
+            canvas.top() + 12. + ((115. - app.camera.1) as f32 * app.zoom),
+        );
+        let moved = owner_point + Vec2::new(30., 0.);
+        let pointer = |pos, pressed| egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        };
+        frame(
+            &mut app,
+            vec![
+                egui::Event::PointerMoved(owner_point),
+                pointer(owner_point, true),
+            ],
+        );
+        frame(&mut app, vec![egui::Event::PointerMoved(moved)]);
+        frame(&mut app, vec![pointer(moved, false)]);
+        let bounds = |app: &ProcessCraft, id: &str| {
+            app.ctl.session.snapshot().project.documents[0].diagrams[1]
+                .shapes
+                .iter()
+                .find(|shape| shape.id == id.parse::<ElementSelector>().unwrap())
+                .unwrap()
+                .bounds
+                .clone()
+        };
+        assert!(bounds(&app, "ActivityShape").x > 50.);
+        assert_eq!(bounds(&app, "OtherShape").x, 350.);
+        assert_eq!(bounds(&app, "OtherBand").x, 350.);
+        app.history(Request::Undo);
+        assert_eq!(bounds(&app, "ActivityShape").x, 50.);
+        app.history(Request::Redo);
+        assert!(bounds(&app, "ActivityShape").x > 50.);
+        app.history(Request::Undo);
+        // A concurrent model edit cancels a gesture instead of applying stale bounds.
+        for _ in 0..300 {
+            frame(&mut app, vec![]);
+            if app.hits.iter().any(|h| {
+                h.diagram_element_id == "ActivityShape".parse::<ElementSelector>().unwrap()
+            }) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        frame(
+            &mut app,
+            vec![
+                egui::Event::PointerMoved(owner_point),
+                pointer(owner_point, true),
+            ],
+        );
+        frame(&mut app, vec![egui::Event::PointerMoved(moved)]);
+        assert!(app.drag.is_some());
+        assert!(app.ctl.mutate(vec![Mutation::Rename {
+            document_id,
+            element_id: "Task".parse().unwrap(),
+            name: Some("Updated order".into())
+        }]));
+        frame(&mut app, vec![pointer(moved, false)]);
+        assert_eq!(bounds(&app, "ActivityShape").x, 50.);
+        assert!(app.drag.is_none());
+        app.history(Request::Undo);
+        assert!(app.ctl.mutate(vec![Mutation::SetLabelBounds {
+            document_id,
+            diagram_id: "ChoreographyDiagram".parse().unwrap(),
+            representation_id: "ActivityShape".parse().unwrap(),
+            bounds: Bounds {
+                x: 100.,
+                y: 100.,
+                width: 60.,
+                height: 30.
+            },
+        }]));
+        for _ in 0..300 {
+            frame(&mut app, vec![]);
+            if app.hits.iter().any(|h| {
+                h.is_label
+                    && h.diagram_element_id == "ActivityShape".parse::<ElementSelector>().unwrap()
+            }) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        let alt = egui::Modifiers {
+            alt: true,
+            ..egui::Modifiers::NONE
+        };
+        let frame_alt = |app: &mut ProcessCraft, events| {
+            let mut output = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(900., 600.))),
+                    events: std::iter::once(egui::Event::ModifiersChanged(alt))
+                        .chain(events)
+                        .collect(),
+                    ..Default::default()
+                },
+                |ui| app.canvas_ui(ui),
+            );
+            output.textures_delta.clear();
+        };
+        let alt_pointer = |pos, pressed| egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: alt,
+        };
+        frame_alt(
+            &mut app,
+            vec![
+                egui::Event::PointerMoved(owner_point),
+                alt_pointer(owner_point, true),
+            ],
+        );
+        frame_alt(&mut app, vec![egui::Event::PointerMoved(moved)]);
+        frame_alt(&mut app, vec![alt_pointer(moved, false)]);
+        assert_eq!(bounds(&app, "ActivityShape").x, 50.);
+        let label_x = |app: &ProcessCraft| {
+            app.ctl.session.snapshot().project.documents[0].diagrams[1].shapes[0]
+                .label
+                .as_ref()
+                .unwrap()
+                .bounds
+                .as_ref()
+                .unwrap()
+                .x
+        };
+        assert!(label_x(&app) > 100.);
+        app.history(Request::Undo);
+        assert_eq!(label_x(&app), 100.);
+        app.history(Request::Redo);
+        assert!(label_x(&app) > 100.);
+        app.history(Request::Undo);
+        app.history(Request::Undo);
+        for _ in 0..300 {
+            frame(
+                &mut app,
+                vec![egui::Event::ModifiersChanged(egui::Modifiers::NONE)],
+            );
+            if let Some(hit) = app.hits.iter().find(|h| {
+                h.is_label
+                    && h.diagram_element_id == "ActivityShape".parse::<ElementSelector>().unwrap()
+            }) && matches!(&hit.geometry, processcraft_render::HitGeometry::Shape(b) if b.width != 60.)
+            {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        let fallback = match &app
+            .hits
+            .iter()
+            .find(|h| {
+                h.is_label
+                    && h.diagram_element_id == "ActivityShape".parse::<ElementSelector>().unwrap()
+            })
+            .unwrap()
+            .geometry
+        {
+            processcraft_render::HitGeometry::Shape(bounds) => bounds.clone(),
+            _ => panic!("expected label bounds"),
+        };
+        frame_alt(
+            &mut app,
+            vec![
+                egui::Event::PointerMoved(owner_point),
+                alt_pointer(owner_point, true),
+            ],
+        );
+        frame_alt(&mut app, vec![egui::Event::PointerMoved(moved)]);
+        frame_alt(&mut app, vec![alt_pointer(moved, false)]);
+        let actual = app.ctl.session.snapshot().project.documents[0].diagrams[1].shapes[0]
+            .label
+            .as_ref()
+            .unwrap()
+            .bounds
+            .clone()
+            .unwrap();
+        assert!((actual.x - fallback.x - 30. / app.zoom as f64).abs() < 0.001);
+        assert_eq!(actual.width, fallback.width);
+        app.history(Request::Undo);
+        assert!(
+            app.ctl.session.snapshot().project.documents[0].diagrams[1].shapes[0]
+                .label
+                .as_ref()
+                .unwrap()
+                .bounds
+                .is_none()
+        );
+        app.select(Some("Buyer".parse().unwrap()));
+        assert!(
+            app.ctl
+                .mutate(vec![Mutation::SetShapeRepresentationMetadata {
+                    document_id,
+                    diagram_id: "ChoreographyDiagram".parse().unwrap(),
+                    shape_id: "BuyerBand".parse().unwrap(),
+                    metadata: Some(DiElementMetadata::default()),
+                    is_message_visible: None,
+                    participant_band_kind: Some(ParticipantBandKind::TopInitiating),
+                    choreography_activity_shape: Some(DiReference::Local(
+                        "ActivityShape".parse().unwrap()
+                    ))
+                }])
+        );
+        let buyer_name = |app: &ProcessCraft| {
+            app.ctl.session.snapshot().project.documents[0].choreographies[0].participants[0]
+                .name
+                .clone()
+        };
+        assert_eq!(buyer_name(&app), Some("Buyer".into()));
+        app.history(Request::Undo);
+        assert_eq!(buyer_name(&app), Some("Buyer".into()));
+        let snapshot = app.ctl.session.snapshot();
+        let buyer = &snapshot.project.documents[0].choreographies[0].participants[0];
+        assert_eq!(buyer.name.as_deref(), Some("Buyer"));
+        assert!(app.remove_shape_representation(
+            document_id,
+            "ChoreographyDiagram".parse().unwrap(),
+            "BuyerBand".parse().unwrap()
+        ));
+        assert_eq!(app.selected, Some("Buyer".parse().unwrap()));
+        assert_eq!(buyer_name(&app), Some("Buyer".into()));
+        let snapshot = app.ctl.session.snapshot();
+        let diagram = &snapshot.project.documents[0].diagrams[1];
+        assert!(
+            !diagram
+                .shapes
+                .iter()
+                .any(|shape| shape.id == "BuyerBand".parse::<ElementSelector>().unwrap())
+        );
+        assert!(
+            diagram
+                .shapes
+                .iter()
+                .any(|shape| shape.id == "OtherBand".parse::<ElementSelector>().unwrap())
+        );
+        app.history(Request::Undo);
+        let snapshot = app.ctl.session.snapshot();
+        let diagram = &snapshot.project.documents[0].diagrams[1];
+        assert!(
+            diagram
+                .shapes
+                .iter()
+                .any(|shape| shape.id == "BuyerBand".parse::<ElementSelector>().unwrap())
+        );
+        assert!(
+            diagram
+                .shapes
+                .iter()
+                .any(|shape| shape.id == "OtherBand".parse::<ElementSelector>().unwrap())
+        );
+        assert_eq!(buyer_name(&app), Some("Buyer".into()));
+        app.select(Some("Task".parse().unwrap()));
+        assert!(app.draft_name_present);
+        assert_eq!(app.draft, "Order");
+        for name in [Some(String::new()), None] {
+            assert!(app.ctl.mutate(vec![Mutation::Rename {
+                document_id,
+                element_id: "Buyer".parse().unwrap(),
+                name: name.clone()
+            }]));
+            app.select(Some("Buyer".parse().unwrap()));
+            assert_eq!(app.draft_name_present, name.is_some());
+            assert_eq!(app.draft, name.clone().unwrap_or_default());
+            assert_eq!(buyer_name(&app), name);
+        }
+        app.select(Some("Message".parse().unwrap()));
+        assert!(app.is_flow);
+        assert!(app.draft_name_present);
+        assert!(app.draft.is_empty());
+        assert_eq!(app.docs, "Original documentation");
+        app.docs = "Updated documentation".into();
+        app.docs_dirty = true;
+        app.draft_dirty = true;
+        assert!(app.commit_draft(), "{}", app.ctl.error);
+        let snapshot = app.ctl.session.snapshot();
+        let flow = &snapshot.project.documents[0].choreographies[0].message_flows[0];
+        assert_eq!(flow.name.as_deref(), Some(""));
+        assert_eq!(
+            flow.documentation.plain_text(),
+            Some("Updated documentation")
+        );
+    }
+    #[test]
     fn new_task_has_explicit_label_and_exports_in_memory() {
         let mut app = ProcessCraft::default();
         app.add(NodeKind::Task);
@@ -2208,6 +2798,10 @@ mod tests {
             contact: String::new(),
         });
         doc.diagrams[0].shapes.push(Shape {
+            di_metadata: None,
+            is_message_visible: None,
+            participant_band_kind: None,
+            choreography_activity_shape: None,
             label_visibility: None,
             is_horizontal: None,
             is_marker_visible: None,
@@ -2319,6 +2913,8 @@ mod tests {
     #[test]
     fn fit_extents_include_external_label_and_edge() {
         let diagram = Diagram {
+            plane_metadata: None,
+            plane_order: None,
             documentation: None,
             label_styles: Vec::new(),
             resolution: None,
@@ -2327,6 +2923,10 @@ mod tests {
             plane_id: "Plane".parse().unwrap(),
             plane: "Process".parse().unwrap(),
             shapes: vec![Shape {
+                di_metadata: None,
+                is_message_visible: None,
+                participant_band_kind: None,
+                choreography_activity_shape: None,
                 label_visibility: None,
                 is_horizontal: None,
                 is_marker_visible: None,
@@ -2340,6 +2940,7 @@ mod tests {
                     height: 40.0,
                 },
                 label: Some(Label {
+                    di_metadata: None,
                     id: None,
                     style_ref: None,
                     bounds: Some(Bounds {
@@ -2353,6 +2954,8 @@ mod tests {
                 style: None,
             }],
             edges: vec![Edge {
+                di_metadata: None,
+                message_visible_kind: None,
                 label_visibility: None,
                 source_element: None,
                 target_element: None,
@@ -2923,6 +3526,8 @@ mod tests {
 #[path = "app_m2.rs"]
 mod m2;
 
+#[path = "app_band_create.rs"]
+mod band_create;
 #[path = "app_base_metadata.rs"]
 mod base_metadata;
 #[path = "app_call.rs"]
@@ -2947,6 +3552,8 @@ mod data;
 mod definitions_extra;
 #[path = "app_di.rs"]
 mod di;
+#[path = "app_di_metadata.rs"]
+mod di_metadata;
 #[path = "app_di_style.rs"]
 mod di_style;
 #[path = "app_documentation.rs"]
@@ -2961,6 +3568,8 @@ mod inspector;
 mod loop_advanced;
 #[path = "app_mixed_body.rs"]
 mod mixed_body;
+#[path = "app_participant_di.rs"]
+mod participant_di;
 #[path = "app_process_activity.rs"]
 mod process_activity;
 #[path = "app_roles.rs"]

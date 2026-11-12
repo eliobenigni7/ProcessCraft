@@ -775,6 +775,8 @@ fn layout_file_preview_apply_and_stale_guard() {
         flows: vec![],
     });
     doc.diagrams.push(processcraft_core::model::Diagram {
+        plane_metadata: None,
+        plane_order: None,
         documentation: None,
         resolution: None,
         label_styles: vec![],
@@ -783,6 +785,10 @@ fn layout_file_preview_apply_and_stale_guard() {
         plane_id: "plane".parse().unwrap(),
         plane: "process".parse().unwrap(),
         shapes: vec![processcraft_core::model::Shape {
+            di_metadata: None,
+            is_message_visible: None,
+            participant_band_kind: None,
+            choreography_activity_shape: None,
             label_visibility: None,
             is_horizontal: None,
             is_marker_visible: None,

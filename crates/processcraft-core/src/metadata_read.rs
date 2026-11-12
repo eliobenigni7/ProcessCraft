@@ -196,6 +196,9 @@ pub(crate) fn visit_base_metadata<'a>(
         metadata(Some(&c.id), &c.base, &mut visit);
         for p in &c.participants {
             metadata(Some(&p.id), &p.base, &mut visit);
+            if let Some(multiplicity) = &p.multiplicity {
+                metadata(multiplicity.id.as_ref(), &multiplicity.base, &mut visit);
+            }
         }
         for n in &c.conversation_nodes {
             metadata(Some(&n.id), &n.base, &mut visit);
@@ -208,6 +211,9 @@ pub(crate) fn visit_base_metadata<'a>(
         metadata(Some(&c.id), &c.base, &mut visit);
         for p in &c.participants {
             metadata(Some(&p.id), &p.base, &mut visit);
+            if let Some(multiplicity) = &p.multiplicity {
+                metadata(multiplicity.id.as_ref(), &multiplicity.base, &mut visit);
+            }
         }
         for a in &c.activities {
             metadata(Some(&a.id), &a.base, &mut visit);
@@ -334,7 +340,29 @@ impl BpmnDocument {
         fn opaque_body(body: &MixedXml) -> bool {
             matches!(body, MixedXml::Structured(content) if opaque_content(content))
         }
-        let mut found = false;
+        let mut found = self.diagrams.iter().any(|diagram| {
+            let opaque = |metadata: &Option<crate::model::DiElementMetadata>| {
+                metadata.as_ref().is_some_and(|value| {
+                    !value.foreign_attributes.is_empty()
+                        || value.extension.as_ref().is_some_and(opaque_content)
+                })
+            };
+            opaque(&diagram.plane_metadata)
+                || diagram.shapes.iter().any(|shape| {
+                    opaque(&shape.di_metadata)
+                        || shape
+                            .label
+                            .as_ref()
+                            .is_some_and(|label| opaque(&label.di_metadata))
+                })
+                || diagram.edges.iter().any(|edge| {
+                    opaque(&edge.di_metadata)
+                        || edge
+                            .label
+                            .as_ref()
+                            .is_some_and(|label| opaque(&label.di_metadata))
+                })
+        });
         for base in crate::activity_read::activity_read(self).bases {
             found |= !base.foreign_attributes.is_empty()
                 || base

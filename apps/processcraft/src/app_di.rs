@@ -9,6 +9,11 @@ pub(super) enum DiDraft {
         horizontal_allowed: bool,
         marker_allowed: bool,
         label: LabelDraft,
+        metadata: super::di_metadata::DiMetadataDraft,
+        is_message_visible: Option<bool>,
+        band_kind: Option<ParticipantBandKind>,
+        band_owner: Option<super::event::ReferenceDraft>,
+        band_allowed: bool,
     },
     Edge {
         diagram: ElementSelector,
@@ -16,6 +21,9 @@ pub(super) enum DiDraft {
         source: Option<ElementSelector>,
         target: Option<ElementSelector>,
         label: LabelDraft,
+        metadata: super::di_metadata::DiMetadataDraft,
+        message_kind: Option<MessageVisibleKind>,
+        message_allowed: bool,
     },
 }
 
@@ -24,6 +32,7 @@ pub(super) struct LabelDraft {
     explicit: bool,
     kind: u8,
     qualified: Option<super::catalog::QNameDraft>,
+    metadata: super::di_metadata::DiMetadataDraft,
 }
 impl LabelDraft {
     fn new(
@@ -40,8 +49,12 @@ impl LabelDraft {
             Some(DiStyleRef::Local(_)) => 1,
             Some(DiStyleRef::Qualified(_)) => 2,
         };
+        let metadata = super::di_metadata::DiMetadataDraft::new(
+            &value.as_ref().and_then(|label| label.di_metadata.clone()),
+        );
         Self {
             value,
+            metadata,
             explicit: visibility.is_some(),
             kind,
             qualified,
@@ -59,6 +72,7 @@ impl LabelDraft {
             return Ok(());
         }
         let label = self.value.get_or_insert(Label {
+            di_metadata: None,
             id: None,
             bounds: None,
             style: None,
@@ -141,7 +155,15 @@ impl LabelDraft {
                     super::catalog::q_build(&self.qualified)?.map(DiStyleRef::Qualified);
             }
         }
+        ui.collapsing("Label diagram metadata", |ui| self.metadata.ui(ui));
         Ok(())
+    }
+    fn build(&self) -> Result<Option<Label>, String> {
+        let mut value = self.value.clone();
+        if let Some(label) = &mut value {
+            label.di_metadata = self.metadata.build()?;
+        }
+        Ok(value)
     }
     fn visibility(&self) -> Option<processcraft_core::model::DiLabelVisibility> {
         self.explicit
@@ -149,7 +171,24 @@ impl LabelDraft {
     }
 }
 
-fn representation_label(
+fn di_reference_draft(value: &DiReference) -> super::event::ReferenceDraft {
+    match value {
+        DiReference::Local(id) => super::event::ReferenceDraft::Local(Some(id.clone())),
+        DiReference::Qualified(q) => {
+            super::event::ReferenceDraft::Qualified(super::catalog::QNameDraft::from(q))
+        }
+    }
+}
+fn build_di_reference(
+    value: &Option<super::event::ReferenceDraft>,
+) -> Result<Option<DiReference>, String> {
+    Ok(super::event::build_ref(value)?.map(|value| match value {
+        processcraft_core::bpmn_model::EventReference::Local(id) => DiReference::Local(id),
+        processcraft_core::bpmn_model::EventReference::Qualified(q) => DiReference::Qualified(q),
+    }))
+}
+
+pub(super) fn representation_label(
     document: &BpmnDocument,
     element: &ElementSelector,
     kind: &str,
@@ -181,6 +220,19 @@ fn optional_flag(ui: &mut egui::Ui, label: &str, value: &mut Option<bool>, enabl
     });
 }
 impl ProcessCraft {
+    pub(super) fn remove_shape_representation(
+        &mut self,
+        document_id: processcraft_core::ids::DocumentId,
+        diagram_id: ElementSelector,
+        shape_id: ElementSelector,
+    ) -> bool {
+        self.commit_draft()
+            && self.ctl.mutate(vec![Mutation::DeleteShape {
+                document_id,
+                diagram_id,
+                shape_id,
+            }])
+    }
     pub(super) fn di_ui(&mut self, ui: &mut egui::Ui, editable: bool) {
         let snapshot = self.ctl.session.snapshot();
         let Some(document) = snapshot.project.documents.get(self.doc) else {
@@ -204,46 +256,73 @@ impl ProcessCraft {
                     .enumerate()
                     .filter(|(_, shape)| shape.element == selected)
                 {
-                    if ui
-                        .add_enabled(
-                            editable
-                                && self.expression_draft.is_none()
-                                && self.catalog_draft.is_none()
-                                && self.binding_draft.is_none()
-                                && self.data_draft.is_none()
-                                && self.xml_id_draft.is_none(),
-                            egui::Button::new(format!(
-                                "Edit {}",
-                                representation_label(document, &shape.element, "shape", index)
-                            )),
-                        )
-                        .on_hover_text(shape.id.xml_id().map_or_else(
-                            || "XML ID not assigned".to_owned(),
-                            |id| format!("XML ID: {id}"),
-                        ))
-                        .clicked()
-                        && self.commit_draft()
-                    {
-                        let horizontal_allowed = document
-                            .collaboration
-                            .as_ref()
-                            .is_some_and(|c| c.participants.iter().any(|p| p.id == selected))
-                            || processcraft_core::queries::scopes(document)
-                                .iter()
-                                .any(|scope| scope.lanes.iter().any(|lane| lane.id == selected));
-                        let marker_allowed =
-                            processcraft_core::queries::find_node(document, &selected)
-                                .is_some_and(|node| node.kind == NodeKind::ExclusiveGateway);
-                        self.di_draft = Some(DiDraft::Shape {
-                            diagram: diagram.id.selector(),
-                            shape: shape.id.selector(),
-                            horizontal: shape.is_horizontal,
-                            marker: shape.is_marker_visible,
-                            horizontal_allowed,
-                            marker_allowed,
-                            label: LabelDraft::new(shape.label.clone(), shape.label_visibility),
-                        });
-                    }
+                    ui.push_id(shape.id.selector(), |ui| {
+                        if ui
+                            .add_enabled(
+                                editable
+                                    && self.expression_draft.is_none()
+                                    && self.catalog_draft.is_none()
+                                    && self.binding_draft.is_none()
+                                    && self.data_draft.is_none()
+                                    && self.xml_id_draft.is_none(),
+                                egui::Button::new(format!(
+                                    "Edit {}",
+                                    representation_label(document, &shape.element, "shape", index)
+                                )),
+                            )
+                            .on_hover_text(shape.id.xml_id().map_or_else(
+                                || "XML ID not assigned".to_owned(),
+                                |id| format!("XML ID: {id}"),
+                            ))
+                            .clicked()
+                            && self.commit_draft()
+                        {
+                            let horizontal_allowed =
+                                document.collaboration.as_ref().is_some_and(|c| {
+                                    c.participants.iter().any(|p| p.id == selected)
+                                }) || processcraft_core::queries::scopes(document).iter().any(
+                                    |scope| scope.lanes.iter().any(|lane| lane.id == selected),
+                                );
+                            let marker_allowed =
+                                processcraft_core::queries::find_node(document, &selected)
+                                    .is_some_and(|node| node.kind == NodeKind::ExclusiveGateway);
+                            self.di_draft = Some(DiDraft::Shape {
+                                diagram: diagram.id.selector(),
+                                shape: shape.id.selector(),
+                                horizontal: shape.is_horizontal,
+                                marker: shape.is_marker_visible,
+                                horizontal_allowed,
+                                marker_allowed,
+                                label: LabelDraft::new(shape.label.clone(), shape.label_visibility),
+                                metadata: super::di_metadata::DiMetadataDraft::new(
+                                    &shape.di_metadata,
+                                ),
+                                is_message_visible: shape.is_message_visible,
+                                band_kind: shape.participant_band_kind,
+                                band_owner: shape
+                                    .choreography_activity_shape
+                                    .as_ref()
+                                    .map(di_reference_draft),
+                                band_allowed: document
+                                    .choreographies
+                                    .iter()
+                                    .any(|c| c.participants.iter().any(|p| p.id == shape.element)),
+                            });
+                        }
+                        if ui
+                            .add_enabled(
+                                editable,
+                                egui::Button::new("Remove representation from this diagram"),
+                            )
+                            .clicked()
+                        {
+                            self.remove_shape_representation(
+                                document.id,
+                                diagram.id.selector(),
+                                shape.id.selector(),
+                            );
+                        }
+                    });
                 }
                 for (index, edge) in diagram
                     .edges
@@ -277,6 +356,16 @@ impl ProcessCraft {
                             source: edge.source_element.clone(),
                             target: edge.target_element.clone(),
                             label: LabelDraft::new(edge.label.clone(), edge.label_visibility),
+                            metadata: super::di_metadata::DiMetadataDraft::new(&edge.di_metadata),
+                            message_kind: edge.message_visible_kind,
+                            message_allowed: document.collaboration.as_ref().is_some_and(|c| {
+                                c.flows
+                                    .iter()
+                                    .any(|f| f.id == edge.element && f.kind == FlowKind::Message)
+                            }) || document
+                                .choreographies
+                                .iter()
+                                .any(|c| c.message_flows.iter().any(|f| f.id == edge.element)),
                         });
                     }
                 }
@@ -287,6 +376,7 @@ impl ProcessCraft {
         ui.strong("Diagram representation");
         let mut change = None;
         let mut label_change = None;
+        let mut representation_change = None;
         match draft {
             DiDraft::Shape {
                 diagram: diagram_id,
@@ -296,6 +386,11 @@ impl ProcessCraft {
                 horizontal_allowed,
                 marker_allowed,
                 label,
+                metadata,
+                is_message_visible,
+                band_kind,
+                band_owner,
+                band_allowed,
             } => {
                 optional_flag(
                     ui,
@@ -310,7 +405,71 @@ impl ProcessCraft {
                 if !*marker_allowed && marker.is_some() {
                     ui.label("Imported marker visibility retained for this shape.");
                 }
-                let label_error = label.ui(ui, diagram).err();
+                if *band_allowed {
+                    optional_flag(ui, "Message visible on band", is_message_visible, true);
+                    egui::ComboBox::from_label("Participant band position and role")
+                        .selected_text(match band_kind {
+                            None => "Unspecified",
+                            Some(ParticipantBandKind::TopInitiating) => "Top · initiating",
+                            Some(ParticipantBandKind::MiddleInitiating) => "Middle · initiating",
+                            Some(ParticipantBandKind::BottomInitiating) => "Bottom · initiating",
+                            Some(ParticipantBandKind::TopNonInitiating) => "Top · non-initiating",
+                            Some(ParticipantBandKind::MiddleNonInitiating) => {
+                                "Middle · non-initiating"
+                            }
+                            Some(ParticipantBandKind::BottomNonInitiating) => {
+                                "Bottom · non-initiating"
+                            }
+                        })
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(band_kind, None, "Unspecified");
+                            for (v, label) in [
+                                (ParticipantBandKind::TopInitiating, "Top · initiating"),
+                                (ParticipantBandKind::MiddleInitiating, "Middle · initiating"),
+                                (ParticipantBandKind::BottomInitiating, "Bottom · initiating"),
+                                (
+                                    ParticipantBandKind::TopNonInitiating,
+                                    "Top · non-initiating",
+                                ),
+                                (
+                                    ParticipantBandKind::MiddleNonInitiating,
+                                    "Middle · non-initiating",
+                                ),
+                                (
+                                    ParticipantBandKind::BottomNonInitiating,
+                                    "Bottom · non-initiating",
+                                ),
+                            ] {
+                                ui.selectable_value(band_kind, Some(v), label);
+                            }
+                        });
+                    let choices = diagram
+                        .shapes
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, s)| {
+                            document.choreographies.iter().any(|c| {
+                                c.activities.iter().any(|a| {
+                                    a.id == s.element && a.participant_refs.contains(&selected)
+                                })
+                            })
+                        })
+                        .map(|(i, s)| {
+                            (
+                                s.id.selector(),
+                                representation_label(document, &s.element, "Activity shape", i),
+                            )
+                        })
+                        .collect::<Vec<_>>();
+                    super::event::ref_ui(ui, "Choreography activity shape", band_owner, &choices);
+                }
+                ui.collapsing("Shape diagram metadata", |ui| metadata.ui(ui));
+                let label_error = label
+                    .ui(ui, diagram)
+                    .err()
+                    .or_else(|| metadata.build().err())
+                    .or_else(|| build_di_reference(band_owner).err())
+                    .or_else(|| label.build().err());
                 if let Some(error) = &label_error {
                     ui.label(error);
                 }
@@ -321,11 +480,21 @@ impl ProcessCraft {
                     )
                     .clicked()
                 {
+                    representation_change = Some(Mutation::SetShapeRepresentationMetadata {
+                        document_id: document.id,
+                        diagram_id: diagram_id.clone(),
+                        shape_id: shape.clone(),
+                        metadata: metadata.build().expect("validated metadata"),
+                        is_message_visible: *is_message_visible,
+                        participant_band_kind: *band_kind,
+                        choreography_activity_shape: build_di_reference(band_owner)
+                            .expect("validated reference"),
+                    });
                     label_change = Some(Mutation::SetShapeLabel {
                         document_id: document.id,
                         diagram_id: diagram_id.clone(),
                         shape_id: shape.clone(),
-                        label: label.value.clone(),
+                        label: label.build().expect("validated label"),
                         label_visibility: label.visibility(),
                     });
                     change = Some(Mutation::SetShapeDiAttributes {
@@ -343,6 +512,9 @@ impl ProcessCraft {
                 source,
                 target,
                 label,
+                metadata,
+                message_kind,
+                message_allowed,
             } => {
                 let candidates = diagram
                     .shapes
@@ -385,7 +557,33 @@ impl ProcessCraft {
                             }
                         });
                 }
-                let label_error = label.ui(ui, diagram).err();
+                if *message_allowed {
+                    egui::ComboBox::from_label("Message visibility")
+                        .selected_text(match message_kind {
+                            None => "Unspecified",
+                            Some(MessageVisibleKind::Initiating) => "Initiating",
+                            Some(MessageVisibleKind::NonInitiating) => "Non-initiating",
+                        })
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(message_kind, None, "Unspecified");
+                            ui.selectable_value(
+                                message_kind,
+                                Some(MessageVisibleKind::Initiating),
+                                "Initiating",
+                            );
+                            ui.selectable_value(
+                                message_kind,
+                                Some(MessageVisibleKind::NonInitiating),
+                                "Non-initiating",
+                            );
+                        });
+                }
+                ui.collapsing("Edge diagram metadata", |ui| metadata.ui(ui));
+                let label_error = label
+                    .ui(ui, diagram)
+                    .err()
+                    .or_else(|| metadata.build().err())
+                    .or_else(|| label.build().err());
                 if let Some(error) = &label_error {
                     ui.label(error);
                 }
@@ -396,11 +594,18 @@ impl ProcessCraft {
                     )
                     .clicked()
                 {
+                    representation_change = Some(Mutation::SetEdgeRepresentationMetadata {
+                        document_id: document.id,
+                        diagram_id: diagram_id.clone(),
+                        edge_id: edge.clone(),
+                        metadata: metadata.build().expect("validated metadata"),
+                        message_visible_kind: *message_kind,
+                    });
                     label_change = Some(Mutation::SetEdgeLabel {
                         document_id: document.id,
                         diagram_id: diagram_id.clone(),
                         edge_id: edge.clone(),
-                        label: label.value.clone(),
+                        label: label.build().expect("validated label"),
                         label_visibility: label.visibility(),
                     });
                     change = Some(Mutation::SetEdgeDiEndpoints {
@@ -417,6 +622,7 @@ impl ProcessCraft {
             && self.ctl.mutate(vec![
                 change,
                 label_change.expect("label change accompanies diagram change"),
+                representation_change.expect("representation change accompanies diagram change"),
             ])
         {
             self.di_draft = None;
@@ -447,6 +653,11 @@ mod tests {
             horizontal_allowed: false,
             marker_allowed: true,
             label: LabelDraft::new(None, None),
+            metadata: super::super::di_metadata::DiMetadataDraft::new(&None),
+            is_message_visible: None,
+            band_kind: None,
+            band_owner: None,
+            band_allowed: false,
         });
         assert!(!app.commit_draft());
         app.select(None);
@@ -463,6 +674,18 @@ mod tests {
         let document_id = document.id;
         let diagram_id = diagram.id.selector();
         let shape_id = shape.id.selector();
+        assert!(!app.remove_shape_representation(
+            document_id,
+            diagram_id.clone(),
+            shape_id.clone()
+        ));
+        assert_eq!(
+            app.ctl.session.snapshot().project.documents[0].diagrams[0]
+                .shapes
+                .len(),
+            1
+        );
+        assert!(app.di_draft.is_some());
         app.di_draft = None;
         assert!(app.ctl.mutate(vec![Mutation::SetShapeDiAttributes {
             document_id,

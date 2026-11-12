@@ -6,6 +6,8 @@ pub(super) struct StyleDraft {
     documentation: Option<String>,
     resolution: Option<String>,
     styles: Vec<StyleRow>,
+    plane_metadata: super::di_metadata::DiMetadataDraft,
+    plane_order: Option<Vec<ElementSelector>>,
     error: String,
 }
 struct StyleRow {
@@ -18,6 +20,8 @@ impl StyleDraft {
             diagram: diagram.id.selector(),
             documentation: diagram.documentation.clone(),
             resolution: diagram.resolution.map(|v| v.to_string()),
+            plane_metadata: super::di_metadata::DiMetadataDraft::new(&diagram.plane_metadata),
+            plane_order: diagram.plane_order.clone(),
             styles: diagram
                 .label_styles
                 .iter()
@@ -29,7 +33,62 @@ impl StyleDraft {
             error: String::new(),
         }
     }
-    fn ui(&mut self, ui: &mut egui::Ui) {
+    fn ui(&mut self, ui: &mut egui::Ui, diagram: &Diagram, document: &BpmnDocument) {
+        ui.collapsing("Plane diagram metadata", |ui| self.plane_metadata.ui(ui));
+        ui.collapsing("Representation order", |ui| {
+            let mut explicit = self.plane_order.is_some();
+            ui.checkbox(&mut explicit, "Explicit order");
+            if explicit {
+                let order = self.plane_order.get_or_insert_with(|| {
+                    diagram
+                        .shapes
+                        .iter()
+                        .map(|s| s.id.selector())
+                        .chain(diagram.edges.iter().map(|e| e.id.selector()))
+                        .collect()
+                });
+                let mut up = None;
+                for (i, id) in order.iter().enumerate() {
+                    ui.push_id(i, |ui| {
+                        let label = diagram
+                            .shapes
+                            .iter()
+                            .enumerate()
+                            .find(|(_, s)| s.id == *id)
+                            .map(|(j, s)| {
+                                super::di::representation_label(document, &s.element, "Shape", j)
+                            })
+                            .or_else(|| {
+                                diagram
+                                    .edges
+                                    .iter()
+                                    .enumerate()
+                                    .find(|(_, e)| e.id == *id)
+                                    .map(|(j, e)| {
+                                        super::di::representation_label(
+                                            document, &e.element, "Edge", j,
+                                        )
+                                    })
+                            })
+                            .unwrap_or_else(|| "Unavailable representation".into());
+                        ui.horizontal(|ui| {
+                            ui.label(label);
+                            if ui
+                                .add_enabled(i > 0, egui::Button::new("Move up"))
+                                .clicked()
+                            {
+                                up = Some(i);
+                            }
+                        });
+                    });
+                }
+                if let Some(i) = up {
+                    order.swap(i, i - 1);
+                }
+            } else {
+                self.plane_order = None;
+            }
+        });
         optional_text(ui, "Diagram documentation", &mut self.documentation);
         optional_text(ui, "Resolution", &mut self.resolution);
         let mut remove = None;
@@ -87,14 +146,27 @@ impl StyleDraft {
         &self,
         document_id: processcraft_core::ids::DocumentId,
     ) -> Result<Vec<Mutation>, String> {
-        fn number(value: &Option<String>, label: &str) -> Result<Option<f64>, String> {
+        fn number(
+            value: &Option<String>,
+            label: &str,
+            allow_zero: bool,
+        ) -> Result<Option<f64>, String> {
             value
                 .as_ref()
                 .map(|s| {
                     s.parse::<f64>()
                         .ok()
-                        .filter(|n| n.is_finite() && *n > 0.)
-                        .ok_or_else(|| format!("{label} must be a positive number."))
+                        .filter(|n| n.is_finite() && (*n > 0. || (allow_zero && *n == 0.)))
+                        .ok_or_else(|| {
+                            format!(
+                                "{label} must be {} number.",
+                                if allow_zero {
+                                    "a non-negative"
+                                } else {
+                                    "a positive"
+                                }
+                            )
+                        })
                 })
                 .transpose()
         }
@@ -102,7 +174,7 @@ impl StyleDraft {
         for row in &self.styles {
             let mut style = row.value.clone();
             if let Some(font) = &mut style.font {
-                font.size = number(&row.size, "Font size")?;
+                font.size = number(&row.size, "Font size", true)?;
             }
             styles.push(style);
         }
@@ -111,12 +183,22 @@ impl StyleDraft {
                 document_id,
                 diagram_id: self.diagram.clone(),
                 documentation: self.documentation.clone(),
-                resolution: number(&self.resolution, "Resolution")?,
+                resolution: number(&self.resolution, "Resolution", false)?,
             },
             Mutation::SetDiagramLabelStyles {
                 document_id,
                 diagram_id: self.diagram.clone(),
                 label_styles: styles,
+            },
+            Mutation::SetDiagramPlaneMetadata {
+                document_id,
+                diagram_id: self.diagram.clone(),
+                metadata: self.plane_metadata.build()?,
+            },
+            Mutation::SetDiagramPlaneOrder {
+                document_id,
+                diagram_id: self.diagram.clone(),
+                order: self.plane_order.clone(),
             },
         ])
     }
@@ -145,7 +227,11 @@ impl ProcessCraft {
         if draft.diagram != diagram.id.selector() {
             return;
         }
-        draft.ui(ui);
+        let snapshot = self.ctl.session.snapshot();
+        let Some(document) = snapshot.project.documents.get(self.doc) else {
+            return;
+        };
+        draft.ui(ui, diagram, document);
         if !draft.error.is_empty() {
             ui.label(&draft.error);
         }
@@ -163,5 +249,60 @@ impl ProcessCraft {
         if ui.button("Cancel diagram fonts and details").clicked() {
             self.style_draft = None;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn plane_order_draft_applies_and_undo_redo_keeps_representation_ids() {
+        let mut app = ProcessCraft::default();
+        app.add(NodeKind::Task);
+        app.add(NodeKind::Task);
+        let snap = app.ctl.session.snapshot();
+        let document = &snap.project.documents[0];
+        let diagram = &document.diagrams[0];
+        let document_id = document.id;
+        let mut draft = StyleDraft::new(diagram);
+        let order = diagram
+            .shapes
+            .iter()
+            .rev()
+            .map(|shape| shape.id.selector())
+            .collect::<Vec<_>>();
+        draft.plane_order = Some(order.clone());
+        assert!(app.ctl.mutate(draft.changes(document_id).unwrap()));
+        assert_eq!(
+            app.ctl.session.snapshot().project.documents[0].diagrams[0].plane_order,
+            Some(order.clone())
+        );
+        app.history(Request::Undo);
+        assert_eq!(
+            app.ctl.session.snapshot().project.documents[0].diagrams[0].plane_order,
+            None
+        );
+        app.history(Request::Redo);
+        assert_eq!(
+            app.ctl.session.snapshot().project.documents[0].diagrams[0].plane_order,
+            Some(order)
+        );
+    }
+    #[test]
+    fn font_size_zero_is_preserved() {
+        let app = ProcessCraft::default();
+        let snapshot = app.ctl.session.snapshot();
+        let mut draft = StyleDraft::new(&snapshot.project.documents[0].diagrams[0]);
+        draft.styles.push(StyleRow {
+            value: LabelStyle {
+                id: None,
+                font: Some(DiFont::default()),
+            },
+            size: Some("0".into()),
+        });
+        let changes = draft.changes(snapshot.project.documents[0].id).unwrap();
+        assert!(
+            matches!(&changes[1],Mutation::SetDiagramLabelStyles{label_styles,..} if label_styles[0].font.as_ref().unwrap().size==Some(0.0))
+        );
     }
 }

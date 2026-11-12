@@ -277,6 +277,15 @@ pub fn find_flow<'a>(document: &'a BpmnDocument, id: &ElementSelector) -> Option
                 .iter()
                 .find(|flow| &flow.id.selector() == id)
         })
+        .or_else(|| {
+            document.choreographies.iter().find_map(|choreography| {
+                choreography
+                    .message_flows
+                    .iter()
+                    .chain(&choreography.sequence_flows)
+                    .find(|flow| &flow.id.selector() == id)
+            })
+        })
 }
 pub fn element_name<'a>(document: &'a BpmnDocument, id: &ElementSelector) -> Option<&'a str> {
     if let Some(task) = document.global_tasks.iter().find(|task| {
@@ -312,6 +321,52 @@ pub fn element_name<'a>(document: &'a BpmnDocument, id: &ElementSelector) -> Opt
         }
         if let Some(flow) = scope.flows.iter().find(|f| &f.id.selector() == id) {
             return Some(flow.name.as_deref().unwrap_or(""));
+        }
+    }
+    for choreography in &document.choreographies {
+        if &choreography.id.selector() == id {
+            return Some(choreography.name.as_deref().unwrap_or(""));
+        }
+        if let Some(participant) = choreography
+            .participants
+            .iter()
+            .find(|participant| &participant.id.selector() == id)
+        {
+            return Some(participant.name.as_deref().unwrap_or(""));
+        }
+        if let Some(activity) = choreography
+            .activities
+            .iter()
+            .find(|activity| &activity.id.selector() == id)
+        {
+            return Some(activity.name.as_deref().unwrap_or(""));
+        }
+        if let Some(flow) = choreography
+            .message_flows
+            .iter()
+            .chain(&choreography.sequence_flows)
+            .find(|flow| &flow.id.selector() == id)
+        {
+            return Some(flow.name.as_deref().unwrap_or(""));
+        }
+    }
+    if let Some(collaboration) = &document.collaboration {
+        if &collaboration.id.selector() == id {
+            return Some(collaboration.name.as_deref().unwrap_or(""));
+        }
+        if let Some(node) = collaboration
+            .conversation_nodes
+            .iter()
+            .find(|node| &node.id.selector() == id)
+        {
+            return Some(node.name.as_deref().unwrap_or(""));
+        }
+        if let Some(link) = collaboration
+            .conversation_links
+            .iter()
+            .find(|link| &link.id.selector() == id)
+        {
+            return Some(link.name.as_deref().unwrap_or(""));
         }
     }
     document.collaboration.as_ref().and_then(|c| {
@@ -550,6 +605,8 @@ pub struct ElementChange {
 pub struct DiagramChange {
     pub document_id: DocumentId,
     pub diagram_id: ElementSelector,
+    #[serde(default)]
+    pub properties: Vec<PropertyDifference>,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
@@ -734,9 +791,21 @@ pub fn compare_checkpoint(project: &ProjectData, id: CheckpointId) -> Option<Che
                     serde_json::to_value(old).ok() != serde_json::to_value(diagram).ok()
                 })
             {
+                let mut properties = vec![];
+                let old = before
+                    .diagrams
+                    .iter()
+                    .find(|old| old.id == diagram.id)
+                    .map(serde_json::to_value)
+                    .transpose()
+                    .ok()?
+                    .unwrap_or(serde_json::Value::Null);
+                let new = serde_json::to_value(diagram).ok()?;
+                diagram_property_differences(&old, &new, "", &mut properties);
                 changed_diagrams.push(DiagramChange {
                     document_id: document.id,
                     diagram_id: diagram.id.selector(),
+                    properties,
                 });
             }
         }
@@ -748,6 +817,11 @@ pub fn compare_checkpoint(project: &ProjectData, id: CheckpointId) -> Option<Che
             changed_diagrams.push(DiagramChange {
                 document_id: document.id,
                 diagram_id: diagram.id.selector(),
+                properties: vec![PropertyDifference {
+                    property: String::new(),
+                    before: serde_json::to_value(diagram).ok()?,
+                    after: serde_json::Value::Null,
+                }],
             });
         }
     }
@@ -890,6 +964,45 @@ fn semantic_properties(
         }
     }
     Some(result)
+}
+
+fn diagram_property_differences(
+    before: &serde_json::Value,
+    after: &serde_json::Value,
+    path: &str,
+    result: &mut Vec<PropertyDifference>,
+) {
+    use serde_json::Value;
+    match (before, after) {
+        (Value::Object(old), Value::Object(new)) => {
+            let keys: std::collections::BTreeSet<_> = old.keys().chain(new.keys()).collect();
+            for key in keys {
+                let pointer = format!("{path}/{}", key.replace('~', "~0").replace('/', "~1"));
+                diagram_property_differences(
+                    old.get(key).unwrap_or(&Value::Null),
+                    new.get(key).unwrap_or(&Value::Null),
+                    &pointer,
+                    result,
+                );
+            }
+        }
+        (Value::Array(old), Value::Array(new)) => {
+            for index in 0..old.len().max(new.len()) {
+                diagram_property_differences(
+                    old.get(index).unwrap_or(&Value::Null),
+                    new.get(index).unwrap_or(&Value::Null),
+                    &format!("{path}/{index}"),
+                    result,
+                );
+            }
+        }
+        _ if before != after => result.push(PropertyDifference {
+            property: path.into(),
+            before: before.clone(),
+            after: after.clone(),
+        }),
+        _ => {}
+    }
 }
 
 fn property_differences(

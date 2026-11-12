@@ -26,6 +26,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     document.diagrams[0].shapes[0].label = None;
     document.diagrams[0].shapes[1].label_visibility = None;
     document.diagrams[0].shapes[1].label = Some(Label {
+        di_metadata: None,
         bounds: Some(Bounds {
             x: 210.0,
             y: 170.0,

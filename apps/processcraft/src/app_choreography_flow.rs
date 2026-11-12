@@ -243,6 +243,7 @@ mod tests {
             ..Default::default()
         };
         let flow = Flow {
+            message_ref: None,
             id: "Flow".parse().unwrap(),
             kind: FlowKind::Sequence,
             source: "Source".parse().unwrap(),
