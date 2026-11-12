@@ -1,72 +1,248 @@
 # ProcessCraft
 
-An offline desktop workbench for process analysts. The agreed direction is a native Rust application following the Craft Apps philosophy, with Signavio as the primary modeling reference. Product copy, design tokens, component names, and documentation use English.
+**An offline, native BPMN 2.0 process modeling workbench written in Rust.**
+
+ProcessCraft is a desktop application, a headless command-line tool and a local [Model Context Protocol](https://modelcontextprotocol.io) server that share one process engine. It runs entirely on your machine: no account, no cloud service, no telemetry. Projects are portable files you own.
+
+> **Status: pre-alpha (0.1).** ProcessCraft is usable for modeling and BPMN interchange, but it has not had a public release yet, file formats may still change between versions, and writable storage has so far only been qualified on Windows (local NTFS). See [Project status](#project-status) for what is and is not verified.
+
+---
+
+## Contents
+
+- [Features](#features)
+- [Project status](#project-status)
+- [Getting started](#getting-started)
+- [Using the desktop app](#using-the-desktop-app)
+- [Command-line interface](#command-line-interface)
+- [MCP server for AI agents](#mcp-server-for-ai-agents)
+- [BPMN interchange](#bpmn-interchange)
+- [The `.processcraft` project format](#the-processcraft-project-format)
+- [Architecture](#architecture)
+- [Development](#development)
+- [Documentation map](#documentation-map)
+- [Contributing](#contributing)
+- [License](#license)
+
+---
+
+## Features
+
+### Modeling canvas
+
+The canvas follows the interaction model of [bpmn-js](https://bpmn.io), re-implemented natively in Rust:
+
+- **Context pad** next to the selected element: append task, gateway, intermediate or end event, text annotation; connect; change type; delete. Lanes and pools offer *add lane above/below* and *divide into 2/3 lanes*.
+- **Connect** by dragging from the pad or with two clicks. BPMN rules pick the connection type automatically (sequence flow, message flow between pools, data input/output association, association, compensation association) and the target is highlighted green or red with the reason when a connection is not allowed. Dropping a connection on empty canvas offers to create a connected element there.
+- **Auto-place** of appended elements using the spacing of existing neighbours, with collision avoidance; **Manhattan routing** with BPMN preferred layouts (gateways, loops, boundary events, message flows).
+- **Change type** (`R` or the wrench): tasks ↔ user/service/script/… tasks, gateway kinds, event types and positions (start, intermediate, end, boundary, interrupting or not), sub-process variants, collapse/expand, data object ↔ data store, sequence flow plain/default/conditional. IDs, names, documentation and valid connections are kept; changes that would lose data are refused with an explanation.
+- **Direct manipulation:** move with snapping guides (or a 10 px grid), resize where BPMN allows it, boundary events that follow their activity, attach/detach events by dropping them on or off an activity border, drop an element onto a flow to insert it, edit bendpoints and segments, reconnect flow ends, drag elements from the palette with a live preview.
+- **Pools, lanes and containers:** add, split, resize and delete lanes; pools and sub-processes grow when content reaches their border; a new pool wraps existing content; a **space tool** (`S`) inserts or removes space.
+- **Editing productivity:** inline label and annotation editing (`E` or double-click), copy/cut/paste/duplicate with fresh IDs, select all, align and distribute, canvas search (`Ctrl+F`), keyboard nudging, undo/redo for every change.
+- **Automatic layout** of a whole diagram with a preview before applying.
+
+### Analyst workbench
+
+- A **local library** of models organised in folders, with search.
+- A **project dictionary** (roles, systems, documents) linked to model elements, with reverse usages and safe rename.
+- An **activity table** synchronised with the diagram, editable in place.
+- A **problems** panel with BPMN validation linked to the exact element.
+- **Comments** on elements, **named checkpoints**, comparison against a reference version and restore.
+- **Export** to SVG, PNG and PDF, light and dark appearance; SVG text is searchable.
+- Light and dark themes, keyboard-first operation, remembered window layout and recent files.
+
+### Automation
+
+- A **CLI** that applies the same typed commands as the GUI from JSON batches, queries projects, validates, imports/exports BPMN and renders images.
+- An **MCP server** (stdio) so AI agents can read and edit a project, or the project currently open in the desktop app, through the same commands and with explicit file permissions.
+
+### Reliability
+
+- Every change is an atomic, undoable command; a failed batch leaves the project untouched.
+- Atomic saves, crash recovery snapshots and detection of external file changes.
+- Bounded parsers and archive readers: hostile or oversized files are refused rather than processed.
+- No `unsafe` code outside three reviewed Windows OS adapters.
+
+## Project status
+
+| Area | State |
+|---|---|
+| Desktop modeling, analyst views, CLI, MCP | Implemented and covered by automated tests (about 1,100 tests) |
+| BPMN 2.0 import/export | A broad, tested profile. Content outside it is preserved byte-for-byte or refused, never silently dropped. **Not** a claim of complete BPMN 2.0.2 coverage or OMG conformance; see [`docs/research/bpmn-2-coverage.md`](docs/research/bpmn-2-coverage.md). Typical Camunda Modeler and bpmn.io files open as editable models. |
+| Platforms | Developed and qualified on **Windows 11 x64**. The code is portable Rust, but macOS and Linux have not been tested yet (dialogs, file locking, fonts, paths). |
+| Accessibility | Keyboard operation for core workflows. Screen-reader support for the custom canvas (Windows Narrator) is **not** yet qualified. |
+| Performance | Measured on a 2,000–4,000 element model: rename ≈ 36–41 ms, undo ≈ 5–11 ms, validation ≈ 20–50 ms. Formal targets are tracked in the [solution design](docs/design/solution-design.md#19-performance-targets). |
+| Packaging | No installer or signed binaries yet; build from source. |
+
+Planned next (milestone M4, "desktop alpha"): Windows installer and file association, accessibility and performance qualification, and a documented capability matrix. See [`docs/plans/`](docs/plans/).
+
+## Getting started
+
+### Requirements
+
+- **Rust 1.98.1** — installed automatically by [rustup](https://rustup.rs) from [`rust-toolchain.toml`](rust-toolchain.toml).
+- **Git**, to fetch pinned forks of [egui](https://github.com/storytold/egui), [winit](https://github.com/storytold/winit) and [craft-libs](https://github.com/storytold/craft-libs) on the first build.
+- Windows 10/11 x64 is the supported platform today.
+
+### Build and run
+
+```sh
+git clone <this repository> ProcessCraft
+cd ProcessCraft
+
+# Desktop application
+cargo run --release -p processcraft
+
+# Command-line tool
+cargo run --release -p processcraft-cli -- --help
+```
+
+The first build downloads dependencies. Afterwards everything builds with `--locked --offline`.
+
+## Using the desktop app
+
+| Action | How |
+|---|---|
+| Add an element | Click a palette entry (auto-placed, connected to the selection) or drag it onto the canvas |
+| Append / connect / change type / delete | Context pad next to the selection |
+| Connect | Drag from the pad's connect entry, or click it and then click the target |
+| Rename | Double-click or `E`; annotations accept multi-line text (`Ctrl+Enter` to finish) |
+| Change type | `R` |
+| Pan / zoom | Drag empty canvas, middle mouse or `Space`+drag / `Ctrl`+wheel, `Ctrl` `+` `−` `0` |
+| Select | Click, `Shift`+click to toggle, `Shift`+drag for a box, `Ctrl+A` for all |
+| Move precisely | Arrow keys (1 px), `Shift`+arrows (10 px); hold `Alt` to drag without snapping |
+| Clipboard | `Ctrl+C` `Ctrl+X` `Ctrl+V` `Ctrl+D`; pasting BPMN XML copied from another tool imports it as a new model |
+| Find | `Ctrl+F` |
+| Space tool | `S`, drag to insert or remove space, `Esc` to leave |
+| Undo / redo | `Ctrl+Z` / `Ctrl+Y` or `Ctrl+Shift+Z` |
+| Save / open / new | `Ctrl+S` / `Ctrl+O` / `Ctrl+N` |
+
+Properties of the selected element are edited in the **Properties** panel; fields apply when you press Enter or leave them. Rarely used BPMN and XML details live under **Advanced**.
+
+## Command-line interface
+
+`processcraft-cli` runs the same commands as the desktop app, without a window.
+
+```sh
+# Describe every command and print the JSON Schema of the request protocol
+processcraft-cli commands --json
+
+# Create a project from a batch of commands
+processcraft-cli run --new Procurement --batch tests/fixtures/commands/procurement.json --out procurement.processcraft
+
+# Inspect, validate, query
+processcraft-cli info procurement.processcraft
+processcraft-cli validate procurement.processcraft --json
+processcraft-cli query procurement.processcraft dictionary
+
+# BPMN interchange
+processcraft-cli import-bpmn diagram.bpmn --out diagram.processcraft
+processcraft-cli export-bpmn diagram.processcraft --document-id <id> --out diagram.bpmn
+
+# Images
+processcraft-cli export-image diagram.processcraft --document-id <id> --diagram-id <id> --format svg --out diagram.svg
+
+# Automatic layout
+processcraft-cli layout-preview diagram.processcraft --document-id <id> --diagram-id <id> --out proposal.json
+processcraft-cli layout-apply diagram.processcraft --proposal proposal.json --out laid-out.processcraft
+```
+
+`info` lists document and diagram IDs. Every subcommand documents its options with `--help`. A batch is a JSON list of typed mutations; it is applied atomically and becomes one undo step. The modeling operations of the canvas (`append`, `connect`, `replaceElement`, `moveElements`, `resizeShape`, `addLane`, `align`, `duplicate`, …) are available as batch commands too.
+
+## MCP server for AI agents
+
+```sh
+# Standalone: an agent works on a project file, with explicit folder permissions
+processcraft-cli mcp --in project.processcraft --read-root C:\models --write-root C:\models\out
+
+# Attached: an agent edits the project open in the desktop app
+processcraft-cli mcp --attach <endpoint> --session <session> --token <token>
+```
+
+The MCP tools expose the same command descriptors, queries and validation as the CLI. Nothing listens by default: attachment is enabled from the desktop app (**Enable attachment**), which shows the endpoint, session and token, and file access is limited to folders you authorize. Attachment currently uses a same-user Windows named pipe. Keep the token private.
+
+## BPMN interchange
+
+ProcessCraft reads and writes BPMN 2.0 XML with diagram interchange (DI). An import ends in one of three modes:
+
+| Mode | Meaning |
+|---|---|
+| **Editable** | The model fits the qualified profile and is fully editable. |
+| **Editable with retained extensions** | Vendor extensions (e.g. Camunda attributes) are kept verbatim; structural edits that could invalidate them are blocked. |
+| **Preserved source** | The original XML is kept byte-for-byte and can be exported unchanged; the import report says which element or attribute prevented editing. |
+
+The governing rule is: **content outside the qualified profile is preserved or refused, never silently dropped or reinterpreted.** Parsing is bounded, rejects DTDs and external entities, and never loads remote resources. Coverage details are tracked element by element in [`docs/research/bpmn-2-coverage.md`](docs/research/bpmn-2-coverage.md) and checked against the pinned OMG schemas in [`tests/fixtures/bpmn20-schema/`](tests/fixtures/bpmn20-schema/).
+
+## The `.processcraft` project format
+
+A project is a single ZIP package containing versioned JSON (schema 3) and resources: one or more BPMN documents with their diagrams, the dictionary, folders, comments and immutable checkpoints. Saves are atomic (write, verify, replace), a sidecar lock prevents two writers, and recovery snapshots are kept outside the project. Older schema versions are verified and migrated on open and must be saved under a new name. The format is described in [section 8 of the solution design](docs/design/solution-design.md#8-native-project-format).
 
 ## Architecture
 
-[Architectural solution design](docs/design/solution-design.md): source comparison across seven Craft applications, domain and command contracts, native format, interoperability, rendering, automation, verification, and delivery gates.
+```text
+apps/processcraft        desktop app (egui)  ─┐
+apps/processcraft-cli    CLI + MCP server     ─┼─▶ processcraft-io ─────┐
+                                               └─▶ processcraft-render ─┴─▶ processcraft-core
+```
 
-[Implementation plan](docs/plans/m0-m1-implementation-plan.md): M0 and M1 are implemented. The [M2 plan](docs/plans/m2-implementation-plan.md) implements library, dictionary, table, qualified interchange, image export and local automation. See the [M2 evidence](docs/implementation/m2-evidence.md) for checks and limits. The [expanded M3 plan](docs/plans/m3-implementation-plan.md) now has a partial implementation; the user requested a temporary stop at this delivery. See [M3 evidence and remaining scope](docs/implementation/m3-evidence.md). M4 remains planned.
+| Crate | Responsibility |
+|---|---|
+| `processcraft-core` | Domain model, typed commands with undo/redo, BPMN modeling rules, validation, queries, geometry, routing and auto-layout. No file system, UI or network. |
+| `processcraft-io` | Native package format, BPMN XML import/export, atomic save, recovery, file grants, user settings, local IPC. |
+| `processcraft-render` | Toolkit-independent scene, text layout with bundled fonts, CPU rasterizer, SVG/PNG/PDF export. |
+| `processcraft` | Desktop composition: canvas gestures, panels, menus, background jobs. |
+| `processcraft-cli` | CLI parsing, JSON batches, MCP server. |
 
-## Design v0.1 · November 11, 2026
+Every persistent change, whether from the GUI, a CLI batch or an MCP client, goes through one command pipeline (`processcraft_core::commands::Session`). The GUI never mutates the model directly and holds no BPMN semantics of its own, so the three entry points behave identically. `io` and `render` depend only on `core`, never on each other. The full design and its rationale are in [`docs/design/solution-design.md`](docs/design/solution-design.md).
 
-- [Editable FigCraft file](design/ProcessCraft.figcraft)
-- [Eight design boards in PDF](design/ProcessCraft-boards.pdf)
-- [PNG previews](design/previews/)
+## Development
 
-**01 · Workbench** contains four 1600 × 1000 views: BPMN editor, local process library, project dictionary, and table view. The top row uses the light theme; the bottom row uses the dark theme. **02 · Components** contains controls, BPMN elements, icons, and semantic colors.
-
-Both themes share the **ProcessCraft** variable collection, with **Light** and **Dark** modes. Icons and text bind to semantic colors. Buttons and BPMN tasks are reusable components with text properties. The title bar stays dark in both modes.
-
-To explore the prototype in FigCraft, select a board and use **Present**. Navigation covers the side rail, opening a model from the library, switching between model and table views, and opening the dictionary from task properties. Navigation preserves the selected theme.
-
-This FigCraft file is a navigable visual prototype and design reference, separate from the Rust application and its verification. Acme project data is fictional.
-
-## Implementation direction
-
-Rust with a native egui interface, a UI-independent engine, and shared UI/CLI/MCP commands. The native `.processcraft` format is ZIP + versioned JSON and resources. SQLite is optional only for a demonstrated internal need. Local files and dictionary; no account required for core operations. Atomic saves, recovery, and undo are requirements.
-
-The native workbench runs with `cargo run --release -p processcraft`. Editor, Library, Dictionary and Table share one project session and command engine. M2 adds folders/filtering, linked role/system/document entries and usages, table editing, process/diagram selection, BPMN import/export, SVG/PNG export and explicit local MCP attachment. Themes, panel sizes, filtering and UI scaling remain view state.
-
-The desktop now uses pinned `egui_extras` tables with resizable columns, fixed headers and virtualized rows, and `egui_ltreeview` for the folder/model hierarchy. Both use the same pinned Craft egui fork. The UI includes guarded closable document tabs, resizable panes, explicit keyboard focus, English Light/Dark styling and bounded narrow-screen property windows. See [UI production evidence](docs/implementation/ui-production-evidence.md) for compatibility and native checks. [M3.0 auto-layout](docs/plans/m3-auto-layout.md) now provides bounded deterministic preview, cancellation, stale-safe apply and Undo/Redo for its qualified profile.
-
-Native schema 3 uses bounded ZIP/JSON, local comments and separately stored checkpoints with shared resource blobs. Schema 0–2 projects are verified before migration and require Save As. The partial M3 delivery adds local comments, frozen checkpoints/reference viewing, detailed comparison/restore, PDF export and broader typed BPMN profiles. PDF uses outlined text with explicit notices and acknowledgement. Interchange now covers tested profiles for nested scopes, selected events/task/loop/gateway metadata, conversations, choreography tasks, data/I/O, annotations, groups and nested lanes. Advanced or unqualified content is preserved or refused; this is not complete BPMN 2.0.2 coverage or an OMG conformance claim. Installer and platform expansion remain M4. Writable storage remains qualified fixed local Windows NTFS.
-
-```powershell
-cargo run --release -p processcraft
-cargo run -p processcraft-cli -- commands --json
-cargo run -p processcraft-cli -- run --new Procurement --batch tests/fixtures/commands/procurement.json --out target/procurement.processcraft
-cargo run -p processcraft-cli -- run --in target/procurement.processcraft --batch tests/fixtures/commands/library-dictionary.json --out target/procurement-m2.processcraft
-cargo run -p processcraft-cli -- query target/procurement-m2.processcraft dictionary
-cargo run --release -p processcraft-cli --example workbench_qualify -- --out target/m2-performance
+```sh
+# The three quality gates every change must pass
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --all-features --locked --offline -- -D warnings
 cargo test --workspace --all-targets --all-features --locked --offline
+
+# One crate, one test file, one test
+cargo test -p processcraft-core --test commands
+cargo test -p processcraft-core --test commands <test_name>
 ```
 
-Supporting catalog values can be queried with `processcraft-cli query <input> catalog <document-id> --offset 0 --limit 50`. Results are bounded pages of scalar JSON Pointer fields with a content ID; the corresponding MCP query also reports the session generation. This is a read-only projection of the supported catalog profile.
+- **Fixtures** under `tests/fixtures/` and fonts under `assets/fonts/` are pinned byte-for-byte; their SHA-256 hashes are recorded in manifests. Never reformat or re-save them; add new fixtures with a manifest entry (provenance, license, hash, expected import mode).
+- **Qualification harnesses** are Cargo examples (`cargo run -p processcraft-io --example <name>_qualify`). The Python scripts in `scripts/` independently cross-check their output and need `lxml`, `pypdf`, `Pillow` and Poppler.
+- The `test-fault` feature of `processcraft-cli` is a debug-only fault-injection seam; it is compiled out of release builds.
+- `unsafe_code` is forbidden workspace-wide, except for reviewed Windows adapters in `processcraft-io`.
 
-The shared read-only field projections also support `processcraft-cli query <input> model <document-id> --offset 0 --limit 50` for modeled document fields and `processcraft-cli query <input> checkpoint-fields <checkpoint-id> --offset 0 --limit 50` for detailed checkpoint comparison fields. They return bounded JSON Pointer pages, including ordered XML content and explicit null values; continue with `nextOffset` and use the content ID to detect changes between pages. The corresponding MCP queries also return the session generation. If a single first item exceeds the response limit, the query refuses instead of returning an empty page that cannot advance. Preserved source bytes are not interpreted or executed by these projections.
+## Documentation map
 
-MCP starts only through `processcraft-cli mcp`. Standalone mode takes `--new NAME` or `--in PATH`, with explicit absolute `--read-root` / `--write-root` folders. The GUI's **Enable attachment** shows endpoint, session and token; `mcp --attach ENDPOINT --session SESSION --token TOKEN` edits that visible session. File effects require **Authorize automation write folder…** in the GUI; CLI arguments cannot extend those grants. Disable or changing project revokes the endpoint. No listener starts by default and no account/provider is needed. Keep tokens private.
+| Document | Content |
+|---|---|
+| [`docs/design/solution-design.md`](docs/design/solution-design.md) | Architecture source of truth: crate ownership, commands and undo, native format, saving and recovery, trust boundaries, verification |
+| [`docs/plans/`](docs/plans/) | Milestone plans (M0–M3 implemented, modeling parity with bpmn-js, M4 planned) |
+| [`docs/implementation/`](docs/implementation/) | Evidence of what was actually verified per milestone, with measured limits |
+| [`docs/research/`](docs/research/) | BPMN 2.0 coverage inventory and conformance gap analysis |
+| [`design/`](design/) | Visual design prototype (FigCraft) used as a reference for the UI |
 
-The historical M2 medium benchmark measured 5,000 nodes and 10,100 dictionary links: table p95 22 ms and save p95 950 ms; rename remains about 134 ms against a 20 ms target. These are M2 measurements, not performance qualification of the expanded M3 model. See the evidence for the measured disposition and other limits, including bounded request ledgers and GUI reconciliation for uncertain attached exports. Dependency downloads are needed on the first build. The `test-fault` feature is a debug-only test seam, absent from normal builds and compiled out of release builds.
+## Contributing
 
-## Reproducing the design
+Contributions are welcome. Before opening a pull request:
 
-`design/workbench.commands.json` is the authoring source for the installed FigCraft CLI:
+1. Open an issue to discuss larger changes, especially anything touching the native format or BPMN interchange.
+2. Keep BPMN behavior in `processcraft-core` and expose it through the command pipeline; the GUI, CLI and MCP must stay consistent.
+3. Add focused tests and make sure the three quality gates pass.
+4. Update the matching evidence file in `docs/implementation/` with what you verified, stating measured limits rather than broad claims.
 
-```powershell
-figcraft-cli run .\design\workbench.commands.json --out .\design\ProcessCraft.figcraft
-figcraft-cli info .\design\ProcessCraft.figcraft --json
-```
+Please report security issues privately rather than in a public issue.
 
-The batch records this checkout's absolute paths. After moving the project, update the `E:/Documenti/GitHub/ProcessCraft` prefix in the JSON before regenerating. Regeneration replaces the exports and does not incorporate later manual edits to the FigCraft file.
+## License
 
-## References and attribution
+ProcessCraft is released under the [MIT License](LICENSE).
 
-- [ArtCraft principles](https://getartcraft.com/) and [FigCraft architecture](https://github.com/storytold/figcraft/blob/main/docs/architecture.md).
-- [SAP Signavio Process Modeler](https://www.signavio.com/products/process-modeler/) and [new canvas](https://www.signavio.com/post/introducing-the-new-sap-signavio-process-modeler-canvas/).
-- [QuickModel](https://help.sap.com/docs/signavio-process-manager/user-guide/quickmodel-editor?locale=en-US).
-- [Lucide](https://github.com/lucide-icons/lucide) icons, ISC license retained in [design/assets/lucide/LICENSE](design/assets/lucide/LICENSE). BPMN symbols are editable geometry; no reference screenshots are embedded in the design.
+Third-party components keep their own licenses:
 
-Validation: reopened the native file, exported and visually inspected all eight boards, checked prototype destinations across both themes, and confirmed no missing fonts. These checks do not test a Rust application.
+- **Noto Sans** fonts in [`assets/fonts/`](assets/fonts/) — SIL Open Font License 1.1 ([attribution](assets/fonts/ATTRIBUTION.md)).
+- **Lucide** icons used in the design prototype — ISC License ([`design/assets/lucide/LICENSE`](design/assets/lucide/LICENSE)).
+- **OMG BPMN 2.0.2 schemas and specification** in [`tests/fixtures/bpmn20-schema/`](tests/fixtures/bpmn20-schema/) — © Object Management Group, included unmodified only to verify the importer and exporter against the standard; they are not part of the MIT-licensed code.
+- Rust dependencies are fetched by Cargo under their respective licenses.
 
+The modeling interactions are modeled on the behavior of [bpmn-js](https://github.com/bpmn-io/bpmn-js) by bpmn.io; ProcessCraft contains no bpmn-js code. BPMN is a standard of the [Object Management Group](https://www.omg.org/spec/BPMN/2.0.2/).
