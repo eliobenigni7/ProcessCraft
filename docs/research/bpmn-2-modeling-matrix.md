@@ -56,12 +56,12 @@ Columns are model, edit/create/delete, render/hit-test, import, export and valid
 
 | Requirement | Normative source / constraints | Model | Edit | Render | Import | Export | Validate | Bounded evidence and gap |
 |---|---|---|---|---|---|---|---|---|
-| Collaboration and participants | §9.2, §9.3.1; Tables 9.1–9.2 | P | P | P | P; S | P; S | P | Basic pools/participants; complete references, process ownership and attributes open. |
-| Partner entity/role, multiplicity, participant association | §9.3.1, Tables 9.3–9.7 | U | U | U | S | S | U | Distinct identities and relationship/multiplicity constraints require end-to-end implementation. |
+| Collaboration and participants | §9.2, §9.3.1; Tables 9.1–9.2 | P | P | P | P; S | P; S | P | Multiple roots and selected participant process/interface/endpoint references have bounded edit, codec and scope checks; complete contexts and qualification remain open. |
+| Partner entity/role, multiplicity, participant association | §9.3.1, Tables 9.3–9.7 | P | P | P | P; S | P; S | P | Selected catalogs, references, multiplicity and associations have bounded shared edit, codec, representation and scope checks; unproven local ownership is surfaced and export protected. Full contexts remain open. |
 | Lanes and nested lane sets | §9.3.2; §12.4.2 | P | P | P | P; S | P; S | P | `descriptive_artifacts_and_nested_lanes_round_trip`, `generated_lane_set_ids_avoid_collisions_and_preserve_nested_lanes`; full metadata/orientation open. |
-| Message flow and associations | §9.4, Tables 9.8–9.9 | P | P | P | P; S | P; S | P | Selected flows; messageRef, endpoint legality, associations and scopes need complete checks. |
+| Message flow and associations | §9.4, Tables 9.8–9.9 | P | P | P | P; S | P; S | P | Selected messageRef, optional endpoints and association references have typed checks; incomplete or unqualified local scope is surfaced and export protected. Complete contexts remain open. |
 | Conversation and sub-conversation | §9.5.1–9.5.3, Tables 9.10–9.11 | P | P | P | P; S | P; S | P | `collaboration_conversation_and_links_round_trip`; nested ownership, participant/message references and navigation are partial. |
-| Call/global conversation and associations | §9.5.4–9.5.5, §9.5.8, Tables 9.14–9.15, 9.22 | U | U | U | S | S | U | Called references, participants and correlation bindings need qualified implementation. |
+| Call/global conversation and associations | §9.5.4–9.5.5, §9.5.8, Tables 9.14–9.15, 9.22 | P | P | P | P; S | P; S | P | Selected roots, call references and associations have bounded shared paths and synthetic codec evidence; complete contexts and independent consumer qualification remain open. |
 | Conversation link | §9.5.6, Table 9.13 | P | P | P | P; S | P; S | P | Selected links; complete endpoint legality and connected geometry remain open. |
 | Correlation keys/properties/subscriptions | §8.4.2, Tables 8.31–8.40; §9.5.8 | P | P | — | P; S | P; S | P | Selected retrieval and binding expressions, ownership and references round-trip; complete contexts and consumer qualification remain open. |
 | Choreography task and owned participants | §11.5, Tables 11.1–11.4 | P | P | P | P; S | P; S | P | `choreography_task_and_data_references_round_trip`; local ownership and complete participant/message constraints remain partial. |
