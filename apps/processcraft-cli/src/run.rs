@@ -152,6 +152,7 @@ fn run(
     input: Option<PathBuf>,
     batch: PathBuf,
     out: PathBuf,
+    overwrite: bool,
 ) -> Result<(), Error> {
     let batch_bytes = grant(&batch, Access::ReadOnly)?
         .read_limited(4 * 1024 * 1024)
@@ -202,6 +203,9 @@ fn run(
             false,
         )
     };
+    if !same && !overwrite && out.exists() {
+        return Err(error(4, "output exists; --overwrite is required"));
+    }
     if file.is_none() {
         session.mark_unsaved();
     }
@@ -325,18 +329,21 @@ pub fn execute(command: Command) -> Result<(), Error> {
             diagram_id,
             choreography_scope_shape,
             out,
+            overwrite,
         } => layout_preview_file(
             &input,
             &document_id,
             &diagram_id,
             choreography_scope_shape.as_deref(),
             &out,
+            overwrite,
         ),
         Command::LayoutApply {
             input,
             proposal,
             out,
-        } => layout_apply_file(&input, &proposal, &out),
+            overwrite,
+        } => layout_apply_file(&input, &proposal, &out, overwrite),
         Command::ExportImage {
             input,
             document_id,
@@ -408,7 +415,8 @@ pub fn execute(command: Command) -> Result<(), Error> {
             input,
             batch,
             out,
-        } => run(new, input, batch, out),
+            overwrite,
+        } => run(new, input, batch, out, overwrite),
     }
 }
 
@@ -636,9 +644,10 @@ fn layout_preview_file(
     diagram_id: &str,
     choreography_scope_shape: Option<&str>,
     out: &Path,
+    overwrite: bool,
 ) -> Result<(), Error> {
-    if out.exists() {
-        return Err(error(4, "output exists"));
+    if out.exists() && !overwrite {
+        return Err(error(4, "output exists; --overwrite is required"));
     }
     distinct_files(input, out)?;
     let project = native::load_bytes(&read(input)?)
@@ -681,11 +690,16 @@ fn layout_preview_file(
     if bytes.len() > 4 * 1024 * 1024 {
         return Err(error(3, "proposal exceeds 4 MiB"));
     }
-    write_export(out, &bytes, json!({"kind":"layoutPreview"}), true)
+    write_export(out, &bytes, json!({"kind":"layoutPreview"}), !overwrite)
 }
-fn layout_apply_file(input: &Path, proposal: &Path, out: &Path) -> Result<(), Error> {
-    if out.exists() {
-        return Err(error(4, "output exists"));
+fn layout_apply_file(
+    input: &Path,
+    proposal: &Path,
+    out: &Path,
+    overwrite: bool,
+) -> Result<(), Error> {
+    if out.exists() && !overwrite {
+        return Err(error(4, "output exists; --overwrite is required"));
     }
     distinct_files(input, out)?;
     distinct_files(proposal, out)?;
@@ -731,8 +745,8 @@ fn layout_apply_file(input: &Path, proposal: &Path, out: &Path) -> Result<(), Er
     let id = session.id();
     let mut target =
         FileSession::create(id.clone(), grant(out, Access::Write)?).map_err(|e| error(1, e))?;
-    if out.exists() {
-        return Err(error(4, "output exists"));
+    if out.exists() && !overwrite {
+        return Err(error(4, "output exists; --overwrite is required"));
     }
     let (result, status) = save_result(
         target.save(&session.snapshot().project),

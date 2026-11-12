@@ -20,6 +20,8 @@ pub enum Command {
         choreography_scope_shape: Option<String>,
         #[arg(long)]
         out: PathBuf,
+        #[arg(long)]
+        overwrite: bool,
     },
     LayoutApply {
         input: PathBuf,
@@ -27,6 +29,8 @@ pub enum Command {
         proposal: PathBuf,
         #[arg(long)]
         out: PathBuf,
+        #[arg(long)]
+        overwrite: bool,
     },
     ExportImage {
         input: PathBuf,
@@ -116,6 +120,9 @@ pub enum Command {
         batch: PathBuf,
         #[arg(long)]
         out: PathBuf,
+        /// Replace an existing output file other than the input.
+        #[arg(long)]
+        overwrite: bool,
     },
 }
 

@@ -1301,6 +1301,13 @@ fn reject_new_activity_reference_issues(
 ) -> Result<(), CommandError> {
     for after in &candidate.documents {
         let Some(before) = old.documents.iter().find(|doc| doc.id == after.id) else {
+            // A document created in this batch has no earlier state: every
+            // unresolved local activity reference is new.
+            if !crate::validation::activity_family_reference_issues(after).is_empty() {
+                return Err(invalid(
+                    "change introduces an unresolved local activity reference",
+                ));
+            }
             continue;
         };
         let mut previous = crate::validation::activity_family_reference_issues(before);

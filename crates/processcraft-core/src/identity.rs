@@ -2889,26 +2889,41 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
         }
     }
     for c in d.collaboration.iter().chain(&d.additional_collaborations) {
-        let participant_for =
-            |id: &crate::ids::ElementSelector| -> Option<crate::ids::ElementSelector> {
-                if let Some(p) = c.participants.iter().find(|p| &p.id == id) {
-                    return Some(p.id.selector());
-                }
-                if !kinds.get(id).is_some_and(|kind| kind.is_activity()) {
-                    return None;
-                }
-                let process = node_process.get(id)?;
-                let mut ps = c
-                    .participants
-                    .iter()
-                    .filter(|p| endpoint(&p.process).as_ref() == Some(process));
-                let first = ps.next()?;
-                if ps.next().is_some() {
-                    None
-                } else {
-                    Some(first.id.selector())
-                }
-            };
+        let participant_for = |id: &crate::ids::ElementSelector,
+                               is_source: bool|
+         -> Option<crate::ids::ElementSelector> {
+            if let Some(p) = c.participants.iter().find(|p| &p.id == id) {
+                return Some(p.id.selector());
+            }
+            // BPMN 2.0.2 §9.4: message flows leave activities and throwing
+            // events, and reach activities and catching events.
+            if !kinds.get(id).is_some_and(|kind| {
+                kind.is_activity()
+                    || if is_source {
+                        matches!(kind, NodeKind::IntermediateThrowEvent | NodeKind::EndEvent)
+                    } else {
+                        matches!(
+                            kind,
+                            NodeKind::StartEvent
+                                | NodeKind::IntermediateCatchEvent
+                                | NodeKind::BoundaryEvent
+                        )
+                    }
+            }) {
+                return None;
+            }
+            let process = node_process.get(id)?;
+            let mut ps = c
+                .participants
+                .iter()
+                .filter(|p| endpoint(&p.process).as_ref() == Some(process));
+            let first = ps.next()?;
+            if ps.next().is_some() {
+                None
+            } else {
+                Some(first.id.selector())
+            }
+        };
         for f in &c.flows {
             if f.flow_metadata.is_some() && f.kind != FlowKind::Sequence {
                 return fail("Flow-element metadata requires a sequence flow");
@@ -2917,7 +2932,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             let target = endpoint(&f.target);
             if f.condition.is_some()
                 || f.kind != FlowKind::Message
-                || matches!((&source, &target), (Some(source), Some(target)) if participant_for(source).is_none() || participant_for(target).is_none() || participant_for(source) == participant_for(target))
+                || matches!((&source, &target), (Some(source), Some(target)) if participant_for(source, true).is_none() || participant_for(target, false).is_none() || participant_for(source, true) == participant_for(target, false))
             {
                 return fail("invalid message flow endpoints");
             }

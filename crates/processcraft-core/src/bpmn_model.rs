@@ -388,6 +388,48 @@ pub enum NodeDetails {
     },
 }
 
+impl NodeDetails {
+    /// Event or gateway details that carry no field. BPMN XML cannot represent them
+    /// apart from absent details, so the canonical form is `None`.
+    pub fn is_vacuous(&self) -> bool {
+        match self {
+            Self::Event {
+                definitions,
+                attached_to,
+                cancel_activity,
+                definition_refs,
+                parallel_multiple,
+                is_interrupting,
+                properties,
+                io,
+            } => {
+                definitions.is_empty()
+                    && attached_to.is_none()
+                    && cancel_activity.is_none()
+                    && definition_refs.is_empty()
+                    && parallel_multiple.is_none()
+                    && is_interrupting.is_none()
+                    && properties.is_empty()
+                    && io.is_none()
+            }
+            Self::Gateway {
+                default_flow,
+                direction,
+                instantiate,
+                event_gateway_type,
+                activation_condition,
+            } => {
+                default_flow.is_none()
+                    && direction.is_none()
+                    && instantiate.is_none()
+                    && event_gateway_type.is_none()
+                    && activation_condition.is_none()
+            }
+            _ => false,
+        }
+    }
+}
+
 /// Typed, document-owned BPMN root declarations referenced by events.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]

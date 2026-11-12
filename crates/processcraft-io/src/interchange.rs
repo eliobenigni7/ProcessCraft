@@ -10474,10 +10474,18 @@ fn export_document(
             crate::interchange_compare::xml_model_value_for_export(parsed, &namespace),
         ) {
             (Ok(expected), Ok(actual)) if expected == actual => {}
-            _ => {
-                report.blocked.push(
-                    "BPMN typed owner paths or XML-representable fields cannot be preserved".into(),
-                );
+            (Ok(expected), Ok(actual)) => {
+                report.blocked.push(format!(
+                    "BPMN typed owner paths or XML-representable fields cannot be preserved (first difference at {})",
+                    first_difference(&expected, &actual, String::new())
+                ));
+                return Err(ExportFailure { report });
+            }
+            (expected, actual) => {
+                let error = expected.err().or(actual.err()).unwrap_or_default();
+                report.blocked.push(format!(
+                    "BPMN typed owner paths or XML-representable fields cannot be preserved ({error})"
+                ));
                 return Err(ExportFailure { report });
             }
         }
@@ -10512,6 +10520,47 @@ fn export_document(
         bytes: xml.into_bytes(),
         report,
     })
+}
+/// Path of the first place two normalized model values differ, for diagnostics.
+fn first_difference(a: &serde_json::Value, b: &serde_json::Value, path: String) -> String {
+    use serde_json::Value::{Array, Object};
+    let at = |p: &str| {
+        if p.is_empty() {
+            "/".to_string()
+        } else {
+            p.to_string()
+        }
+    };
+    match (a, b) {
+        (Object(x), Object(y)) => {
+            for (k, v) in x {
+                let p = format!("{path}/{k}");
+                match y.get(k) {
+                    Some(w) if w == v => {}
+                    Some(w) => return first_difference(v, w, p),
+                    None => return format!("{p} (missing after re-import)"),
+                }
+            }
+            match y.keys().find(|k| !x.contains_key(*k)) {
+                Some(k) => format!("{path}/{k} (added by re-import)"),
+                None => at(&path),
+            }
+        }
+        (Array(x), Array(y)) => {
+            for (i, (v, w)) in x.iter().zip(y).enumerate() {
+                if v != w {
+                    return first_difference(v, w, format!("{path}/{i}"));
+                }
+            }
+            format!("{} (length {} vs {})", at(&path), x.len(), y.len())
+        }
+        _ => format!(
+            "{}: {} vs {}",
+            at(&path),
+            a.to_string().chars().take(120).collect::<String>(),
+            b.to_string().chars().take(120).collect::<String>()
+        ),
+    }
 }
 fn esc(s: &str) -> String {
     s.replace('&', "&amp;")

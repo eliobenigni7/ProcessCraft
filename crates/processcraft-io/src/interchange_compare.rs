@@ -248,15 +248,49 @@ fn normalize_legacy_documentation(object: &mut serde_json::Map<String, Value>) {
         object.insert("documentation".into(), Value::String(text));
     }
 }
+/// Scope the exporter writes for a plain-string condition typed as
+/// `bpmn:tFormalExpression` (default BPMN namespace plus `bpmn` and `xsi`).
+fn binding_pair(binding: &Value) -> Option<(&str, &str)> {
+    match binding {
+        Value::Array(p) => Some((p.first()?.as_str()?, p.get(1)?.as_str()?)),
+        Value::Object(o) => Some((o.get("prefix")?.as_str()?, o.get("uri")?.as_str()?)),
+        _ => None,
+    }
+}
+fn legacy_formal_scope(value: &Value) -> bool {
+    const B: &str = "http://www.omg.org/spec/BPMN/20100524/MODEL";
+    const XSI: &str = "http://www.w3.org/2001/XMLSchema-instance";
+    let Some(bindings) = value.as_array() else {
+        return false;
+    };
+    bindings.iter().map(binding_pair).collect::<Vec<_>>()
+        == [Some(("", B)), Some(("bpmn", B)), Some(("xsi", XSI))]
+}
 fn bare_expression(object: &serde_json::Map<String, Value>) -> Option<Value> {
-    if object.contains_key("id")
-        || object.contains_key("foreign_attributes")
-        || !simple_bpmn_scope(object.get("namespaces")?)
-    {
+    if object.contains_key("id") || object.contains_key("foreign_attributes") {
         return None;
     }
+    let namespaces = object.get("namespaces")?;
     let kind = object.get("kind")?.as_object()?;
-    if kind.get("type")?.as_str()? != "base" || kind.get("explicit_type")?.as_bool()? {
+    // An attachedToRef QName declares the generated `tns` prefix on the owning
+    // element; XML scoping makes it visible to child expressions.
+    let scope_without_tns = Value::Array(
+        namespaces
+            .as_array()?
+            .iter()
+            .filter(|b| namespace_prefix(b) != Some("tns"))
+            .cloned()
+            .collect(),
+    );
+    let bare = simple_bpmn_scope(&scope_without_tns)
+        && kind.get("type")?.as_str()? == "base"
+        && !kind.get("explicit_type")?.as_bool()?;
+    let legacy_formal = legacy_formal_scope(namespaces)
+        && kind.get("type")?.as_str()? == "formal"
+        && kind.get("explicit_type")?.as_bool()?
+        && kind.get("language")?.is_null()
+        && kind.get("evaluates_to_type_ref")?.is_null();
+    if !bare && !legacy_formal {
         return None;
     }
     object
@@ -327,6 +361,14 @@ fn normalize(value: &mut Value, targets: &HashMap<NativeElementId, Target>) -> R
             // A missing XML ID is omitted in XML whether the native optional slot
             // was null, skipped, or held an anonymous stable native identity.
             object.retain(|key, value| !(identity_slot(key) && value.is_null()));
+            // The XSD fixes flowElement* before artifact*, so a text annotation's
+            // position relative to flow nodes is not observable in XML.
+            if let Some(Value::Array(values)) = object.get_mut("nodes") {
+                let kind = |v: &Value| v.get("kind").and_then(Value::as_str).map(str::to_owned);
+                if values.iter().all(|v| kind(v).is_some()) {
+                    values.sort_by_key(|v| kind(v).as_deref() == Some("TextAnnotation"));
+                }
+            }
             for key in ["nodes", "parts"] {
                 if let Some(Value::Array(values)) = object.get_mut(key) {
                     // Only text records are coalesced. Semantic node arrays, XML
@@ -342,6 +384,18 @@ fn normalize(value: &mut Value, targets: &HashMap<NativeElementId, Target>) -> R
             {
                 // An empty PI data string and no PI data have the same XML infoset.
                 object.insert("data".into(), Value::String(String::new()));
+            }
+            // Event or gateway details without a single field have no XML form and
+            // re-import as absent details.
+            if object.contains_key("kind")
+                && object.get("details").is_some_and(|details| {
+                    serde_json::from_value::<processcraft_core::bpmn_model::NodeDetails>(
+                        details.clone(),
+                    )
+                    .is_ok_and(|details| details.is_vacuous())
+                })
+            {
+                object.remove("details");
             }
             if object.contains_key("owner")
                 && object.contains_key("contact")
@@ -729,6 +783,47 @@ fn preserve_lane_wrapper_presence(value: &mut Value) -> Result<(), String> {
                             .and_then(|parent| serde_json::from_value(parent.clone()).ok())
                     })
                     .collect();
+                // XML nests child lanes inside their parent, so only sibling order is
+                // observable; compare in the importer's post-order (children first).
+                let selectors: Vec<(ElementSelector, Option<ElementSelector>)> = lanes
+                    .iter()
+                    .map(|lane| {
+                        let identity: ElementIdentity = serde_json::from_value(
+                            lane.get("id").ok_or("Lane identity missing")?.clone(),
+                        )
+                        .map_err(|error| format!("Invalid lane identity: {error}"))?;
+                        let parent = lane
+                            .get("parent")
+                            .filter(|parent| !parent.is_null())
+                            .and_then(|parent| serde_json::from_value(parent.clone()).ok());
+                        Ok((identity.selector(), parent))
+                    })
+                    .collect::<Result<_, String>>()?;
+                let mut order = Vec::with_capacity(selectors.len());
+                fn post_order(
+                    selectors: &[(ElementSelector, Option<ElementSelector>)],
+                    parent: Option<&ElementSelector>,
+                    order: &mut Vec<usize>,
+                ) {
+                    for (index, (selector, own_parent)) in selectors.iter().enumerate() {
+                        let is_child = match (parent, own_parent) {
+                            (None, None) => true,
+                            (None, Some(p)) => !selectors.iter().any(|(s, _)| s == p),
+                            (Some(p), Some(q)) => p == q,
+                            _ => false,
+                        };
+                        if is_child && !order.contains(&index) {
+                            post_order(selectors, Some(selector), order);
+                            order.push(index);
+                        }
+                    }
+                }
+                post_order(&selectors, None, &mut order);
+                if order.len() == lanes.len() {
+                    let mut taken: Vec<Option<Value>> =
+                        std::mem::take(lanes).into_iter().map(Some).collect();
+                    *lanes = order.iter().filter_map(|&i| taken[i].take()).collect();
+                }
                 for lane in lanes {
                     let object = lane.as_object_mut().ok_or("Lane must be a typed object")?;
                     let identity: ElementIdentity = serde_json::from_value(
@@ -762,6 +857,29 @@ fn preserve_lane_wrapper_presence(value: &mut Value) -> Result<(), String> {
         _ => {}
     }
     Ok(())
+}
+/// A local data-store selector is exported as a QName in the target namespace and
+/// re-imported as a qualified reference; both spell the same XML.
+fn qualify_local_data_store_refs(value: &mut Value, namespace: &str) {
+    match value {
+        Value::Object(object) => {
+            if object.get("type").and_then(Value::as_str) == Some("dataStoreReference")
+                && let Some(Value::String(local)) = object.get("data_store_ref")
+            {
+                let qualified = json!({"namespace": namespace, "local": local});
+                object.insert("data_store_ref".into(), qualified);
+            }
+            for value in object.values_mut() {
+                qualify_local_data_store_refs(value, namespace);
+            }
+        }
+        Value::Array(array) => {
+            for value in array {
+                qualify_local_data_store_refs(value, namespace);
+            }
+        }
+        _ => {}
+    }
 }
 /// Normalize import-local identities at their exact typed owner paths. Ordered
 /// siblings remain distinct and references retain their owning target paths.
@@ -833,6 +951,7 @@ pub fn xml_model_value_for_export(
             .map_err(|error| error.to_string())?,
         );
     }
+    qualify_local_data_store_refs(&mut value, effective_namespace);
     normalize_legacy_root_order(&mut value)?;
     normalize_legacy_di(&mut value)?;
     normalize_choreography_graphs(&mut value)?;
