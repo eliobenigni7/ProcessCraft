@@ -294,6 +294,8 @@ Unsupported standard attributes can affect meaning just as unsupported element k
 
 A retained foreign extension is not evidence that its semantics are understood. Structural editing is disabled by default for a document containing unqualified extension behavior. A later adapter may widen the allowed-command set using corpus evidence.
 
+Widened on 2026-11-12 for foreign *attributes* (for example `camunda:assignee` or the `modeler:executionPlatform` root attribute every Camunda Modeler save writes): they are scalar values owned by their element and exported verbatim, so they no longer block structural edits. A batch that would remove an element whose XML ID appears in a foreign attribute value is refused, so retained values never dangle. Unmodeled extension *elements* and processing instructions still block structural edits, and in-place rewrites (expressions, documentation, ID changes) still treat any foreign content as opaque.
+
 Never store “whatever was not understood” as an unscoped string that is pasted into an unrelated output location. Retained fragments identify their owner, relative position, namespaces, and edit restrictions.
 
 ### 6.3 Import algorithm

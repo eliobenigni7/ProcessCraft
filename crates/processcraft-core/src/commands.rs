@@ -1254,6 +1254,7 @@ impl Session {
                     &explicit_plane_orders,
                 );
                 reject_newly_dangling_relationships(&self.project, &candidate)?;
+                reject_removed_foreign_attribute_targets(&self.project, &candidate)?;
                 reject_new_choreography_graph_issues(
                     &self.project,
                     &candidate,
@@ -1489,6 +1490,45 @@ type ActivityScans = Vec<(
         Vec<crate::validation::ActivityReferenceResolution>,
     )>,
 )>;
+/// Foreign attributes (e.g. `camunda:*`) are kept verbatim and may name other elements by ID.
+/// Structural edits are allowed around them, but a batch may not remove an element that such
+/// an attribute names, since the retained value would then dangle.
+fn reject_removed_foreign_attribute_targets(
+    old: &ProjectData,
+    candidate: &ProjectData,
+) -> Result<(), CommandError> {
+    for before in &old.documents {
+        let Some(after) = candidate.documents.iter().find(|d| d.id == before.id) else {
+            continue;
+        };
+        if Arc::ptr_eq(before, after) {
+            continue;
+        }
+        let values = before.foreign_attribute_values();
+        if values.is_empty() {
+            continue;
+        }
+        let xml_ids = |doc: &BpmnDocument| -> std::collections::HashSet<String> {
+            doc.element_identities()
+                .iter()
+                .filter_map(|id| id.xml_id().map(|x| x.to_string()))
+                .collect()
+        };
+        let (existing, remaining) = (xml_ids(before), xml_ids(after));
+        for token in values
+            .iter()
+            .flat_map(|v| v.split(|c: char| c.is_whitespace() || c == ','))
+            .map(|t| t.rsplit(':').next().unwrap_or(t))
+        {
+            if existing.contains(token) && !remaining.contains(token) {
+                return Err(invalid(&format!(
+                    "{token} is referenced by an extension attribute; edit or remove that attribute first"
+                )));
+            }
+        }
+    }
+    Ok(())
+}
 fn reject_new_activity_reference_issues(
     old: &ProjectData,
     candidate: &ProjectData,
@@ -2005,7 +2045,7 @@ fn doc(
         }
         _ => {}
     }
-    if structural && d.has_opaque_xml() {
+    if structural && d.blocks_structural_edits() {
         return Err(invalid("opaque XML prevents safe structural edits"));
     }
     Ok(Arc::make_mut(d))
@@ -3188,7 +3228,7 @@ fn auto_resize(
         }
     }
     let d = doc(p, document_id, false)?;
-    if resized && d.capability.allows_structural_editing() && !d.has_opaque_xml() {
+    if resized && d.capability.allows_structural_editing() && !d.blocks_structural_edits() {
         crate::containers::sync_lanes(old, d, diagram_id);
     }
     Ok(())
@@ -5835,7 +5875,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
         } => {
             let d = doc(p, document_id, false)?;
             let old = d.clone();
-            let semantic = d.capability.allows_structural_editing() && !d.has_opaque_xml();
+            let semantic = d.capability.allows_structural_editing() && !d.blocks_structural_edits();
             let moved: Vec<ElementSelector> = d
                 .diagrams
                 .iter()
@@ -5871,7 +5911,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                 mutate(p, m)?;
             }
             let d = doc(p, document_id, false)?;
-            if d.capability.allows_structural_editing() && !d.has_opaque_xml() {
+            if d.capability.allows_structural_editing() && !d.blocks_structural_edits() {
                 crate::containers::sync_lanes(&old, d, &diagram_id);
             }
         }
@@ -5981,7 +6021,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             at,
         } => {
             let d = doc(p, document_id, false)?;
-            let semantic = d.capability.allows_structural_editing() && !d.has_opaque_xml();
+            let semantic = d.capability.allows_structural_editing() && !d.blocks_structural_edits();
             crate::containers::make_space(d, &diagram_id, axis, start, delta, !before, semantic, at)
                 .map_err(CommandError::InvalidParams)?
         }

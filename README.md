@@ -168,7 +168,7 @@ ProcessCraft reads and writes BPMN 2.0 XML with diagram interchange (DI). An imp
 | Mode | Meaning |
 |---|---|
 | **Editable** | The model fits the qualified profile and is fully editable. |
-| **Editable with retained extensions** | Vendor extensions (e.g. Camunda attributes) are kept verbatim; structural edits that could invalidate them are blocked. |
+| **Editable with retained extensions** | Vendor extensions are kept verbatim. Vendor *attributes* (e.g. `camunda:assignee`) do not restrict modeling, but an element they reference by ID cannot be deleted; unmodeled vendor *elements* block structural edits that could invalidate them. |
 | **Preserved source** | The original XML is kept byte-for-byte and can be exported unchanged; the import report says which element or attribute prevented editing. |
 
 The governing rule is: **content outside the qualified profile is preserved or refused, never silently dropped or reinterpreted.** Parsing is bounded, rejects DTDs and external entities, and never loads remote resources. Coverage details are tracked element by element in [`docs/research/bpmn-2-coverage.md`](docs/research/bpmn-2-coverage.md) and checked against the pinned OMG schemas in [`tests/fixtures/bpmn20-schema/`](tests/fixtures/bpmn20-schema/).

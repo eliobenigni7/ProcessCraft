@@ -390,7 +390,33 @@ impl BpmnDocument {
             })
     }
     /// Opaque XML may contain references whose meaning is unknown.
+    /// Opaque XML anywhere: unmodeled elements/processing instructions, or foreign attributes.
+    /// Gates edits that rewrite content in place (expressions, documentation, element IDs).
     pub fn has_opaque_xml(&self) -> bool {
+        let values = std::cell::RefCell::new(Vec::new());
+        self.opaque_scan(&values) || !values.borrow().is_empty()
+    }
+    /// Whether structural edits (create, connect, delete, move between scopes) are unsafe.
+    /// Foreign attributes are scalar values owned by their element and exported verbatim, so
+    /// they do not block them; unmodeled extension elements and processing instructions do.
+    /// Deleting an element whose ID a foreign attribute names is refused separately.
+    pub fn blocks_structural_edits(&self) -> bool {
+        self.opaque_scan(&std::cell::RefCell::new(Vec::new()))
+    }
+    /// Values of every foreign attribute, e.g. `camunda:assignee` or vendor ID references.
+    pub fn foreign_attribute_values(&self) -> Vec<String> {
+        let values = std::cell::RefCell::new(Vec::new());
+        self.opaque_scan(&values);
+        values.into_inner()
+    }
+    fn opaque_scan(&self, values: &std::cell::RefCell<Vec<String>>) -> bool {
+        // Records foreign attribute values; they never count as opaque here.
+        let note = |attributes: &[crate::bpmn_xml::XmlAttribute]| {
+            values
+                .borrow_mut()
+                .extend(attributes.iter().map(|a| a.value.clone()));
+            false
+        };
         use crate::bpmn_metadata::DocumentationSet;
         use crate::bpmn_model::{Expression, ExpressionBody, ExpressionPart, NodeDetails};
         use crate::bpmn_xml::{MixedXml, XmlContent, XmlNode};
@@ -408,7 +434,7 @@ impl BpmnDocument {
         let mut found = self.diagrams.iter().any(|diagram| {
             let opaque = |metadata: &Option<crate::model::DiElementMetadata>| {
                 metadata.as_ref().is_some_and(|value| {
-                    !value.foreign_attributes.is_empty()
+                    note(&value.foreign_attributes)
                         || value.extension.as_ref().is_some_and(opaque_content)
                 })
             };
@@ -433,7 +459,7 @@ impl BpmnDocument {
             found |= opaque_body(body);
         }
         for base in collaboration.bases {
-            found |= !base.foreign_attributes.is_empty()
+            found |= note(&base.foreign_attributes)
                 || base
                     .extension_elements
                     .as_ref()
@@ -444,7 +470,7 @@ impl BpmnDocument {
                     .any(|doc| opaque_body(&doc.content));
         }
         for extras in collaboration.extras {
-            found |= !extras.foreign_attributes.is_empty()
+            found |= note(&extras.foreign_attributes)
                 || extras
                     .extension_elements
                     .as_ref()
@@ -454,7 +480,7 @@ impl BpmnDocument {
             found |= matches!(docs, DocumentationSet::Structured(docs) if docs.iter().any(|doc| opaque_body(&doc.content)));
         }
         for base in crate::activity_read::activity_read(self).bases {
-            found |= !base.foreign_attributes.is_empty()
+            found |= note(&base.foreign_attributes)
                 || base
                     .extension_elements
                     .as_ref()
@@ -464,7 +490,7 @@ impl BpmnDocument {
         found |= self.global_tasks.iter().any(|task| matches!(&task.kind, crate::bpmn_activity::GlobalTaskKind::Script { script: Some(body), .. } if opaque_body(body)));
         visit_base_metadata(self, |_, base| {
             if let Some(base) = base {
-                found |= !base.foreign_attributes.is_empty()
+                found |= note(&base.foreign_attributes)
                     || base
                         .extension_elements
                         .as_ref()
@@ -475,7 +501,7 @@ impl BpmnDocument {
         visit_legacy_metadata(self, |_, docs, extras| {
             found |= matches!(docs, DocumentationSet::Structured(docs) if docs.iter().any(|d| opaque_body(&d.content)));
             found |= extras.as_ref().is_some_and(|e| {
-                !e.foreign_attributes.is_empty()
+                note(&e.foreign_attributes)
                     || e.extension_elements
                         .as_ref()
                         .is_some_and(|e| opaque_content(&e.content))
@@ -484,7 +510,7 @@ impl BpmnDocument {
         found |= self
             .definitions
             .as_ref()
-            .is_some_and(|d| !d.foreign_attributes.is_empty())
+            .is_some_and(|d| note(&d.foreign_attributes))
             || self
                 .extensions
                 .iter()
@@ -492,7 +518,7 @@ impl BpmnDocument {
         found |= self.expressions().iter().any(|expr| match expr {
             Expression::Legacy(_) => false,
             Expression::Structured(data) => {
-                !data.foreign_attributes.is_empty()
+                note(&data.foreign_attributes)
                     || match &data.text {
                         ExpressionBody::Text(_) => false,
                         ExpressionBody::Mixed { parts } => parts.iter().any(|part| match part {
