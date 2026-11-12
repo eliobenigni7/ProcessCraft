@@ -7,6 +7,7 @@ use egui::{Color32, Pos2, Rect, Sense, Vec2};
 use processcraft_core::{
     arrange::{Alignment, Distribution},
     commands::Mutation,
+    containers::{Axis, LaneLocation},
     ids::ElementSelector,
     model::{Bounds, FlowKind, NodeKind, Point, Shape},
 };
@@ -38,6 +39,8 @@ enum Gesture {
         handle: (i8, i8),
         min: (f64, f64),
     },
+    /// Space tool drag from this screen point.
+    Space(Pos2),
     /// Dragging a waypoint or segment of the selected edge (`edge` is its DI id).
     Bendpoint {
         edge: ElementSelector,
@@ -226,6 +229,8 @@ pub(super) struct CanvasState {
     pub(super) grid_snap: bool,
     /// Palette entry being dragged onto the canvas.
     pub(super) palette_drag: Option<NodeKind>,
+    /// Space tool mode (S): canvas drags insert or remove space.
+    pub(super) space_tool: bool,
 }
 /// Replace popup for one element: filter text and whether the field still needs focus.
 struct ReplaceMenu {
@@ -327,10 +332,17 @@ enum PadAction {
     Connect,
     Replace,
     Delete,
+    /// Lane and pool entries (bpmn-js): add a lane, split into lanes.
+    AddLane(LaneLocation),
+    Split(u8),
 }
 impl PadAction {
     fn label(self) -> &'static str {
         match self {
+            Self::AddLane(LaneLocation::Above) => "Add lane above",
+            Self::AddLane(LaneLocation::Below) => "Add lane below",
+            Self::Split(2) => "Divide into two lanes",
+            Self::Split(_) => "Divide into three lanes",
             Self::Append(NodeKind::Task) => "Append task",
             Self::Append(NodeKind::ExclusiveGateway) => "Append exclusive gateway",
             Self::Append(NodeKind::IntermediateThrowEvent) => "Append intermediate event",
@@ -343,12 +355,14 @@ impl PadAction {
     }
 }
 
-/// Pad entries in a three-column grid right of the shape's top edge: appends only from
-/// process nodes that may start the connection, connect for anything the rules can connect.
+/// Pad entries in a three-column grid right of the shape's top edge (within `area`, the
+/// canvas): appends only from process nodes that may start the connection, connect for anything
+/// the rules can connect.
 fn context_pad(
     document: &processcraft_core::model::BpmnDocument,
     element: &ElementSelector,
     screen: Rect,
+    area: Rect,
 ) -> Vec<(PadAction, Rect)> {
     use processcraft_core::{ids::ElementIdentity, modeling, rules};
     let located = rules::locate(document, element);
@@ -369,6 +383,30 @@ fn context_pad(
             actions.push(PadAction::Append(NodeKind::TextAnnotation));
         }
     }
+    // Horizontal lanes and pools with a process get the lane entries.
+    let horizontal = document
+        .diagrams
+        .iter()
+        .flat_map(|d| &d.shapes)
+        .find(|s| &s.element == element)
+        .is_some_and(|s| s.is_horizontal != Some(false));
+    let lane = processcraft_core::queries::scopes(document)
+        .iter()
+        .any(|s| s.lanes.iter().any(|l| &l.id == element));
+    if horizontal
+        && (lane
+            || located
+                .as_ref()
+                .and_then(|l| l.participant)
+                .is_some_and(|p| p.process.is_some()))
+    {
+        actions.extend([
+            PadAction::AddLane(LaneLocation::Above),
+            PadAction::AddLane(LaneLocation::Below),
+            PadAction::Split(2),
+            PadAction::Split(3),
+        ]);
+    }
     if located.is_some() {
         actions.push(PadAction::Connect);
     }
@@ -376,13 +414,16 @@ fn context_pad(
         actions.push(PadAction::Replace);
     }
     actions.push(PadAction::Delete);
+    // Kept inside the canvas, so pools and lanes wider than the view still show their pad.
+    let left = (screen.right() + 6.0).min(area.right() - 3.0 * PAD_ENTRY);
+    let top = screen.top().max(area.top());
     actions
         .into_iter()
         .enumerate()
         .map(|(i, action)| {
             let min = Pos2::new(
-                screen.right() + 6.0 + (i % 3) as f32 * PAD_ENTRY,
-                screen.top() + (i / 3) as f32 * PAD_ENTRY,
+                left + (i % 3) as f32 * PAD_ENTRY,
+                top + (i / 3) as f32 * PAD_ENTRY,
             );
             (
                 action,
@@ -446,6 +487,42 @@ fn paint_pad_icon(painter: &egui::Painter, action: PadAction, r: Rect, color: Co
             );
             painter.line_segment([at(-7.0, -5.0), at(7.0, -5.0)], stroke);
             painter.line_segment([at(-2.0, -7.0), at(2.0, -7.0)], stroke);
+        }
+        // A pool outline with the new lane filled (above/below) or divided into lanes.
+        PadAction::AddLane(_) | PadAction::Split(_) => {
+            let body = Rect::from_center_size(c, Vec2::new(16.0, 12.0));
+            painter.rect_stroke(body, 1.0, stroke, egui::StrokeKind::Middle);
+            match action {
+                PadAction::AddLane(location) => {
+                    let y = if location == LaneLocation::Above {
+                        body.top()
+                    } else {
+                        body.bottom() - 4.0
+                    };
+                    painter.rect_filled(
+                        Rect::from_min_size(Pos2::new(body.left(), y), Vec2::new(16.0, 4.0)),
+                        0.0,
+                        color,
+                    );
+                }
+                PadAction::Split(n) => {
+                    for i in 1..n {
+                        let y = body.top() + body.height() * i as f32 / n as f32;
+                        painter.line_segment(
+                            [Pos2::new(body.left() + 4.0, y), Pos2::new(body.right(), y)],
+                            stroke,
+                        );
+                    }
+                    painter.line_segment(
+                        [
+                            Pos2::new(body.left() + 4.0, body.top()),
+                            Pos2::new(body.left() + 4.0, body.bottom()),
+                        ],
+                        stroke,
+                    );
+                }
+                _ => {}
+            }
         }
     }
 }
@@ -1005,7 +1082,38 @@ impl ProcessCraft {
             PadAction::Connect => {}
             PadAction::Replace => self.open_replace(element),
             PadAction::Delete => self.delete(),
+            PadAction::AddLane(location) => {
+                self.lane_command(|document_id, diagram_id| Mutation::AddLane {
+                    document_id,
+                    diagram_id,
+                    element_id: element,
+                    location,
+                })
+            }
+            PadAction::Split(count) => {
+                self.lane_command(|document_id, diagram_id| Mutation::SplitLane {
+                    document_id,
+                    diagram_id,
+                    element_id: element,
+                    count,
+                })
+            }
         }
+    }
+    /// Run a lane command on the current diagram.
+    fn lane_command(
+        &mut self,
+        build: impl FnOnce(processcraft_core::DocumentId, ElementSelector) -> Mutation,
+    ) {
+        let snap = self.ctl.session.snapshot();
+        let Some(document) = snap.project.documents.get(self.doc) else {
+            return;
+        };
+        let Some(diagram) = self.current_diagram(document) else {
+            return;
+        };
+        let mutation = build(document.id, diagram.id.selector());
+        self.ctl.mutate(vec![mutation]);
     }
     /// Topmost shape (never a label region) under the pointer other than `exclude`.
     fn connect_target_at(
@@ -1224,6 +1332,15 @@ impl ProcessCraft {
                 }
                 if interactive {
                     let accent = ui.visuals().selection.stroke.color;
+                    if self.canvas.space_tool {
+                        painter.text(
+                            rect.left_top() + egui::vec2(12.0, 12.0),
+                            egui::Align2::LEFT_TOP,
+                            "Space tool: drag to insert or remove space (Ctrl: shapes before the line) · S or Esc to leave",
+                            egui::FontId::proportional(12.0),
+                            accent,
+                        );
+                    }
                     let diagram_id = diagram.id.selector();
                     let by_representation = self.representation_diagram.as_ref()
                         == Some(&diagram_id)
@@ -1343,7 +1460,7 @@ impl ProcessCraft {
                             );
                         }
                         if self.canvas.gesture.is_none() && self.canvas.label_edit.is_none() {
-                            pad = context_pad(d, &shape.element, screen);
+                            pad = context_pad(d, &shape.element, screen, rect);
                         }
                         for (action, r) in &pad {
                             let hovered = hover.is_some_and(|pos| r.contains(pos));
@@ -1383,6 +1500,7 @@ impl ProcessCraft {
                     };
                     if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
                         self.canvas.gesture = None;
+                        self.canvas.space_tool = false;
                     }
                     let alt = ctx.input(|i| i.modifiers.alt);
                     let shift = ctx.input(|i| i.modifiers.shift);
@@ -1396,6 +1514,8 @@ impl ProcessCraft {
                         });
                         if pan {
                             self.canvas.gesture = Some(Gesture::Pan);
+                        } else if self.canvas.space_tool && editable {
+                            self.canvas.gesture = Some(Gesture::Space(pos));
                         } else if let Some(edge) = selected_edge
                             && let Some((part, _)) =
                                 bend_handles.iter().find(|(_, h)| h.distance(pos) <= 6.0)
@@ -1814,6 +1934,42 @@ impl ProcessCraft {
                                 camera.1 -= delta.y as f64 / zoom as f64;
                                 ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
                             }
+                            Some(Gesture::Space(start)) => {
+                                // The line where space opens and how far the shapes past it go.
+                                if let Some(pos) = pointer {
+                                    let d = pos - *start;
+                                    let stroke = egui::Stroke::new(1.5, accent);
+                                    let (line, moved, cursor) = if d.x.abs() >= d.y.abs() {
+                                        (
+                                            [
+                                                Pos2::new(start.x, rect.top()),
+                                                Pos2::new(start.x, rect.bottom()),
+                                            ],
+                                            Rect::from_x_y_ranges(
+                                                start.x.min(pos.x)..=start.x.max(pos.x),
+                                                rect.y_range(),
+                                            ),
+                                            egui::CursorIcon::ResizeHorizontal,
+                                        )
+                                    } else {
+                                        (
+                                            [
+                                                Pos2::new(rect.left(), start.y),
+                                                Pos2::new(rect.right(), start.y),
+                                            ],
+                                            Rect::from_x_y_ranges(
+                                                rect.x_range(),
+                                                start.y.min(pos.y)..=start.y.max(pos.y),
+                                            ),
+                                            egui::CursorIcon::ResizeVertical,
+                                        )
+                                    };
+                                    painter.rect_filled(moved, 0.0, accent.gamma_multiply(0.12));
+                                    painter
+                                        .extend(egui::Shape::dashed_line(&line, stroke, 6.0, 4.0));
+                                    ctx.set_cursor_icon(cursor);
+                                }
+                            }
                             Some(Gesture::BoxSelect(start)) => {
                                 if let Some(pos) = pointer {
                                     let area = Rect::from_two_pos(*start, pos);
@@ -1923,6 +2079,29 @@ impl ProcessCraft {
                     {
                         match gesture {
                             Gesture::Pan => {}
+                            Gesture::Space(start) => {
+                                if let Some(pos) = pointer {
+                                    let (x0, y0) = to_model(rect, camera, zoom, start);
+                                    let (x1, y1) = to_model(rect, camera, zoom, pos);
+                                    let (axis, from, delta) = if (x1 - x0).abs() >= (y1 - y0).abs()
+                                    {
+                                        (Axis::X, x0, x1 - x0)
+                                    } else {
+                                        (Axis::Y, y0, y1 - y0)
+                                    };
+                                    // Under 5 screen px is a click, not a space drag.
+                                    if delta.abs() * zoom as f64 >= 5.0 {
+                                        self.ctl.mutate(vec![Mutation::MakeSpace {
+                                            document_id: d.id,
+                                            diagram_id: diagram_id.clone(),
+                                            axis,
+                                            start: from.round(),
+                                            delta: delta.round(),
+                                            before: ctx.input(|i| i.modifiers.command),
+                                        }]);
+                                    }
+                                }
+                            }
                             Gesture::BoxSelect(start) => {
                                 if let Some(pos) = pointer {
                                     let (x0, y0) = to_model(rect, camera, zoom, start);
@@ -2572,6 +2751,10 @@ impl ProcessCraft {
             self.open_search();
         }
         let duplicate = ctx.input_mut(|i| i.consume_key(Modifiers::CTRL, Key::D));
+        // S: space tool (bpmn-js), toggled; Escape also leaves it.
+        if editable && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::S)) {
+            self.canvas.space_tool = !self.canvas.space_tool;
+        }
         // R: replace menu for a single selected element or sequence flow.
         if editable
             && self.multi.len() <= 1
@@ -3076,7 +3259,7 @@ mod tests {
             app.zoom,
             &shape.bounds,
         );
-        let entry = context_pad(document, id, screen)
+        let entry = context_pad(document, id, screen, app.canvas.rect.unwrap())
             .into_iter()
             .find(|(a, _)| *a == action)
             .unwrap();
@@ -3331,11 +3514,55 @@ mod tests {
         app.add(NodeKind::EndEvent);
         let end = app.selected.clone().unwrap();
         let snap = app.ctl.session.snapshot();
-        let pad = context_pad(&snap.project.documents[0], &end, screen);
+        let pad = context_pad(&snap.project.documents[0], &end, screen, Rect::EVERYTHING);
         assert!(
             pad.iter()
                 .all(|(a, _)| !matches!(a, PadAction::Append(k) if *k != NodeKind::TextAnnotation))
         );
+    }
+    #[test]
+    fn context_pad_adds_a_lane_below_a_pool() {
+        let mut app = ProcessCraft::default();
+        app.add_pool();
+        let snap = app.ctl.session.snapshot();
+        let document = &snap.project.documents[0];
+        let pool = document.collaboration.as_ref().unwrap().participants[0]
+            .id
+            .selector();
+        let before = document.diagrams[0]
+            .shapes
+            .iter()
+            .find(|s| s.element == pool)
+            .unwrap()
+            .bounds
+            .clone();
+        app.select(Some(pool.clone()));
+        let mut run = canvas_runner(&mut app);
+        let (_, entry) = on_screen(&app, &pool, PadAction::AddLane(LaneLocation::Below));
+        run(&mut app, vec![egui::Event::PointerMoved(entry)]);
+        run(&mut app, vec![button(entry, true)]);
+        run(&mut app, vec![button(entry, false)]);
+        let snap = app.ctl.session.snapshot();
+        let document = &snap.project.documents[0];
+        let shapes = &document.diagrams[0].shapes;
+        let after = &shapes.iter().find(|s| s.element == pool).unwrap().bounds;
+        assert_eq!(after.height, before.height + 120.0, "{}", app.ctl.error);
+        // The pool had no lanes: it gets one covering its body and the new 120 high lane.
+        let lanes = &document.processes[0].lanes;
+        assert_eq!(lanes.len(), 2);
+        let mut heights: Vec<f64> = lanes
+            .iter()
+            .map(|l| {
+                shapes
+                    .iter()
+                    .find(|s| s.element == l.id)
+                    .unwrap()
+                    .bounds
+                    .height
+            })
+            .collect();
+        heights.sort_by(f64::total_cmp);
+        assert_eq!(heights, vec![120.0, before.height]);
     }
     #[test]
     fn r_opens_the_replace_menu_and_enter_turns_a_task_into_a_user_task() {
@@ -3368,7 +3595,7 @@ mod tests {
         let snap = app.ctl.session.snapshot();
         let screen = Rect::from_min_size(Pos2::ZERO, Vec2::new(100.0, 80.0));
         assert!(
-            context_pad(&snap.project.documents[0], &task, screen)
+            context_pad(&snap.project.documents[0], &task, screen, Rect::EVERYTHING)
                 .iter()
                 .any(|(a, _)| *a == PadAction::Replace)
         );

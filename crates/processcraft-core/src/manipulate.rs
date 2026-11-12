@@ -624,8 +624,28 @@ pub fn resize(
             return Err("The resize would cut off contained elements".into());
         }
     }
-    // Every shape that changes: the resized one and its boundary events (same relative place).
+    // Every shape that changes: the resized one, lanes and the pool sharing a lane edge with it
+    // (bpmn-js resizeLane), and its boundary events (same relative place).
     let mut changed = vec![(shape, bounds.clone())];
+    let target = diagram
+        .shapes
+        .iter()
+        .position(|s| s.id == *shape_id)
+        .ok_or("shape not found")?;
+    for (i, b) in crate::containers::lanes_resize(doc, diagram, target, &bounds) {
+        let lane = &diagram.shapes[i];
+        let o = &lane.bounds;
+        if let Some(rule) = resize_rule(doc, lane)
+            && ((b.width < o.width && b.width < rule.width)
+                || (b.height < o.height && b.height < rule.height))
+        {
+            return Err(format!(
+                "A lane would become smaller than {} x {}",
+                rule.width, rule.height
+            ));
+        }
+        changed.push((lane, b));
+    }
     let ratio = |n: f64, o: f64| if o == 0.0 { 1.0 } else { n / o };
     for scope in queries::scopes(doc) {
         for event in scope

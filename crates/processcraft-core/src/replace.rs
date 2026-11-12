@@ -558,12 +558,17 @@ pub fn replace_options(doc: &BpmnDocument, element: &ElementSelector) -> Vec<Rep
         _ if is_sub(n.kind)
             && (!is_collapsed || rules::is_event_subprocess(n) || n.kind == K::Transaction) =>
         {
-            vec![
+            let mut options = vec![
                 sub(K::Transaction, false, is_collapsed),
                 sub(K::SubProcess, false, is_collapsed),
                 sub(K::AdHocSubProcess, false, is_collapsed),
                 sub(K::SubProcess, true, is_collapsed),
-            ]
+            ];
+            // Collapsing goes through the collapse toggle (containers::toggle_collapse).
+            if !is_collapsed && !rules::is_event_subprocess(n) && n.kind != K::Transaction {
+                options.push(sub(n.kind, false, true));
+            }
+            options
         }
         _ if n.kind.is_activity() => [
             K::Task,
@@ -585,8 +590,12 @@ pub fn replace_options(doc: &BpmnDocument, element: &ElementSelector) -> Vec<Rep
             sub(K::AdHocSubProcess, false, false),
         ])
         .filter(|t| {
+            // A collapsed subprocess expands only as itself (the collapse toggle).
+            let expands = |kind: NodeKind| {
+                kind == n.kind && matches!(n.details, Some(NodeDetails::SubProcess { .. }))
+            };
             !is_collapsed
-                || !matches!(t, ReplaceTarget::Node { kind, collapsed: false, .. } if is_sub(*kind))
+                || !matches!(t, ReplaceTarget::Node { kind, collapsed: false, .. } if is_sub(*kind) && !expands(*kind))
         })
         .collect(),
         K::DataObjectReference => vec![node(K::DataStoreReference)],
@@ -616,6 +625,9 @@ pub fn replace(
             "This element cannot be replaced with: {}",
             target.label()
         ));
+    }
+    if crate::containers::collapse_toggle_target(doc, element, target).is_some() {
+        return Err("Collapse and expand subprocesses with containers::toggle_collapse".into());
     }
     if matches!(target, ReplaceTarget::Node { .. }) {
         replace_node(doc, element, target)

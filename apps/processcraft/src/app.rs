@@ -1690,16 +1690,27 @@ impl ProcessCraft {
             edge: controller::id("Edge").into(),
         };
         let name = (kind != NodeKind::TextAnnotation).then(|| node_kind_label(kind).into());
+        // Preflight for the refusal reason; the mutation adds auto-resize of the container.
         match processcraft_core::modeling::append(
             d,
             &diagram.id.selector(),
             &source,
             kind,
-            name,
-            ids,
+            name.clone(),
+            ids.clone(),
         ) {
-            Ok(batch) => {
-                let done = self.ctl.mutate(batch);
+            Ok(_) => {
+                let done = self.ctl.mutate(vec![Mutation::Append {
+                    document_id: d.id,
+                    diagram_id: diagram.id.selector(),
+                    source_id: source,
+                    kind,
+                    name,
+                    node_id: ids.node,
+                    shape_id: ids.shape,
+                    flow_id: ids.flow,
+                    edge_id: ids.edge,
+                }]);
                 if done {
                     self.select(Some(node.selector()));
                 }
@@ -1726,90 +1737,14 @@ impl ProcessCraft {
         else {
             return;
         };
-        let process = d
-            .processes
-            .iter()
-            .find(|p| self.process_id.as_ref().is_none_or(|id| &p.id == id))
-            .map(|p| processcraft_core::bpmn_activity::ModelReference::Local(p.id.selector()));
-        let participant = controller::id("Participant");
-        let mut batch = Vec::new();
-        let plane_collaboration = d.collaborations().find(|root| root.id == diagram.plane);
-        let collaboration_id = d
-            .collaboration
-            .as_ref()
-            .filter(|_| plane_collaboration.is_none())
-            .or(plane_collaboration)
-            .map_or_else(|| controller::id("Collaboration").into(), |c| c.id.clone());
-        if d.collaboration.is_none() && plane_collaboration.is_none() {
-            batch.push(Mutation::CreateCollaboration {
-                document_id: d.id,
-                collaboration: Collaboration {
-                    kind: None,
-                    extras: None,
-                    correlation_keys: Vec::new(),
-                    base: None,
-                    name: None,
-                    conversation_nodes: vec![],
-                    conversation_links: vec![],
-                    id: collaboration_id.clone(),
-                    participants: vec![],
-                    flows: vec![],
-                },
-            });
-        }
-        if plane_collaboration.is_none() {
-            batch.push(Mutation::SetDiagramPlane {
-                document_id: d.id,
-                diagram_id: diagram.id.selector(),
-                plane: collaboration_id.selector(),
-            });
-        }
-        let value = Participant {
-            interface_refs: vec![],
-            endpoint_refs: vec![],
-            multiplicity: None,
-            base: None,
-            id: participant.clone().into(),
-            name: Some("Pool".into()),
-            process,
-        };
-        if let Some(root) = plane_collaboration {
-            let mut root = root.clone();
-            root.participants.push(value);
-            batch.push(Mutation::SetCollaborationRoot {
-                document_id: d.id,
-                collaboration: root,
-            });
-        } else {
-            batch.push(Mutation::CreateParticipant {
-                document_id: d.id,
-                participant: value,
-            });
-        }
-        batch.push(Mutation::CreateShape {
+        // Core wraps a process diagram's content, or places an empty pool at the viewport centre.
+        let (x, y) = self.viewport_center();
+        let batch = vec![Mutation::CreatePool {
             document_id: d.id,
             diagram_id: diagram.id.selector(),
-            shape: Shape {
-                di_metadata: None,
-                is_message_visible: None,
-                participant_band_kind: None,
-                choreography_activity_shape: None,
-                label_visibility: Some(DiLabelVisibility::Explicit),
-                is_horizontal: None,
-                is_marker_visible: None,
-                is_expanded: None,
-                id: controller::id("PoolShape").into(),
-                element: participant.into(),
-                bounds: Bounds {
-                    x: self.camera.0 + 20.0,
-                    y: self.camera.1 + 60.0,
-                    width: 700.0,
-                    height: 350.0,
-                },
-                label: Some(Label::default()),
-                style: None,
-            },
-        });
+            name: Some("Pool".into()),
+            center: Some(processcraft_core::model::Point { x, y }),
+        }];
         self.ctl.mutate_at_generation(snap.generation, batch);
     }
     fn add_lane(&mut self) {

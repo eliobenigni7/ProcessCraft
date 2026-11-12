@@ -13,6 +13,7 @@ pub use ids::{DictionaryEntryId, DocumentId, InvalidId, ProjectId};
 pub mod arrange;
 pub mod clipboard;
 pub mod commands;
+pub mod containers;
 pub mod geometry;
 mod history;
 

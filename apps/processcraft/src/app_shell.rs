@@ -422,6 +422,8 @@ impl ProcessCraft {
                     }
                     ui.checkbox(&mut self.shell.problems, "Problems");
                     ui.checkbox(&mut self.canvas.grid_snap, "Snap to 10 px grid");
+                    ui.checkbox(&mut self.canvas.space_tool, "Space tool (S)")
+                        .on_hover_text("Drag on the canvas to insert space; drag back to remove it. Ctrl moves the shapes before the line.");
                     ui.separator();
                     if ui
                         .selectable_value(&mut self.theme, Theme::Light, "Light theme")

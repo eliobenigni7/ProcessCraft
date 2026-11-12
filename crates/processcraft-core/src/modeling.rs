@@ -403,6 +403,7 @@ pub(crate) fn find_diagram<'a>(
 }
 
 /// IDs of the elements an append creates.
+#[derive(Clone)]
 pub struct AppendIds {
     pub node: ElementIdentity,
     pub shape: ElementIdentity,

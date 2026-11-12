@@ -797,6 +797,45 @@ pub enum Mutation {
         #[serde(default)]
         edge_id: Option<crate::ids::ElementIdentity>,
     },
+    /// Add a lane above or below a lane or pool (see `containers::add_lane`).
+    AddLane {
+        document_id: DocumentId,
+        diagram_id: ElementSelector,
+        element_id: ElementSelector,
+        location: crate::containers::LaneLocation,
+    },
+    /// Split a lane or pool into `count` even lanes (see `containers::split_lane`).
+    SplitLane {
+        document_id: DocumentId,
+        diagram_id: ElementSelector,
+        element_id: ElementSelector,
+        count: u8,
+    },
+    /// Create a pool, wrapping a process diagram's content (see `containers::create_pool`).
+    CreatePool {
+        document_id: DocumentId,
+        diagram_id: ElementSelector,
+        name: Option<String>,
+        #[serde(default)]
+        center: Option<Point>,
+    },
+    /// Collapse or expand a subprocess (see `containers::toggle_collapse`).
+    ToggleCollapse {
+        document_id: DocumentId,
+        diagram_id: ElementSelector,
+        element_id: ElementSelector,
+    },
+    /// Insert (positive `delta`) or remove space at a line (see `containers::make_space`); the
+    /// shapes after the line move, or those before it with `before`.
+    MakeSpace {
+        document_id: DocumentId,
+        diagram_id: ElementSelector,
+        axis: crate::containers::Axis,
+        start: f64,
+        delta: f64,
+        #[serde(default)]
+        before: bool,
+    },
 }
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(
@@ -1755,7 +1794,7 @@ pub(crate) fn selection_exists(p: &ProjectData, key: &ElementKey) -> bool {
         .find(|d| d.id == key.document_id)
         .is_some_and(|d| crate::identity::semantic_ids(d).contains(&key.xml_id))
 }
-fn move_shape(s: &mut Shape, bounds: Bounds) {
+pub(crate) fn move_shape(s: &mut Shape, bounds: Bounds) {
     if let Some(label) = &mut s.label
         && let Some(label_bounds) = &mut label.bounds
     {
@@ -3048,6 +3087,44 @@ fn remove_di_shapes(
             None => true,
         }
     });
+}
+/// Auto-resize the containers of `elements` (and then their containers) after a create, move,
+/// or expand (see `containers::auto_resize_step`); lane membership follows the grown pools.
+fn auto_resize(
+    p: &mut ProjectData,
+    document_id: DocumentId,
+    diagram_id: &ElementSelector,
+    mut elements: Vec<ElementSelector>,
+    old: &BpmnDocument,
+) -> Result<(), CommandError> {
+    let mut resized = false;
+    for _ in 0..32 {
+        let steps =
+            crate::containers::auto_resize_step(doc(p, document_id, false)?, diagram_id, &elements);
+        if steps.is_empty() {
+            break;
+        }
+        elements.clear();
+        for (element, shape_id, bounds) in steps {
+            let batch = crate::manipulate::resize(
+                doc(p, document_id, false)?,
+                diagram_id,
+                &shape_id,
+                bounds,
+            )
+            .map_err(CommandError::InvalidParams)?;
+            for m in batch {
+                mutate(p, m)?;
+            }
+            elements.push(element);
+            resized = true;
+        }
+    }
+    let d = doc(p, document_id, false)?;
+    if resized && d.capability.allows_structural_editing() && !d.has_opaque_xml() {
+        crate::containers::sync_lanes(old, d, diagram_id);
+    }
+    Ok(())
 }
 fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
     match m {
@@ -5614,6 +5691,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                 .find(|d| d.id == document_id)
                 .cloned()
                 .ok_or_else(|| invalid("document not found"))?;
+            let node = node_id.selector();
             let batch = crate::modeling::append(
                 &d,
                 &diagram_id,
@@ -5631,6 +5709,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             for m in batch {
                 mutate(p, m)?;
             }
+            auto_resize(p, document_id, &diagram_id, vec![node], &d)?;
         }
         Mutation::ReplaceElement {
             document_id,
@@ -5638,6 +5717,18 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             target,
         } => {
             let d = doc(p, document_id, true)?;
+            if let Some(diagram_id) =
+                crate::containers::collapse_toggle_target(d, &element_id, &target)
+            {
+                return mutate(
+                    p,
+                    Mutation::ToggleCollapse {
+                        document_id,
+                        diagram_id,
+                        element_id,
+                    },
+                );
+            }
             let batch = crate::replace::replace(d, &element_id, &target)
                 .map_err(CommandError::InvalidParams)?;
             for m in batch {
@@ -5652,7 +5743,16 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             edge_id,
         } => {
             let d = doc(p, document_id, false)?;
+            let old = d.clone();
             let semantic = d.capability.allows_structural_editing() && !d.has_opaque_xml();
+            let moved: Vec<ElementSelector> = d
+                .diagrams
+                .iter()
+                .filter(|g| g.id == diagram_id)
+                .flat_map(|g| &g.shapes)
+                .filter(|s| shapes.iter().any(|b| b.shape_id == s.id))
+                .map(|s| s.element.clone())
+                .collect();
             let batch = crate::manipulate::move_elements(
                 d,
                 &diagram_id,
@@ -5664,6 +5764,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             for m in batch {
                 mutate(p, m)?;
             }
+            auto_resize(p, document_id, &diagram_id, moved, &old)?;
         }
         Mutation::ResizeShape {
             document_id,
@@ -5672,10 +5773,15 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             bounds,
         } => {
             let d = doc(p, document_id, false)?;
+            let old = d.clone();
             let batch = crate::manipulate::resize(d, &diagram_id, &shape_id, bounds)
                 .map_err(CommandError::InvalidParams)?;
             for m in batch {
                 mutate(p, m)?;
+            }
+            let d = doc(p, document_id, false)?;
+            if d.capability.allows_structural_editing() && !d.has_opaque_xml() {
+                crate::containers::sync_lanes(&old, d, &diagram_id);
             }
         }
         Mutation::Reconnect {
@@ -5705,6 +5811,8 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             edge_id,
         } => {
             let d = doc(p, document_id, true)?;
+            let old = d.clone();
+            let node = node_id.selector();
             let ids = crate::manipulate::CreateIds {
                 node: node_id,
                 shape: shape_id,
@@ -5716,6 +5824,74 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             for m in batch {
                 mutate(p, m)?;
             }
+            auto_resize(p, document_id, &diagram_id, vec![node], &old)?;
+        }
+        Mutation::AddLane {
+            document_id,
+            diagram_id,
+            element_id,
+            location,
+        } => crate::containers::add_lane(
+            doc(p, document_id, true)?,
+            &diagram_id,
+            &element_id,
+            location,
+        )
+        .map_err(CommandError::InvalidParams)?,
+        Mutation::SplitLane {
+            document_id,
+            diagram_id,
+            element_id,
+            count,
+        } => crate::containers::split_lane(
+            doc(p, document_id, true)?,
+            &diagram_id,
+            &element_id,
+            count,
+        )
+        .map_err(CommandError::InvalidParams)?,
+        Mutation::CreatePool {
+            document_id,
+            diagram_id,
+            name,
+            center,
+        } => {
+            let batch = crate::containers::create_pool(
+                doc(p, document_id, true)?,
+                &diagram_id,
+                name,
+                center,
+            )
+            .map_err(CommandError::InvalidParams)?;
+            for m in batch {
+                mutate(p, m)?;
+            }
+        }
+        Mutation::ToggleCollapse {
+            document_id,
+            diagram_id,
+            element_id,
+        } => {
+            let d = doc(p, document_id, true)?;
+            let old = d.clone();
+            if crate::containers::toggle_collapse(d, &diagram_id, &element_id)
+                .map_err(CommandError::InvalidParams)?
+            {
+                auto_resize(p, document_id, &diagram_id, vec![element_id], &old)?;
+            }
+        }
+        Mutation::MakeSpace {
+            document_id,
+            diagram_id,
+            axis,
+            start,
+            delta,
+            before,
+        } => {
+            let d = doc(p, document_id, false)?;
+            let semantic = d.capability.allows_structural_editing() && !d.has_opaque_xml();
+            crate::containers::make_space(d, &diagram_id, axis, start, delta, !before, semantic)
+                .map_err(CommandError::InvalidParams)?
         }
         Mutation::Delete {
             document_id,
@@ -5733,6 +5909,15 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                 );
             }
             let d = doc(p, document_id, true)?;
+            // Sibling lanes take a deleted lane's space; membership follows afterwards.
+            let lane_old = crate::queries::scopes(d)
+                .iter()
+                .any(|s| s.lanes.iter().any(|l| l.id == element_id))
+                .then(|| d.clone());
+            let lane_diagrams = match &lane_old {
+                Some(_) => crate::containers::compensate_lane_delete(d, &element_id),
+                None => Vec::new(),
+            };
             let index = crate::reference_resolution::ReferenceIndex::new(d);
             let mut removed = std::collections::HashSet::new();
             let mut found = false;
@@ -5835,6 +6020,11 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             for dg in &mut d.diagrams {
                 dg.shapes.retain(|s| !removed.contains(&s.element));
                 dg.edges.retain(|e| !removed.contains(&e.element));
+            }
+            if let Some(old) = &lane_old {
+                for diagram_id in &lane_diagrams {
+                    crate::containers::sync_lanes(old, d, diagram_id);
+                }
             }
             p.dictionary_links.retain(|l| {
                 !(l.source.document_id == document_id && removed.contains(&l.source.xml_id))
@@ -6017,6 +6207,11 @@ static COMMAND_DESCRIPTORS: &[CommandDescriptor] = &[
     descriptor!("resizeShape","Resize a shape under the BPMN resize rules","document_id":"DocumentId","diagram_id":"ElementSelector","shape_id":"ElementSelector","bounds":"Bounds"),
     descriptor!("reconnect","Reconnect a flow to another source or target","document_id":"DocumentId","diagram_id":"ElementSelector","flow_id":"ElementSelector","source_id":"ElementSelector","target_id":"ElementSelector"),
     descriptor!("createAt","Create an element at a drop point","document_id":"DocumentId","diagram_id":"ElementSelector","kind":"NodeKind","name":"string|null","center":"Point","node_id":"ElementIdentity","shape_id":"ElementIdentity","flow_id":"ElementIdentity|null","edge_id":"ElementIdentity|null"),
+    descriptor!("addLane","Add a lane above or below a lane or pool","document_id":"DocumentId","diagram_id":"ElementSelector","element_id":"ElementSelector","location":"LaneLocation"),
+    descriptor!("splitLane","Split a lane or pool into even lanes","document_id":"DocumentId","diagram_id":"ElementSelector","element_id":"ElementSelector","count":"u8"),
+    descriptor!("createPool","Create a pool, wrapping a process diagram's content","document_id":"DocumentId","diagram_id":"ElementSelector","name":"string|null","center":"Point|null"),
+    descriptor!("toggleCollapse","Collapse or expand a subprocess","document_id":"DocumentId","diagram_id":"ElementSelector","element_id":"ElementSelector"),
+    descriptor!("makeSpace","Insert or remove space at a line","document_id":"DocumentId","diagram_id":"ElementSelector","axis":"Axis","start":"number","delta":"number","before":"bool"),
 ];
 pub fn command_descriptors() -> &'static [CommandDescriptor] {
     COMMAND_DESCRIPTORS
