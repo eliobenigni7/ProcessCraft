@@ -2996,6 +2996,10 @@ fn descriptors_match_protocol_tags() {
         "connect",
         "append",
         "replaceElement",
+        "moveElements",
+        "resizeShape",
+        "reconnect",
+        "createAt",
     ];
     assert_eq!(
         descriptors.iter().map(|d| d.serde_tag).collect::<Vec<_>>(),

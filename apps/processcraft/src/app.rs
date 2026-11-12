@@ -146,6 +146,8 @@ struct DragGesture {
     offset: Vec2,
     context: Option<(u64, processcraft_core::ids::DocumentId, ElementSelector)>,
     label: bool,
+    /// Snap correction (diagram units) and guides for the current pointer position.
+    snap: processcraft_core::geometry::Snap,
 }
 impl DragGesture {
     fn new(items: Vec<(ElementSelector, Bounds)>, origin: Pos2) -> Self {
@@ -155,6 +157,7 @@ impl DragGesture {
             offset: Vec2::ZERO,
             context: None,
             label: false,
+            snap: Default::default(),
         }
     }
     fn update(&mut self, position: Option<Pos2>) {
@@ -1946,6 +1949,39 @@ impl ProcessCraft {
             }
             Err(e) => self.ctl.error = format!("Could not move selection: {e}"),
         }
+    }
+    /// A canvas drag: the core move with its behaviors (attach/detach, drop on flow, lanes).
+    fn drag_move(&mut self, items: Vec<(ElementSelector, Bounds)>, dx: f64, dy: f64) {
+        let snap = self.ctl.session.snapshot();
+        let Some(d) = snap.project.documents.get(self.doc) else {
+            return;
+        };
+        let Some(diagram) = d
+            .diagrams
+            .iter()
+            .find(|d| self.diagram_id.as_ref().is_none_or(|id| &d.id == id))
+        else {
+            return;
+        };
+        let shapes = items
+            .into_iter()
+            .map(|(shape_id, mut bounds)| {
+                bounds.x += dx;
+                bounds.y += dy;
+                processcraft_core::commands::ShapeBounds {
+                    diagram_id: diagram.id.selector(),
+                    shape_id,
+                    bounds,
+                }
+            })
+            .collect();
+        self.ctl.mutate(vec![Mutation::MoveElements {
+            document_id: d.id,
+            diagram_id: diagram.id.selector(),
+            shapes,
+            flow_id: Some(controller::id("Flow").into()),
+            edge_id: Some(controller::id("Edge").into()),
+        }]);
     }
     fn move_selected(&mut self, dx: f64, dy: f64) {
         let snap = self.ctl.session.snapshot();

@@ -151,7 +151,7 @@ fn all_flows(doc: &BpmnDocument) -> Vec<&Flow> {
         .chain(doc.collaborations().flat_map(|c| &c.flows))
         .collect()
 }
-fn shape_bounds<'a>(diagram: &'a Diagram, id: &ElementSelector) -> Option<&'a Bounds> {
+pub(crate) fn shape_bounds<'a>(diagram: &'a Diagram, id: &ElementSelector) -> Option<&'a Bounds> {
     diagram
         .shapes
         .iter()
@@ -331,7 +331,7 @@ fn learned_gap(flows: &[&Flow], diagram: &Diagram, source: &ElementSelector, s: 
     best.unwrap_or(50.0)
 }
 
-fn route(
+pub(crate) fn route(
     diagram: &Diagram,
     kind: ConnectionKind,
     source: Option<&Node>,
@@ -358,7 +358,7 @@ fn route(
     let shapes: Vec<Bounds> = diagram.shapes.iter().map(|s| s.bounds.clone()).collect();
     layout_route(a, b, &shapes, layout)
 }
-fn edge(id: ElementIdentity, element: ElementSelector, waypoints: Vec<Point>) -> Edge {
+pub(crate) fn edge(id: ElementIdentity, element: ElementSelector, waypoints: Vec<Point>) -> Edge {
     Edge {
         di_metadata: None,
         message_visible_kind: None,
@@ -372,7 +372,7 @@ fn edge(id: ElementIdentity, element: ElementSelector, waypoints: Vec<Point>) ->
         style: None,
     }
 }
-fn flow(
+pub(crate) fn flow(
     id: ElementIdentity,
     kind: FlowKind,
     source: &ElementSelector,
@@ -392,7 +392,10 @@ fn flow(
         condition: None,
     }
 }
-fn find_diagram<'a>(doc: &'a BpmnDocument, id: &ElementSelector) -> Result<&'a Diagram, String> {
+pub(crate) fn find_diagram<'a>(
+    doc: &'a BpmnDocument,
+    id: &ElementSelector,
+) -> Result<&'a Diagram, String> {
     doc.diagrams
         .iter()
         .find(|d| d.id == *id)

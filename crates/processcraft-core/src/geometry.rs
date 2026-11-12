@@ -647,6 +647,112 @@ fn edge_attachment(old: &[Point], new: &[Point], point: &Point) -> Result<Point,
         .clone())
 }
 
+/// Whether `point` lies on the border band of `host` (bpmn-js attach: within 15 of the outline,
+/// inside or outside).
+pub fn on_border(point: &Point, host: &Bounds) -> bool {
+    const BAND: f64 = 15.0;
+    let inside = |pad: f64| {
+        point.x >= host.x - pad
+            && point.x <= host.x + host.width + pad
+            && point.y >= host.y - pad
+            && point.y <= host.y + host.height + pad
+    };
+    inside(BAND) && !inside(-BAND)
+}
+
+/// Distance from `point` to the polyline `points`.
+pub fn distance_to_path(point: &Point, points: &[Point]) -> f64 {
+    points
+        .windows(2)
+        .map(|w| {
+            let (dx, dy) = (w[1].x - w[0].x, w[1].y - w[0].y);
+            let length = dx * dx + dy * dy;
+            let t = if length == 0.0 {
+                0.0
+            } else {
+                (((point.x - w[0].x) * dx + (point.y - w[0].y) * dy) / length).clamp(0.0, 1.0)
+            };
+            (point.x - w[0].x - t * dx).hypot(point.y - w[0].y - t * dy)
+        })
+        .fold(f64::INFINITY, f64::min)
+}
+
+/// Endpoints of `points` docked on `old` move proportionally onto `new` (centre-relative
+/// scaling), keeping interior points and orthogonal ends. `None` when nothing is docked there.
+pub fn redock(points: &[Point], old: &Bounds, new: &Bounds) -> Option<Vec<Point>> {
+    let (first, last) = (points.first()?, points.last()?);
+    let near = |p: &Point| {
+        p.x >= old.x - 1.0
+            && p.x <= old.x + old.width + 1.0
+            && p.y >= old.y - 1.0
+            && p.y <= old.y + old.height + 1.0
+    };
+    let (ox, oy) = (old.x + old.width / 2.0, old.y + old.height / 2.0);
+    let (nx, ny) = (new.x + new.width / 2.0, new.y + new.height / 2.0);
+    let ratio = |n: f64, o: f64| if o == 0.0 { 1.0 } else { n / o };
+    let scale = |p: &Point| Point {
+        x: nx + (p.x - ox) * ratio(new.width, old.width),
+        y: ny + (p.y - oy) * ratio(new.height, old.height),
+    };
+    let start = near(first).then(|| scale(first));
+    let end = near(last).then(|| scale(last));
+    if start.is_none() && end.is_none() {
+        return None;
+    }
+    repair_endpoints(points, start, end, &[]).ok()?.waypoints
+}
+
+/// A snapped move: the offset to add and the guide lines it snapped to (`guide_x` is the x of a
+/// vertical guide, `guide_y` the y of a horizontal one).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Snap {
+    pub dx: f64,
+    pub dy: f64,
+    pub guide_x: Option<f64>,
+    pub guide_y: Option<f64>,
+}
+/// bpmn-js create/move snapping: the moved shape's mid, top-left, and bottom-right snap to the
+/// same points of `siblings`, and its mid to the mids of `connected` elements, per axis, when
+/// within `tolerance` diagram units. The closest match wins on each axis.
+pub fn snap(moved: &Bounds, siblings: &[Bounds], connected: &[Bounds], tolerance: f64) -> Snap {
+    let points = |b: &Bounds| {
+        [
+            (b.x + b.width / 2.0, b.y + b.height / 2.0),
+            (b.x, b.y),
+            (b.x + b.width, b.y + b.height),
+        ]
+    };
+    let own = points(moved);
+    let candidates = siblings
+        .iter()
+        .flat_map(|b| points(b).into_iter().enumerate())
+        .chain(connected.iter().map(|b| (0, points(b)[0])));
+    let mut best: [Option<(f64, f64)>; 2] = [None, None];
+    for (kind, (x, y)) in candidates {
+        for (axis, (target, from)) in [(x, own[kind].0), (y, own[kind].1)].into_iter().enumerate() {
+            let delta = target - from;
+            if delta.abs() <= tolerance && best[axis].is_none_or(|(d, _)| delta.abs() < d.abs()) {
+                best[axis] = Some((delta, target));
+            }
+        }
+    }
+    Snap {
+        dx: best[0].map_or(0.0, |b| b.0),
+        dy: best[1].map_or(0.0, |b| b.0),
+        guide_x: best[0].map(|b| b.1),
+        guide_y: best[1].map(|b| b.1),
+    }
+}
+
+/// Boundary events and their hosts: `(event, host)`.
+fn attachments(document: &crate::model::BpmnDocument) -> Vec<(ElementSelector, ElementSelector)> {
+    crate::queries::scopes(document)
+        .iter()
+        .flat_map(|scope| scope.nodes.iter())
+        .filter_map(|n| Some((n.id.selector(), crate::rules::attached_to(n)?.clone())))
+        .collect()
+}
+
 /// A move batch and warnings which the caller should display to the user.
 pub struct PreparedMove {
     pub request: Request,
@@ -665,6 +771,55 @@ pub fn prepare_move(
         .iter()
         .find(|d| &d.id == diagram_id)
         .ok_or("diagram not found")?;
+    // Boundary events follow their host (keeping their place on its outline); one moved without
+    // its host may only slide along the host's border.
+    let attached = attachments(document);
+    for host in bounds.clone() {
+        let host_shape = diagram
+            .shapes
+            .iter()
+            .find(|s| s.id == host.shape_id)
+            .ok_or("shape not found")?;
+        let (old, new) = (&host_shape.bounds, &host.bounds);
+        let ratio = |n: f64, o: f64| if o == 0.0 { 1.0 } else { n / o };
+        for (event, _) in attached.iter().filter(|(_, h)| *h == host_shape.element) {
+            for shape in diagram.shapes.iter().filter(|s| s.element == *event) {
+                if bounds.iter().any(|b| b.shape_id == shape.id) {
+                    continue;
+                }
+                let b = &shape.bounds;
+                let cx = new.x + (b.x + b.width / 2.0 - old.x) * ratio(new.width, old.width);
+                let cy = new.y + (b.y + b.height / 2.0 - old.y) * ratio(new.height, old.height);
+                bounds.push(ShapeBounds {
+                    diagram_id: diagram_id.clone(),
+                    shape_id: shape.id.selector(),
+                    bounds: Bounds {
+                        x: cx - b.width / 2.0,
+                        y: cy - b.height / 2.0,
+                        ..b.clone()
+                    },
+                });
+            }
+        }
+    }
+    for moved in &bounds {
+        let Some(shape) = diagram.shapes.iter().find(|s| s.id == moved.shape_id) else {
+            continue;
+        };
+        let Some((_, host)) = attached.iter().find(|(e, _)| *e == shape.element) else {
+            continue;
+        };
+        for host_shape in diagram.shapes.iter().filter(|s| s.element == *host) {
+            let host_moved = bounds.iter().any(|b| b.shape_id == host_shape.id);
+            let b = &moved.bounds;
+            let center = p(b.x + b.width / 2.0, b.y + b.height / 2.0);
+            if !host_moved && b != &shape.bounds && !on_border(&center, &host_shape.bounds) {
+                return Err(
+                    "A boundary event moves with its host; it can only slide along the host's border",
+                );
+            }
+        }
+    }
     // Include visible descendant DI for moved subprocesses, without following a different diagram.
     // Conflicting explicit parent/child deltas are ambiguous and must not be partially applied.
     let requested = bounds.clone();

@@ -421,6 +421,7 @@ impl ProcessCraft {
                         ui.checkbox(&mut self.shell.properties, "Properties panel");
                     }
                     ui.checkbox(&mut self.shell.problems, "Problems");
+                    ui.checkbox(&mut self.canvas.grid_snap, "Snap to 10 px grid");
                     ui.separator();
                     if ui
                         .selectable_value(&mut self.theme, Theme::Light, "Light theme")
@@ -1112,8 +1113,12 @@ impl ProcessCraft {
                     ("Exclusive gateway", NodeKind::ExclusiveGateway),
                     ("Parallel gateway", NodeKind::ParallelGateway),
                 ] {
-                    if palette_item(ui, kind, label).clicked() {
+                    let item = palette_item(ui, kind, label);
+                    if item.clicked() {
                         self.add(kind);
+                    } else if item.drag_started() {
+                        // Drag onto the canvas to place it there.
+                        self.canvas.palette_drag = Some(kind);
                     }
                 }
             });
@@ -1713,8 +1718,10 @@ fn diagram_label(doc: &BpmnDocument, diagram: &Diagram, index: usize) -> String 
         .unwrap_or_else(|| format!("Diagram {}", index + 1))
 }
 fn palette_item(ui: &mut egui::Ui, kind: NodeKind, label: &str) -> egui::Response {
-    let (rect, response) =
-        ui.allocate_exact_size(egui::vec2(ui.available_width(), 29.0), egui::Sense::click());
+    let (rect, response) = ui.allocate_exact_size(
+        egui::vec2(ui.available_width(), 29.0),
+        egui::Sense::click_and_drag(),
+    );
     response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, ui.is_enabled(), label));
     #[cfg(test)]
     if kind == NodeKind::Task {

@@ -755,6 +755,48 @@ pub enum Mutation {
         element_id: ElementSelector,
         target: crate::replace::ReplaceTarget,
     },
+    /// Move shapes as one gesture with the bpmn-js move behaviors (see `manipulate::move_elements`):
+    /// boundary events follow their host, attach/detach, lane membership, scope change, and, with
+    /// `flow_id`/`edge_id`, insertion into the sequence flow under a single moved node.
+    MoveElements {
+        document_id: DocumentId,
+        diagram_id: ElementSelector,
+        shapes: Vec<ShapeBounds>,
+        #[serde(default)]
+        flow_id: Option<crate::ids::ElementIdentity>,
+        #[serde(default)]
+        edge_id: Option<crate::ids::ElementIdentity>,
+    },
+    /// Resize a shape under the bpmn-js resize rules (see `manipulate::resize`).
+    ResizeShape {
+        document_id: DocumentId,
+        diagram_id: ElementSelector,
+        shape_id: ElementSelector,
+        bounds: Bounds,
+    },
+    /// Give a flow a new source and/or target, keeping its ID and kind (see `manipulate::reconnect`).
+    Reconnect {
+        document_id: DocumentId,
+        diagram_id: ElementSelector,
+        flow_id: ElementSelector,
+        source_id: ElementSelector,
+        target_id: ElementSelector,
+    },
+    /// Create an element at a drop point with the bpmn-js create behaviors (see
+    /// `manipulate::create_at`): scope and lane from the point, attach, drop on flow.
+    CreateAt {
+        document_id: DocumentId,
+        diagram_id: ElementSelector,
+        kind: NodeKind,
+        name: Option<String>,
+        center: Point,
+        node_id: crate::ids::ElementIdentity,
+        shape_id: crate::ids::ElementIdentity,
+        #[serde(default)]
+        flow_id: Option<crate::ids::ElementIdentity>,
+        #[serde(default)]
+        edge_id: Option<crate::ids::ElementIdentity>,
+    },
 }
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(
@@ -1899,8 +1941,8 @@ fn nested_scope_mut<'a>(
     }
     None
 }
-type ScopePartsMut<'a> = (&'a mut Vec<Node>, &'a mut Vec<Lane>, &'a mut Vec<Flow>);
-fn scope_parts_mut<'a>(
+pub(crate) type ScopePartsMut<'a> = (&'a mut Vec<Node>, &'a mut Vec<Lane>, &'a mut Vec<Flow>);
+pub(crate) fn scope_parts_mut<'a>(
     document: &'a mut BpmnDocument,
     id: &ElementSelector,
 ) -> Result<ScopePartsMut<'a>, CommandError> {
@@ -5602,6 +5644,79 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                 mutate(p, m)?;
             }
         }
+        Mutation::MoveElements {
+            document_id,
+            diagram_id,
+            shapes,
+            flow_id,
+            edge_id,
+        } => {
+            let d = doc(p, document_id, false)?;
+            let semantic = d.capability.allows_structural_editing() && !d.has_opaque_xml();
+            let batch = crate::manipulate::move_elements(
+                d,
+                &diagram_id,
+                shapes,
+                flow_id.zip(edge_id),
+                semantic,
+            )
+            .map_err(CommandError::InvalidParams)?;
+            for m in batch {
+                mutate(p, m)?;
+            }
+        }
+        Mutation::ResizeShape {
+            document_id,
+            diagram_id,
+            shape_id,
+            bounds,
+        } => {
+            let d = doc(p, document_id, false)?;
+            let batch = crate::manipulate::resize(d, &diagram_id, &shape_id, bounds)
+                .map_err(CommandError::InvalidParams)?;
+            for m in batch {
+                mutate(p, m)?;
+            }
+        }
+        Mutation::Reconnect {
+            document_id,
+            diagram_id,
+            flow_id,
+            source_id,
+            target_id,
+        } => {
+            let d = doc(p, document_id, true)?;
+            let batch =
+                crate::manipulate::reconnect(d, &diagram_id, &flow_id, &source_id, &target_id)
+                    .map_err(CommandError::InvalidParams)?;
+            for m in batch {
+                mutate(p, m)?;
+            }
+        }
+        Mutation::CreateAt {
+            document_id,
+            diagram_id,
+            kind,
+            name,
+            center,
+            node_id,
+            shape_id,
+            flow_id,
+            edge_id,
+        } => {
+            let d = doc(p, document_id, true)?;
+            let ids = crate::manipulate::CreateIds {
+                node: node_id,
+                shape: shape_id,
+                flow: flow_id,
+                edge: edge_id,
+            };
+            let batch = crate::manipulate::create_at(d, &diagram_id, kind, name, center, ids)
+                .map_err(CommandError::InvalidParams)?;
+            for m in batch {
+                mutate(p, m)?;
+            }
+        }
         Mutation::Delete {
             document_id,
             element_id,
@@ -5898,6 +6013,10 @@ static COMMAND_DESCRIPTORS: &[CommandDescriptor] = &[
     descriptor!("connect","Connect elements (flow kind chosen by BPMN rules)","document_id":"DocumentId","diagram_id":"ElementSelector","source_id":"ElementSelector","target_id":"ElementSelector","flow_id":"ElementIdentity","edge_id":"ElementIdentity"),
     descriptor!("append","Append an auto-placed connected element","document_id":"DocumentId","diagram_id":"ElementSelector","source_id":"ElementSelector","kind":"NodeKind","name":"string|null","node_id":"ElementIdentity","shape_id":"ElementIdentity","flow_id":"ElementIdentity","edge_id":"ElementIdentity"),
     descriptor!("replaceElement","Replace an element with another BPMN type","document_id":"DocumentId","element_id":"ElementSelector","target":"ReplaceTarget"),
+    descriptor!("moveElements","Move shapes with attach, drop-on-flow, lane, and boundary-follow behaviors","document_id":"DocumentId","diagram_id":"ElementSelector","shapes":"ShapeBounds[]","flow_id":"ElementIdentity|null","edge_id":"ElementIdentity|null"),
+    descriptor!("resizeShape","Resize a shape under the BPMN resize rules","document_id":"DocumentId","diagram_id":"ElementSelector","shape_id":"ElementSelector","bounds":"Bounds"),
+    descriptor!("reconnect","Reconnect a flow to another source or target","document_id":"DocumentId","diagram_id":"ElementSelector","flow_id":"ElementSelector","source_id":"ElementSelector","target_id":"ElementSelector"),
+    descriptor!("createAt","Create an element at a drop point","document_id":"DocumentId","diagram_id":"ElementSelector","kind":"NodeKind","name":"string|null","center":"Point","node_id":"ElementIdentity","shape_id":"ElementIdentity","flow_id":"ElementIdentity|null","edge_id":"ElementIdentity|null"),
 ];
 pub fn command_descriptors() -> &'static [CommandDescriptor] {
     COMMAND_DESCRIPTORS

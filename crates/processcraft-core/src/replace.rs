@@ -1026,36 +1026,62 @@ fn replace_node(
         }
         shape.bounds = b.clone();
         // Edge ends docked on the old outline move proportionally onto the new one.
-        let near = |p: &Point| {
-            p.x >= o.x - 1.0
-                && p.x <= o.x + o.width + 1.0
-                && p.y >= o.y - 1.0
-                && p.y <= o.y + o.height + 1.0
-        };
-        let scale = |p: &Point| Point {
-            x: cx + (p.x - cx) * b.width / o.width,
-            y: cy + (p.y - cy) * b.height / o.height,
-        };
         for edge in &mut diagram.edges {
-            let (Some(first), Some(last)) = (edge.waypoints.first(), edge.waypoints.last()) else {
-                continue;
-            };
-            let start = near(first).then(|| scale(first));
-            let end = near(last).then(|| scale(last));
-            if (start.is_some() || end.is_some())
-                && edge.waypoints.len() >= 2
-                && let Ok(geometry::RouteResult {
-                    waypoints: Some(points),
-                    ..
-                }) = geometry::repair_endpoints(&edge.waypoints, start, end, &[])
-            {
+            if let Some(points) = geometry::redock(&edge.waypoints, &o, &b) {
                 edge.waypoints = points;
             }
         }
     }
+    Ok(incompatible_flows(doc, id, kind))
+}
 
-    // Re-check incident sequence and message flows (bpmn-js ReplaceConnectionBehavior).
-    let doc = &*doc;
+/// Attach event `id` to `host` as a boundary event, or detach it (`host` none) into an
+/// intermediate catch event, or a throw event when it has no definition (bpmn-js attach/detach
+/// behaviors). Definitions are kept; flows the rules no longer allow are returned as deletions.
+pub(crate) fn set_attachment(
+    doc: &mut BpmnDocument,
+    id: &ElementSelector,
+    host: Option<&ElementSelector>,
+) -> Result<Vec<Mutation>, String> {
+    let old = queries::find_node(doc, id).ok_or("element not found")?;
+    let (definitions, non_interrupting, _) = event_parts(old);
+    let trigger = definitions.first().map(Trigger::of);
+    let kind = match host {
+        Some(_) => NodeKind::BoundaryEvent,
+        None if trigger.is_none() => NodeKind::IntermediateThrowEvent,
+        None => NodeKind::IntermediateCatchEvent,
+    };
+    let target = ReplaceTarget::Node {
+        kind,
+        trigger,
+        non_interrupting: host.is_some() && non_interrupting,
+        event_sub_process: false,
+        collapsed: false,
+    };
+    let mut new = morph(doc, old, &target)?;
+    if let Some(host) = host {
+        let mut details = new.details.take().unwrap_or(NodeDetails::Event {
+            definitions: Vec::new(),
+            attached_to: None,
+            cancel_activity: Some(true),
+            definition_refs: Vec::new(),
+            parallel_multiple: None,
+            is_interrupting: None,
+            properties: Vec::new(),
+            io: None,
+        });
+        if let NodeDetails::Event { attached_to, .. } = &mut details {
+            *attached_to = Some(ModelReference::Local(host.clone()));
+        }
+        new.details = Some(details);
+    }
+    *crate::commands::node_mut(doc, id).map_err(|_| "element not found")? = new;
+    Ok(incompatible_flows(doc, id, kind))
+}
+
+/// Re-check the sequence and message flows of `id`, now of `kind` (bpmn-js
+/// ReplaceConnectionBehavior): deletions for the flows the rules no longer allow.
+fn incompatible_flows(doc: &BpmnDocument, id: &ElementSelector, kind: NodeKind) -> Vec<Mutation> {
     let mut doomed: Vec<ElementSelector> = Vec::new();
     for flow in all_flows(doc) {
         let (Some(source), Some(target)) = (endpoint(&flow.source), endpoint(&flow.target)) else {
@@ -1086,11 +1112,11 @@ fn replace_node(
             }
         }
     }
-    Ok(doomed
+    doomed
         .into_iter()
         .map(|element_id| Mutation::Delete {
             document_id: doc.id,
             element_id,
         })
-        .collect())
+        .collect()
 }

@@ -22,6 +22,7 @@ pub mod validation_flow;
 pub use validation::{Diagnostic, DiagnosticSeverity};
 
 pub mod layout;
+pub mod manipulate;
 pub mod modeling;
 pub mod replace;
 pub mod rules;

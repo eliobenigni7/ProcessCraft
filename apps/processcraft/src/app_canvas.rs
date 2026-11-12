@@ -8,7 +8,7 @@ use processcraft_core::{
     arrange::{Alignment, Distribution},
     commands::Mutation,
     ids::ElementSelector,
-    model::{Bounds, FlowKind, NodeKind, Shape},
+    model::{Bounds, FlowKind, NodeKind, Point, Shape},
 };
 use processcraft_render::{Appearance, HitGeometry, Viewport};
 
@@ -34,8 +34,166 @@ enum Gesture {
     Resize {
         shape: ElementSelector,
         bounds: Bounds,
-        corner: usize,
+        /// Handle direction per axis (-1 west/north, 0 none, 1 east/south).
+        handle: (i8, i8),
+        min: (f64, f64),
     },
+    /// Dragging a waypoint or segment of the selected edge (`edge` is its DI id).
+    Bendpoint {
+        edge: ElementSelector,
+        flow: ElementSelector,
+        points: Vec<Point>,
+        part: EdgePart,
+    },
+}
+
+/// A handle on a selected edge: a waypoint or the middle of a segment.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum EdgePart {
+    Point(usize),
+    Segment(usize),
+}
+fn edge_handles(points: &[Pos2]) -> Vec<(EdgePart, Pos2)> {
+    let mut handles: Vec<_> = points
+        .iter()
+        .enumerate()
+        .map(|(i, p)| (EdgePart::Point(i), *p))
+        .collect();
+    handles.extend(
+        points
+            .windows(2)
+            .enumerate()
+            .map(|(i, w)| (EdgePart::Segment(i), w[0].lerp(w[1], 0.5))),
+    );
+    handles
+}
+/// The route after dragging `part` by `(dx, dy)` (bpmn-js bendpoint move and segment move): a
+/// waypoint moves; an orthogonal segment moves across its axis; a diagonal segment gets a new
+/// bendpoint at its middle.
+fn edit_route(points: &[Point], part: EdgePart, dx: f64, dy: f64) -> Vec<Point> {
+    let mut out = points.to_vec();
+    match part {
+        EdgePart::Point(i) => {
+            if let Some(p) = out.get_mut(i) {
+                p.x += dx;
+                p.y += dy;
+            }
+        }
+        EdgePart::Segment(i) if i + 1 < out.len() => {
+            let (a, b) = (out[i].clone(), out[i + 1].clone());
+            if a.y == b.y {
+                out[i].y += dy;
+                out[i + 1].y += dy;
+            } else if a.x == b.x {
+                out[i].x += dx;
+                out[i + 1].x += dx;
+            } else {
+                out.insert(
+                    i + 1,
+                    Point {
+                        x: (a.x + b.x) / 2.0 + dx,
+                        y: (a.y + b.y) / 2.0 + dy,
+                    },
+                );
+            }
+        }
+        EdgePart::Segment(_) => {}
+    }
+    out
+}
+/// Snap correction for a drag: element snapping of the first dragged shape against the shapes
+/// that are not dragged and do not contain it, then the optional 10 px grid on free axes.
+fn snap_drag(
+    diagram: &processcraft_core::model::Diagram,
+    items: &[(ElementSelector, Bounds)],
+    offset: (f64, f64),
+    tolerance: f64,
+    grid: bool,
+) -> processcraft_core::geometry::Snap {
+    let Some((_, first)) = items.first() else {
+        return Default::default();
+    };
+    let moved = Bounds {
+        x: first.x + offset.0,
+        y: first.y + offset.1,
+        ..first.clone()
+    };
+    let contains = |b: &Bounds| {
+        b.x <= moved.x
+            && b.y <= moved.y
+            && b.x + b.width >= moved.x + moved.width
+            && b.y + b.height >= moved.y + moved.height
+    };
+    let others: Vec<Bounds> = diagram
+        .shapes
+        .iter()
+        .filter(|s| !items.iter().any(|(id, _)| s.id == *id) && !contains(&s.bounds))
+        .map(|s| s.bounds.clone())
+        .collect();
+    let mut snap = processcraft_core::geometry::snap(&moved, &others, &[], tolerance);
+    if grid {
+        let (cx, cy) = (moved.x + moved.width / 2.0, moved.y + moved.height / 2.0);
+        if snap.guide_x.is_none() {
+            snap.dx = (cx / 10.0).round() * 10.0 - cx;
+        }
+        if snap.guide_y.is_none() {
+            snap.dy = (cy / 10.0).round() * 10.0 - cy;
+        }
+    }
+    snap
+}
+/// Highlight where `node` would go if dropped with its centre at `center`: the border of the
+/// activity it would attach to, else the sequence flow it would be inserted into.
+fn drop_feedback(
+    painter: &egui::Painter,
+    d: &processcraft_core::model::BpmnDocument,
+    diagram: &processcraft_core::model::Diagram,
+    node: &processcraft_core::model::Node,
+    center: &Point,
+    rect_of: impl Fn(&Bounds) -> Rect,
+    pos_of: impl Fn(&Point) -> Pos2,
+) {
+    use processcraft_core::manipulate;
+    let stroke = egui::Stroke::new(3.0, CONNECT_OK);
+    if let Some(host) = manipulate::attach_host(d, diagram, node, center)
+        && let Some(shape) = diagram.shapes.iter().find(|s| s.element == host.id)
+    {
+        painter.rect_stroke(
+            rect_of(&shape.bounds).expand(2.0),
+            4.0,
+            stroke,
+            egui::StrokeKind::Outside,
+        );
+        return;
+    }
+    let scope = processcraft_core::rules::locate(d, &node.id.selector())
+        .and_then(|l| l.scope)
+        .or_else(|| manipulate::container_at(d, diagram, center, None).scope);
+    if let Some(scope) = scope
+        && let Some(flow) = manipulate::flow_under(d, diagram, node, &scope, center)
+        && let Some(edge) = diagram.edges.iter().find(|e| e.element == flow.id)
+    {
+        painter.add(egui::Shape::line(
+            edge.waypoints.iter().map(pos_of).collect(),
+            stroke,
+        ));
+    }
+}
+/// Resize handles of a screen rectangle: four corners, or east and west only.
+fn resize_handles(r: Rect, east_west_only: bool) -> Vec<((i8, i8), Pos2)> {
+    let dirs: &[(i8, i8)] = if east_west_only {
+        &[(1, 0), (-1, 0)]
+    } else {
+        &[(-1, -1), (1, -1), (1, 1), (-1, 1)]
+    };
+    dirs.iter()
+        .map(|&(x, y)| {
+            (
+                (x, y),
+                r.center() + Vec2::new(x as f32 * r.width() / 2.0, y as f32 * r.height() / 2.0),
+            )
+        })
+        .collect()
 }
 
 struct LabelEdit {
@@ -64,6 +222,10 @@ pub(super) struct CanvasState {
     search_focus: bool,
     /// Open replace popup (bpmn-js wrench menu).
     replace: Option<ReplaceMenu>,
+    /// Snap moved shapes to a 10 px grid (View menu).
+    pub(super) grid_snap: bool,
+    /// Palette entry being dragged onto the canvas.
+    pub(super) palette_drag: Option<NodeKind>,
 }
 /// Replace popup for one element: filter text and whether the field still needs focus.
 struct ReplaceMenu {
@@ -132,30 +294,18 @@ fn texture_rect(rect: Rect, view: TextureView, camera: (f64, f64), zoom: f32) ->
     )
 }
 
-/// Corners in order top-left, top-right, bottom-right, bottom-left.
-fn corners(r: Rect) -> [Pos2; 4] {
-    [
-        r.left_top(),
-        r.right_top(),
-        r.right_bottom(),
-        r.left_bottom(),
-    ]
-}
-
-fn resize_bounds(b: &Bounds, corner: usize, dx: f64, dy: f64) -> Bounds {
-    const MIN: f64 = 20.0;
+/// Bounds after dragging the resize handle `(hx, hy)` by `(dx, dy)`, never below `min`.
+fn resize_bounds(b: &Bounds, (hx, hy): (i8, i8), dx: f64, dy: f64, min: (f64, f64)) -> Bounds {
     let (mut left, mut top, mut right, mut bottom) = (b.x, b.y, b.x + b.width, b.y + b.height);
-    let west = corner == 0 || corner == 3;
-    let north = corner < 2;
-    if west {
-        left = (left + dx).min(right - MIN);
-    } else {
-        right = (right + dx).max(left + MIN);
+    match hx {
+        -1 => left = (left + dx).min(right - min.0),
+        1 => right = (right + dx).max(left + min.0),
+        _ => {}
     }
-    if north {
-        top = (top + dy).min(bottom - MIN);
-    } else {
-        bottom = (bottom + dy).max(top + MIN);
+    match hy {
+        -1 => top = (top + dy).min(bottom - min.1),
+        1 => bottom = (bottom + dy).max(top + min.1),
+        _ => {}
     }
     Bounds {
         x: left,
@@ -517,6 +667,41 @@ pub(super) fn vacant_bounds(
 }
 
 impl ProcessCraft {
+    /// Create a palette element dropped at `center` through the core create behaviors (scope and
+    /// lane under the point, attach to an activity border, insert into a sequence flow).
+    pub(super) fn drop_new(&mut self, kind: NodeKind, center: Point) -> bool {
+        let snap = self.ctl.session.snapshot();
+        let Some(d) = snap.project.documents.get(self.doc) else {
+            return false;
+        };
+        let Some(diagram) = d
+            .diagrams
+            .iter()
+            .find(|d| self.diagram_id.as_ref().is_none_or(|id| &d.id == id))
+        else {
+            return false;
+        };
+        let node: processcraft_core::ids::ElementIdentity = if self.create_anonymous {
+            processcraft_core::ids::ElementIdentity::anonymous()
+        } else {
+            crate::controller::id("Node").into()
+        };
+        let done = self.ctl.mutate(vec![Mutation::CreateAt {
+            document_id: d.id,
+            diagram_id: diagram.id.selector(),
+            kind,
+            name: (kind != NodeKind::TextAnnotation).then(|| super::node_kind_label(kind).into()),
+            center,
+            node_id: node.clone(),
+            shape_id: crate::controller::id("Shape").into(),
+            flow_id: Some(crate::controller::id("Flow").into()),
+            edge_id: Some(crate::controller::id("Edge").into()),
+        }]);
+        if done {
+            self.select(Some(node.selector()));
+        }
+        done
+    }
     /// Visible model-space center of the editor canvas.
     pub(super) fn viewport_center(&self) -> (f64, f64) {
         let size = if self.canvas.size == Vec2::ZERO {
@@ -834,7 +1019,12 @@ impl ProcessCraft {
         self.hits
             .iter()
             .rev()
-            .find(|h| !h.is_label && &h.key.xml_id != exclude && h.contains(x, y, tolerance))
+            .find(|h| {
+                !h.is_label
+                    && !matches!(h.geometry, HitGeometry::Edge(_))
+                    && &h.key.xml_id != exclude
+                    && h.contains(x, y, tolerance)
+            })
             .cloned()
     }
     fn canvas_render(&mut self, ui: &mut egui::Ui, size: Vec2, interactive: bool) {
@@ -1080,12 +1270,70 @@ impl ProcessCraft {
                     // hidden while a gesture or label edit is running.
                     let single = (editable && selected_shapes.len() == 1 && self.drag.is_none())
                         .then(|| selected_shapes[0]);
+                    // Resize handles only where the rules allow (bpmn-js `canResize`).
+                    let rule = single
+                        .and_then(|shape| processcraft_core::manipulate::resize_rule(d, shape));
+                    // Bendpoint and segment handles of a single selected edge.
+                    let edge_selection: Vec<_> = diagram
+                        .edges
+                        .iter()
+                        .filter(|e| {
+                            if by_representation {
+                                self.representation_selection.contains(&e.id.selector())
+                            } else {
+                                self.multi.contains(&e.element)
+                            }
+                        })
+                        .collect();
+                    let selected_edge = (editable
+                        && selected_shapes.is_empty()
+                        && edge_selection.len() == 1
+                        && self.drag.is_none())
+                    .then(|| edge_selection[0]);
+                    let edge_screen = |edge: &processcraft_core::model::Edge| -> Vec<Pos2> {
+                        edge.waypoints
+                            .iter()
+                            .map(|p| {
+                                Pos2::new(
+                                    rect.left() + (p.x - camera.0) as f32 * zoom,
+                                    rect.top() + (p.y - camera.1) as f32 * zoom,
+                                )
+                            })
+                            .collect()
+                    };
+                    let bend_handles = selected_edge
+                        .map(|edge| edge_handles(&edge_screen(edge)))
+                        .unwrap_or_default();
+                    if !matches!(self.canvas.gesture, Some(Gesture::Bendpoint { .. })) {
+                        for (part, pos) in &bend_handles {
+                            match part {
+                                EdgePart::Point(_) => {
+                                    painter.circle_filled(*pos, 4.0, palette.base);
+                                    painter.circle_stroke(
+                                        *pos,
+                                        4.0,
+                                        egui::Stroke::new(1.5, accent),
+                                    );
+                                }
+                                EdgePart::Segment(_) => {
+                                    painter.rect_filled(
+                                        Rect::from_center_size(*pos, Vec2::splat(6.0)),
+                                        1.0,
+                                        accent,
+                                    );
+                                }
+                            }
+                        }
+                    }
                     let hover = response.hover_pos();
                     let mut pad = Vec::new();
                     if let Some(shape) = single {
                         let screen = to_screen(rect, camera, zoom, &shape.bounds);
-                        for corner in corners(screen) {
-                            let handle = Rect::from_center_size(corner, Vec2::splat(7.0));
+                        for (_, pos) in rule
+                            .map(|r| resize_handles(screen, r.east_west_only))
+                            .unwrap_or_default()
+                        {
+                            let handle = Rect::from_center_size(pos, Vec2::splat(7.0));
                             painter.rect_filled(handle, 1.0, palette.base);
                             painter.rect_stroke(
                                 handle,
@@ -1148,15 +1396,29 @@ impl ProcessCraft {
                         });
                         if pan {
                             self.canvas.gesture = Some(Gesture::Pan);
+                        } else if let Some(edge) = selected_edge
+                            && let Some((part, _)) =
+                                bend_handles.iter().find(|(_, h)| h.distance(pos) <= 6.0)
+                        {
+                            self.canvas.gesture = Some(Gesture::Bendpoint {
+                                edge: edge.id.selector(),
+                                flow: edge.element.clone(),
+                                points: edge.waypoints.clone(),
+                                part: *part,
+                            });
                         } else if let Some(shape) = single {
                             let screen = to_screen(rect, camera, zoom, &shape.bounds);
-                            if let Some(corner) =
-                                corners(screen).iter().position(|c| c.distance(pos) <= 6.0)
+                            if let Some(rule) = rule
+                                && let Some((handle, _)) =
+                                    resize_handles(screen, rule.east_west_only)
+                                        .into_iter()
+                                        .find(|(_, c)| c.distance(pos) <= 6.0)
                             {
                                 self.canvas.gesture = Some(Gesture::Resize {
                                     shape: shape.id.selector(),
                                     bounds: shape.bounds.clone(),
-                                    corner,
+                                    handle,
+                                    min: (rule.width, rule.height),
                                 });
                             } else if pad_at(pos) == Some(PadAction::Connect) {
                                 self.canvas.gesture = Some(Gesture::Connect {
@@ -1305,7 +1567,33 @@ impl ProcessCraft {
                             self.canvas.revealed = None;
                         }
                     }
-                    if editable
+                    // Double-click on a bendpoint removes it (bpmn-js).
+                    let bend = (response.double_clicked())
+                        .then(|| response.interact_pointer_pos())
+                        .flatten()
+                        .zip(selected_edge)
+                        .and_then(|(pos, edge)| {
+                            bend_handles.iter().find_map(|(part, h)| match part {
+                                EdgePart::Point(i)
+                                    if *i > 0
+                                        && *i + 1 < edge.waypoints.len()
+                                        && h.distance(pos) <= 6.0 =>
+                                {
+                                    Some((edge, *i))
+                                }
+                                _ => None,
+                            })
+                        });
+                    if let Some((edge, i)) = bend {
+                        let mut waypoints = edge.waypoints.clone();
+                        waypoints.remove(i);
+                        self.ctl.mutate(vec![Mutation::Reroute {
+                            document_id: d.id,
+                            diagram_id: diagram_id.clone(),
+                            edge_id: edge.id.selector(),
+                            waypoints,
+                        }]);
+                    } else if editable
                         && response.double_clicked()
                         && self.canvas.label_edit.is_none()
                         && let Some(pos) = response.interact_pointer_pos()
@@ -1367,12 +1655,74 @@ impl ProcessCraft {
                             "The diagram changed while dragging. Start the move again.".into();
                     }
                     advance_drag(&mut self.drag, &ctx);
+                    // Snapping (Alt or Ctrl moves freely) and its guide lines.
+                    let free = ctx.input(|i| i.modifiers.alt || i.modifiers.ctrl);
+                    if response.dragged()
+                        && let Some(drag) = &mut self.drag
+                        && !drag.label
+                    {
+                        drag.snap = if free {
+                            Default::default()
+                        } else {
+                            snap_drag(
+                                diagram,
+                                &drag.items,
+                                ((drag.offset.x / zoom) as f64, (drag.offset.y / zoom) as f64),
+                                7.0 / zoom as f64,
+                                self.canvas.grid_snap,
+                            )
+                        };
+                    }
                     if response.dragged()
                         && let Some(drag) = &self.drag
                     {
+                        let offset = drag.offset
+                            + Vec2::new(drag.snap.dx as f32, drag.snap.dy as f32) * zoom;
+                        let guide = egui::Stroke::new(1.0, CONNECT_OK);
+                        if let Some(x) = drag.snap.guide_x {
+                            let x = rect.left() + (x - camera.0) as f32 * zoom;
+                            painter.line_segment(
+                                [Pos2::new(x, rect.top()), Pos2::new(x, rect.bottom())],
+                                guide,
+                            );
+                        }
+                        if let Some(y) = drag.snap.guide_y {
+                            let y = rect.top() + (y - camera.1) as f32 * zoom;
+                            painter.line_segment(
+                                [Pos2::new(rect.left(), y), Pos2::new(rect.right(), y)],
+                                guide,
+                            );
+                        }
+                        // Attach and drop-on-flow feedback for a single dragged element.
+                        if let [(shape_id, bounds)] = drag.items.as_slice()
+                            && !drag.label
+                            && let Some(node) = diagram
+                                .shapes
+                                .iter()
+                                .find(|s| s.id == *shape_id)
+                                .and_then(|s| processcraft_core::queries::find_node(d, &s.element))
+                        {
+                            let center = Point {
+                                x: bounds.x + bounds.width / 2.0 + (offset.x / zoom) as f64,
+                                y: bounds.y + bounds.height / 2.0 + (offset.y / zoom) as f64,
+                            };
+                            drop_feedback(
+                                &painter,
+                                d,
+                                diagram,
+                                node,
+                                &center,
+                                |b| to_screen(rect, camera, zoom, b),
+                                |p| {
+                                    Pos2::new(
+                                        rect.left() + (p.x - camera.0) as f32 * zoom,
+                                        rect.top() + (p.y - camera.1) as f32 * zoom,
+                                    )
+                                },
+                            );
+                        }
                         for (_, bounds) in &drag.items {
-                            let preview =
-                                to_screen(rect, camera, zoom, bounds).translate(drag.offset);
+                            let preview = to_screen(rect, camera, zoom, bounds).translate(offset);
                             if let (Some(t), Some(view)) = (&self.texture, self.canvas.view) {
                                 let uv = |x: f64, y: f64| {
                                     Pos2::new(
@@ -1445,7 +1795,11 @@ impl ProcessCraft {
                                     self.ctl.mutate(vec![mutation]);
                                 }
                             } else {
-                                self.move_shapes(drag.items, delta.x as f64, delta.y as f64);
+                                self.drag_move(
+                                    drag.items,
+                                    delta.x as f64 + drag.snap.dx,
+                                    delta.y as f64 + drag.snap.dy,
+                                );
                             }
                         }
                     }
@@ -1517,14 +1871,41 @@ impl ProcessCraft {
                                     ctx.set_cursor_icon(egui::CursorIcon::Crosshair);
                                 }
                             }
-                            Some(Gesture::Resize { bounds, corner, .. }) => {
+                            Some(Gesture::Bendpoint { points, part, .. }) => {
+                                if let (Some(pos), Some(start)) = (pointer, origin) {
+                                    let delta = (pos - start) / zoom;
+                                    let edited =
+                                        edit_route(points, *part, delta.x as f64, delta.y as f64);
+                                    let screen: Vec<Pos2> = edited
+                                        .iter()
+                                        .map(|p| {
+                                            Pos2::new(
+                                                rect.left() + (p.x - camera.0) as f32 * zoom,
+                                                rect.top() + (p.y - camera.1) as f32 * zoom,
+                                            )
+                                        })
+                                        .collect();
+                                    painter.add(egui::Shape::line(
+                                        screen,
+                                        egui::Stroke::new(2.0, accent),
+                                    ));
+                                    ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
+                                }
+                            }
+                            Some(Gesture::Resize {
+                                bounds,
+                                handle,
+                                min,
+                                ..
+                            }) => {
                                 if let (Some(pos), Some(start)) = (pointer, origin) {
                                     let delta = (pos - start) / zoom;
                                     let resized = resize_bounds(
                                         bounds,
-                                        *corner,
+                                        *handle,
                                         delta.x as f64,
                                         delta.y as f64,
+                                        *min,
                                     );
                                     painter.rect_stroke(
                                         to_screen(rect, camera, zoom, &resized),
@@ -1598,21 +1979,152 @@ impl ProcessCraft {
                             Gesture::Resize {
                                 shape,
                                 bounds,
-                                corner,
+                                handle,
+                                min,
                             } => {
                                 if let (Some(pos), Some(start)) = (pointer, origin) {
                                     let delta = (pos - start) / zoom;
                                     let resized = resize_bounds(
                                         &bounds,
-                                        corner,
+                                        handle,
                                         delta.x as f64,
                                         delta.y as f64,
+                                        min,
                                     );
                                     if resized != bounds {
-                                        self.move_shapes(vec![(shape, resized)], 0.0, 0.0);
+                                        self.ctl.mutate(vec![Mutation::ResizeShape {
+                                            document_id: d.id,
+                                            diagram_id: diagram_id.clone(),
+                                            shape_id: shape,
+                                            bounds: resized,
+                                        }]);
                                     }
                                 }
                             }
+                            Gesture::Bendpoint {
+                                edge,
+                                flow,
+                                points,
+                                part,
+                            } => {
+                                if let (Some(pos), Some(start)) = (pointer, origin) {
+                                    let delta = (pos - start) / zoom;
+                                    let last = points.len().saturating_sub(1);
+                                    let (x, y) = to_model(rect, camera, zoom, pos);
+                                    let ends = processcraft_core::queries::find_flow(d, &flow)
+                                        .map(|f| (f.source.clone(), f.target.clone()));
+                                    let local = |r: &Option<
+                                        processcraft_core::bpmn_activity::ModelReference,
+                                    >| match r {
+                                        Some(
+                                            processcraft_core::bpmn_activity::ModelReference::Local(
+                                                id,
+                                            ),
+                                        ) => Some(id.clone()),
+                                        _ => None,
+                                    };
+                                    match (part, ends) {
+                                        // Dragging an end onto another shape reconnects the flow.
+                                        (EdgePart::Point(i), Some((source, target)))
+                                            if i == 0 || i == last =>
+                                        {
+                                            if let (Some(source), Some(target)) =
+                                                (local(&source), local(&target))
+                                                && let Some(hit) = self.connect_target_at(
+                                                    x,
+                                                    y,
+                                                    zoom,
+                                                    if i == 0 { &source } else { &target },
+                                                )
+                                            {
+                                                let element = hit.key.xml_id;
+                                                let (source_id, target_id) = if i == 0 {
+                                                    (element, target)
+                                                } else {
+                                                    (source, element)
+                                                };
+                                                self.ctl.mutate(vec![Mutation::Reconnect {
+                                                    document_id: d.id,
+                                                    diagram_id: diagram_id.clone(),
+                                                    flow_id: flow,
+                                                    source_id,
+                                                    target_id,
+                                                }]);
+                                            }
+                                        }
+                                        _ if delta.length() > 1.0 => {
+                                            self.ctl.mutate(vec![Mutation::Reroute {
+                                                document_id: d.id,
+                                                diagram_id: diagram_id.clone(),
+                                                edge_id: edge,
+                                                waypoints: edit_route(
+                                                    &points,
+                                                    part,
+                                                    delta.x as f64,
+                                                    delta.y as f64,
+                                                ),
+                                            }]);
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    // A palette entry dragged over the canvas: ghost, feedback, drop on release.
+                    if let Some(kind) = self.canvas.palette_drag {
+                        let released = ctx.input(|i| !i.pointer.primary_down());
+                        let over = pointer.filter(|p| rect.contains(*p));
+                        if let Some(pos) = over {
+                            let (x, y) = to_model(rect, camera, zoom, pos);
+                            let (w, h) = processcraft_core::modeling::default_size(kind);
+                            let ghost = to_screen(
+                                rect,
+                                camera,
+                                zoom,
+                                &Bounds {
+                                    x: x - w / 2.0,
+                                    y: y - h / 2.0,
+                                    width: w,
+                                    height: h,
+                                },
+                            );
+                            painter.rect_filled(ghost, 6.0, accent.gamma_multiply(0.15));
+                            painter.rect_stroke(
+                                ghost,
+                                6.0,
+                                egui::Stroke::new(2.0, accent),
+                                egui::StrokeKind::Inside,
+                            );
+                            let probe = processcraft_core::modeling::new_node(
+                                kind,
+                                processcraft_core::ids::ElementIdentity::anonymous(),
+                                None,
+                                None,
+                            );
+                            drop_feedback(
+                                &painter,
+                                d,
+                                diagram,
+                                &probe,
+                                &Point { x, y },
+                                |b| to_screen(rect, camera, zoom, b),
+                                |p| {
+                                    Pos2::new(
+                                        rect.left() + (p.x - camera.0) as f32 * zoom,
+                                        rect.top() + (p.y - camera.1) as f32 * zoom,
+                                    )
+                                },
+                            );
+                            ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
+                            if released && editable {
+                                self.drop_new(kind, Point { x, y });
+                            }
+                        }
+                        if released {
+                            self.canvas.palette_drag = None;
+                        } else {
+                            ctx.request_repaint();
                         }
                     }
                     // Inline name editor: Enter or focus loss commits, Escape cancels.
@@ -2373,21 +2885,54 @@ mod tests {
     #[test]
     fn resize_moves_only_the_dragged_corner_and_keeps_a_minimum() {
         let start = b(0.0, 0.0, 100.0, 80.0);
+        let min = (20.0, 20.0);
         assert_eq!(
-            resize_bounds(&start, 2, 20.0, 10.0),
+            resize_bounds(&start, (1, 1), 20.0, 10.0, min),
             b(0.0, 0.0, 120.0, 90.0)
         );
         assert_eq!(
-            resize_bounds(&start, 0, 10.0, 10.0),
+            resize_bounds(&start, (-1, -1), 10.0, 10.0, min),
             b(10.0, 10.0, 90.0, 70.0)
         );
         assert_eq!(
-            resize_bounds(&start, 1, -500.0, 0.0),
+            resize_bounds(&start, (1, -1), -500.0, 0.0, min),
             b(0.0, 0.0, 20.0, 80.0)
         );
         assert_eq!(
-            resize_bounds(&start, 3, 0.0, -500.0),
+            resize_bounds(&start, (-1, 1), 0.0, -500.0, min),
             b(0.0, 0.0, 100.0, 20.0)
+        );
+        // East/west handles leave the height alone.
+        assert_eq!(
+            resize_bounds(&start, (1, 0), 30.0, 50.0, (100.0, 40.0)),
+            b(0.0, 0.0, 130.0, 80.0)
+        );
+        let handles = resize_handles(Rect::from_min_size(Pos2::ZERO, Vec2::new(10.0, 10.0)), true);
+        assert_eq!(
+            handles.iter().map(|(h, _)| *h).collect::<Vec<_>>(),
+            [(1, 0), (-1, 0)]
+        );
+    }
+
+    #[test]
+    fn bendpoint_and_segment_drags_edit_the_route() {
+        let p = |x: f64, y: f64| Point { x, y };
+        let route = vec![p(0.0, 0.0), p(50.0, 0.0), p(50.0, 40.0), p(100.0, 40.0)];
+        // A waypoint moves freely.
+        assert_eq!(
+            edit_route(&route, EdgePart::Point(1), 5.0, 5.0)[1],
+            p(55.0, 5.0)
+        );
+        // A vertical segment moves sideways only; a horizontal one up or down only.
+        let moved = edit_route(&route, EdgePart::Segment(1), 10.0, 99.0);
+        assert_eq!((moved[1].x, moved[2].x, moved[1].y), (60.0, 60.0, 0.0));
+        let moved = edit_route(&route, EdgePart::Segment(2), 99.0, -10.0);
+        assert_eq!((moved[2].y, moved[3].y, moved[3].x), (30.0, 30.0, 100.0));
+        // A diagonal segment gets a new bendpoint in its middle.
+        let diagonal = vec![p(0.0, 0.0), p(100.0, 100.0)];
+        assert_eq!(
+            edit_route(&diagonal, EdgePart::Segment(0), 0.0, 10.0),
+            vec![p(0.0, 0.0), p(50.0, 60.0), p(100.0, 100.0)]
         );
     }
 
@@ -2588,6 +3133,104 @@ mod tests {
         drag(&mut app, &mut run, handle, start_rect.center());
         assert_eq!(edges(&app), edges_before + 1);
         assert!(app.ctl.error.contains("Start events"), "{}", app.ctl.error);
+    }
+
+    /// Press at `from`, move in five steps, release at `to`.
+    fn drag_on(
+        app: &mut ProcessCraft,
+        run: &mut dyn FnMut(&mut ProcessCraft, Vec<egui::Event>),
+        from: Pos2,
+        to: Pos2,
+    ) {
+        run(app, vec![egui::Event::PointerMoved(from)]);
+        run(app, vec![button(from, true)]);
+        for step in 1..=5 {
+            run(
+                app,
+                vec![egui::Event::PointerMoved(
+                    from + (to - from) * (step as f32 / 5.0),
+                )],
+            );
+        }
+        run(app, vec![button(to, false)]);
+        run(app, vec![]);
+    }
+    fn shape_bounds(app: &ProcessCraft, id: &ElementSelector) -> Bounds {
+        app.ctl.session.snapshot().project.documents[0].diagrams[0]
+            .shapes
+            .iter()
+            .find(|s| &s.element == id)
+            .unwrap()
+            .bounds
+            .clone()
+    }
+
+    #[test]
+    fn dragging_a_task_carries_its_boundary_event() {
+        let mut app = ProcessCraft::default();
+        app.add(NodeKind::Task);
+        let task = app.selected.clone().unwrap();
+        app.add(NodeKind::BoundaryEvent);
+        let event = app.selected.clone().unwrap();
+        app.select(None);
+        let (task_before, event_before) = (shape_bounds(&app, &task), shape_bounds(&app, &event));
+        let mut run = canvas_runner(&mut app);
+        let (screen, _) = on_screen(&app, &task, PadAction::Delete);
+        let from = screen.center() - Vec2::new(0.0, screen.height() / 4.0);
+        drag_on(&mut app, &mut run, from, from + Vec2::new(60.0, 40.0));
+        let (task_after, event_after) = (shape_bounds(&app, &task), shape_bounds(&app, &event));
+        assert_ne!(task_after, task_before, "{}", app.ctl.error);
+        assert_eq!(event_after.x - event_before.x, task_after.x - task_before.x);
+        assert_eq!(event_after.y - event_before.y, task_after.y - task_before.y);
+    }
+
+    #[test]
+    fn dropping_a_task_on_a_flow_inserts_it() {
+        let mut app = ProcessCraft::default();
+        app.add(NodeKind::StartEvent);
+        let start = app.selected.clone().unwrap();
+        app.add(NodeKind::Task);
+        let first = app.selected.clone().unwrap();
+        app.select(None);
+        app.add(NodeKind::Task);
+        let second = app.selected.clone().unwrap();
+        app.select(None);
+        let mut run = canvas_runner(&mut app);
+        let snap = app.ctl.session.snapshot();
+        let edge = snap.project.documents[0].diagrams[0].edges[0].clone();
+        let (a, b) = (
+            &edge.waypoints[0],
+            &edge.waypoints[edge.waypoints.len() - 1],
+        );
+        let mid = Bounds {
+            x: (a.x + b.x) / 2.0,
+            y: (a.y + b.y) / 2.0,
+            width: 0.0,
+            height: 0.0,
+        };
+        let target = to_screen(app.canvas.rect.unwrap(), app.camera, app.zoom, &mid).min;
+        let (screen, _) = on_screen(&app, &second, PadAction::Delete);
+        drag_on(&mut app, &mut run, screen.center(), target);
+        let snap = app.ctl.session.snapshot();
+        let flows = &snap.project.documents[0].processes[0].flows;
+        let ends = |f: &processcraft_core::model::Flow| {
+            let id = |r: &Option<processcraft_core::bpmn_activity::ModelReference>| match r {
+                Some(processcraft_core::bpmn_activity::ModelReference::Local(id)) => id.clone(),
+                _ => panic!("external end"),
+            };
+            (id(&f.source), id(&f.target))
+        };
+        assert_eq!(flows.len(), 2, "{}", app.ctl.error);
+        assert!(
+            flows
+                .iter()
+                .any(|f| ends(f) == (start.clone(), second.clone()))
+        );
+        assert!(
+            flows
+                .iter()
+                .any(|f| ends(f) == (second.clone(), first.clone()))
+        );
     }
 
     #[test]
