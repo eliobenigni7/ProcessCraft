@@ -739,7 +739,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/events_extended.rs:reused_definitions_multiple_and_event_data_validate_without_synthetic_ids"
+    "crates/processcraft-core/tests/m3_r3_repair.rs:start_event_node_reads_back_interrupting_parallel_multiple_and_definitions"
    ]
   },
   {

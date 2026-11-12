@@ -612,7 +612,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_process_collaboration.rs:is_immediate_is_refused_on_a_message_flow_with_the_sequence_flow_rule"
+    "crates/processcraft-core/tests/m3_r3_repair.rs:is_immediate_validation_accepts_sequence_flow_and_names_the_rule_elsewhere",
+    "crates/processcraft-core/tests/m3_r3_repair.rs:is_immediate_on_a_message_flow_fails_document_validation"
    ],
    "note": "message flows reject isImmediate metadata"
   },

@@ -97,7 +97,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m2.rs:descriptive_commands_validate_references_and_undo_atomically"
+    "crates/processcraft-core/tests/m3_r3_repair.rs:association_direction_edit_clear_and_undo_on_an_existing_association"
    ]
   },
   {

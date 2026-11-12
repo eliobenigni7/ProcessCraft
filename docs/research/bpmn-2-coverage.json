@@ -15308,7 +15308,7 @@
       ],
       "verified_evidence": {
         "export": [
-          "crates/processcraft-io/tests/m3_repair_di.rs:export_emits_di_values_and_reimports_exact",
+          "crates/processcraft-io/tests/m3_r3_repair.rs:bpmn_diagram_export_is_xsd_valid_and_carries_diagram_values",
           "scripts/check_bpmn20_xsd.py"
         ],
         "import": [
@@ -18727,7 +18727,7 @@
       ],
       "verified_evidence": {
         "edit": [
-          "crates/processcraft-core/tests/m2.rs:descriptive_commands_validate_references_and_undo_atomically"
+          "crates/processcraft-core/tests/m3_r3_repair.rs:association_direction_edit_clear_and_undo_on_an_existing_association"
         ],
         "export": [
           "crates/processcraft-io/tests/m3_repair_artifacts.rs:artifacts_export_values_are_in_bytes_reimport_and_xsd_valid",
@@ -30014,7 +30014,7 @@
       "coverage": {
         "model": "verified",
         "edit": "verified",
-        "render": "unverified",
+        "render": "verified",
         "import": "verified",
         "export": "verified",
         "validate": "verified"
@@ -30050,7 +30050,13 @@
           "crates/processcraft-core/tests/m3_events.rs:link_dangling_reference_is_refused",
           "crates/processcraft-core/tests/m3_events.rs:link_pair_edit_with_undo_and_incomplete_pairing_is_diagnosed",
           "crates/processcraft-core/tests/m3_events.rs:link_without_name_is_diagnosed"
+        ],
+        "render": [
+          "crates/processcraft-render/tests/m3_r3_render.rs:link_definition_name_labels_unnamed_event_in_both_themes"
         ]
+      },
+      "verified_notes": {
+        "render": "BPMN 2.0.2 section 10.5.5 (Link Event Definition, Figures 10.83/10.84): paired Link Events share the name; it labels an event without its own name, own name wins; label hit region present."
       }
     },
     {
@@ -30286,7 +30292,7 @@
       "coverage": {
         "model": "verified",
         "edit": "verified",
-        "render": "unverified",
+        "render": "verified",
         "import": "verified",
         "export": "verified",
         "validate": "not_applicable"
@@ -30314,10 +30320,15 @@
         ],
         "model": [
           "crates/processcraft-core/tests/m3_process_collaboration.rs:root_message_name_and_item_ref_edit_with_undo"
+        ],
+        "render": [
+          "crates/processcraft-render/tests/m3_r3_render.rs:message_name_labels_band_envelope_in_both_themes",
+          "crates/processcraft-render/tests/m3_r3_render.rs:message_name_labels_flow_envelope_static_and_viewport"
         ]
       },
       "verified_notes": {
-        "validate": "BPMN 2.0.2 Table 8.48 (printed p.93) describes the attribute only as a descriptive name; Semantic.xsd types it xsd:string; no constraint beyond the lexical type."
+        "validate": "BPMN 2.0.2 Table 8.48 (printed p.93) describes the attribute only as a descriptive name; Semantic.xsd types it xsd:string; no constraint beyond the lexical type.",
+        "render": "BPMN 2.0.2 section 12.3.2 (Choreography Participant Bands, PDF p.437): the Message name labels the envelope decorator; drawn beside band and message-flow envelopes in static scene and viewport, light and dark."
       }
     },
     {
@@ -35505,7 +35516,8 @@
           "crates/processcraft-core/tests/commands.rs:choreography_sequence_flow_metadata_is_undoable_and_message_flow_rejected"
         ],
         "validate": [
-          "crates/processcraft-core/tests/m3_repair_process_collaboration.rs:is_immediate_is_refused_on_a_message_flow_with_the_sequence_flow_rule"
+          "crates/processcraft-core/tests/m3_r3_repair.rs:is_immediate_on_a_message_flow_fails_document_validation",
+          "crates/processcraft-core/tests/m3_r3_repair.rs:is_immediate_validation_accepts_sequence_flow_and_names_the_rule_elsewhere"
         ]
       },
       "verified_notes": {
@@ -36343,7 +36355,7 @@
           "tests/fixtures/bpmn/event-ownership.bpmn"
         ],
         "model": [
-          "crates/processcraft-core/tests/events_extended.rs:reused_definitions_multiple_and_event_data_validate_without_synthetic_ids"
+          "crates/processcraft-core/tests/m3_r3_repair.rs:start_event_node_reads_back_interrupting_parallel_multiple_and_definitions"
         ],
         "validate": [
           "crates/processcraft-core/tests/diagnostics.rs:incomplete_event_metadata_is_advisory_and_anchored"
@@ -37847,19 +37859,19 @@
     "total": {
       "declarations": 299,
       "cells": 1450,
-      "verified": 1412,
+      "verified": 1414,
       "not_applicable": 36,
       "partial": 0,
-      "unverified": 2
+      "unverified": 0
     },
     "by_set": {
       "A": {
         "declarations": 89,
         "cells": 438,
-        "verified": 429,
+        "verified": 431,
         "not_applicable": 7,
         "partial": 0,
-        "unverified": 2
+        "unverified": 0
       },
       "C": {
         "declarations": 34,

@@ -191,7 +191,7 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_repair_di.rs:export_emits_di_values_and_reimports_exact",
+    "crates/processcraft-io/tests/m3_r3_repair.rs:bpmn_diagram_export_is_xsd_valid_and_carries_diagram_values",
     "scripts/check_bpmn20_xsd.py"
    ],
    "note": "Export evidence: XSD-valid fixture, whole-document model equality after export and re-import."

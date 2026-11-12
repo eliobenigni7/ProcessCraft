@@ -62,6 +62,7 @@ struct SemanticIndex<'a> {
     choreographies: Vec<(&'a Choreography, &'a ChoreographyActivity)>,
     choreography_owners: std::collections::BTreeSet<ElementSelector>,
     target_namespace: Option<String>,
+    event_resources: &'a [processcraft_core::bpmn_model::EventResource],
 }
 impl<'a> SemanticIndex<'a> {
     fn new(document: &'a BpmnDocument) -> Result<Self, RenderError> {
@@ -81,6 +82,7 @@ impl<'a> SemanticIndex<'a> {
             activity_ports: std::collections::BTreeSet::new(),
             choreographies: Vec::new(),
             choreography_owners: std::collections::BTreeSet::new(),
+            event_resources: &document.event_resources,
             target_namespace: document
                 .definitions
                 .as_ref()
@@ -478,6 +480,20 @@ impl<'a> SemanticIndex<'a> {
             .copied()
             .find(|(port, _)| port.id.as_ref().is_some_and(|identity| identity == id))
     }
+    /// Name of the Message a message flow references (BPMN 2.0.2 section 9.3).
+    fn message_name(&self, flow: &Flow) -> Option<&'a str> {
+        let id = self.resolved(&flow.message_ref)?;
+        self.event_resources
+            .iter()
+            .find_map(|resource| match resource {
+                processcraft_core::bpmn_model::EventResource::Message {
+                    id: message,
+                    name: Some(name),
+                    ..
+                } if message == &id && !name.is_empty() => Some(name.as_str()),
+                _ => None,
+            })
+    }
     fn conversation(&self, id: &ElementSelector) -> Option<&'a ConversationNode> {
         self.conversations
             .iter()
@@ -746,8 +762,22 @@ fn called_target(node: Option<&Node>, document: &BpmnDocument) -> CalledTarget {
     })
 }
 
-fn node_display_name(node: &Node) -> (std::borrow::Cow<'_, str>, bool) {
+fn node_display_name<'a>(
+    node: &'a Node,
+    document: &'a BpmnDocument,
+) -> (std::borrow::Cow<'a, str>, bool) {
     use processcraft_core::bpmn_xml::{MixedXml, XmlNode};
+    // BPMN 2.0.2 section 10.5.5 (Link Events): paired link events are matched by the
+    // shared link definition name, so it labels an event that has no name of its own.
+    if node.name.as_deref().is_none_or(str::is_empty)
+        && let Ok((definitions, _)) = effective_event_definitions(node.details.as_ref(), document)
+        && let Some(name) = definitions.iter().find_map(|definition| match definition {
+            EventDefinition::Link { name, .. } if !name.is_empty() => Some(name.as_str()),
+            _ => None,
+        })
+    {
+        return (std::borrow::Cow::Borrowed(name), false);
+    }
     if let Some(NodeDetails::TextAnnotation {
         text: Some(text), ..
     }) = &node.details
@@ -1176,9 +1206,9 @@ impl BpmnScene {
                             | ParticipantBandKind::MiddleNonInitiating
                     ) {
                         diagnostics.push(format!("Participant band {} message visibility cannot be depicted on a middle band", shape.id));
-                    } else if context.is_some_and(|(scope, activity)| {
-                        activity.message_flow_refs.iter().any(|id| {
-                            scope.message_flows.iter().any(|flow| {
+                    } else if let Some(band_flow) = context.and_then(|(scope, activity)| {
+                        activity.message_flow_refs.iter().find_map(|id| {
+                            scope.message_flows.iter().find(|flow| {
                                 semantics.resolved(&Some(id.clone())).as_ref()
                                     == Some(&flow.id.selector())
                                     && semantics.resolved(&flow.source).as_ref()
@@ -1196,6 +1226,18 @@ impl BpmnScene {
                             2.0,
                         )?;
                         envelope(&mut scene, x + w / 2.0, cy, stroke, non_initiating, fill)?;
+                        if let Some(text) = semantics.message_name(band_flow) {
+                            message_name_label(
+                                &mut scene,
+                                fonts,
+                                family,
+                                text,
+                                (x + w / 2.0, cy),
+                                origin,
+                                fg,
+                                &mut diagnostics,
+                            )?;
+                        }
                     } else {
                         diagnostics.push(format!(
                             "Participant band {} has no resolved outgoing choreography message",
@@ -1337,7 +1379,7 @@ impl BpmnScene {
             {
                 diagnostics.push(format!("Call activity {} target cannot be resolved locally; called task marker omitted", shape.element));
             }
-            let node_name = node.map(node_display_name);
+            let node_name = node.map(|node| node_display_name(node, document));
             if node_name.as_ref().is_some_and(|(_, truncated)| *truncated) {
                 diagnostics.push(format!(
                     "Annotation {} text exceeds display limit",
@@ -2478,6 +2520,18 @@ impl BpmnScene {
                     diagnostics.push(format!("Message edge {} explicit stroke has low contrast against the envelope fill", edge.id));
                 }
                 envelope(&mut scene, cx, cy, envelope_stroke, filled, bg)?;
+                if let Some(text) = semantics.message_name(flow) {
+                    message_name_label(
+                        &mut scene,
+                        fonts,
+                        family,
+                        text,
+                        (cx, cy),
+                        origin,
+                        fg,
+                        &mut diagnostics,
+                    )?;
+                }
             }
             if matches!(flow.kind, FlowKind::Message) || semantics.conditional_flow_marker(flow) {
                 draw_flow_source_marker(
@@ -2651,6 +2705,40 @@ fn low_contrast(a: [u8; 3], b: [u8; 3]) -> bool {
     let (a, b) = (luminance(a), luminance(b));
     (a.max(b) + 0.05) / (a.min(b) + 0.05) < 3.0
 }
+#[allow(clippy::too_many_arguments)]
+/// Message name beside an envelope decorator (BPMN 2.0.2 section 12.3.2 BPMNShape,
+/// Choreography Participant Bands: "The name of the message may be used as a label").
+fn message_name_label(
+    scene: &mut DiagramScene,
+    fonts: &mut TextEngine,
+    family: &str,
+    text: &str,
+    center: (f32, f32),
+    origin: (f64, f64),
+    fg: [u8; 3],
+    diagnostics: &mut Vec<String>,
+) -> Result<(), RenderError> {
+    let bounds = Bounds {
+        x: origin.0 + f64::from(center.0) + 14.0,
+        y: origin.1 + f64::from(center.1) - 8.0,
+        width: 120.0,
+        height: 16.0,
+    };
+    label(
+        scene,
+        fonts,
+        family,
+        text,
+        &bounds,
+        origin,
+        None,
+        None,
+        fg,
+        false,
+        diagnostics,
+    )
+}
+
 #[allow(clippy::too_many_arguments)]
 fn label(
     scene: &mut DiagramScene,
@@ -3902,7 +3990,7 @@ impl BpmnViewport {
             };
             let conversation = semantics.conversation(&shape.element);
             let choreography = semantics.choreography(&shape.element);
-            let node_name = node.map(node_display_name);
+            let node_name = node.map(|node| node_display_name(node, document));
             if node_name.as_ref().is_some_and(|(_, truncated)| *truncated) {
                 built.diagnostics.push(format!(
                     "Annotation {} text exceeds display limit",
@@ -4402,6 +4490,18 @@ impl BpmnViewport {
                         filled,
                         background,
                     )?;
+                    if let Some(text) = semantics.message_name(flow) {
+                        message_name_label(
+                            &mut built.scene,
+                            fonts,
+                            family,
+                            text,
+                            (cx, cy),
+                            (view.x + built.origin.0, view.y + built.origin.1),
+                            fg,
+                            &mut built.diagnostics,
+                        )?;
+                    }
                 }
             }
             if segments > 0

@@ -2494,7 +2494,8 @@ fn link_markers_distinguish_catch_and_throw_in_shared_scene() {
     let throwing = render(NodeKind::IntermediateThrowEvent);
     assert_ne!(catch.scene.to_svg(), throwing.scene.to_svg());
     assert!(catch.hit_test(20.0, 20.0, 0.0).is_some());
-    assert!(catch.hit_test(0.0, 0.0, 0.0).is_none());
+    // the circle corner is outside the shape; the unnamed event's link-name label may sit there
+    assert!(catch.hit_test(0.0, 0.0, 0.0).is_none_or(|hit| hit.is_label));
 }
 
 #[test]
