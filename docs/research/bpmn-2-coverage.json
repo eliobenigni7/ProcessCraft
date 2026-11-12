@@ -15589,7 +15589,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "I"
@@ -15611,6 +15611,10 @@
         ],
         "model": [
           "crates/processcraft-core/tests/m3_di.rs:di_fields_are_typed_and_survive_serde"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_integration.rs",
+          "crates/processcraft-core/tests/m3r2_integration.rs:bpmn_label_style_must_be_owned_by_the_diagram"
         ]
       },
       "verified_notes": {
@@ -16395,7 +16399,7 @@
         "render": "partial",
         "import": "verified",
         "export": "verified",
-        "validate": "partial"
+        "validate": "verified"
       },
       "evidence": [
         "crates/processcraft-io/tests/interchange.rs:process_documentation_mixed_order_and_namespaces_roundtrip",
@@ -16427,6 +16431,10 @@
         ],
         "model": [
           "crates/processcraft-core/tests/m3_di.rs:di_fields_are_typed_and_survive_serde"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_integration.rs",
+          "crates/processcraft-core/tests/m3r2_integration.rs:bpmn_label_style_must_be_owned_by_the_diagram"
         ]
       },
       "verified_notes": {
@@ -16853,7 +16861,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "not_applicable"
       },
       "required": [
         "I"
@@ -16878,7 +16886,8 @@
         ]
       },
       "verified_notes": {
-        "export": "Export evidence: XSD-valid fixture, whole-document model equality after export and re-import."
+        "export": "Export evidence: XSD-valid fixture, whole-document model equality after export and re-import.",
+        "validate": "The DC XSD (DC.xsd) types x/y as xsd:double and BPMN 2.0.2 section 12.2.3.5 BPMNEdge states no constraint on waypoint values beyond the lexical type."
       }
     },
     {
@@ -17000,7 +17009,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "not_applicable"
       },
       "required": [
         "I"
@@ -17026,7 +17035,8 @@
         ]
       },
       "verified_notes": {
-        "export": "Export evidence: XSD-valid fixture, whole-document model equality after export and re-import."
+        "export": "Export evidence: XSD-valid fixture, whole-document model equality after export and re-import.",
+        "validate": "The DC XSD (DC.xsd) types x/y/width/height as xsd:double and BPMN 2.0.2 (section 12.2.3, DI chapter) states no range or relation for a label or shape Bounds beyond the lexical type; Participant-band geometry is checked separately by participantBandGeometryDisjoint."
       }
     },
     {
@@ -18687,7 +18697,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "not_applicable"
       },
       "required": [
         "D"
@@ -18714,6 +18724,9 @@
           "crates/processcraft-core/tests/m2.rs:descriptive_commands_validate_references_and_undo_atomically",
           "crates/processcraft-render/tests/bpmn_scene.rs:association_directions_change_shared_vector_markers"
         ]
+      },
+      "verified_notes": {
+        "validate": "BPMN 2.0.2 Table 8.20 (printed p.66) defines associationDirection as the enumeration {None | One | Both} with default None; it is a typed Rust enum so no invalid value is representable, and the spec states no further constraint."
       }
     },
     {
@@ -18735,7 +18748,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "not_applicable"
       },
       "required": [
         "S"
@@ -18758,6 +18771,9 @@
         "model": [
           "crates/processcraft-core/tests/m2.rs:descriptive_commands_validate_references_and_undo_atomically"
         ]
+      },
+      "verified_notes": {
+        "validate": "BPMN 2.0.2 Table 8.20 (printed p.66) defines associationDirection as the enumeration {None | One | Both} with default None; it is a typed Rust enum so no invalid value is representable, and the spec states no further constraint."
       }
     },
     {
@@ -19445,7 +19461,7 @@
         "render": "not_applicable",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "not_applicable"
       },
       "required": [
         "D"
@@ -19476,6 +19492,7 @@
         ]
       },
       "verified_notes": {
+        "validate": "BPMN 2.0.2 Table 10.24 (printed p.186) describes CallableElement name only as a descriptive name; Semantic.xsd types it xsd:string; no constraint beyond the lexical type.",
         "render": "BPMN 2.0.2 Table 10.24 (printed p.186): name is the descriptive name of a CallableElement (Process/Global Task); it has no shape of its own, a Process is shown through its Pool/Lane labels (section 9.2 Pool)."
       }
     },
@@ -20145,7 +20162,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "not_applicable"
       },
       "profile": "descriptive artifacts",
       "evidence": [
@@ -20181,6 +20198,9 @@
           "crates/processcraft-core/tests/commands.rs:group_category_qnames_rewrite_only_local_target",
           "crates/processcraft-core/tests/m2.rs:descriptive_commands_validate_references_and_undo_atomically"
         ]
+      },
+      "verified_notes": {
+        "validate": "BPMN 2.0.2 Table 8.22 (printed p.69) gives Category only a descriptive name and a containment of CategoryValue [0..*]; it states no constraint beyond the XSD structure."
       }
     },
     {
@@ -20202,7 +20222,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "not_applicable"
       },
       "required": [
         "D"
@@ -20225,6 +20245,9 @@
           "crates/processcraft-core/tests/commands.rs:group_category_qnames_rewrite_only_local_target",
           "crates/processcraft-core/tests/m2.rs:descriptive_commands_validate_references_and_undo_atomically"
         ]
+      },
+      "verified_notes": {
+        "validate": "BPMN 2.0.2 Table 8.22 (printed p.69) gives Category only a descriptive name and a containment of CategoryValue [0..*]; it states no constraint beyond the XSD structure."
       }
     },
     {
@@ -20246,7 +20269,7 @@
         "render": "verified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "not_applicable"
       },
       "required": [
         "D"
@@ -20277,6 +20300,10 @@
         "render": [
           "crates/processcraft-render/tests/m3r2_render.rs:group_label_is_category_name_and_value"
         ]
+      },
+      "verified_notes": {
+        "validate": "BPMN 2.0.2 Table 8.22 (printed p.69) gives Category only a descriptive name and a containment of CategoryValue [0..*]; it states no constraint beyond the XSD structure.",
+        "render": "Table 8.21 says delineator '.', the Category section says ':'; ':' (followed by a space, unspecified) is used."
       }
     },
     {
@@ -20298,7 +20325,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "profile": "descriptive artifacts",
       "evidence": [
@@ -20333,6 +20360,9 @@
         "model": [
           "crates/processcraft-core/tests/commands.rs:group_category_qnames_rewrite_only_local_target",
           "crates/processcraft-render/tests/bpmn_scene.rs:group_category_label_uses_di_bounds_style_and_viewport_hit"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3_foundation.rs:category_value_ref_and_outgoing_are_set_undone_and_dangling_refs_diagnosed"
         ]
       }
     },
@@ -20355,7 +20385,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "D"
@@ -20377,6 +20407,9 @@
         "model": [
           "crates/processcraft-core/tests/commands.rs:group_category_qnames_rewrite_only_local_target",
           "crates/processcraft-render/tests/bpmn_scene.rs:group_category_label_uses_di_bounds_style_and_viewport_hit"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3_foundation.rs:category_value_ref_and_outgoing_are_set_undone_and_dangling_refs_diagnosed"
         ]
       }
     },
@@ -20399,7 +20432,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "not_applicable"
       },
       "required": [
         "D"
@@ -20426,6 +20459,9 @@
         "edit": [
           "crates/processcraft-core/tests/m3_artifacts.rs:category_name_and_value_edit_are_stored_and_undo_restores"
         ]
+      },
+      "verified_notes": {
+        "validate": "BPMN 2.0.2 Table 8.23 (printed p.69) says value only provides the value of the CategoryValue (the Group label); Semantic.xsd types it xsd:string; no constraint beyond the lexical type."
       }
     },
     {
@@ -21046,7 +21082,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "profile": "collaboration",
       "evidence": [
@@ -21078,6 +21114,11 @@
         ],
         "model": [
           "crates/processcraft-core/tests/m3r2_edit-model-io.rs:element_level_collaboration_participant_message_and_message_flow_with_undo"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3_process_collaboration.rs:collaboration_choreography_ref_dangling_is_reported",
+          "crates/processcraft-core/tests/m3r2_integration.rs",
+          "crates/processcraft-core/tests/m3r2_integration.rs:collaboration_and_its_choreography_must_agree_on_is_closed"
         ]
       }
     },
@@ -21196,7 +21237,7 @@
         "render": "not_applicable",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "not_applicable"
       },
       "required": [
         "C",
@@ -21226,6 +21267,7 @@
       },
       "verified_notes": {
         "edit": "SetCollaborationRoot rename with undo/redo through the GUI controller",
+        "validate": "BPMN 2.0.2 Table 9.1 (printed p.108) describes the attribute only as a descriptive name; Semantic.xsd types it xsd:string; no constraint beyond the lexical type.",
         "render": "BPMN 2.0.2 Table 9.1 (printed p.108): Collaboration name is a descriptive name; a Collaboration is drawn as a diagram of Pools and has no shape or label of its own."
       }
     },
@@ -21248,7 +21290,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "C",
@@ -21273,6 +21315,11 @@
         ],
         "model": [
           "crates/processcraft-io/tests/interchange.rs:multiple_collaborations_and_anonymous_root_order_roundtrip"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3_process_collaboration.rs:collaboration_choreography_ref_dangling_is_reported",
+          "crates/processcraft-core/tests/m3r2_integration.rs",
+          "crates/processcraft-core/tests/m3r2_integration.rs:collaboration_and_its_choreography_must_agree_on_is_closed"
         ]
       }
     },
@@ -29213,7 +29260,7 @@
         "render": "verified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "profile": "descriptive artifacts",
       "evidence": [
@@ -29253,6 +29300,11 @@
           "crates/processcraft-core/tests/m3r2_edit-model-io.rs:child_lane_set_name_and_lane_partition_edit_with_undo",
           "crates/processcraft-core/tests/m3r2_edit-model-io.rs:element_level_process_lane_and_sequence_flow_create_delete_undo",
           "crates/processcraft-core/tests/m3r2_edit-model-io.rs:lane_set_name_edits_with_undo_and_rejects_invalid_text"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_integration.rs",
+          "crates/processcraft-core/tests/m3r2_integration.rs:lane_partition_reference_must_resolve",
+          "crates/processcraft-core/tests/m3r2_integration.rs:lanes_of_one_lane_set_must_share_partition_type"
         ],
         "render": [
           "crates/processcraft-render/tests/m3r2_render.rs:lane_renders_name_and_hit_tests"
@@ -29323,7 +29375,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "D"
@@ -29351,6 +29403,11 @@
         "model": [
           "crates/processcraft-core/tests/m3r2_edit-model-io.rs:child_lane_set_name_and_lane_partition_edit_with_undo",
           "crates/processcraft-core/tests/m3r2_edit-model-io.rs:lane_set_name_edits_with_undo_and_rejects_invalid_text"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_integration.rs",
+          "crates/processcraft-core/tests/m3r2_integration.rs:lane_partition_reference_must_resolve",
+          "crates/processcraft-core/tests/m3r2_integration.rs:lanes_of_one_lane_set_must_share_partition_type"
         ]
       }
     },
@@ -29424,7 +29481,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "D"
@@ -29448,6 +29505,11 @@
         ],
         "model": [
           "crates/processcraft-core/tests/commands.rs:explicit_anonymous_child_lane_set_can_be_promoted"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_integration.rs",
+          "crates/processcraft-core/tests/m3r2_integration.rs:lane_partition_reference_must_resolve",
+          "crates/processcraft-core/tests/m3r2_integration.rs:lanes_of_one_lane_set_must_share_partition_type"
         ]
       }
     },
@@ -29470,7 +29532,7 @@
         "render": "verified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "not_applicable"
       },
       "required": [
         "D"
@@ -29499,6 +29561,9 @@
         "render": [
           "crates/processcraft-render/tests/bpmn_scene.rs:lane_orientation_places_divider_on_corresponding_axis"
         ]
+      },
+      "verified_notes": {
+        "validate": "BPMN 2.0.2 Table 10.135 (printed p.307) describes the attribute only as a descriptive name; Semantic.xsd types it xsd:string; no constraint beyond the lexical type."
       }
     },
     {
@@ -29520,7 +29585,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "D"
@@ -29548,6 +29613,11 @@
         "model": [
           "crates/processcraft-core/tests/m3r2_edit-model-io.rs:child_lane_set_name_and_lane_partition_edit_with_undo",
           "crates/processcraft-core/tests/m3r2_edit-model-io.rs:lane_set_name_edits_with_undo_and_rejects_invalid_text"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_integration.rs",
+          "crates/processcraft-core/tests/m3r2_integration.rs:lane_partition_reference_must_resolve",
+          "crates/processcraft-core/tests/m3r2_integration.rs:lanes_of_one_lane_set_must_share_partition_type"
         ]
       }
     },
@@ -29570,7 +29640,7 @@
         "render": "not_applicable",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "profile": "descriptive artifacts",
       "evidence": [
@@ -29608,6 +29678,11 @@
         "model": [
           "crates/processcraft-core/tests/m3r2_edit-model-io.rs:child_lane_set_name_and_lane_partition_edit_with_undo",
           "crates/processcraft-core/tests/m3r2_edit-model-io.rs:lane_set_name_edits_with_undo_and_rejects_invalid_text"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_integration.rs",
+          "crates/processcraft-core/tests/m3r2_integration.rs:lane_partition_reference_must_resolve",
+          "crates/processcraft-core/tests/m3r2_integration.rs:lanes_of_one_lane_set_must_share_partition_type"
         ]
       },
       "verified_notes": {
@@ -29633,7 +29708,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "D"
@@ -29655,6 +29730,11 @@
         ],
         "model": [
           "crates/processcraft-core/tests/commands.rs:explicit_anonymous_lane_set_can_be_promoted_with_generation_guard"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_integration.rs",
+          "crates/processcraft-core/tests/m3r2_integration.rs:lane_partition_reference_must_resolve",
+          "crates/processcraft-core/tests/m3r2_integration.rs:lanes_of_one_lane_set_must_share_partition_type"
         ]
       }
     },
@@ -29677,7 +29757,7 @@
         "render": "not_applicable",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "not_applicable"
       },
       "required": [
         "D"
@@ -29709,6 +29789,7 @@
         ]
       },
       "verified_notes": {
+        "validate": "BPMN 2.0.2 Table 10.134 (printed p.307) describes the attribute only as a descriptive name; Semantic.xsd types it xsd:string; no constraint beyond the lexical type.",
         "render": "BPMN 2.0.2 Table 10.134 (printed p.307): 'A LaneSet is not visually displayed on a BPMN diagram. Consequently, the name of the LaneSet is not displayed as well.'"
       }
     },
@@ -30127,7 +30208,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "A"
@@ -30153,6 +30234,10 @@
         ],
         "model": [
           "crates/processcraft-core/tests/m3r2_edit-model-io.rs:element_level_collaboration_participant_message_and_message_flow_with_undo"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_integration.rs",
+          "crates/processcraft-core/tests/m3r2_integration.rs:message_item_ref_must_resolve_to_an_item_definition"
         ]
       }
     },
@@ -30220,7 +30305,7 @@
         "render": "not_applicable",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "not_applicable"
       },
       "required": [
         "A"
@@ -30248,7 +30333,8 @@
         ]
       },
       "verified_notes": {
-        "render": "BPMN 2.0.2 Table 8.48 (printed p.93): Message name is a text description; the notation defines no Message label (the Message Flow label is the flow name)."
+        "validate": "BPMN 2.0.2 Table 8.48 (printed p.93) describes the attribute only as a descriptive name; Semantic.xsd types it xsd:string; no constraint beyond the lexical type.",
+        "render": "BPMN 2.0.2 Table 8.48 (printed p.93): Message name is a text description; the DI section only says the Message name MAY be used as a label for the choreography envelope decorator (optional); the renderer deliberately does not draw it."
       }
     },
     {
@@ -30270,7 +30356,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "A"
@@ -30294,6 +30380,10 @@
         ],
         "model": [
           "crates/processcraft-core/tests/m3_process_collaboration.rs:root_message_name_and_item_ref_edit_with_undo"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_integration.rs",
+          "crates/processcraft-core/tests/m3r2_integration.rs:message_item_ref_must_resolve_to_an_item_definition"
         ]
       }
     },
@@ -30535,7 +30625,7 @@
         "render": "verified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "profile": "collaboration",
       "evidence": [
@@ -30568,6 +30658,9 @@
         ],
         "model": [
           "crates/processcraft-core/tests/m3r2_edit-model-io.rs:element_level_collaboration_participant_message_and_message_flow_with_undo"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3_process_collaboration.rs:message_flow_dangling_source_and_message_ref_are_reported"
         ],
         "render": [
           "crates/processcraft-render/tests/m3_process_collaboration.rs:message_flow_name_renders_as_edge_label",
@@ -30639,7 +30732,7 @@
         "render": "verified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "not_applicable"
       },
       "required": [
         "D"
@@ -30668,6 +30761,9 @@
         "render": [
           "crates/processcraft-render/tests/m3_process_collaboration.rs:message_flow_name_renders_as_edge_label"
         ]
+      },
+      "verified_notes": {
+        "validate": "BPMN 2.0.2 Table 9.8 (printed p.122) describes the attribute only as a descriptive name; Semantic.xsd types it xsd:string; no constraint beyond the lexical type."
       }
     },
     {
@@ -32325,7 +32421,7 @@
         "render": "verified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "profile": "collaboration",
       "evidence": [
@@ -32358,6 +32454,9 @@
         ],
         "model": [
           "crates/processcraft-core/tests/m3r2_edit-model-io.rs:element_level_collaboration_participant_message_and_message_flow_with_undo"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/diagnostics.rs:participant_band_and_multiplicity_advisories_are_anchored"
         ],
         "render": [
           "crates/processcraft-render/tests/m3_process_collaboration.rs:participant_name_renders_as_pool_label",
@@ -32527,7 +32626,7 @@
         "render": "verified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "not_applicable"
       },
       "required": [
         "D"
@@ -32556,6 +32655,9 @@
         "render": [
           "crates/processcraft-render/tests/m3_process_collaboration.rs:participant_name_renders_as_pool_label"
         ]
+      },
+      "verified_notes": {
+        "validate": "BPMN 2.0.2 Table 9.2 (printed p.115) describes the attribute only as a descriptive name; Semantic.xsd types it xsd:string; no constraint beyond the lexical type."
       }
     },
     {
@@ -33194,7 +33296,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "D"
@@ -33220,6 +33322,10 @@
         ],
         "model": [
           "crates/processcraft-core/tests/m3r2_edit-model-io.rs:element_level_process_lane_and_sequence_flow_create_delete_undo"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3_process_collaboration.rs:process_supports_and_collaboration_ref_dangling_are_reported",
+          "crates/processcraft-core/tests/m3r2_integration.rs:public_process_must_not_be_executable"
         ]
       }
     },
@@ -33338,7 +33444,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "D"
@@ -33362,6 +33468,10 @@
         ],
         "model": [
           "crates/processcraft-core/tests/m3_process_collaboration.rs:process_type_closed_supports_and_collaboration_ref_edit_with_undo"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_integration.rs",
+          "crates/processcraft-core/tests/m3r2_integration.rs:public_process_must_not_be_executable"
         ]
       }
     },
@@ -33384,7 +33494,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "not_applicable"
       },
       "required": [
         "D"
@@ -33409,6 +33519,9 @@
         "model": [
           "crates/processcraft-core/tests/m3_process_collaboration.rs:process_type_closed_supports_and_collaboration_ref_edit_with_undo"
         ]
+      },
+      "verified_notes": {
+        "validate": "BPMN 2.0.2 section 10.1 / Table 10.1 (printed p.146) states isClosed only as a runtime restriction on unmodeled interactions; there is no model-level constraint to check beyond xsd:boolean."
       }
     },
     {
@@ -33430,7 +33543,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "D"
@@ -33454,6 +33567,10 @@
         ],
         "model": [
           "crates/processcraft-core/tests/identity_native.rs:native_graph_identity_is_stable_and_duplicate_xml_ids_are_rejected"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_integration.rs",
+          "crates/processcraft-core/tests/m3r2_integration.rs:public_process_must_not_be_executable"
         ]
       }
     },
@@ -33525,7 +33642,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "not_applicable"
       },
       "required": [
         "S"
@@ -33548,6 +33665,9 @@
         "model": [
           "crates/processcraft-core/tests/m3_foundation.rs:process_type_is_set_read_back_and_undone"
         ]
+      },
+      "verified_notes": {
+        "validate": "BPMN 2.0.2 Table 10.1 (printed p.145) defines processType as the enumeration {None | Private | Public}; it is a typed Rust enum so no invalid value is representable; the only stated relation (public Processes not executable) is verified on tProcess/@isExecutable."
       }
     },
     {
@@ -35127,7 +35247,7 @@
         "render": "verified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "D"
@@ -35154,6 +35274,9 @@
         ],
         "model": [
           "crates/processcraft-core/tests/m3r2_edit-model-io.rs:element_level_process_lane_and_sequence_flow_create_delete_undo"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3_process_collaboration.rs:sequence_flow_source_edit_with_undo_and_dangling_source_is_reported"
         ],
         "render": [
           "crates/processcraft-render/tests/m3r2_render.rs:sequence_flow_draws_line_label_and_hits"
@@ -36885,7 +37008,7 @@
         "render": "verified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "profile": "descriptive artifacts",
       "evidence": [
@@ -36923,6 +37046,10 @@
         ],
         "render": [
           "crates/processcraft-render/tests/bpmn_scene.rs:annotation_text_uses_dedicated_payload_with_legacy_fallback"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_integration.rs",
+          "crates/processcraft-core/tests/m3r2_integration.rs:text_annotation_text_format_must_be_a_mime_type"
         ]
       }
     },
@@ -36945,7 +37072,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "D"
@@ -36966,6 +37093,10 @@
         ],
         "model": [
           "crates/processcraft-core/tests/commands.rs:annotation_text_edit_migrates_legacy_body_and_undo_restores_it"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_integration.rs",
+          "crates/processcraft-core/tests/m3r2_integration.rs:text_annotation_text_format_must_be_a_mime_type"
         ]
       }
     },
@@ -36988,7 +37119,7 @@
         "render": "unverified",
         "import": "verified",
         "export": "verified",
-        "validate": "unverified"
+        "validate": "verified"
       },
       "required": [
         "D"
@@ -37014,6 +37145,10 @@
         ],
         "edit": [
           "crates/processcraft-core/tests/m3r2_edit-model-io.rs:text_annotation_text_format_edits_with_undo"
+        ],
+        "validate": [
+          "crates/processcraft-core/tests/m3r2_integration.rs",
+          "crates/processcraft-core/tests/m3r2_integration.rs:text_annotation_text_format_must_be_a_mime_type"
         ]
       }
     },
@@ -37738,51 +37873,51 @@
     "total": {
       "declarations": 299,
       "cells": 1450,
-      "verified": 1384,
-      "not_applicable": 26,
-      "partial": 1,
-      "unverified": 39
+      "verified": 1407,
+      "not_applicable": 43,
+      "partial": 0,
+      "unverified": 0
     },
     "by_set": {
       "A": {
         "declarations": 89,
         "cells": 438,
-        "verified": 425,
-        "not_applicable": 10,
+        "verified": 427,
+        "not_applicable": 11,
         "partial": 0,
-        "unverified": 3
+        "unverified": 0
       },
       "C": {
         "declarations": 34,
         "cells": 166,
-        "verified": 161,
-        "not_applicable": 3,
+        "verified": 162,
+        "not_applicable": 4,
         "partial": 0,
-        "unverified": 2
+        "unverified": 0
       },
       "D": {
         "declarations": 173,
         "cells": 861,
-        "verified": 814,
-        "not_applicable": 16,
+        "verified": 833,
+        "not_applicable": 28,
         "partial": 0,
-        "unverified": 31
+        "unverified": 0
       },
       "I": {
         "declarations": 33,
         "cells": 132,
-        "verified": 126,
-        "not_applicable": 2,
-        "partial": 1,
-        "unverified": 3
+        "verified": 128,
+        "not_applicable": 4,
+        "partial": 0,
+        "unverified": 0
       },
       "S": {
         "declarations": 7,
         "cells": 28,
         "verified": 26,
-        "not_applicable": 0,
+        "not_applicable": 2,
         "partial": 0,
-        "unverified": 2
+        "unverified": 0
       }
     }
   },

@@ -441,8 +441,10 @@ impl<'a> SemanticIndex<'a> {
             .copied()
             .find(|(_, activity)| &activity.id == id)
     }
-    /// BPMN 2.0.2 Table 8.21 / section 8.3.? "Category": the Group label is the
-    /// CategoryValue value, prepended by the Category name and a delineator.
+    /// BPMN 2.0.2 Table 8.21 and the Category section: the Group label is the
+    /// CategoryValue value, optionally prepended by the Category name and a delineator.
+    /// The spec contradicts itself (Table 8.21 says "." and the Category section says ":");
+    /// ":" is chosen as the more specific text. The space after it is not specified.
     fn group_label(&self, id: &ElementSelector, document: &BpmnDocument) -> Option<String> {
         let group = self.groups.iter().find(|g| &g.id == id)?;
         let value_id = self.resolved(&group.category_value_ref)?;

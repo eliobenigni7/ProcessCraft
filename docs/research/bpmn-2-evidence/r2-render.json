@@ -39,7 +39,8 @@
    "state": "verified",
    "evidence": [
     "crates/processcraft-render/tests/m3r2_render.rs:group_label_is_category_name_and_value"
-   ]
+   ],
+   "note": "Table 8.21 says delineator '.', the Category section says ':'; ':' (followed by a space, unspecified) is used."
   },
   {
    "path": "/schema/complexType[@name=tChoreographyActivity]/complexContent/extension/attribute[@name=initiatingParticipantRef]",
@@ -106,7 +107,7 @@
    "schema": "Semantic.xsd",
    "dimension": "render",
    "state": "not_applicable",
-   "note": "BPMN 2.0.2 Table 8.48 (printed p.93): Message name is a text description; the notation defines no Message label (the Message Flow label is the flow name)."
+   "note": "BPMN 2.0.2 Table 8.48 (printed p.93): Message name is a text description; the DI section only says the Message name MAY be used as a label for the choreography envelope decorator (optional); the renderer deliberately does not draw it."
   },
   {
    "path": "/schema/complexType[@name=tOutputSet]/complexContent/extension/attribute[@name=name]",

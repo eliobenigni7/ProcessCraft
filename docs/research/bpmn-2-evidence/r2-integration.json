@@ -1,0 +1,357 @@
+{
+ "family": "integration",
+ "cells": [
+  {
+   "path": "/schema/complexType[@name=BPMNDiagram]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_integration.rs",
+    "crates/processcraft-core/tests/m3r2_integration.rs:bpmn_label_style_must_be_owned_by_the_diagram"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=BPMNLabel]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_integration.rs",
+    "crates/processcraft-core/tests/m3r2_integration.rs:bpmn_label_style_must_be_owned_by_the_diagram"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=Bounds]",
+   "schema": "DC.xsd",
+   "dimension": "validate",
+   "state": "not_applicable",
+   "note": "The DC XSD (DC.xsd) types x/y/width/height as xsd:double and BPMN 2.0.2 (section 12.2.3, DI chapter) states no range or relation for a label or shape Bounds beyond the lexical type; Participant-band geometry is checked separately by participantBandGeometryDisjoint."
+  },
+  {
+   "path": "/schema/complexType[@name=Point]",
+   "schema": "DC.xsd",
+   "dimension": "validate",
+   "state": "not_applicable",
+   "note": "The DC XSD (DC.xsd) types x/y as xsd:double and BPMN 2.0.2 section 12.2.3.5 BPMNEdge states no constraint on waypoint values beyond the lexical type."
+  },
+  {
+   "path": "/schema/complexType[@name=tAssociation]/complexContent/extension/attribute[@name=associationDirection]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "not_applicable",
+   "note": "BPMN 2.0.2 Table 8.20 (printed p.66) defines associationDirection as the enumeration {None | One | Both} with default None; it is a typed Rust enum so no invalid value is representable, and the spec states no further constraint."
+  },
+  {
+   "path": "/schema/complexType[@name=tCallableElement]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "not_applicable",
+   "note": "BPMN 2.0.2 Table 10.24 (printed p.186) describes CallableElement name only as a descriptive name; Semantic.xsd types it xsd:string; no constraint beyond the lexical type."
+  },
+  {
+   "path": "/schema/complexType[@name=tCategoryValue]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_foundation.rs:category_value_ref_and_outgoing_are_set_undone_and_dangling_refs_diagnosed"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tCategoryValue]/complexContent/extension/attribute[@name=value]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "not_applicable",
+   "note": "BPMN 2.0.2 Table 8.23 (printed p.69) says value only provides the value of the CategoryValue (the Group label); Semantic.xsd types it xsd:string; no constraint beyond the lexical type."
+  },
+  {
+   "path": "/schema/complexType[@name=tCategory]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "not_applicable",
+   "note": "BPMN 2.0.2 Table 8.22 (printed p.69) gives Category only a descriptive name and a containment of CategoryValue [0..*]; it states no constraint beyond the XSD structure."
+  },
+  {
+   "path": "/schema/complexType[@name=tCategory]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "not_applicable",
+   "note": "BPMN 2.0.2 Table 8.22 (printed p.69) gives Category only a descriptive name and a containment of CategoryValue [0..*]; it states no constraint beyond the XSD structure."
+  },
+  {
+   "path": "/schema/complexType[@name=tCollaboration]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "not_applicable",
+   "note": "BPMN 2.0.2 Table 9.1 (printed p.108) describes the attribute only as a descriptive name; Semantic.xsd types it xsd:string; no constraint beyond the lexical type."
+  },
+  {
+   "path": "/schema/complexType[@name=tCollaboration]/complexContent/extension/attribute[@name=isClosed]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_integration.rs",
+    "crates/processcraft-core/tests/m3r2_integration.rs:collaboration_and_its_choreography_must_agree_on_is_closed",
+    "crates/processcraft-core/tests/m3_process_collaboration.rs:collaboration_choreography_ref_dangling_is_reported"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tLaneSet]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_integration.rs",
+    "crates/processcraft-core/tests/m3r2_integration.rs:lane_partition_reference_must_resolve",
+    "crates/processcraft-core/tests/m3r2_integration.rs:lanes_of_one_lane_set_must_share_partition_type"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tLaneSet]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "not_applicable",
+   "note": "BPMN 2.0.2 Table 10.134 (printed p.307) describes the attribute only as a descriptive name; Semantic.xsd types it xsd:string; no constraint beyond the lexical type."
+  },
+  {
+   "path": "/schema/complexType[@name=tLane]/complexContent/extension/sequence/element[@name=partitionElement]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_integration.rs",
+    "crates/processcraft-core/tests/m3r2_integration.rs:lane_partition_reference_must_resolve",
+    "crates/processcraft-core/tests/m3r2_integration.rs:lanes_of_one_lane_set_must_share_partition_type"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tLane]/complexContent/extension/sequence/element[@name=childLaneSet]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_integration.rs",
+    "crates/processcraft-core/tests/m3r2_integration.rs:lane_partition_reference_must_resolve",
+    "crates/processcraft-core/tests/m3r2_integration.rs:lanes_of_one_lane_set_must_share_partition_type"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tLane]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "not_applicable",
+   "note": "BPMN 2.0.2 Table 10.135 (printed p.307) describes the attribute only as a descriptive name; Semantic.xsd types it xsd:string; no constraint beyond the lexical type."
+  },
+  {
+   "path": "/schema/complexType[@name=tLane]/complexContent/extension/attribute[@name=partitionElementRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_integration.rs",
+    "crates/processcraft-core/tests/m3r2_integration.rs:lane_partition_reference_must_resolve",
+    "crates/processcraft-core/tests/m3r2_integration.rs:lanes_of_one_lane_set_must_share_partition_type"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMessageFlow]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "not_applicable",
+   "note": "BPMN 2.0.2 Table 9.8 (printed p.122) describes the attribute only as a descriptive name; Semantic.xsd types it xsd:string; no constraint beyond the lexical type."
+  },
+  {
+   "path": "/schema/complexType[@name=tMessage]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "not_applicable",
+   "note": "BPMN 2.0.2 Table 8.48 (printed p.93) describes the attribute only as a descriptive name; Semantic.xsd types it xsd:string; no constraint beyond the lexical type."
+  },
+  {
+   "path": "/schema/complexType[@name=tMessage]/complexContent/extension/attribute[@name=itemRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_integration.rs",
+    "crates/processcraft-core/tests/m3r2_integration.rs:message_item_ref_must_resolve_to_an_item_definition"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tParticipant]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "not_applicable",
+   "note": "BPMN 2.0.2 Table 9.2 (printed p.115) describes the attribute only as a descriptive name; Semantic.xsd types it xsd:string; no constraint beyond the lexical type."
+  },
+  {
+   "path": "/schema/complexType[@name=tProcess]/complexContent/extension/attribute[@name=processType]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_integration.rs",
+    "crates/processcraft-core/tests/m3r2_integration.rs:public_process_must_not_be_executable"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tProcess]/complexContent/extension/attribute[@name=isClosed]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "not_applicable",
+   "note": "BPMN 2.0.2 section 10.1 / Table 10.1 (printed p.146) states isClosed only as a runtime restriction on unmodeled interactions; there is no model-level constraint to check beyond xsd:boolean."
+  },
+  {
+   "path": "/schema/complexType[@name=tProcess]/complexContent/extension/attribute[@name=isExecutable]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_integration.rs",
+    "crates/processcraft-core/tests/m3r2_integration.rs:public_process_must_not_be_executable"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tTextAnnotation]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_integration.rs",
+    "crates/processcraft-core/tests/m3r2_integration.rs:text_annotation_text_format_must_be_a_mime_type"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tTextAnnotation]/complexContent/extension/attribute[@name=textFormat]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_integration.rs",
+    "crates/processcraft-core/tests/m3r2_integration.rs:text_annotation_text_format_must_be_a_mime_type"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=categoryValue]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_foundation.rs:category_value_ref_and_outgoing_are_set_undone_and_dangling_refs_diagnosed"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=category]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "not_applicable",
+   "note": "BPMN 2.0.2 Table 8.22 (printed p.69) gives Category only a descriptive name and a containment of CategoryValue [0..*]; it states no constraint beyond the XSD structure."
+  },
+  {
+   "path": "/schema/element[@name=collaboration]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_integration.rs",
+    "crates/processcraft-core/tests/m3r2_integration.rs:collaboration_and_its_choreography_must_agree_on_is_closed",
+    "crates/processcraft-core/tests/m3_process_collaboration.rs:collaboration_choreography_ref_dangling_is_reported"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=laneSet]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_integration.rs",
+    "crates/processcraft-core/tests/m3r2_integration.rs:lane_partition_reference_must_resolve",
+    "crates/processcraft-core/tests/m3r2_integration.rs:lanes_of_one_lane_set_must_share_partition_type"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=lane]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_integration.rs",
+    "crates/processcraft-core/tests/m3r2_integration.rs:lane_partition_reference_must_resolve",
+    "crates/processcraft-core/tests/m3r2_integration.rs:lanes_of_one_lane_set_must_share_partition_type"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=messageFlow]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_process_collaboration.rs:message_flow_dangling_source_and_message_ref_are_reported"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=message]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_integration.rs",
+    "crates/processcraft-core/tests/m3r2_integration.rs:message_item_ref_must_resolve_to_an_item_definition"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=participant]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:participant_band_and_multiplicity_advisories_are_anchored"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=process]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_integration.rs:public_process_must_not_be_executable",
+    "crates/processcraft-core/tests/m3_process_collaboration.rs:process_supports_and_collaboration_ref_dangling_are_reported"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=sequenceFlow]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3_process_collaboration.rs:sequence_flow_source_edit_with_undo_and_dangling_source_is_reported"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=textAnnotation]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m3r2_integration.rs",
+    "crates/processcraft-core/tests/m3r2_integration.rs:text_annotation_text_format_must_be_a_mime_type"
+   ]
+  },
+  {
+   "path": "/schema/simpleType[@name=tAssociationDirection]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "not_applicable",
+   "note": "BPMN 2.0.2 Table 8.20 (printed p.66) defines associationDirection as the enumeration {None | One | Both} with default None; it is a typed Rust enum so no invalid value is representable, and the spec states no further constraint."
+  },
+  {
+   "path": "/schema/simpleType[@name=tProcessType]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "not_applicable",
+   "note": "BPMN 2.0.2 Table 10.1 (printed p.145) defines processType as the enumeration {None | Private | Public}; it is a typed Rust enum so no invalid value is representable; the only stated relation (public Processes not executable) is verified on tProcess/@isExecutable."
+  }
+ ]
+}

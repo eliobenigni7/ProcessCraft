@@ -111,6 +111,7 @@ fn process(nodes: Vec<Node>, lanes: Vec<Lane>, flows: Vec<Flow>) -> Process {
         io_specification: None,
         lane_set_id: None,
         lane_set_base: None,
+        lane_set_name: None,
         groups: vec![],
         data_objects: vec![],
         data_associations: vec![],
@@ -166,7 +167,7 @@ fn flow_doc(with_edge: bool) -> BpmnDocument {
     d
 }
 
-// Sequence Flow (section 8.3.? / Figure 8.x): a line with arrowhead and its name label.
+// Sequence Flow (section 7.2.2 notation): a line with arrowhead and its name label.
 #[test]
 fn sequence_flow_draws_line_label_and_hits() {
     let without = build(&flow_doc(false));
@@ -178,7 +179,7 @@ fn sequence_flow_draws_line_label_and_hits() {
     assert_eq!(hit.key.xml_id, id::<ElementSelector>("sf"));
 }
 
-// Table 10.? Inclusive Gateway `default`: the default flow carries a slash marker (section 10.5.3).
+// Inclusive Gateway `default`: the default flow carries a slash marker (section 10.5.3).
 #[test]
 fn inclusive_gateway_default_flow_draws_slash() {
     let plain = build(&flow_doc(true));
@@ -215,6 +216,7 @@ fn plane_bpmn_element_scopes_nested_children() {
         content: Box::new(FlowContainer {
             lane_set_id: None,
             lane_set_base: None,
+            lane_set_name: None,
             groups: vec![],
             data_objects: vec![],
             data_associations: vec![],
@@ -260,6 +262,9 @@ fn lane_renders_name_and_hit_tests() {
             base: None,
             child_lane_set_id: None,
             child_lane_set_base: None,
+            child_lane_set_name: None,
+            partition_element: None,
+            partition_element_ref: None,
             id: id("lane"),
             name: Some("Warehouse".into()),
             parent: None,
@@ -286,7 +291,7 @@ fn lane_renders_name_and_hit_tests() {
     assert!(svg.contains("Dock") && !svg.contains("Warehouse"));
 }
 
-// Group (Table 8.21, section 8.3.? Category): label is the CategoryValue value prepended by the
+// Group (Table 8.21, Category section; ":" chosen over "." of Table 8.21): label is the CategoryValue value prepended by the
 // Category name and a delineator.
 #[test]
 fn group_label_is_category_name_and_value() {
@@ -330,7 +335,7 @@ fn participant(pid: &str, name: &str) -> Participant {
         process: None,
     }
 }
-// Choreography Task (Table 11.? / section 11.5.1): the initiating Participant band is on top.
+// Choreography Task (Choreography Task notation, section 11.5.1): the initiating Participant band is on top.
 // Without explicit band shapes the renderer derives band order from initiatingParticipantRef.
 #[test]
 fn choreography_initiating_participant_selects_top_band() {

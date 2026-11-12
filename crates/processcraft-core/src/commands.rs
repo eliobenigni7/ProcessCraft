@@ -3760,6 +3760,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             partition_element,
             partition_element_ref,
         } => {
+            check_lane_set_name(&partition_element.as_ref().and_then(|e| e.value.clone()))?;
             let lane = scope_parts_mut(doc(p, document_id, true)?, &scope_id)?
                 .1
                 .iter_mut()
