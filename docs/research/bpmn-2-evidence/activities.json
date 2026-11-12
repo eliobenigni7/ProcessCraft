@@ -1,0 +1,614 @@
+{
+ "family": "activities",
+ "cells": [
+  {
+   "path": "/schema/complexType[@name=tActivity]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m2.rs:activity_properties_validate_scope_and_kind_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tActivity]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m2.rs:activity_properties_validate_scope_and_kind_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tActivity]/complexContent/extension/attribute[@name=isForCompensation]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m2.rs:activity_properties_validate_scope_and_kind_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tActivity]/complexContent/extension/attribute[@name=isForCompensation]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m2.rs:activity_properties_validate_scope_and_kind_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tActivity]/complexContent/extension/attribute[@name=startQuantity]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m2.rs:activity_properties_validate_scope_and_kind_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tActivity]/complexContent/extension/attribute[@name=startQuantity]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m2.rs:activity_properties_validate_scope_and_kind_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tActivity]/complexContent/extension/attribute[@name=default]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m2.rs:activity_properties_validate_scope_and_kind_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tActivity]/complexContent/extension/attribute[@name=default]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m2.rs:activity_properties_validate_scope_and_kind_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tActivity]/complexContent/extension/attribute[@name=default]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m2.rs:activity_properties_validate_scope_and_kind_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tActivity]/complexContent/extension/attribute[@name=isForCompensation]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/bpmn_scene.rs:activity_properties_change_shared_vectors_and_viewport",
+    "crates/processcraft-render/tests/bpmn_scene.rs:collapsed_activity_marker_group_keeps_loop_and_compensation_left_of_plus"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tActivity]/complexContent/extension/attribute[@name=default]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/bpmn_scene.rs:activity_properties_change_shared_vectors_and_viewport"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m2.rs:activity_properties_validate_scope_and_kind_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=task]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m2.rs:activity_properties_validate_scope_and_kind_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=task]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m2.rs:activity_properties_validate_scope_and_kind_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=task]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/bpmn_scene.rs:implicit_task_label_centers_each_line_in_shared_scene"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tSubProcess]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m2.rs:nested_scope_edits_and_cross_scope_flows_are_atomic"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tSubProcess]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:nested_subprocess_call_and_expanded_geometry_round_trip"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tSubProcess]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:nested_subprocess_call_and_expanded_geometry_round_trip"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tSubProcess]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:nested_duplicate_ids_and_cross_scope_edges_are_rejected_by_core"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tSubProcess]/complexContent/extension/attribute[@name=triggeredByEvent]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m2.rs:activity_properties_validate_scope_and_kind_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tSubProcess]/complexContent/extension/attribute[@name=triggeredByEvent]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m2.rs:activity_properties_validate_scope_and_kind_and_undo",
+    "crates/processcraft-core/tests/events_extended.rs:error_start_is_valid_only_in_event_subprocess_context"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tSubProcess]/complexContent/extension/attribute[@name=triggeredByEvent]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/bpmn_scene.rs:activity_properties_change_shared_vectors_and_viewport",
+    "crates/processcraft-render/tests/bpmn_scene.rs:event_subprocess_start_interrupting_flag_controls_outer_ring"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=subProcess]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m2.rs:nested_scope_edits_and_cross_scope_flows_are_atomic"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=subProcess]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m2.rs:nested_scope_edits_and_cross_scope_flows_are_atomic"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=subProcess]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:nested_subprocess_call_and_expanded_geometry_round_trip"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=subProcess]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:nested_subprocess_call_and_expanded_geometry_round_trip"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=subProcess]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:nested_duplicate_ids_and_cross_scope_edges_are_rejected_by_core"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=subProcess]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/bpmn_scene.rs:nested_diagram_shows_children_and_collapsed_parent_hides_them",
+    "crates/processcraft-render/tests/bpmn_scene.rs:omitted_subprocess_expansion_draws_collapsed_marker"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tCallActivity]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:call_activity_local_target_is_checked_without_resolving_external"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tCallActivity]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:definitions_namespace_survives_legacy_provenance_and_local_calls"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tCallActivity]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:definitions_namespace_survives_legacy_provenance_and_local_calls"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tCallActivity]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:call_activity_local_target_is_checked_without_resolving_external"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tCallActivity]/complexContent/extension/attribute[@name=calledElement]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:call_activity_local_target_is_checked_without_resolving_external"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tCallActivity]/complexContent/extension/attribute[@name=calledElement]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:definitions_namespace_survives_legacy_provenance_and_local_calls"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tCallActivity]/complexContent/extension/attribute[@name=calledElement]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:definitions_namespace_survives_legacy_provenance_and_local_calls"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tCallActivity]/complexContent/extension/attribute[@name=calledElement]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:call_activity_local_target_is_checked_without_resolving_external"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=callActivity]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:call_activity_local_target_is_checked_without_resolving_external"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=callActivity]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:definitions_namespace_survives_legacy_provenance_and_local_calls"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=callActivity]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:definitions_namespace_survives_legacy_provenance_and_local_calls"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=callActivity]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:call_activity_local_target_is_checked_without_resolving_external"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=callActivity]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/bpmn_scene.rs:local_process_call_defaults_to_collapsed_without_writing_di",
+    "crates/processcraft-render/tests/bpmn_scene.rs:nested_flow_and_called_activity_use_semantic_ids",
+    "crates/processcraft-render/tests/bpmn_scene.rs:local_global_call_task_uses_its_typed_marker_without_fabricating_an_id"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tSendTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/commands.rs:activity_bindings_validate_new_local_refs_and_preserve_legacy"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tSendTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:activity_message_and_operation_qnames_roundtrip_with_loop_context"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tSendTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:message_task_cardinality_is_conditional_and_receive_instantiate_checks_incoming"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tSendTask]/complexContent/extension/attribute[@name=messageRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/commands.rs:activity_bindings_validate_new_local_refs_and_preserve_legacy"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tSendTask]/complexContent/extension/attribute[@name=messageRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/commands.rs:activity_bindings_validate_new_local_refs_and_preserve_legacy"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tSendTask]/complexContent/extension/attribute[@name=messageRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:activity_message_and_operation_qnames_roundtrip_with_loop_context"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tSendTask]/complexContent/extension/attribute[@name=messageRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:message_task_cardinality_is_conditional_and_receive_instantiate_checks_incoming"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tSendTask]/complexContent/extension/attribute[@name=operationRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/commands.rs:activity_bindings_validate_new_local_refs_and_preserve_legacy"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tSendTask]/complexContent/extension/attribute[@name=operationRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/commands.rs:activity_bindings_validate_new_local_refs_and_preserve_legacy"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tSendTask]/complexContent/extension/attribute[@name=operationRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:activity_unqualified_qname_and_wrong_subtype_are_safe"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tSendTask]/complexContent/extension/attribute[@name=operationRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/commands.rs:activity_bindings_validate_new_local_refs_and_preserve_legacy"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=sendTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/commands.rs:activity_bindings_validate_new_local_refs_and_preserve_legacy"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=sendTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/commands.rs:activity_bindings_validate_new_local_refs_and_preserve_legacy"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=sendTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:activity_message_and_operation_qnames_roundtrip_with_loop_context"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=sendTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:message_task_cardinality_is_conditional_and_receive_instantiate_checks_incoming"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tReceiveTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:message_task_cardinality_is_conditional_and_receive_instantiate_checks_incoming"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tReceiveTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:message_task_cardinality_is_conditional_and_receive_instantiate_checks_incoming"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tReceiveTask]/complexContent/extension/attribute[@name=instantiate]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:message_task_cardinality_is_conditional_and_receive_instantiate_checks_incoming"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tReceiveTask]/complexContent/extension/attribute[@name=instantiate]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:message_task_cardinality_is_conditional_and_receive_instantiate_checks_incoming"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tReceiveTask]/complexContent/extension/attribute[@name=instantiate]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/bpmn_scene.rs:instantiating_receive_task_adds_message_start_ring"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=receiveTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:message_task_cardinality_is_conditional_and_receive_instantiate_checks_incoming"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=receiveTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:message_task_cardinality_is_conditional_and_receive_instantiate_checks_incoming"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=receiveTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/bpmn_scene.rs:instantiating_receive_task_adds_message_start_ring"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tServiceTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:activity_message_and_operation_qnames_roundtrip_with_loop_context"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=serviceTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:activity_message_and_operation_qnames_roundtrip_with_loop_context"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tServiceTask]/complexContent/extension/attribute[@name=operationRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:activity_message_and_operation_qnames_roundtrip_with_loop_context"
+   ]
+  }
+ ]
+}

@@ -1,0 +1,449 @@
+{
+ "family": "loops",
+ "cells": [
+  {
+   "path": "/schema/complexType[@name=tLoopCharacteristics]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m2.rs:loop_metadata_is_atomic_and_undoable",
+    "crates/processcraft-core/tests/commands.rs:loop_identity_rename_preserves_checkpoint_and_undo_redo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tLoopCharacteristics]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:activity_correlation_and_callable_fixtures_roundtrip_with_values",
+    "crates/processcraft-io/tests/interchange.rs:anonymous_metadata_stays_on_its_typed_owner"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tLoopCharacteristics]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:activity_correlation_and_callable_fixtures_roundtrip_with_values",
+    "crates/processcraft-io/tests/interchange.rs:activity_loop_characteristics_round_trip",
+    "scripts/qualify_activity_metadata.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tStandardLoopCharacteristics]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/commands.rs:loop_identity_rename_preserves_checkpoint_and_undo_redo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tStandardLoopCharacteristics]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:anonymous_metadata_stays_on_its_typed_owner",
+    "crates/processcraft-io/tests/interchange.rs:structured_expression_metadata_roundtrips_across_loop_and_adhoc_owners"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tStandardLoopCharacteristics]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:activity_loop_characteristics_round_trip",
+    "crates/processcraft-io/tests/interchange.rs:activity_correlation_and_callable_fixtures_roundtrip_with_values",
+    "scripts/qualify_activity_metadata.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tStandardLoopCharacteristics]/complexContent/extension/sequence/element[@name=loopCondition]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:structured_expression_metadata_roundtrips_across_loop_and_adhoc_owners"
+   ],
+   "note": "expression count 3 fails if loopCondition import breaks"
+  },
+  {
+   "path": "/schema/complexType[@name=tStandardLoopCharacteristics]/complexContent/extension/sequence/element[@name=loopCondition]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:structured_expression_metadata_roundtrips_across_loop_and_adhoc_owners",
+    "crates/processcraft-io/tests/interchange.rs:activity_loop_characteristics_round_trip",
+    "scripts/qualify_activity_metadata.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tStandardLoopCharacteristics]/complexContent/extension/attribute[@name=testBefore]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:activity_loop_characteristics_round_trip",
+    "crates/processcraft-io/tests/interchange.rs:activity_correlation_and_callable_fixtures_roundtrip_with_values",
+    "scripts/qualify_activity_metadata.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tStandardLoopCharacteristics]/complexContent/extension/attribute[@name=loopMaximum]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:activity_loop_characteristics_round_trip",
+    "crates/processcraft-io/tests/interchange.rs:activity_correlation_and_callable_fixtures_roundtrip_with_values",
+    "scripts/qualify_activity_metadata.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMultiInstanceLoopCharacteristics]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m2.rs:loop_metadata_is_atomic_and_undoable"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMultiInstanceLoopCharacteristics]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:activity_correlation_and_callable_fixtures_roundtrip_with_values"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMultiInstanceLoopCharacteristics]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:activity_correlation_and_callable_fixtures_roundtrip_with_values",
+    "crates/processcraft-io/tests/interchange.rs:multi_instance_behavior_qnames_preserve_empty_namespace_and_shadowed_prefixes",
+    "scripts/qualify_activity_metadata.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMultiInstanceLoopCharacteristics]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:subprocess_loop_data_references_respect_ancestor_and_sibling_scope"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMultiInstanceLoopCharacteristics]/complexContent/extension/sequence/element[@name=loopCardinality]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m2.rs:loop_metadata_is_atomic_and_undoable"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMultiInstanceLoopCharacteristics]/complexContent/extension/sequence/element[@name=loopCardinality]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m2.rs:loop_metadata_is_atomic_and_undoable"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMultiInstanceLoopCharacteristics]/complexContent/extension/sequence/element[@name=loopCardinality]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:structured_expression_metadata_roundtrips_across_loop_and_adhoc_owners"
+   ],
+   "note": "expression count 3 fails if loopCardinality import breaks"
+  },
+  {
+   "path": "/schema/complexType[@name=tMultiInstanceLoopCharacteristics]/complexContent/extension/sequence/element[@name=loopCardinality]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:structured_expression_metadata_roundtrips_across_loop_and_adhoc_owners",
+    "crates/processcraft-io/tests/interchange.rs:activity_correlation_and_callable_fixtures_roundtrip_with_values",
+    "scripts/qualify_activity_metadata.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMultiInstanceLoopCharacteristics]/complexContent/extension/sequence/element[@name=loopDataInputRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:subprocess_loop_data_references_respect_ancestor_and_sibling_scope"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMultiInstanceLoopCharacteristics]/complexContent/extension/sequence/element[@name=loopDataInputRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:subprocess_loop_data_references_respect_ancestor_and_sibling_scope"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMultiInstanceLoopCharacteristics]/complexContent/extension/sequence/element[@name=loopDataInputRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:activity_correlation_and_callable_fixtures_roundtrip_with_values",
+    "scripts/qualify_activity_metadata.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMultiInstanceLoopCharacteristics]/complexContent/extension/sequence/element[@name=loopDataOutputRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:activity_correlation_and_callable_fixtures_roundtrip_with_values",
+    "scripts/qualify_activity_metadata.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMultiInstanceLoopCharacteristics]/complexContent/extension/sequence/element[@name=inputDataItem]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:activity_correlation_and_callable_fixtures_roundtrip_with_values",
+    "scripts/qualify_activity_metadata.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMultiInstanceLoopCharacteristics]/complexContent/extension/sequence/element[@name=outputDataItem]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:activity_correlation_and_callable_fixtures_roundtrip_with_values",
+    "scripts/qualify_activity_metadata.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMultiInstanceLoopCharacteristics]/complexContent/extension/sequence/element[@name=completionCondition]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:structured_expression_metadata_roundtrips_across_loop_and_adhoc_owners"
+   ],
+   "note": "expression count 3 fails if completionCondition import breaks"
+  },
+  {
+   "path": "/schema/complexType[@name=tMultiInstanceLoopCharacteristics]/complexContent/extension/sequence/element[@name=completionCondition]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:structured_expression_metadata_roundtrips_across_loop_and_adhoc_owners",
+    "crates/processcraft-io/tests/interchange.rs:activity_correlation_and_callable_fixtures_roundtrip_with_values",
+    "scripts/qualify_activity_metadata.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMultiInstanceLoopCharacteristics]/complexContent/extension/attribute[@name=isSequential]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m2.rs:loop_metadata_is_atomic_and_undoable"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMultiInstanceLoopCharacteristics]/complexContent/extension/attribute[@name=isSequential]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m2.rs:loop_metadata_is_atomic_and_undoable"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMultiInstanceLoopCharacteristics]/complexContent/extension/attribute[@name=isSequential]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:activity_correlation_and_callable_fixtures_roundtrip_with_values"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMultiInstanceLoopCharacteristics]/complexContent/extension/attribute[@name=isSequential]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:activity_correlation_and_callable_fixtures_roundtrip_with_values",
+    "scripts/qualify_activity_metadata.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMultiInstanceLoopCharacteristics]/complexContent/extension/attribute[@name=behavior]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:activity_correlation_and_callable_fixtures_roundtrip_with_values"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMultiInstanceLoopCharacteristics]/complexContent/extension/attribute[@name=behavior]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:activity_correlation_and_callable_fixtures_roundtrip_with_values",
+    "crates/processcraft-io/tests/interchange.rs:multi_instance_behavior_qnames_preserve_empty_namespace_and_shadowed_prefixes",
+    "scripts/qualify_activity_metadata.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMultiInstanceLoopCharacteristics]/complexContent/extension/attribute[@name=oneBehaviorEventRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:activity_correlation_and_callable_fixtures_roundtrip_with_values",
+    "crates/processcraft-io/tests/interchange.rs:multi_instance_behavior_qnames_preserve_empty_namespace_and_shadowed_prefixes",
+    "scripts/qualify_activity_metadata.py"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tMultiInstanceLoopCharacteristics]/complexContent/extension/attribute[@name=noneBehaviorEventRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:activity_correlation_and_callable_fixtures_roundtrip_with_values",
+    "crates/processcraft-io/tests/interchange.rs:multi_instance_behavior_qnames_preserve_empty_namespace_and_shadowed_prefixes",
+    "scripts/qualify_activity_metadata.py"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=standardLoopCharacteristics]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/commands.rs:loop_identity_rename_preserves_checkpoint_and_undo_redo"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=standardLoopCharacteristics]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/commands.rs:loop_identity_rename_preserves_checkpoint_and_undo_redo"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=standardLoopCharacteristics]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:anonymous_metadata_stays_on_its_typed_owner",
+    "crates/processcraft-io/tests/interchange.rs:structured_expression_metadata_roundtrips_across_loop_and_adhoc_owners"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=standardLoopCharacteristics]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:activity_loop_characteristics_round_trip",
+    "crates/processcraft-io/tests/interchange.rs:activity_correlation_and_callable_fixtures_roundtrip_with_values",
+    "scripts/qualify_activity_metadata.py"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=standardLoopCharacteristics]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/bpmn_scene.rs:loop_and_multi_instance_markers_use_distinct_shared_vectors"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=multiInstanceLoopCharacteristics]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m2.rs:loop_metadata_is_atomic_and_undoable"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=multiInstanceLoopCharacteristics]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m2.rs:loop_metadata_is_atomic_and_undoable"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=multiInstanceLoopCharacteristics]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:activity_correlation_and_callable_fixtures_roundtrip_with_values"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=multiInstanceLoopCharacteristics]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:activity_correlation_and_callable_fixtures_roundtrip_with_values",
+    "crates/processcraft-io/tests/interchange.rs:multi_instance_behavior_qnames_preserve_empty_namespace_and_shadowed_prefixes",
+    "scripts/qualify_activity_metadata.py"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=multiInstanceLoopCharacteristics]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:subprocess_loop_data_references_respect_ancestor_and_sibling_scope"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=multiInstanceLoopCharacteristics]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/bpmn_scene.rs:loop_and_multi_instance_markers_use_distinct_shared_vectors",
+    "crates/processcraft-render/tests/bpmn_scene.rs:multi_instance_omitted_sequential_uses_parallel_marker_without_storing_default"
+   ]
+  }
+ ]
+}

@@ -1,0 +1,242 @@
+{
+ "family": "gateways",
+ "cells": [
+  {
+   "path": "/schema/complexType[@name=tGateway]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:nested_gateway_diagnostics_are_advisory_and_anchored"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tGateway]/complexContent/extension/attribute[@name=gatewayDirection]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:nested_gateway_diagnostics_are_advisory_and_anchored"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tExclusiveGateway]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:incomplete_process_is_valid_but_diagnostics_are_anchored"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tExclusiveGateway]/complexContent/extension/attribute[@name=default]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:nested_gateway_diagnostics_are_advisory_and_anchored"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tEventBasedGateway]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/bpmn_scene.rs:event_based_gateway_modes_render_distinct_symbols"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tEventBasedGateway]/complexContent/extension/attribute[@name=instantiate]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/bpmn_scene.rs:event_based_gateway_modes_render_distinct_symbols"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tEventBasedGateway]/complexContent/extension/attribute[@name=eventGatewayType]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/bpmn_scene.rs:event_based_gateway_modes_render_distinct_symbols"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=exclusiveGateway]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:incomplete_process_is_valid_but_diagnostics_are_anchored"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=eventBasedGateway]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/bpmn_scene.rs:event_based_gateway_modes_render_distinct_symbols"
+   ]
+  },
+  {
+   "path": "/schema/simpleType[@name=tGatewayDirection]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:nested_gateway_diagnostics_are_advisory_and_anchored"
+   ]
+  },
+  {
+   "path": "/schema/simpleType[@name=tEventBasedGatewayType]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/bpmn_scene.rs:event_based_gateway_modes_render_distinct_symbols"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tGateway]/complexContent/extension/attribute[@name=gatewayDirection]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "apps/processcraft/src/app.rs:graph_gateway_properties_keep_metadata_and_representation_through_history"
+   ],
+   "note": "GUI commit_draft submits SetNodeDetails; asserts Diverging, undo/redo"
+  },
+  {
+   "path": "/schema/element[@name=exclusiveGateway]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "apps/processcraft/src/app.rs:graph_gateway_properties_keep_metadata_and_representation_through_history"
+   ],
+   "note": "name+details edit with undo/redo"
+  },
+  {
+   "path": "/schema/element[@name=eventBasedGateway]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/bpmn_scene.rs:event_based_gateway_modes_render_distinct_symbols"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tEventBasedGateway]/complexContent/extension/attribute[@name=instantiate]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/bpmn_scene.rs:event_based_gateway_modes_render_distinct_symbols"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tEventBasedGateway]/complexContent/extension/attribute[@name=eventGatewayType]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/bpmn_scene.rs:event_based_gateway_modes_render_distinct_symbols"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=exclusiveGateway]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/bpmn_scene.rs:exclusive_marker_visibility_uses_di_default_and_explicit_true"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tExclusiveGateway]/complexContent/extension/attribute[@name=default]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/bpmn_scene.rs:gateway_default_flow_marker_uses_semantic_owner_and_shared_exports"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tGateway]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:nested_gateway_diagnostics_are_advisory_and_anchored"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tGateway]/complexContent/extension/attribute[@name=gatewayDirection]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:nested_gateway_diagnostics_are_advisory_and_anchored"
+   ]
+  },
+  {
+   "path": "/schema/simpleType[@name=tGatewayDirection]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:nested_gateway_diagnostics_are_advisory_and_anchored"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tExclusiveGateway]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:incomplete_process_is_valid_but_diagnostics_are_anchored",
+    "crates/processcraft-core/tests/diagnostics.rs:nested_gateway_diagnostics_are_advisory_and_anchored"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tExclusiveGateway]/complexContent/extension/attribute[@name=default]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:nested_gateway_diagnostics_are_advisory_and_anchored"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=exclusiveGateway]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:incomplete_process_is_valid_but_diagnostics_are_anchored"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tEventBasedGateway]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:activity_conditions_are_allowed_but_event_gateway_conditions_are_diagnosed"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=eventBasedGateway]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:activity_conditions_are_allowed_but_event_gateway_conditions_are_diagnosed"
+   ]
+  }
+ ]
+}

@@ -1,0 +1,874 @@
+{
+ "family": "choreography",
+ "cells": [
+  {
+   "path": "/schema/element[@name=choreography]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/choreography_graph.rs:scope_adapter_keeps_legacy_and_nested_owners",
+    "crates/processcraft-core/tests/m2.rs:choreography_crud_rejects_cross_scope_references_and_undoes"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=choreography]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m2.rs:choreography_crud_rejects_cross_scope_references_and_undoes",
+    "crates/processcraft-core/tests/choreography_graph_commands.rs:promotion_requires_generation_and_undo_restores_legacy_identity",
+    "apps/processcraft/src/app_collaboration.rs:inherited_choreography_update_preserves_own_graph_and_history"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=choreography]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_inherited_collaboration_fields_roundtrip",
+    "crates/processcraft-io/tests/interchange.rs:choreography_task_loop_type_preserves_explicit_presence",
+    "scripts/check_bpmn20_xsd.py",
+    "tests/fixtures/bpmn20-schema/choreography.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=choreography]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_inherited_collaboration_fields_roundtrip",
+    "crates/processcraft-io/tests/interchange.rs:choreography_task_loop_type_preserves_explicit_presence",
+    "scripts/check_bpmn20_xsd.py",
+    "tests/fixtures/bpmn20-schema/choreography.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=choreography]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:choreography_graph_reports_bounded_semantics_without_matching_external_names"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tChoreography]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/choreography_graph.rs:scope_adapter_keeps_legacy_and_nested_owners",
+    "crates/processcraft-core/tests/m2.rs:choreography_crud_rejects_cross_scope_references_and_undoes"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tChoreography]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_inherited_collaboration_fields_roundtrip",
+    "crates/processcraft-io/tests/interchange.rs:choreography_task_loop_type_preserves_explicit_presence",
+    "scripts/check_bpmn20_xsd.py",
+    "tests/fixtures/bpmn20-schema/choreography.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tChoreography]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_inherited_collaboration_fields_roundtrip",
+    "crates/processcraft-io/tests/interchange.rs:choreography_task_loop_type_preserves_explicit_presence",
+    "scripts/check_bpmn20_xsd.py",
+    "tests/fixtures/bpmn20-schema/choreography.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tChoreography]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:choreography_graph_reports_bounded_semantics_without_matching_external_names"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=choreographyTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/choreography_graph.rs:legacy_wire_and_explicit_defaults_are_distinct"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=choreographyTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/choreography_graph_commands.rs:promotion_requires_generation_and_undo_restores_legacy_identity",
+    "crates/processcraft-core/tests/choreography_graph_commands.rs:generic_delete_cascades_in_graph_with_undo_redo_and_atomicity",
+    "crates/processcraft-core/tests/choreography_graph_commands.rs:generic_rename_reaches_graph_elements_with_undo_redo_and_atomicity"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=choreographyTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_task_loop_type_preserves_explicit_presence",
+    "crates/processcraft-io/tests/interchange.rs:choreography_external_qname_does_not_bind_to_same_local_id",
+    "scripts/check_bpmn20_xsd.py",
+    "tests/fixtures/bpmn20-schema/choreography.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=choreographyTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_task_loop_type_preserves_explicit_presence",
+    "crates/processcraft-io/tests/interchange.rs:choreography_external_qname_does_not_bind_to_same_local_id",
+    "scripts/check_bpmn20_xsd.py",
+    "tests/fixtures/bpmn20-schema/choreography.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=choreographyTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:choreography_graph_reports_bounded_semantics_without_matching_external_names"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=choreographyTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/bpmn_scene.rs:choreography_task_shows_participant_bands_and_sequence_flow"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tChoreographyTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/choreography_graph.rs:legacy_wire_and_explicit_defaults_are_distinct"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tChoreographyTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_task_loop_type_preserves_explicit_presence",
+    "crates/processcraft-io/tests/interchange.rs:choreography_external_qname_does_not_bind_to_same_local_id",
+    "scripts/check_bpmn20_xsd.py",
+    "tests/fixtures/bpmn20-schema/choreography.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tChoreographyTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_task_loop_type_preserves_explicit_presence",
+    "crates/processcraft-io/tests/interchange.rs:choreography_external_qname_does_not_bind_to_same_local_id",
+    "scripts/check_bpmn20_xsd.py",
+    "tests/fixtures/bpmn20-schema/choreography.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tChoreographyTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:choreography_graph_reports_bounded_semantics_without_matching_external_names"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tChoreographyTask]/complexContent/extension/sequence/element[@name=messageFlowRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:choreography_graph_reports_bounded_semantics_without_matching_external_names"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tChoreographyTask]/complexContent/extension/sequence/element[@name=messageFlowRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_external_qname_does_not_bind_to_same_local_id",
+    "scripts/check_bpmn20_xsd.py",
+    "tests/fixtures/bpmn20-schema/choreography.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tChoreographyTask]/complexContent/extension/sequence/element[@name=messageFlowRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_external_qname_does_not_bind_to_same_local_id",
+    "scripts/check_bpmn20_xsd.py",
+    "tests/fixtures/bpmn20-schema/choreography.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tChoreographyTask]/complexContent/extension/sequence/element[@name=messageFlowRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:choreography_graph_reports_bounded_semantics_without_matching_external_names"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=subChoreography]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/choreography_graph.rs:scope_adapter_keeps_legacy_and_nested_owners"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=subChoreography]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/choreography_graph_commands.rs:generic_delete_cascades_in_graph_with_undo_redo_and_atomicity",
+    "crates/processcraft-core/tests/choreography_graph_commands.rs:generic_rename_reaches_graph_elements_with_undo_redo_and_atomicity"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=subChoreography]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:nested_choreography_graph_round_trips",
+    "crates/processcraft-io/tests/interchange.rs:empty_sub_choreography_scope_round_trips",
+    "scripts/qualify_choreography_graph.py",
+    "tests/fixtures/bpmn/choreography-graph/nested.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=subChoreography]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:nested_choreography_graph_round_trips",
+    "crates/processcraft-io/tests/interchange.rs:empty_sub_choreography_scope_round_trips",
+    "scripts/qualify_choreography_graph.py",
+    "tests/fixtures/bpmn/choreography-graph/nested.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=subChoreography]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/src/choreography_export.rs:incomplete_nested_draft_is_refused_without_native_changes"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=subChoreography]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/bpmn_scene.rs:choreography_task_shows_participant_bands_and_sequence_flow"
+   ],
+   "note": "expanded/collapsed sub-choreography section of the test"
+  },
+  {
+   "path": "/schema/complexType[@name=tSubChoreography]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/choreography_graph.rs:scope_adapter_keeps_legacy_and_nested_owners"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tSubChoreography]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:nested_choreography_graph_round_trips",
+    "crates/processcraft-io/tests/interchange.rs:empty_sub_choreography_scope_round_trips",
+    "scripts/qualify_choreography_graph.py",
+    "tests/fixtures/bpmn/choreography-graph/nested.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tSubChoreography]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:nested_choreography_graph_round_trips",
+    "crates/processcraft-io/tests/interchange.rs:empty_sub_choreography_scope_round_trips",
+    "scripts/qualify_choreography_graph.py",
+    "tests/fixtures/bpmn/choreography-graph/nested.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tSubChoreography]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/src/choreography_export.rs:incomplete_nested_draft_is_refused_without_native_changes"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=callChoreography]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:call_choreography_external_target_is_not_rebound",
+    "scripts/qualify_choreography_graph.py",
+    "tests/fixtures/bpmn/choreography-graph/nested.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=callChoreography]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:call_choreography_external_target_is_not_rebound",
+    "scripts/qualify_choreography_graph.py",
+    "tests/fixtures/bpmn/choreography-graph/nested.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tCallChoreography]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:call_choreography_external_target_is_not_rebound",
+    "scripts/qualify_choreography_graph.py",
+    "tests/fixtures/bpmn/choreography-graph/nested.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tCallChoreography]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:call_choreography_external_target_is_not_rebound",
+    "scripts/qualify_choreography_graph.py",
+    "tests/fixtures/bpmn/choreography-graph/nested.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tCallChoreography]/complexContent/extension/attribute[@name=calledChoreographyRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:call_choreography_external_target_is_not_rebound",
+    "scripts/qualify_choreography_graph.py",
+    "tests/fixtures/bpmn/choreography-graph/nested.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tCallChoreography]/complexContent/extension/attribute[@name=calledChoreographyRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:call_choreography_external_target_is_not_rebound",
+    "scripts/qualify_choreography_graph.py",
+    "tests/fixtures/bpmn/choreography-graph/nested.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=globalChoreographyTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/choreography_graph.rs:legacy_wire_and_explicit_defaults_are_distinct"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=globalChoreographyTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:global_choreography_initiator_presence_round_trips",
+    "crates/processcraft-io/tests/interchange.rs:nested_choreography_graph_round_trips",
+    "scripts/qualify_choreography_graph.py",
+    "tests/fixtures/bpmn/choreography-graph/nested.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=globalChoreographyTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:global_choreography_initiator_presence_round_trips",
+    "crates/processcraft-io/tests/interchange.rs:nested_choreography_graph_round_trips",
+    "scripts/qualify_choreography_graph.py",
+    "tests/fixtures/bpmn/choreography-graph/nested.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=globalChoreographyTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:choreography_graph_reports_bounded_semantics_without_matching_external_names"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tGlobalChoreographyTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/choreography_graph.rs:legacy_wire_and_explicit_defaults_are_distinct"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tGlobalChoreographyTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:global_choreography_initiator_presence_round_trips",
+    "crates/processcraft-io/tests/interchange.rs:nested_choreography_graph_round_trips",
+    "scripts/qualify_choreography_graph.py",
+    "tests/fixtures/bpmn/choreography-graph/nested.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tGlobalChoreographyTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:global_choreography_initiator_presence_round_trips",
+    "crates/processcraft-io/tests/interchange.rs:nested_choreography_graph_round_trips",
+    "scripts/qualify_choreography_graph.py",
+    "tests/fixtures/bpmn/choreography-graph/nested.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tGlobalChoreographyTask]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:choreography_graph_reports_bounded_semantics_without_matching_external_names"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tGlobalChoreographyTask]/complexContent/extension/attribute[@name=initiatingParticipantRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:global_choreography_initiator_presence_round_trips",
+    "scripts/qualify_choreography_graph.py",
+    "tests/fixtures/bpmn/choreography-graph/nested.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tGlobalChoreographyTask]/complexContent/extension/attribute[@name=initiatingParticipantRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:global_choreography_initiator_presence_round_trips",
+    "scripts/qualify_choreography_graph.py",
+    "tests/fixtures/bpmn/choreography-graph/nested.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tChoreographyActivity]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/choreography_graph.rs:legacy_wire_and_explicit_defaults_are_distinct"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tChoreographyActivity]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_task_loop_type_preserves_explicit_presence",
+    "crates/processcraft-io/tests/interchange.rs:choreography_external_qname_does_not_bind_to_same_local_id",
+    "crates/processcraft-io/tests/interchange.rs:nested_choreography_graph_round_trips",
+    "scripts/check_bpmn20_xsd.py",
+    "tests/fixtures/bpmn20-schema/choreography.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tChoreographyActivity]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_task_loop_type_preserves_explicit_presence",
+    "crates/processcraft-io/tests/interchange.rs:choreography_external_qname_does_not_bind_to_same_local_id",
+    "crates/processcraft-io/tests/interchange.rs:nested_choreography_graph_round_trips",
+    "scripts/check_bpmn20_xsd.py",
+    "tests/fixtures/bpmn20-schema/choreography.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tChoreographyActivity]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:choreography_graph_reports_bounded_semantics_without_matching_external_names",
+    "crates/processcraft-io/src/choreography_export.rs:incomplete_nested_draft_is_refused_without_native_changes"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tChoreographyActivity]/complexContent/extension/attribute[@name=initiatingParticipantRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/choreography_graph.rs:legacy_wire_and_explicit_defaults_are_distinct"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tChoreographyActivity]/complexContent/extension/attribute[@name=initiatingParticipantRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_inherited_collaboration_fields_roundtrip",
+    "crates/processcraft-io/tests/interchange.rs:nested_choreography_graph_round_trips",
+    "scripts/qualify_choreography_graph.py",
+    "tests/fixtures/bpmn/choreography-graph/nested.bpmn"
+   ],
+   "note": "export refuses a missing initiator (choreography_export.rs) and re-import equality holds"
+  },
+  {
+   "path": "/schema/complexType[@name=tChoreographyActivity]/complexContent/extension/attribute[@name=initiatingParticipantRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:choreography_graph_reports_bounded_semantics_without_matching_external_names",
+    "crates/processcraft-io/src/choreography_export.rs:incomplete_nested_draft_is_refused_without_native_changes"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tChoreographyActivity]/complexContent/extension/attribute[@name=loopType]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/choreography_graph.rs:legacy_wire_and_explicit_defaults_are_distinct"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tChoreographyActivity]/complexContent/extension/attribute[@name=loopType]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_task_loop_type_preserves_explicit_presence",
+    "scripts/check_bpmn20_xsd.py",
+    "tests/fixtures/bpmn20-schema/choreography.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tChoreographyActivity]/complexContent/extension/attribute[@name=loopType]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_task_loop_type_preserves_explicit_presence",
+    "scripts/check_bpmn20_xsd.py",
+    "tests/fixtures/bpmn20-schema/choreography.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tChoreographyActivity]/complexContent/extension/sequence/element[@name=participantRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/choreography_graph.rs:sub_scope_diagram_accepts_descendants_and_real_participant_bands",
+    "crates/processcraft-core/tests/diagnostics.rs:choreography_graph_reports_bounded_semantics_without_matching_external_names"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tChoreographyActivity]/complexContent/extension/sequence/element[@name=participantRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_inherited_collaboration_fields_roundtrip",
+    "crates/processcraft-io/tests/interchange.rs:nested_choreography_graph_round_trips",
+    "scripts/qualify_choreography_graph.py",
+    "tests/fixtures/bpmn/choreography-graph/nested.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tChoreographyActivity]/complexContent/extension/sequence/element[@name=participantRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:choreography_graph_reports_bounded_semantics_without_matching_external_names",
+    "crates/processcraft-core/tests/m2.rs:choreography_crud_rejects_cross_scope_references_and_undoes"
+   ]
+  },
+  {
+   "path": "/schema/simpleType[@name=tChoreographyLoopType]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/choreography_graph.rs:legacy_wire_and_explicit_defaults_are_distinct"
+   ]
+  },
+  {
+   "path": "/schema/simpleType[@name=tChoreographyLoopType]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_task_loop_type_preserves_explicit_presence",
+    "scripts/check_bpmn20_xsd.py",
+    "tests/fixtures/bpmn20-schema/choreography.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/simpleType[@name=tChoreographyLoopType]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_task_loop_type_preserves_explicit_presence",
+    "scripts/check_bpmn20_xsd.py",
+    "tests/fixtures/bpmn20-schema/choreography.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=participantMultiplicity]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/commands.rs:choreography_sequence_flow_metadata_is_undoable_and_message_flow_rejected",
+    "crates/processcraft-core/tests/diagnostics.rs:participant_band_and_multiplicity_advisories_are_anchored"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=participantMultiplicity]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/commands.rs:choreography_sequence_flow_metadata_is_undoable_and_message_flow_rejected",
+    "crates/processcraft-core/tests/commands.rs:clearing_multiplicity_removes_documentation_navigation_and_keeps_comment"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=participantMultiplicity]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
+    "scripts/qualify_di_representation.py",
+    "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=participantMultiplicity]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
+    "scripts/qualify_di_representation.py",
+    "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=participantMultiplicity]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:participant_band_and_multiplicity_advisories_are_anchored"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tParticipantMultiplicity]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/commands.rs:choreography_sequence_flow_metadata_is_undoable_and_message_flow_rejected",
+    "crates/processcraft-core/tests/diagnostics.rs:participant_band_and_multiplicity_advisories_are_anchored"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tParticipantMultiplicity]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
+    "scripts/qualify_di_representation.py",
+    "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tParticipantMultiplicity]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
+    "scripts/qualify_di_representation.py",
+    "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tParticipantMultiplicity]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:participant_band_and_multiplicity_advisories_are_anchored"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tParticipantMultiplicity]/complexContent/extension/attribute[@name=minimum]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:participant_band_and_multiplicity_advisories_are_anchored"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tParticipantMultiplicity]/complexContent/extension/attribute[@name=minimum]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
+    "scripts/qualify_di_representation.py",
+    "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tParticipantMultiplicity]/complexContent/extension/attribute[@name=minimum]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
+    "scripts/qualify_di_representation.py",
+    "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tParticipantMultiplicity]/complexContent/extension/attribute[@name=minimum]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:participant_band_and_multiplicity_advisories_are_anchored"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tParticipantMultiplicity]/complexContent/extension/attribute[@name=maximum]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:participant_band_and_multiplicity_advisories_are_anchored"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tParticipantMultiplicity]/complexContent/extension/attribute[@name=maximum]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
+    "scripts/qualify_di_representation.py",
+    "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tParticipantMultiplicity]/complexContent/extension/attribute[@name=maximum]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
+    "scripts/qualify_di_representation.py",
+    "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tParticipantMultiplicity]/complexContent/extension/attribute[@name=maximum]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:participant_band_and_multiplicity_advisories_are_anchored"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tParticipantMultiplicity]/complexContent/extension/attribute[@name=maximum]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/commands.rs:choreography_sequence_flow_metadata_is_undoable_and_message_flow_rejected"
+   ]
+  }
+ ]
+}

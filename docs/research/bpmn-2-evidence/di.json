@@ -1,0 +1,863 @@
+{
+ "family": "di",
+ "cells": [
+  {
+   "path": "/schema/complexType[@name=BPMNShape]/complexContent/extension/attribute[@name=isHorizontal]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:explicit_di_representation_endpoints_and_shape_flags_roundtrip",
+    "tests/fixtures/bpmn/di-endpoints.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=BPMNShape]/complexContent/extension/attribute[@name=isMarkerVisible]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:explicit_di_representation_endpoints_and_shape_flags_roundtrip",
+    "tests/fixtures/bpmn/di-endpoints.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=BPMNShape]/complexContent/extension/attribute[@name=isExpanded]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:nested_subprocess_call_and_expanded_geometry_round_trip",
+    "tests/fixtures/bpmn20-schema/nested.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=BPMNShape]/complexContent/extension/attribute[@name=participantBandKind]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
+    "tests/fixtures/bpmn/di-choreography-representation.bpmn",
+    "crates/processcraft-io/tests/interchange.rs:all_participant_band_and_edge_message_visibility_values_roundtrip"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=BPMNShape]/complexContent/extension/attribute[@name=choreographyActivityShape]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
+    "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=BPMNEdge]/complexContent/extension/attribute[@name=sourceElement]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:explicit_di_representation_endpoints_and_shape_flags_roundtrip",
+    "tests/fixtures/bpmn/di-endpoints.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=BPMNEdge]/complexContent/extension/attribute[@name=targetElement]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:explicit_di_representation_endpoints_and_shape_flags_roundtrip",
+    "tests/fixtures/bpmn/di-endpoints.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=BPMNEdge]/complexContent/extension/attribute[@name=messageVisibleKind]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
+    "tests/fixtures/bpmn/di-choreography-representation.bpmn",
+    "crates/processcraft-io/tests/interchange.rs:all_participant_band_and_edge_message_visibility_values_roundtrip"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=BPMNShape]/complexContent/extension/attribute[@name=isHorizontal]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:explicit_di_representation_endpoints_and_shape_flags_roundtrip",
+    "tests/fixtures/bpmn/di-endpoints.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=BPMNShape]/complexContent/extension/attribute[@name=isMarkerVisible]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:explicit_di_representation_endpoints_and_shape_flags_roundtrip",
+    "tests/fixtures/bpmn/di-endpoints.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=BPMNShape]/complexContent/extension/attribute[@name=isExpanded]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:nested_subprocess_call_and_expanded_geometry_round_trip",
+    "tests/fixtures/bpmn20-schema/nested.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=BPMNShape]/complexContent/extension/attribute[@name=participantBandKind]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
+    "tests/fixtures/bpmn/di-choreography-representation.bpmn",
+    "crates/processcraft-io/tests/interchange.rs:all_participant_band_and_edge_message_visibility_values_roundtrip"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=BPMNShape]/complexContent/extension/attribute[@name=choreographyActivityShape]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
+    "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=BPMNEdge]/complexContent/extension/attribute[@name=sourceElement]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:explicit_di_representation_endpoints_and_shape_flags_roundtrip",
+    "tests/fixtures/bpmn/di-endpoints.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=BPMNEdge]/complexContent/extension/attribute[@name=targetElement]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:explicit_di_representation_endpoints_and_shape_flags_roundtrip",
+    "tests/fixtures/bpmn/di-endpoints.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=BPMNEdge]/complexContent/extension/attribute[@name=messageVisibleKind]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
+    "tests/fixtures/bpmn/di-choreography-representation.bpmn",
+    "crates/processcraft-io/tests/interchange.rs:all_participant_band_and_edge_message_visibility_values_roundtrip"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=BPMNShape]/complexContent/extension/attribute[@name=isMessageVisible]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
+    "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+   ],
+   "note": "Fixture has both false and true; equality fails if the exporter drops it. Import value is not asserted."
+  },
+  {
+   "path": "/schema/complexType[@name=BPMNDiagram]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
+    "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+   ],
+   "note": "Export evidence: XSD-valid fixture, whole-document model equality after export and re-import."
+  },
+  {
+   "path": "/schema/element[@name=BPMNDiagram]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
+    "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+   ],
+   "note": "Export evidence: XSD-valid fixture, whole-document model equality after export and re-import."
+  },
+  {
+   "path": "/schema/complexType[@name=BPMNPlane]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
+    "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+   ],
+   "note": "Export evidence: XSD-valid fixture, whole-document model equality after export and re-import."
+  },
+  {
+   "path": "/schema/element[@name=BPMNPlane]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
+    "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+   ],
+   "note": "Export evidence: XSD-valid fixture, whole-document model equality after export and re-import."
+  },
+  {
+   "path": "/schema/complexType[@name=BPMNShape]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
+    "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+   ],
+   "note": "Export evidence: XSD-valid fixture, whole-document model equality after export and re-import."
+  },
+  {
+   "path": "/schema/element[@name=BPMNShape]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
+    "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+   ],
+   "note": "Export evidence: XSD-valid fixture, whole-document model equality after export and re-import."
+  },
+  {
+   "path": "/schema/complexType[@name=BPMNEdge]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
+    "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+   ],
+   "note": "Export evidence: XSD-valid fixture, whole-document model equality after export and re-import."
+  },
+  {
+   "path": "/schema/element[@name=BPMNEdge]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
+    "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+   ],
+   "note": "Export evidence: XSD-valid fixture, whole-document model equality after export and re-import."
+  },
+  {
+   "path": "/schema/complexType[@name=BPMNLabel]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
+    "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+   ],
+   "note": "Export evidence: XSD-valid fixture, whole-document model equality after export and re-import."
+  },
+  {
+   "path": "/schema/element[@name=BPMNLabel]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
+    "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+   ],
+   "note": "Export evidence: XSD-valid fixture, whole-document model equality after export and re-import."
+  },
+  {
+   "path": "/schema/complexType[@name=BPMNPlane]/complexContent/extension/attribute[@name=bpmnElement]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
+    "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+   ],
+   "note": "Export evidence: XSD-valid fixture, whole-document model equality after export and re-import."
+  },
+  {
+   "path": "/schema/complexType[@name=BPMNShape]/complexContent/extension/attribute[@name=bpmnElement]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
+    "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+   ],
+   "note": "Export evidence: XSD-valid fixture, whole-document model equality after export and re-import."
+  },
+  {
+   "path": "/schema/complexType[@name=BPMNEdge]/complexContent/extension/attribute[@name=bpmnElement]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
+    "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+   ],
+   "note": "Export evidence: XSD-valid fixture, whole-document model equality after export and re-import."
+  },
+  {
+   "path": "/schema/complexType[@name=Bounds]",
+   "schema": "DC.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
+    "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+   ],
+   "note": "Export evidence: XSD-valid fixture, whole-document model equality after export and re-import."
+  },
+  {
+   "path": "/schema/element[@name=Bounds]",
+   "schema": "DC.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
+    "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+   ],
+   "note": "Export evidence: XSD-valid fixture, whole-document model equality after export and re-import."
+  },
+  {
+   "path": "/schema/complexType[@name=Point]",
+   "schema": "DC.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
+    "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+   ],
+   "note": "Export evidence: XSD-valid fixture, whole-document model equality after export and re-import."
+  },
+  {
+   "path": "/schema/element[@name=Point]",
+   "schema": "DC.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
+    "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+   ],
+   "note": "Export evidence: XSD-valid fixture, whole-document model equality after export and re-import."
+  },
+  {
+   "path": "/schema/complexType[@name=Bounds]/attribute[@name=x]",
+   "schema": "DC.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
+    "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+   ],
+   "note": "Export evidence: XSD-valid fixture, whole-document model equality after export and re-import."
+  },
+  {
+   "path": "/schema/complexType[@name=Bounds]/attribute[@name=y]",
+   "schema": "DC.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
+    "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+   ],
+   "note": "Export evidence: XSD-valid fixture, whole-document model equality after export and re-import."
+  },
+  {
+   "path": "/schema/complexType[@name=Bounds]/attribute[@name=width]",
+   "schema": "DC.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
+    "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+   ],
+   "note": "Export evidence: XSD-valid fixture, whole-document model equality after export and re-import."
+  },
+  {
+   "path": "/schema/complexType[@name=Bounds]/attribute[@name=height]",
+   "schema": "DC.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
+    "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+   ],
+   "note": "Export evidence: XSD-valid fixture, whole-document model equality after export and re-import."
+  },
+  {
+   "path": "/schema/complexType[@name=Point]/attribute[@name=x]",
+   "schema": "DC.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
+    "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+   ],
+   "note": "Export evidence: XSD-valid fixture, whole-document model equality after export and re-import."
+  },
+  {
+   "path": "/schema/complexType[@name=Point]/attribute[@name=y]",
+   "schema": "DC.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
+    "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+   ],
+   "note": "Export evidence: XSD-valid fixture, whole-document model equality after export and re-import."
+  },
+  {
+   "path": "/schema/complexType[@name=BPMNShape]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:explicit_di_representation_endpoints_and_shape_flags_roundtrip",
+    "tests/fixtures/bpmn/di-endpoints.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=BPMNShape]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:explicit_di_representation_endpoints_and_shape_flags_roundtrip",
+    "tests/fixtures/bpmn/di-endpoints.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=BPMNEdge]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:explicit_di_representation_endpoints_and_shape_flags_roundtrip",
+    "tests/fixtures/bpmn/di-endpoints.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=BPMNEdge]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:explicit_di_representation_endpoints_and_shape_flags_roundtrip",
+    "tests/fixtures/bpmn/di-endpoints.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=BPMNPlane]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
+    "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+   ],
+   "note": "plane_order length and plane metadata asserted."
+  },
+  {
+   "path": "/schema/element[@name=BPMNPlane]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:choreography_di_representation_preserves_order_bands_and_metadata",
+    "tests/fixtures/bpmn/di-choreography-representation.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=BPMNDiagram]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:diagram_label_style_and_empty_label_roundtrip",
+    "tests/fixtures/bpmn/di-label-styles.bpmn"
+   ],
+   "note": "Diagram documentation and resolution asserted."
+  },
+  {
+   "path": "/schema/element[@name=BPMNDiagram]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:diagram_label_style_and_empty_label_roundtrip",
+    "tests/fixtures/bpmn/di-label-styles.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=BPMNLabel]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:diagram_label_style_and_empty_label_roundtrip",
+    "tests/fixtures/bpmn/di-label-styles.bpmn"
+   ],
+   "note": "Label id and absent bounds asserted."
+  },
+  {
+   "path": "/schema/element[@name=BPMNLabel]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:diagram_label_style_and_empty_label_roundtrip",
+    "tests/fixtures/bpmn/di-label-styles.bpmn"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=Bounds]",
+   "schema": "DC.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/geometry.rs:drag_commits_once",
+    "crates/processcraft-core/tests/geometry.rs:nested_parent_move_translates_children_internal_route_and_label_in_one_undo"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=Bounds]",
+   "schema": "DC.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/geometry.rs:drag_commits_once"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=Bounds]/attribute[@name=x]",
+   "schema": "DC.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/geometry.rs:drag_commits_once",
+    "crates/processcraft-core/tests/geometry.rs:nested_parent_move_translates_children_internal_route_and_label_in_one_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=Bounds]/attribute[@name=y]",
+   "schema": "DC.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/geometry.rs:drag_commits_once",
+    "crates/processcraft-core/tests/geometry.rs:nested_parent_move_translates_children_internal_route_and_label_in_one_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=Point]",
+   "schema": "DC.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/geometry.rs:drag_commits_once"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=Point]",
+   "schema": "DC.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/geometry.rs:drag_commits_once"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=Point]/attribute[@name=x]",
+   "schema": "DC.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/geometry.rs:drag_commits_once"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=Point]/attribute[@name=y]",
+   "schema": "DC.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/geometry.rs:drag_commits_once"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=BPMNShape]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/geometry.rs:drag_commits_once"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=BPMNShape]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/geometry.rs:drag_commits_once"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=BPMNEdge]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/geometry.rs:drag_commits_once"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=BPMNEdge]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/geometry.rs:drag_commits_once"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=BPMNEdge]/complexContent/extension/attribute[@name=sourceElement]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/geometry.rs:explicit_di_endpoints_track_only_the_named_shape_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=BPMNEdge]/complexContent/extension/attribute[@name=targetElement]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/geometry.rs:explicit_di_endpoints_track_only_the_named_shape_and_undo"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=BPMNShape]/complexContent/extension/attribute[@name=participantBandKind]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/geometry.rs:participant_band_follows_only_its_own_di_representation"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=BPMNShape]/complexContent/extension/attribute[@name=choreographyActivityShape]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/geometry.rs:participant_band_follows_only_its_own_di_representation"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=BPMNShape]/complexContent/extension/attribute[@name=isMarkerVisible]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/bpmn_scene.rs:exclusive_marker_visibility_uses_di_default_and_explicit_true"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=BPMNShape]/complexContent/extension/attribute[@name=isHorizontal]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/bpmn_scene.rs:lane_orientation_places_divider_on_corresponding_axis"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=BPMNShape]/complexContent/extension/attribute[@name=isExpanded]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/bpmn_scene.rs:omitted_subprocess_expansion_draws_collapsed_marker",
+    "crates/processcraft-render/tests/bpmn_scene.rs:nested_diagram_shows_children_and_collapsed_parent_hides_them"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=BPMNShape]/complexContent/extension/attribute[@name=bpmnElement]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/bpmn_scene.rs:scene_uses_semantic_element_keys"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=BPMNShape]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/bpmn_scene.rs:scene_uses_semantic_element_keys"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=BPMNPlane]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/bpmn_scene.rs:authored_plane_order_controls_overlapping_shapes_and_viewport_hits"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=BPMNLabel]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/bpmn_scene.rs:explicit_label_presence_and_shared_di_font_are_rendered_without_mutation",
+    "crates/processcraft-render/tests/bpmn_scene.rs:small_label_bounds_report_omission"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=BPMNLabel]/complexContent/extension/attribute[@name=labelStyle]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/bpmn_scene.rs:explicit_label_presence_and_shared_di_font_are_rendered_without_mutation"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=BPMNEdge]/complexContent/extension/attribute[@name=bpmnElement]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/bpmn_scene.rs:nested_flow_and_called_activity_use_semantic_ids"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=BPMNEdge]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/bpmn_scene.rs:nested_flow_and_called_activity_use_semantic_ids",
+    "crates/processcraft-render/tests/bpmn_scene.rs:viewport_clips_polyline_without_intermediate_arrows_or_duplicate_label"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=Point]",
+   "schema": "DC.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/bpmn_scene.rs:viewport_clips_polyline_without_intermediate_arrows_or_duplicate_label"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=Point]/attribute[@name=x]",
+   "schema": "DC.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/bpmn_scene.rs:viewport_clips_polyline_without_intermediate_arrows_or_duplicate_label"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=Point]/attribute[@name=y]",
+   "schema": "DC.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/bpmn_scene.rs:viewport_clips_polyline_without_intermediate_arrows_or_duplicate_label"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=Bounds]",
+   "schema": "DC.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/bpmn_scene.rs:lane_orientation_places_divider_on_corresponding_axis",
+    "crates/processcraft-render/tests/bpmn_scene.rs:scene_uses_semantic_element_keys"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=Bounds]/attribute[@name=x]",
+   "schema": "DC.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/bpmn_scene.rs:lane_orientation_places_divider_on_corresponding_axis",
+    "crates/processcraft-render/tests/bpmn_scene.rs:scene_uses_semantic_element_keys"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=Bounds]/attribute[@name=y]",
+   "schema": "DC.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/bpmn_scene.rs:lane_orientation_places_divider_on_corresponding_axis",
+    "crates/processcraft-render/tests/bpmn_scene.rs:scene_uses_semantic_element_keys"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=Bounds]/attribute[@name=width]",
+   "schema": "DC.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/bpmn_scene.rs:lane_orientation_places_divider_on_corresponding_axis",
+    "crates/processcraft-render/tests/bpmn_scene.rs:scene_uses_semantic_element_keys"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=Bounds]/attribute[@name=height]",
+   "schema": "DC.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/bpmn_scene.rs:lane_orientation_places_divider_on_corresponding_axis",
+    "crates/processcraft-render/tests/bpmn_scene.rs:scene_uses_semantic_element_keys"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=BPMNShape]",
+   "schema": "BPMNDI.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:participant_band_and_multiplicity_advisories_are_anchored",
+    "crates/processcraft-core/tests/diagnostics.rs:participant_band_owner_resolves_to_same_diagram_activity_shape"
+   ]
+  }
+ ]
+}

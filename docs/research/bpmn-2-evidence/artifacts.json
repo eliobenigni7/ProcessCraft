@@ -1,0 +1,484 @@
+{
+ "family": "artifacts",
+ "cells": [
+  {
+   "path": "/schema/complexType[@name=tAssociation]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m2.rs:descriptive_commands_validate_references_and_undo_atomically",
+    "crates/processcraft-core/tests/events_extended.rs:annotation_association_may_target_sequence_flow_and_its_di_edge"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tAssociation]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tAssociation]/complexContent/extension/attribute[@name=sourceRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m2.rs:descriptive_commands_validate_references_and_undo_atomically",
+    "crates/processcraft-core/tests/events_extended.rs:annotation_association_may_target_sequence_flow_and_its_di_edge"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tAssociation]/complexContent/extension/attribute[@name=sourceRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m2.rs:descriptive_commands_validate_references_and_undo_atomically"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tAssociation]/complexContent/extension/attribute[@name=sourceRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tAssociation]/complexContent/extension/attribute[@name=targetRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m2.rs:descriptive_commands_validate_references_and_undo_atomically",
+    "crates/processcraft-core/tests/events_extended.rs:annotation_association_may_target_sequence_flow_and_its_di_edge"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tAssociation]/complexContent/extension/attribute[@name=targetRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m2.rs:descriptive_commands_validate_references_and_undo_atomically"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tAssociation]/complexContent/extension/attribute[@name=targetRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tAssociation]/complexContent/extension/attribute[@name=associationDirection]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m2.rs:descriptive_commands_validate_references_and_undo_atomically",
+    "crates/processcraft-render/tests/bpmn_scene.rs:association_directions_change_shared_vector_markers"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tAssociation]/complexContent/extension/attribute[@name=associationDirection]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m2.rs:descriptive_commands_validate_references_and_undo_atomically"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tAssociation]/complexContent/extension/attribute[@name=associationDirection]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tCategoryValue]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/commands.rs:group_category_qnames_rewrite_only_local_target",
+    "crates/processcraft-render/tests/bpmn_scene.rs:group_category_label_uses_di_bounds_style_and_viewport_hit"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tCategoryValue]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tCategoryValue]/complexContent/extension/attribute[@name=value]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/bpmn_scene.rs:group_category_label_uses_di_bounds_style_and_viewport_hit",
+    "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tCategoryValue]/complexContent/extension/attribute[@name=value]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tCategory]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/commands.rs:group_category_qnames_rewrite_only_local_target",
+    "crates/processcraft-core/tests/m2.rs:descriptive_commands_validate_references_and_undo_atomically"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tCategory]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tCategory]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip",
+    "crates/processcraft-core/tests/m2.rs:descriptive_commands_validate_references_and_undo_atomically"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tCategory]/complexContent/extension/attribute[@name=name]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tGroup]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/collaboration_model.rs:group_category_reference_preserves_legacy_wire_and_external_namespace"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tGroup]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:collaboration_group_external_category_qname_remains_external",
+    "crates/processcraft-io/tests/interchange.rs:unsupported_artifact_metadata_and_dangling_category_are_safe"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tGroup]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tGroup]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:participant_band_owner_resolves_to_same_diagram_activity_shape",
+    "crates/processcraft-core/tests/diagnostics.rs:choreography_graph_reports_bounded_semantics_without_matching_external_names"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tGroup]/complexContent/extension/attribute[@name=categoryValueRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/collaboration_model.rs:group_category_reference_preserves_legacy_wire_and_external_namespace"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tGroup]/complexContent/extension/attribute[@name=categoryValueRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m2.rs:descriptive_commands_validate_references_and_undo_atomically",
+    "crates/processcraft-core/tests/commands.rs:group_category_qnames_rewrite_only_local_target"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tGroup]/complexContent/extension/attribute[@name=categoryValueRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:collaboration_group_external_category_qname_remains_external",
+    "crates/processcraft-io/tests/interchange.rs:unsupported_artifact_metadata_and_dangling_category_are_safe"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tGroup]/complexContent/extension/attribute[@name=categoryValueRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tGroup]/complexContent/extension/attribute[@name=categoryValueRef]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:participant_band_owner_resolves_to_same_diagram_activity_shape",
+    "crates/processcraft-core/tests/diagnostics.rs:choreography_graph_reports_bounded_semantics_without_matching_external_names"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tTextAnnotation]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/commands.rs:annotation_text_edit_migrates_legacy_body_and_undo_restores_it"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tTextAnnotation]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:annotation_absent_and_empty_body_remain_distinct"
+   ]
+  },
+  {
+   "path": "/schema/complexType[@name=tTextAnnotation]/complexContent/extension/attribute[@name=textFormat]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/commands.rs:annotation_text_edit_migrates_legacy_body_and_undo_restores_it"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=association]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m2.rs:descriptive_commands_validate_references_and_undo_atomically",
+    "crates/processcraft-core/tests/events_extended.rs:annotation_association_may_target_sequence_flow_and_its_di_edge"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=association]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m2.rs:descriptive_commands_validate_references_and_undo_atomically"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=association]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=association]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/bpmn_scene.rs:association_directions_change_shared_vector_markers"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=categoryValue]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/commands.rs:group_category_qnames_rewrite_only_local_target",
+    "crates/processcraft-render/tests/bpmn_scene.rs:group_category_label_uses_di_bounds_style_and_viewport_hit"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=categoryValue]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m2.rs:descriptive_commands_validate_references_and_undo_atomically"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=categoryValue]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=category]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/commands.rs:group_category_qnames_rewrite_only_local_target",
+    "crates/processcraft-core/tests/m2.rs:descriptive_commands_validate_references_and_undo_atomically"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=category]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m2.rs:descriptive_commands_validate_references_and_undo_atomically"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=category]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=group]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/collaboration_model.rs:group_category_reference_preserves_legacy_wire_and_external_namespace"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=group]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/m2.rs:descriptive_commands_validate_references_and_undo_atomically",
+    "crates/processcraft-core/tests/m2.rs:deleting_group_removes_di_and_undo_restores_both"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=group]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:collaboration_group_external_category_qname_remains_external",
+    "crates/processcraft-io/tests/interchange.rs:unsupported_artifact_metadata_and_dangling_category_are_safe"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=group]",
+   "schema": "Semantic.xsd",
+   "dimension": "export",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:descriptive_artifacts_and_nested_lanes_round_trip"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=group]",
+   "schema": "Semantic.xsd",
+   "dimension": "validate",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/diagnostics.rs:participant_band_owner_resolves_to_same_diagram_activity_shape",
+    "crates/processcraft-core/tests/diagnostics.rs:choreography_graph_reports_bounded_semantics_without_matching_external_names"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=group]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/bpmn_scene.rs:group_is_drawn_and_keeps_contained_node_selectable",
+    "crates/processcraft-render/tests/bpmn_scene.rs:group_category_label_uses_di_bounds_style_and_viewport_hit"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=textAnnotation]",
+   "schema": "Semantic.xsd",
+   "dimension": "model",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/commands.rs:annotation_text_edit_migrates_legacy_body_and_undo_restores_it"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=textAnnotation]",
+   "schema": "Semantic.xsd",
+   "dimension": "edit",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-core/tests/commands.rs:annotation_text_edit_migrates_legacy_body_and_undo_restores_it"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=textAnnotation]",
+   "schema": "Semantic.xsd",
+   "dimension": "import",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-io/tests/interchange.rs:annotation_absent_and_empty_body_remain_distinct"
+   ]
+  },
+  {
+   "path": "/schema/element[@name=textAnnotation]",
+   "schema": "Semantic.xsd",
+   "dimension": "render",
+   "state": "verified",
+   "evidence": [
+    "crates/processcraft-render/tests/bpmn_scene.rs:annotation_text_uses_dedicated_payload_with_legacy_fallback"
+   ]
+  }
+ ]
+}
