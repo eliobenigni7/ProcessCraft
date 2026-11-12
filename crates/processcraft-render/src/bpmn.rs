@@ -654,11 +654,13 @@ fn effective_event_definitions<'a>(
     Ok((result, parallel_multiple == &Some(true)))
 }
 
+/// BPMN DI: a shape or edge without a BPMNLabel still shows its name at the
+/// tool's default position, so the explicit-label policy never hides a name.
 fn label_visible(
-    label: Option<&processcraft_core::model::Label>,
-    policy: Option<processcraft_core::model::DiLabelVisibility>,
+    _label: Option<&processcraft_core::model::Label>,
+    _policy: Option<processcraft_core::model::DiLabelVisibility>,
 ) -> bool {
-    label.is_some() || policy.is_none()
+    true
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

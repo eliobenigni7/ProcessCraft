@@ -1,4 +1,4 @@
-use processcraft_core::model::{
+﻿use processcraft_core::model::{
     Bounds, BpmnDocument, Capability, Diagram, Node, NodeKind, Process, Shape, Style,
 };
 use processcraft_render::{Appearance, BpmnScene, TextEngine};
@@ -3444,8 +3444,9 @@ fn explicit_label_presence_and_shared_di_font_are_rendered_without_mutation() {
     let shape = &mut d.diagrams[0].shapes[0];
     shape.label_visibility = Some(DiLabelVisibility::Explicit);
     shape.label = None;
-    let hidden = build(&d, Appearance::Light);
-    assert!(hidden.scene.labels().is_empty());
+    // No BPMNLabel: the name still renders at its default position.
+    let unlabeled = build(&d, Appearance::Light);
+    assert_eq!(unlabeled.scene.labels().len(), 1);
     d.diagrams[0].shapes[0].label = Some(Label {
         di_metadata: None,
         id: Some(id("label")),
@@ -3704,9 +3705,8 @@ fn di_font_absence_and_unsupported_values_have_explicit_fallbacks() {
 }
 
 #[test]
-fn explicit_absent_flow_label_is_hidden_but_legacy_implicit_is_visible() {
+fn flow_label_without_bpmn_label_is_visible_in_both_policies() {
     use processcraft_core::model::{DiLabelVisibility, Edge, Flow, FlowKind, Point};
-    use processcraft_render::{BpmnViewport, Viewport};
     let mut d = fixture();
     d.processes[0].nodes[0].name = None;
     d.processes[0].flows.push(Flow {
@@ -3746,24 +3746,9 @@ fn explicit_absent_flow_label_is_hidden_but_legacy_implicit_is_visible() {
     );
     d.diagrams[0].edges[0].label_visibility = Some(DiLabelVisibility::Explicit);
     assert_valid_event_document(&d);
-    let hidden = build(&d, Appearance::Light);
-    assert!(!hidden.scene.to_svg().contains("Flow label"));
-    let viewport = BpmnViewport::build(
-        &d,
-        &id("diagram"),
-        Appearance::Light,
-        &mut TextEngine::new(),
-        "Noto Sans",
-        Viewport {
-            x: 100.0,
-            y: 0.0,
-            width: 200.0,
-            height: 100.0,
-            zoom: 1.0,
-        },
-    )
-    .unwrap();
-    assert!(!viewport.hits.iter().any(|hit| hit.label_id.is_some()));
+    // BPMN DI: no BPMNLabel means default placement, not a hidden name.
+    let imported = build(&d, Appearance::Light);
+    assert!(imported.scene.to_svg().contains("Flow label"));
 }
 
 #[test]
