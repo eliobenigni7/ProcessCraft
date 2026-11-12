@@ -4,9 +4,9 @@ An offline desktop workbench for process analysts. The agreed direction is a nat
 
 ## Architecture
 
-[Architectural solution design](docs/superpowers/specs/2026-11-11-processcraft-solution-design.md): source comparison across seven Craft applications, domain and command contracts, native format, interoperability, rendering, automation, verification, and delivery gates.
+[Architectural solution design](docs/design/solution-design.md): source comparison across seven Craft applications, domain and command contracts, native format, interoperability, rendering, automation, verification, and delivery gates.
 
-[Implementation plan](docs/superpowers/plans/2026-11-11-processcraft-implementation-plan.md): M0 and M1 are implemented. The [M2 plan](docs/superpowers/plans/2026-11-11-processcraft-m2-implementation-plan.md) implements library, dictionary, table, qualified interchange, image export and local automation. See the [M2 evidence](docs/implementation/m2-evidence.md) for checks and limits. The [expanded M3 plan](docs/superpowers/plans/2026-11-11-processcraft-m3-implementation-plan.md) now has a partial implementation; the user requested a temporary stop at this delivery. See [M3 evidence and remaining scope](docs/implementation/m3-evidence.md). M4 remains planned.
+[Implementation plan](docs/plans/m0-m1-implementation-plan.md): M0 and M1 are implemented. The [M2 plan](docs/plans/m2-implementation-plan.md) implements library, dictionary, table, qualified interchange, image export and local automation. See the [M2 evidence](docs/implementation/m2-evidence.md) for checks and limits. The [expanded M3 plan](docs/plans/m3-implementation-plan.md) now has a partial implementation; the user requested a temporary stop at this delivery. See [M3 evidence and remaining scope](docs/implementation/m3-evidence.md). M4 remains planned.
 
 ## Design v0.1 · November 11, 2026
 
@@ -28,7 +28,7 @@ Rust with a native egui interface, a UI-independent engine, and shared UI/CLI/MC
 
 The native workbench runs with `cargo run --release -p processcraft`. Editor, Library, Dictionary and Table share one project session and command engine. M2 adds folders/filtering, linked role/system/document entries and usages, table editing, process/diagram selection, BPMN import/export, SVG/PNG export and explicit local MCP attachment. Themes, panel sizes, filtering and UI scaling remain view state.
 
-The desktop now uses pinned `egui_extras` tables with resizable columns, fixed headers and virtualized rows, and `egui_ltreeview` for the folder/model hierarchy. Both use the same pinned Craft egui fork. The UI includes guarded closable document tabs, resizable panes, explicit keyboard focus, English Light/Dark styling and bounded narrow-screen property windows. See [UI production evidence](docs/implementation/ui-production-evidence.md) for compatibility and native checks. [M3.0 auto-layout](docs/superpowers/plans/2026-11-11-processcraft-m3-auto-layout.md) now provides bounded deterministic preview, cancellation, stale-safe apply and Undo/Redo for its qualified profile.
+The desktop now uses pinned `egui_extras` tables with resizable columns, fixed headers and virtualized rows, and `egui_ltreeview` for the folder/model hierarchy. Both use the same pinned Craft egui fork. The UI includes guarded closable document tabs, resizable panes, explicit keyboard focus, English Light/Dark styling and bounded narrow-screen property windows. See [UI production evidence](docs/implementation/ui-production-evidence.md) for compatibility and native checks. [M3.0 auto-layout](docs/plans/m3-auto-layout.md) now provides bounded deterministic preview, cancellation, stale-safe apply and Undo/Redo for its qualified profile.
 
 Native schema 3 uses bounded ZIP/JSON, local comments and separately stored checkpoints with shared resource blobs. Schema 0–2 projects are verified before migration and require Save As. The partial M3 delivery adds local comments, frozen checkpoints/reference viewing, detailed comparison/restore, PDF export and broader typed BPMN profiles. PDF uses outlined text with explicit notices and acknowledgement. Interchange now covers tested profiles for nested scopes, selected events/task/loop/gateway metadata, conversations, choreography tasks, data/I/O, annotations, groups and nested lanes. Advanced or unqualified content is preserved or refused; this is not complete BPMN 2.0.2 coverage or an OMG conformance claim. Installer and platform expansion remain M4. Writable storage remains qualified fixed local Windows NTFS.
 
@@ -36,9 +36,9 @@ Native schema 3 uses bounded ZIP/JSON, local comments and separately stored chec
 cargo run --release -p processcraft
 cargo run -p processcraft-cli -- commands --json
 cargo run -p processcraft-cli -- run --new Procurement --batch tests/fixtures/commands/procurement.json --out target/procurement.processcraft
-cargo run -p processcraft-cli -- run --in target/procurement.processcraft --batch tests/fixtures/commands/m2-library-dictionary.json --out target/procurement-m2.processcraft
+cargo run -p processcraft-cli -- run --in target/procurement.processcraft --batch tests/fixtures/commands/library-dictionary.json --out target/procurement-m2.processcraft
 cargo run -p processcraft-cli -- query target/procurement-m2.processcraft dictionary
-cargo run --release -p processcraft-cli --example m2_qualify -- --out target/m2-performance
+cargo run --release -p processcraft-cli --example workbench_qualify -- --out target/m2-performance
 cargo test --workspace --all-targets --all-features --locked --offline
 ```
 

@@ -7,7 +7,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_events.rs:message_ref_set_change_clear_and_undo"
+    "crates/processcraft-core/tests/bpmn_events_regressions.rs:message_ref_set_change_clear_and_undo"
    ],
    "note": "SetNodeDetails sets messageRef m1, changes to m2, clears to None; each value read back and undo restores the previous value and the original content id."
   }

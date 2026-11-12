@@ -7,7 +7,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_foundation.rs:documentation_id_collision_and_format_diagnostics_are_specific"
+    "crates/processcraft-core/tests/bpmn_foundation_regressions.rs:documentation_id_collision_and_format_diagnostics_are_specific"
    ],
    "note": "Documentation xml id colliding with another element id is refused with the specific 'duplicate XML ID' diagnostic and state is unchanged."
   }

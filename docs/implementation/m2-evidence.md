@@ -47,7 +47,7 @@ Records: `target/m2-qualification/gui-attachment-{denied,effects}.json`, `gui-at
 
 ## Interchange and independent inspection
 
-`tests/fixtures/bpmn/m2-flat-lanes.bpmn` is synthetic CC0 data with a SHA-256 manifest. Tests cover supported semantic/DI round trips, multiple diagrams, unsupported standard/foreign attributes, namespace-sensitive conditions, clipping diagnostics and fractional image scale. Prefix-dependent conditions and unavailable namespace context preserve the entire original or block export; no expression is executed.
+`tests/fixtures/bpmn/flat-lanes.bpmn` is synthetic CC0 data with a SHA-256 manifest. Tests cover supported semantic/DI round trips, multiple diagrams, unsupported standard/foreign attributes, namespace-sensitive conditions, clipping diagnostics and fractional image scale. Prefix-dependent conditions and unavailable namespace context preserve the entire original or block export; no expression is executed.
 
 The canonical procurement model with two lanes and dictionary links was exported with an explicit native-field omission acknowledgment, reimported as Editable, and checked independently. Definitions ID, processes (including conditions), collaboration and every diagram were equal to the source native model. Python ElementTree parsed the XML; the report and SHA-256 are in `target/m2-qualification/independent-interchange.json`. PNG `procurement.png` was visually inspected; it contains both lanes, branch labels and complete external labels.
 
@@ -55,7 +55,7 @@ This is not OMG XSD validation, MIWG coverage or Signavio/vendor compatibility c
 
 ## Performance
 
-Command: `cargo run --release -p processcraft-cli --example m2_qualify -- --out target/m2-performance-optimized`. Same fixture and five warmups/30 measured samples before and after the observed-cost fixes: 20 documents, 5,000 nodes, 100 lanes, 30 entries, 10,100 typed relationships, 4,980 flows and a 20 MiB resource. Table projection has 500 rows. Hardware is the qualified Windows x64 Ryzen 5 5600X / 16 GiB / Samsung 980 PRO NVMe configuration; background activity and warm OS caches limit generalization.
+Command: `cargo run --release -p processcraft-cli --example workbench_qualify -- --out target/m2-performance-optimized`. Same fixture and five warmups/30 measured samples before and after the observed-cost fixes: 20 documents, 5,000 nodes, 100 lanes, 30 entries, 10,100 typed relationships, 4,980 flows and a 20 MiB resource. Table projection has 500 rows. Hardware is the qualified Windows x64 Ryzen 5 5600X / 16 GiB / Samsung 980 PRO NVMe configuration; background activity and warm OS caches limit generalization.
 
 | Operation | Initial p95 | Final p95 |
 | --- | ---: | ---: |

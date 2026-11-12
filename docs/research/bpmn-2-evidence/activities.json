@@ -7,7 +7,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m2.rs:activity_properties_validate_scope_and_kind_and_undo"
+    "crates/processcraft-core/tests/analyst_workbench.rs:activity_properties_validate_scope_and_kind_and_undo"
    ]
   },
   {
@@ -16,7 +16,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_activities.rs:default_flow_must_be_outgoing_sequence_flow_of_the_activity"
+    "crates/processcraft-core/tests/bpmn_activities_regressions.rs:default_flow_must_be_outgoing_sequence_flow_of_the_activity"
    ]
   },
   {
@@ -25,7 +25,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m2.rs:activity_properties_validate_scope_and_kind_and_undo"
+    "crates/processcraft-core/tests/analyst_workbench.rs:activity_properties_validate_scope_and_kind_and_undo"
    ]
   },
   {
@@ -34,7 +34,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m2.rs:activity_properties_validate_scope_and_kind_and_undo"
+    "crates/processcraft-core/tests/analyst_workbench.rs:activity_properties_validate_scope_and_kind_and_undo"
    ]
   },
   {
@@ -43,7 +43,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m2.rs:activity_properties_validate_scope_and_kind_and_undo"
+    "crates/processcraft-core/tests/analyst_workbench.rs:activity_properties_validate_scope_and_kind_and_undo"
    ]
   },
   {
@@ -52,7 +52,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m2.rs:activity_properties_validate_scope_and_kind_and_undo"
+    "crates/processcraft-core/tests/analyst_workbench.rs:activity_properties_validate_scope_and_kind_and_undo"
    ]
   },
   {
@@ -61,7 +61,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m2.rs:activity_properties_validate_scope_and_kind_and_undo"
+    "crates/processcraft-core/tests/analyst_workbench.rs:activity_properties_validate_scope_and_kind_and_undo"
    ]
   },
   {
@@ -70,7 +70,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m2.rs:activity_properties_validate_scope_and_kind_and_undo"
+    "crates/processcraft-core/tests/analyst_workbench.rs:activity_properties_validate_scope_and_kind_and_undo"
    ]
   },
   {
@@ -79,7 +79,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_activities.rs:default_flow_must_be_outgoing_sequence_flow_of_the_activity"
+    "crates/processcraft-core/tests/bpmn_activities_regressions.rs:default_flow_must_be_outgoing_sequence_flow_of_the_activity"
    ]
   },
   {
@@ -107,7 +107,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m2.rs:activity_properties_validate_scope_and_kind_and_undo"
+    "crates/processcraft-core/tests/analyst_workbench.rs:activity_properties_validate_scope_and_kind_and_undo"
    ]
   },
   {
@@ -116,7 +116,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m2.rs:activity_properties_validate_scope_and_kind_and_undo"
+    "crates/processcraft-core/tests/analyst_workbench.rs:activity_properties_validate_scope_and_kind_and_undo"
    ]
   },
   {
@@ -125,7 +125,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m2.rs:activity_properties_validate_scope_and_kind_and_undo"
+    "crates/processcraft-core/tests/analyst_workbench.rs:activity_properties_validate_scope_and_kind_and_undo"
    ]
   },
   {
@@ -134,7 +134,7 @@
    "dimension": "render",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-render/tests/m3_repair_activities.rs:plain_task_is_one_rounded_rectangle_without_marker_and_hit_tests"
+    "crates/processcraft-render/tests/bpmn_activities_regressions.rs:plain_task_is_one_rounded_rectangle_without_marker_and_hit_tests"
    ]
   },
   {
@@ -143,7 +143,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m2.rs:nested_scope_edits_and_cross_scope_flows_are_atomic"
+    "crates/processcraft-core/tests/analyst_workbench.rs:nested_scope_edits_and_cross_scope_flows_are_atomic"
    ]
   },
   {
@@ -170,7 +170,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_activities.rs:trigger_by_event_is_stored_on_subprocess_and_refused_elsewhere"
+    "crates/processcraft-core/tests/bpmn_activities_regressions.rs:trigger_by_event_is_stored_on_subprocess_and_refused_elsewhere"
    ]
   },
   {
@@ -179,7 +179,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_activities.rs:trigger_by_event_is_stored_on_subprocess_and_refused_elsewhere"
+    "crates/processcraft-core/tests/bpmn_activities_regressions.rs:trigger_by_event_is_stored_on_subprocess_and_refused_elsewhere"
    ]
   },
   {
@@ -198,7 +198,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m2.rs:nested_scope_edits_and_cross_scope_flows_are_atomic"
+    "crates/processcraft-core/tests/analyst_workbench.rs:nested_scope_edits_and_cross_scope_flows_are_atomic"
    ]
   },
   {
@@ -207,7 +207,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m2.rs:nested_scope_edits_and_cross_scope_flows_are_atomic"
+    "crates/processcraft-core/tests/analyst_workbench.rs:nested_scope_edits_and_cross_scope_flows_are_atomic"
    ]
   },
   {
@@ -234,7 +234,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_activities.rs:subprocess_scope_rejects_duplicate_ids_and_cross_scope_flows"
+    "crates/processcraft-core/tests/bpmn_activities_regressions.rs:subprocess_scope_rejects_duplicate_ids_and_cross_scope_flows"
    ]
   },
   {
@@ -399,7 +399,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_activities.rs:send_task_message_ref_is_stored_cleared_and_undone"
+    "crates/processcraft-core/tests/bpmn_activities_regressions.rs:send_task_message_ref_is_stored_cleared_and_undone"
    ]
   },
   {
@@ -408,7 +408,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_activities.rs:send_task_message_ref_is_stored_cleared_and_undone"
+    "crates/processcraft-core/tests/bpmn_activities_regressions.rs:send_task_message_ref_is_stored_cleared_and_undone"
    ]
   },
   {
@@ -606,8 +606,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
-    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+    "crates/processcraft-io/tests/bpmn_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/activities/activities.bpmn"
    ]
   },
   {
@@ -616,8 +616,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
-    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+    "crates/processcraft-io/tests/bpmn_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/activities/activities.bpmn"
    ]
   },
   {
@@ -626,8 +626,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
-    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+    "crates/processcraft-io/tests/bpmn_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/activities/activities.bpmn"
    ]
   },
   {
@@ -636,8 +636,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
-    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+    "crates/processcraft-io/tests/bpmn_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/activities/activities.bpmn"
    ]
   },
   {
@@ -646,8 +646,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
-    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+    "crates/processcraft-io/tests/bpmn_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/activities/activities.bpmn"
    ]
   },
   {
@@ -656,8 +656,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
-    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+    "crates/processcraft-io/tests/bpmn_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/activities/activities.bpmn"
    ]
   },
   {
@@ -666,8 +666,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_activities.rs:completion_quantity_is_set_validated_and_undone",
-    "crates/processcraft-io/tests/m3_activities.rs:non_numeric_quantity_is_preserved_not_typed"
+    "crates/processcraft-core/tests/bpmn_activities.rs:completion_quantity_is_set_validated_and_undone",
+    "crates/processcraft-io/tests/bpmn_activities.rs:non_numeric_quantity_is_preserved_not_typed"
    ]
   },
   {
@@ -676,7 +676,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_activities.rs:completion_quantity_is_set_validated_and_undone"
+    "crates/processcraft-core/tests/bpmn_activities.rs:completion_quantity_is_set_validated_and_undone"
    ]
   },
   {
@@ -685,7 +685,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_activities.rs:completion_quantity_is_set_validated_and_undone"
+    "crates/processcraft-core/tests/bpmn_activities.rs:completion_quantity_is_set_validated_and_undone"
    ]
   },
   {
@@ -694,8 +694,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
-    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+    "crates/processcraft-io/tests/bpmn_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/activities/activities.bpmn"
    ]
   },
   {
@@ -704,8 +704,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
-    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+    "crates/processcraft-io/tests/bpmn_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/activities/activities.bpmn"
    ]
   },
   {
@@ -714,8 +714,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_activities.rs:completion_quantity_is_set_validated_and_undone",
-    "crates/processcraft-io/tests/m3_activities.rs:non_numeric_quantity_is_preserved_not_typed"
+    "crates/processcraft-core/tests/bpmn_activities.rs:completion_quantity_is_set_validated_and_undone",
+    "crates/processcraft-io/tests/bpmn_activities.rs:non_numeric_quantity_is_preserved_not_typed"
    ]
   },
   {
@@ -724,8 +724,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
-    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+    "crates/processcraft-io/tests/bpmn_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/activities/activities.bpmn"
    ]
   },
   {
@@ -734,8 +734,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
-    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+    "crates/processcraft-io/tests/bpmn_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/activities/activities.bpmn"
    ]
   },
   {
@@ -744,7 +744,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_activities.rs:call_activity_called_element_is_set_and_undone"
+    "crates/processcraft-core/tests/bpmn_activities.rs:call_activity_called_element_is_set_and_undone"
    ]
   },
   {
@@ -753,8 +753,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
-    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+    "crates/processcraft-io/tests/bpmn_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/activities/activities.bpmn"
    ]
   },
   {
@@ -763,8 +763,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
-    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+    "crates/processcraft-io/tests/bpmn_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/activities/activities.bpmn"
    ]
   },
   {
@@ -773,7 +773,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+    "crates/processcraft-core/tests/bpmn_activities.rs:task_bindings_edit_and_kind_rules_validate"
    ]
   },
   {
@@ -782,7 +782,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+    "crates/processcraft-core/tests/bpmn_activities.rs:task_bindings_edit_and_kind_rules_validate"
    ]
   },
   {
@@ -791,8 +791,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
-    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+    "crates/processcraft-io/tests/bpmn_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/activities/activities.bpmn"
    ]
   },
   {
@@ -801,8 +801,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
-    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+    "crates/processcraft-io/tests/bpmn_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/activities/activities.bpmn"
    ]
   },
   {
@@ -811,7 +811,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+    "crates/processcraft-core/tests/bpmn_activities.rs:task_bindings_edit_and_kind_rules_validate"
    ]
   },
   {
@@ -820,7 +820,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+    "crates/processcraft-core/tests/bpmn_activities.rs:task_bindings_edit_and_kind_rules_validate"
    ]
   },
   {
@@ -829,8 +829,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
-    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+    "crates/processcraft-io/tests/bpmn_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/activities/activities.bpmn"
    ]
   },
   {
@@ -839,8 +839,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
-    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+    "crates/processcraft-io/tests/bpmn_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/activities/activities.bpmn"
    ]
   },
   {
@@ -849,7 +849,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+    "crates/processcraft-core/tests/bpmn_activities.rs:task_bindings_edit_and_kind_rules_validate"
    ]
   },
   {
@@ -858,7 +858,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+    "crates/processcraft-core/tests/bpmn_activities.rs:task_bindings_edit_and_kind_rules_validate"
    ]
   },
   {
@@ -867,8 +867,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
-    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+    "crates/processcraft-io/tests/bpmn_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/activities/activities.bpmn"
    ]
   },
   {
@@ -877,8 +877,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
-    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+    "crates/processcraft-io/tests/bpmn_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/activities/activities.bpmn"
    ]
   },
   {
@@ -887,7 +887,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+    "crates/processcraft-core/tests/bpmn_activities.rs:task_bindings_edit_and_kind_rules_validate"
    ]
   },
   {
@@ -896,7 +896,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+    "crates/processcraft-core/tests/bpmn_activities.rs:task_bindings_edit_and_kind_rules_validate"
    ]
   },
   {
@@ -905,7 +905,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+    "crates/processcraft-core/tests/bpmn_activities.rs:task_bindings_edit_and_kind_rules_validate"
    ]
   },
   {
@@ -914,8 +914,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
-    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+    "crates/processcraft-io/tests/bpmn_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/activities/activities.bpmn"
    ]
   },
   {
@@ -924,8 +924,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
-    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+    "crates/processcraft-io/tests/bpmn_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/activities/activities.bpmn"
    ]
   },
   {
@@ -934,7 +934,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+    "crates/processcraft-core/tests/bpmn_activities.rs:task_bindings_edit_and_kind_rules_validate"
    ]
   },
   {
@@ -943,8 +943,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
-    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+    "crates/processcraft-io/tests/bpmn_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/activities/activities.bpmn"
    ]
   },
   {
@@ -953,7 +953,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+    "crates/processcraft-core/tests/bpmn_activities.rs:task_bindings_edit_and_kind_rules_validate"
    ]
   },
   {
@@ -962,7 +962,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+    "crates/processcraft-core/tests/bpmn_activities.rs:task_bindings_edit_and_kind_rules_validate"
    ]
   },
   {
@@ -971,8 +971,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
-    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+    "crates/processcraft-io/tests/bpmn_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/activities/activities.bpmn"
    ]
   },
   {
@@ -981,8 +981,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
-    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+    "crates/processcraft-io/tests/bpmn_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/activities/activities.bpmn"
    ]
   },
   {
@@ -991,7 +991,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_activities.rs:implementation_value_diagnostic_on_send_user_service_and_refusal_on_plain_task"
+    "crates/processcraft-core/tests/bpmn_activities_regressions.rs:implementation_value_diagnostic_on_send_user_service_and_refusal_on_plain_task"
    ]
   },
   {
@@ -1000,8 +1000,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
-    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+    "crates/processcraft-io/tests/bpmn_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/activities/activities.bpmn"
    ]
   },
   {
@@ -1010,8 +1010,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
-    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+    "crates/processcraft-io/tests/bpmn_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/activities/activities.bpmn"
    ]
   },
   {
@@ -1020,7 +1020,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+    "crates/processcraft-core/tests/bpmn_activities.rs:task_bindings_edit_and_kind_rules_validate"
    ]
   },
   {
@@ -1029,8 +1029,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
-    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+    "crates/processcraft-io/tests/bpmn_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/activities/activities.bpmn"
    ]
   },
   {
@@ -1039,7 +1039,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+    "crates/processcraft-core/tests/bpmn_activities.rs:task_bindings_edit_and_kind_rules_validate"
    ]
   },
   {
@@ -1048,7 +1048,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+    "crates/processcraft-core/tests/bpmn_activities.rs:task_bindings_edit_and_kind_rules_validate"
    ]
   },
   {
@@ -1057,7 +1057,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+    "crates/processcraft-core/tests/bpmn_activities.rs:task_bindings_edit_and_kind_rules_validate"
    ]
   },
   {
@@ -1066,8 +1066,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
-    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+    "crates/processcraft-io/tests/bpmn_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/activities/activities.bpmn"
    ]
   },
   {
@@ -1076,8 +1076,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
-    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+    "crates/processcraft-io/tests/bpmn_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/activities/activities.bpmn"
    ]
   },
   {
@@ -1086,7 +1086,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_activities.rs:implementation_value_diagnostic_on_send_user_service_and_refusal_on_plain_task"
+    "crates/processcraft-core/tests/bpmn_activities_regressions.rs:implementation_value_diagnostic_on_send_user_service_and_refusal_on_plain_task"
    ]
   },
   {
@@ -1095,8 +1095,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
-    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+    "crates/processcraft-io/tests/bpmn_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/activities/activities.bpmn"
    ]
   },
   {
@@ -1105,7 +1105,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+    "crates/processcraft-core/tests/bpmn_activities.rs:task_bindings_edit_and_kind_rules_validate"
    ]
   },
   {
@@ -1114,8 +1114,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
-    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+    "crates/processcraft-io/tests/bpmn_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/activities/activities.bpmn"
    ]
   },
   {
@@ -1124,8 +1124,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
-    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+    "crates/processcraft-io/tests/bpmn_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/activities/activities.bpmn"
    ]
   },
   {
@@ -1134,8 +1134,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
-    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+    "crates/processcraft-io/tests/bpmn_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/activities/activities.bpmn"
    ]
   },
   {
@@ -1144,8 +1144,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
-    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+    "crates/processcraft-io/tests/bpmn_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/activities/activities.bpmn"
    ]
   },
   {
@@ -1154,7 +1154,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+    "crates/processcraft-core/tests/bpmn_activities.rs:task_bindings_edit_and_kind_rules_validate"
    ]
   },
   {
@@ -1163,8 +1163,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
-    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+    "crates/processcraft-io/tests/bpmn_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/activities/activities.bpmn"
    ]
   },
   {
@@ -1173,8 +1173,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
-    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+    "crates/processcraft-io/tests/bpmn_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/activities/activities.bpmn"
    ]
   },
   {
@@ -1183,7 +1183,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+    "crates/processcraft-core/tests/bpmn_activities.rs:task_bindings_edit_and_kind_rules_validate"
    ]
   },
   {
@@ -1192,7 +1192,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+    "crates/processcraft-core/tests/bpmn_activities.rs:task_bindings_edit_and_kind_rules_validate"
    ]
   },
   {
@@ -1201,7 +1201,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+    "crates/processcraft-core/tests/bpmn_activities.rs:task_bindings_edit_and_kind_rules_validate"
    ]
   },
   {
@@ -1210,8 +1210,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
-    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+    "crates/processcraft-io/tests/bpmn_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/activities/activities.bpmn"
    ]
   },
   {
@@ -1220,8 +1220,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
-    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+    "crates/processcraft-io/tests/bpmn_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/activities/activities.bpmn"
    ]
   },
   {
@@ -1230,7 +1230,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_activities.rs:implementation_value_diagnostic_on_send_user_service_and_refusal_on_plain_task"
+    "crates/processcraft-core/tests/bpmn_activities_regressions.rs:implementation_value_diagnostic_on_send_user_service_and_refusal_on_plain_task"
    ]
   },
   {
@@ -1239,7 +1239,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+    "crates/processcraft-core/tests/bpmn_activities.rs:task_bindings_edit_and_kind_rules_validate"
    ]
   },
   {
@@ -1248,8 +1248,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
-    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+    "crates/processcraft-io/tests/bpmn_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/activities/activities.bpmn"
    ]
   },
   {
@@ -1258,8 +1258,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
-    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+    "crates/processcraft-io/tests/bpmn_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/activities/activities.bpmn"
    ]
   },
   {
@@ -1268,8 +1268,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
-    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+    "crates/processcraft-io/tests/bpmn_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/activities/activities.bpmn"
    ]
   },
   {
@@ -1278,7 +1278,7 @@
    "dimension": "render",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-render/tests/m3_activities.rs:task_kinds_render_their_own_markers_and_hit_test"
+    "crates/processcraft-render/tests/bpmn_activities.rs:task_kinds_render_their_own_markers_and_hit_test"
    ]
   },
   {
@@ -1287,7 +1287,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+    "crates/processcraft-core/tests/bpmn_activities.rs:task_bindings_edit_and_kind_rules_validate"
    ]
   },
   {
@@ -1296,7 +1296,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+    "crates/processcraft-core/tests/bpmn_activities.rs:task_bindings_edit_and_kind_rules_validate"
    ]
   },
   {
@@ -1305,8 +1305,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
-    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+    "crates/processcraft-io/tests/bpmn_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/activities/activities.bpmn"
    ]
   },
   {
@@ -1315,7 +1315,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+    "crates/processcraft-core/tests/bpmn_activities.rs:task_bindings_edit_and_kind_rules_validate"
    ]
   },
   {
@@ -1324,7 +1324,7 @@
    "dimension": "render",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-render/tests/m3_activities.rs:task_kinds_render_their_own_markers_and_hit_test"
+    "crates/processcraft-render/tests/bpmn_activities.rs:task_kinds_render_their_own_markers_and_hit_test"
    ]
   },
   {
@@ -1333,8 +1333,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
-    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+    "crates/processcraft-io/tests/bpmn_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/activities/activities.bpmn"
    ]
   },
   {
@@ -1343,8 +1343,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
-    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+    "crates/processcraft-io/tests/bpmn_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/activities/activities.bpmn"
    ]
   },
   {
@@ -1353,7 +1353,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+    "crates/processcraft-core/tests/bpmn_activities.rs:task_bindings_edit_and_kind_rules_validate"
    ]
   },
   {
@@ -1362,7 +1362,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+    "crates/processcraft-core/tests/bpmn_activities.rs:task_bindings_edit_and_kind_rules_validate"
    ]
   },
   {
@@ -1371,8 +1371,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
-    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+    "crates/processcraft-io/tests/bpmn_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/activities/activities.bpmn"
    ]
   },
   {
@@ -1381,8 +1381,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
-    "tests/fixtures/bpmn/m3-activities/activities.bpmn"
+    "crates/processcraft-io/tests/bpmn_activities.rs:activity_family_imports_typed_values_and_reimports_equal_after_export",
+    "tests/fixtures/bpmn/activities/activities.bpmn"
    ]
   },
   {
@@ -1391,7 +1391,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_activities.rs:task_bindings_edit_and_kind_rules_validate"
+    "crates/processcraft-core/tests/bpmn_activities.rs:task_bindings_edit_and_kind_rules_validate"
    ]
   },
   {
@@ -1400,7 +1400,7 @@
    "dimension": "render",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-render/tests/m3_activities.rs:task_kinds_render_their_own_markers_and_hit_test"
+    "crates/processcraft-render/tests/bpmn_activities.rs:task_kinds_render_their_own_markers_and_hit_test"
    ]
   }
  ]

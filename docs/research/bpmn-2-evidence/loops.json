@@ -7,7 +7,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m2.rs:loop_metadata_is_atomic_and_undoable",
+    "crates/processcraft-core/tests/analyst_workbench.rs:loop_metadata_is_atomic_and_undoable",
     "crates/processcraft-core/tests/commands.rs:loop_identity_rename_preserves_checkpoint_and_undo_redo"
    ]
   },
@@ -68,7 +68,7 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_loops.rs:multi_instance_and_standard_loop_fields_import_with_values_and_survive_export"
+    "crates/processcraft-io/tests/bpmn_loops.rs:multi_instance_and_standard_loop_fields_import_with_values_and_survive_export"
    ],
    "note": "expression count 3 fails if loopCondition import breaks"
   },
@@ -111,7 +111,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m2.rs:loop_metadata_is_atomic_and_undoable"
+    "crates/processcraft-core/tests/analyst_workbench.rs:loop_metadata_is_atomic_and_undoable"
    ]
   },
   {
@@ -149,7 +149,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m2.rs:loop_metadata_is_atomic_and_undoable"
+    "crates/processcraft-core/tests/analyst_workbench.rs:loop_metadata_is_atomic_and_undoable"
    ]
   },
   {
@@ -158,7 +158,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m2.rs:loop_metadata_is_atomic_and_undoable"
+    "crates/processcraft-core/tests/analyst_workbench.rs:loop_metadata_is_atomic_and_undoable"
    ]
   },
   {
@@ -246,7 +246,7 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_loops.rs:multi_instance_and_standard_loop_fields_import_with_values_and_survive_export"
+    "crates/processcraft-io/tests/bpmn_loops.rs:multi_instance_and_standard_loop_fields_import_with_values_and_survive_export"
    ],
    "note": "expression count 3 fails if completionCondition import breaks"
   },
@@ -267,7 +267,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m2.rs:loop_metadata_is_atomic_and_undoable"
+    "crates/processcraft-core/tests/analyst_workbench.rs:loop_metadata_is_atomic_and_undoable"
    ]
   },
   {
@@ -276,7 +276,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m2.rs:loop_metadata_is_atomic_and_undoable"
+    "crates/processcraft-core/tests/analyst_workbench.rs:loop_metadata_is_atomic_and_undoable"
    ]
   },
   {
@@ -355,7 +355,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_loops.rs:standard_loop_set_edit_clear_each_undo_to_previous_value_and_identity"
+    "crates/processcraft-core/tests/bpmn_loops_regressions.rs:standard_loop_set_edit_clear_each_undo_to_previous_value_and_identity"
    ]
   },
   {
@@ -374,8 +374,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_repair_loops.rs:standard_loop_export_writes_test_before_maximum_and_condition",
-    "crates/processcraft-io/tests/m3_repair_loops.rs:standard_loop_export_bytes_are_written_for_xsd_check",
+    "crates/processcraft-io/tests/bpmn_loops_regressions.rs:standard_loop_export_writes_test_before_maximum_and_condition",
+    "crates/processcraft-io/tests/bpmn_loops_regressions.rs:standard_loop_export_bytes_are_written_for_xsd_check",
     "scripts/check_bpmn20_xsd.py"
    ]
   },
@@ -394,7 +394,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m2.rs:loop_metadata_is_atomic_and_undoable"
+    "crates/processcraft-core/tests/analyst_workbench.rs:loop_metadata_is_atomic_and_undoable"
    ]
   },
   {
@@ -403,7 +403,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m2.rs:loop_metadata_is_atomic_and_undoable"
+    "crates/processcraft-core/tests/analyst_workbench.rs:loop_metadata_is_atomic_and_undoable"
    ]
   },
   {
@@ -451,7 +451,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
+    "crates/processcraft-core/tests/bpmn_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
    ]
   },
   {
@@ -460,7 +460,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
+    "crates/processcraft-core/tests/bpmn_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
    ]
   },
   {
@@ -469,7 +469,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
+    "crates/processcraft-core/tests/bpmn_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
    ]
   },
   {
@@ -478,7 +478,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
+    "crates/processcraft-core/tests/bpmn_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
    ]
   },
   {
@@ -487,7 +487,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
+    "crates/processcraft-core/tests/bpmn_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
    ]
   },
   {
@@ -496,7 +496,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
+    "crates/processcraft-core/tests/bpmn_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
    ]
   },
   {
@@ -505,7 +505,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
+    "crates/processcraft-core/tests/bpmn_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
    ]
   },
   {
@@ -514,7 +514,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
+    "crates/processcraft-core/tests/bpmn_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
    ]
   },
   {
@@ -523,7 +523,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
+    "crates/processcraft-core/tests/bpmn_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
    ]
   },
   {
@@ -532,7 +532,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
+    "crates/processcraft-core/tests/bpmn_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
    ]
   },
   {
@@ -541,7 +541,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
+    "crates/processcraft-core/tests/bpmn_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
    ]
   },
   {
@@ -550,7 +550,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
+    "crates/processcraft-core/tests/bpmn_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
    ]
   },
   {
@@ -559,7 +559,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
+    "crates/processcraft-core/tests/bpmn_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
    ]
   },
   {
@@ -568,7 +568,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
+    "crates/processcraft-core/tests/bpmn_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
    ]
   },
   {
@@ -577,7 +577,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
+    "crates/processcraft-core/tests/bpmn_loops.rs:multi_instance_data_items_completion_and_behavior_events_set_read_and_undo"
    ]
   },
   {
@@ -586,7 +586,7 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_loops.rs:multi_instance_and_standard_loop_fields_import_with_values_and_survive_export"
+    "crates/processcraft-io/tests/bpmn_loops.rs:multi_instance_and_standard_loop_fields_import_with_values_and_survive_export"
    ]
   },
   {
@@ -595,7 +595,7 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_loops.rs:multi_instance_and_standard_loop_fields_import_with_values_and_survive_export"
+    "crates/processcraft-io/tests/bpmn_loops.rs:multi_instance_and_standard_loop_fields_import_with_values_and_survive_export"
    ]
   },
   {
@@ -604,7 +604,7 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_loops.rs:multi_instance_and_standard_loop_fields_import_with_values_and_survive_export"
+    "crates/processcraft-io/tests/bpmn_loops.rs:multi_instance_and_standard_loop_fields_import_with_values_and_survive_export"
    ]
   },
   {
@@ -613,7 +613,7 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_loops.rs:multi_instance_and_standard_loop_fields_import_with_values_and_survive_export"
+    "crates/processcraft-io/tests/bpmn_loops.rs:multi_instance_and_standard_loop_fields_import_with_values_and_survive_export"
    ]
   },
   {
@@ -622,7 +622,7 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_loops.rs:multi_instance_and_standard_loop_fields_import_with_values_and_survive_export"
+    "crates/processcraft-io/tests/bpmn_loops.rs:multi_instance_and_standard_loop_fields_import_with_values_and_survive_export"
    ]
   },
   {
@@ -631,7 +631,7 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_loops.rs:multi_instance_and_standard_loop_fields_import_with_values_and_survive_export"
+    "crates/processcraft-io/tests/bpmn_loops.rs:multi_instance_and_standard_loop_fields_import_with_values_and_survive_export"
    ]
   },
   {
@@ -640,7 +640,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_loops.rs:standard_loop_condition_test_before_and_maximum_set_read_and_undo"
+    "crates/processcraft-core/tests/bpmn_loops.rs:standard_loop_condition_test_before_and_maximum_set_read_and_undo"
    ]
   },
   {
@@ -649,7 +649,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_loops.rs:standard_loop_condition_test_before_and_maximum_set_read_and_undo"
+    "crates/processcraft-core/tests/bpmn_loops.rs:standard_loop_condition_test_before_and_maximum_set_read_and_undo"
    ]
   },
   {
@@ -658,7 +658,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_loops.rs:standard_loop_condition_test_before_and_maximum_set_read_and_undo"
+    "crates/processcraft-core/tests/bpmn_loops.rs:standard_loop_condition_test_before_and_maximum_set_read_and_undo"
    ]
   },
   {
@@ -667,7 +667,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_loops.rs:standard_loop_condition_test_before_and_maximum_set_read_and_undo"
+    "crates/processcraft-core/tests/bpmn_loops.rs:standard_loop_condition_test_before_and_maximum_set_read_and_undo"
    ]
   },
   {
@@ -676,7 +676,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_loops.rs:standard_loop_condition_test_before_and_maximum_set_read_and_undo"
+    "crates/processcraft-core/tests/bpmn_loops.rs:standard_loop_condition_test_before_and_maximum_set_read_and_undo"
    ]
   },
   {
@@ -685,7 +685,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_loops.rs:standard_loop_condition_test_before_and_maximum_set_read_and_undo"
+    "crates/processcraft-core/tests/bpmn_loops.rs:standard_loop_condition_test_before_and_maximum_set_read_and_undo"
    ]
   },
   {
@@ -694,7 +694,7 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_loops.rs:multi_instance_and_standard_loop_fields_import_with_values_and_survive_export"
+    "crates/processcraft-io/tests/bpmn_loops.rs:multi_instance_and_standard_loop_fields_import_with_values_and_survive_export"
    ]
   },
   {
@@ -703,7 +703,7 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_loops.rs:multi_instance_and_standard_loop_fields_import_with_values_and_survive_export"
+    "crates/processcraft-io/tests/bpmn_loops.rs:multi_instance_and_standard_loop_fields_import_with_values_and_survive_export"
    ]
   }
  ]

@@ -24,4 +24,4 @@ Independent static review found and corrected inconsistent narrow-panel threshol
 
 ## Crate research
 
-See [Rust UI crate research](../research/2026-11-11-rust-ui-crates.md). Existing egui row virtualization is the first option. `egui_extras` and `egui_ltreeview` are candidates for advanced tables/tree behavior; neither was added. Version requirements alone do not prove compatibility with the pinned Craft egui fork.
+See [Rust UI crate research](../research/rust-ui-crates.md). Existing egui row virtualization is the first option. `egui_extras` and `egui_ltreeview` are candidates for advanced tables/tree behavior; neither was added. Version requirements alone do not prove compatibility with the pinned Craft egui fork.

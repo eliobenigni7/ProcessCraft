@@ -61,7 +61,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:collaboration_is_closed_and_choreography_refs_edit_with_undo"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:collaboration_is_closed_and_choreography_refs_edit_with_undo"
    ]
   },
   {
@@ -70,7 +70,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "apps/processcraft/src/app_collaboration.rs:global_collaboration_updates_the_selected_root_only"
+    "apps/processcraft/src/app/collaboration.rs:global_collaboration_updates_the_selected_root_only"
    ],
    "note": "SetCollaborationRoot rename with undo/redo through the GUI controller"
   },
@@ -107,7 +107,7 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_repair_process_collaboration.rs:export_writes_the_values_and_reimport_asserts_them_again",
+    "crates/processcraft-io/tests/bpmn_process_collaboration_regressions.rs:export_writes_the_values_and_reimport_asserts_them_again",
     "scripts/check_bpmn20_xsd.py"
    ]
   },
@@ -117,7 +117,7 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_repair_process_collaboration.rs:typed_values_import_from_the_manifested_fixture"
+    "crates/processcraft-io/tests/bpmn_process_collaboration_regressions.rs:typed_values_import_from_the_manifested_fixture"
    ]
   },
   {
@@ -153,7 +153,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:lane_name_members_and_child_lane_set_edit_with_undo"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:lane_name_members_and_child_lane_set_edit_with_undo"
    ]
   },
   {
@@ -162,7 +162,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_process_collaboration.rs:lane_membership_and_nesting_violations_name_the_rule"
+    "crates/processcraft-core/tests/bpmn_process_collaboration_regressions.rs:lane_membership_and_nesting_violations_name_the_rule"
    ]
   },
   {
@@ -189,7 +189,7 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_repair_process_collaboration.rs:typed_values_import_from_the_manifested_fixture"
+    "crates/processcraft-io/tests/bpmn_process_collaboration_regressions.rs:typed_values_import_from_the_manifested_fixture"
    ]
   },
   {
@@ -227,7 +227,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:lane_name_members_and_child_lane_set_edit_with_undo"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:lane_name_members_and_child_lane_set_edit_with_undo"
    ]
   },
   {
@@ -236,7 +236,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_process_collaboration.rs:lane_membership_and_nesting_violations_name_the_rule"
+    "crates/processcraft-core/tests/bpmn_process_collaboration_regressions.rs:lane_membership_and_nesting_violations_name_the_rule"
    ]
   },
   {
@@ -272,7 +272,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:message_flow_dangling_source_and_message_ref_are_reported"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:message_flow_dangling_source_and_message_ref_are_reported"
    ]
   },
   {
@@ -337,7 +337,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:message_flow_name_ends_and_message_ref_edit_with_undo"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:message_flow_name_ends_and_message_ref_edit_with_undo"
    ]
   },
   {
@@ -346,7 +346,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:message_flow_name_ends_and_message_ref_edit_with_undo"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:message_flow_name_ends_and_message_ref_edit_with_undo"
    ]
   },
   {
@@ -355,7 +355,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_process_collaboration.rs:sequence_and_message_flow_dangling_targets_are_diagnosed"
+    "crates/processcraft-core/tests/bpmn_process_collaboration_regressions.rs:sequence_and_message_flow_dangling_targets_are_diagnosed"
    ]
   },
   {
@@ -364,7 +364,7 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_repair_process_collaboration.rs:export_writes_the_values_and_reimport_asserts_them_again",
+    "crates/processcraft-io/tests/bpmn_process_collaboration_regressions.rs:export_writes_the_values_and_reimport_asserts_them_again",
     "scripts/check_bpmn20_xsd.py"
    ]
   },
@@ -374,7 +374,7 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_process_collaboration.rs:root_message_name_and_item_ref_import"
+    "crates/processcraft-io/tests/bpmn_process_collaboration.rs:root_message_name_and_item_ref_import"
    ]
   },
   {
@@ -383,7 +383,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:root_message_name_and_item_ref_edit_with_undo"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:root_message_name_and_item_ref_edit_with_undo"
    ]
   },
   {
@@ -392,7 +392,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_integration.rs:message_item_ref_must_resolve_to_an_item_definition"
+    "crates/processcraft-core/tests/integration.rs:message_item_ref_must_resolve_to_an_item_definition"
    ]
   },
   {
@@ -419,7 +419,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:participant_name_and_catalog_refs_edit_with_undo"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:participant_name_and_catalog_refs_edit_with_undo"
    ]
   },
   {
@@ -437,7 +437,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_process_collaboration.rs:participant_process_ref_is_created_read_back_cleared_and_undone"
+    "crates/processcraft-core/tests/bpmn_process_collaboration_regressions.rs:participant_process_ref_is_created_read_back_cleared_and_undone"
    ],
    "note": "reference follows process XML id edit, undo asserted"
   },
@@ -467,7 +467,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_process_collaboration.rs:participant_process_ref_is_created_read_back_cleared_and_undone"
+    "crates/processcraft-core/tests/bpmn_process_collaboration_regressions.rs:participant_process_ref_is_created_read_back_cleared_and_undone"
    ]
   },
   {
@@ -503,7 +503,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_integration.rs:public_process_must_not_be_executable"
+    "crates/processcraft-core/tests/integration.rs:public_process_must_not_be_executable"
    ]
   },
   {
@@ -512,7 +512,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:process_type_closed_supports_and_collaboration_ref_edit_with_undo"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:process_type_closed_supports_and_collaboration_ref_edit_with_undo"
    ]
   },
   {
@@ -548,7 +548,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:process_supports_and_collaboration_ref_dangling_are_reported"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:process_supports_and_collaboration_ref_dangling_are_reported"
    ]
   },
   {
@@ -585,7 +585,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_process_collaboration.rs:sequence_flow_declaration_violations_name_the_rule"
+    "crates/processcraft-core/tests/bpmn_process_collaboration_regressions.rs:sequence_flow_declaration_violations_name_the_rule"
    ]
   },
   {
@@ -612,8 +612,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_r3_repair.rs:is_immediate_validation_accepts_sequence_flow_and_names_the_rule_elsewhere",
-    "crates/processcraft-core/tests/m3_r3_repair.rs:is_immediate_on_a_message_flow_fails_document_validation"
+    "crates/processcraft-core/tests/bpmn_regressions.rs:is_immediate_validation_accepts_sequence_flow_and_names_the_rule_elsewhere",
+    "crates/processcraft-core/tests/bpmn_regressions.rs:is_immediate_on_a_message_flow_fails_document_validation"
    ],
    "note": "message flows reject isImmediate metadata"
   },
@@ -632,7 +632,7 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_repair_process_collaboration.rs:typed_values_import_from_the_manifested_fixture"
+    "crates/processcraft-io/tests/bpmn_process_collaboration_regressions.rs:typed_values_import_from_the_manifested_fixture"
    ]
   },
   {
@@ -641,7 +641,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_process_collaboration.rs:sequence_flow_ends_and_condition_are_read_back_edited_cleared_and_undone"
+    "crates/processcraft-core/tests/bpmn_process_collaboration_regressions.rs:sequence_flow_ends_and_condition_are_read_back_edited_cleared_and_undone"
    ]
   },
   {
@@ -678,7 +678,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_process_collaboration.rs:sequence_flow_ends_and_condition_are_read_back_edited_cleared_and_undone"
+    "crates/processcraft-core/tests/bpmn_process_collaboration_regressions.rs:sequence_flow_ends_and_condition_are_read_back_edited_cleared_and_undone"
    ]
   },
   {
@@ -687,7 +687,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_process_collaboration.rs:sequence_and_message_flow_dangling_targets_are_diagnosed"
+    "crates/processcraft-core/tests/bpmn_process_collaboration_regressions.rs:sequence_and_message_flow_dangling_targets_are_diagnosed"
    ]
   },
   {
@@ -696,7 +696,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_process_collaboration.rs:sequence_flow_ends_and_condition_are_read_back_edited_cleared_and_undone"
+    "crates/processcraft-core/tests/bpmn_process_collaboration_regressions.rs:sequence_flow_ends_and_condition_are_read_back_edited_cleared_and_undone"
    ]
   },
   {
@@ -723,7 +723,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_process_collaboration.rs:sequence_flow_ends_and_condition_are_read_back_edited_cleared_and_undone"
+    "crates/processcraft-core/tests/bpmn_process_collaboration_regressions.rs:sequence_flow_ends_and_condition_are_read_back_edited_cleared_and_undone"
    ]
   },
   {
@@ -741,7 +741,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:collaboration_is_closed_and_choreography_refs_edit_with_undo"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:collaboration_is_closed_and_choreography_refs_edit_with_undo"
    ]
   },
   {
@@ -750,7 +750,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:collaboration_is_closed_and_choreography_refs_edit_with_undo"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:collaboration_is_closed_and_choreography_refs_edit_with_undo"
    ]
   },
   {
@@ -759,7 +759,7 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_process_collaboration.rs:collaboration_attributes_and_choreography_ref_import"
+    "crates/processcraft-io/tests/bpmn_process_collaboration.rs:collaboration_attributes_and_choreography_ref_import"
    ]
   },
   {
@@ -768,7 +768,7 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_process_collaboration.rs:export_writes_all_values_and_reimport_is_equal"
+    "crates/processcraft-io/tests/bpmn_process_collaboration.rs:export_writes_all_values_and_reimport_is_equal"
    ]
   },
   {
@@ -777,7 +777,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:collaboration_choreography_ref_dangling_is_reported"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:collaboration_choreography_ref_dangling_is_reported"
    ]
   },
   {
@@ -786,7 +786,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:collaboration_is_closed_and_choreography_refs_edit_with_undo"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:collaboration_is_closed_and_choreography_refs_edit_with_undo"
    ]
   },
   {
@@ -795,7 +795,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:participant_name_and_catalog_refs_edit_with_undo"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:participant_name_and_catalog_refs_edit_with_undo"
    ]
   },
   {
@@ -804,7 +804,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:participant_name_and_catalog_refs_edit_with_undo"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:participant_name_and_catalog_refs_edit_with_undo"
    ]
   },
   {
@@ -813,7 +813,7 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_process_collaboration.rs:participant_name_interface_and_endpoint_refs_import"
+    "crates/processcraft-io/tests/bpmn_process_collaboration.rs:participant_name_interface_and_endpoint_refs_import"
    ]
   },
   {
@@ -822,7 +822,7 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_process_collaboration.rs:export_writes_all_values_and_reimport_is_equal"
+    "crates/processcraft-io/tests/bpmn_process_collaboration.rs:export_writes_all_values_and_reimport_is_equal"
    ]
   },
   {
@@ -831,7 +831,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:participant_interface_and_endpoint_refs_dangling_are_reported"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:participant_interface_and_endpoint_refs_dangling_are_reported"
    ]
   },
   {
@@ -840,7 +840,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:participant_name_and_catalog_refs_edit_with_undo"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:participant_name_and_catalog_refs_edit_with_undo"
    ]
   },
   {
@@ -849,7 +849,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:participant_name_and_catalog_refs_edit_with_undo"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:participant_name_and_catalog_refs_edit_with_undo"
    ]
   },
   {
@@ -858,7 +858,7 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_process_collaboration.rs:participant_name_interface_and_endpoint_refs_import"
+    "crates/processcraft-io/tests/bpmn_process_collaboration.rs:participant_name_interface_and_endpoint_refs_import"
    ]
   },
   {
@@ -867,7 +867,7 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_process_collaboration.rs:export_writes_all_values_and_reimport_is_equal"
+    "crates/processcraft-io/tests/bpmn_process_collaboration.rs:export_writes_all_values_and_reimport_is_equal"
    ]
   },
   {
@@ -876,7 +876,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:participant_interface_and_endpoint_refs_dangling_are_reported"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:participant_interface_and_endpoint_refs_dangling_are_reported"
    ]
   },
   {
@@ -885,7 +885,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:participant_name_and_catalog_refs_edit_with_undo"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:participant_name_and_catalog_refs_edit_with_undo"
    ]
   },
   {
@@ -894,7 +894,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:participant_name_and_catalog_refs_edit_with_undo"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:participant_name_and_catalog_refs_edit_with_undo"
    ]
   },
   {
@@ -903,7 +903,7 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_process_collaboration.rs:participant_name_interface_and_endpoint_refs_import"
+    "crates/processcraft-io/tests/bpmn_process_collaboration.rs:participant_name_interface_and_endpoint_refs_import"
    ]
   },
   {
@@ -912,7 +912,7 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_process_collaboration.rs:export_writes_all_values_and_reimport_is_equal"
+    "crates/processcraft-io/tests/bpmn_process_collaboration.rs:export_writes_all_values_and_reimport_is_equal"
    ]
   },
   {
@@ -921,7 +921,7 @@
    "dimension": "render",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-render/tests/m3_process_collaboration.rs:participant_name_renders_as_pool_label"
+    "crates/processcraft-render/tests/bpmn_process_collaboration.rs:participant_name_renders_as_pool_label"
    ]
   },
   {
@@ -930,7 +930,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:message_flow_name_ends_and_message_ref_edit_with_undo"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:message_flow_name_ends_and_message_ref_edit_with_undo"
    ]
   },
   {
@@ -939,7 +939,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:message_flow_name_ends_and_message_ref_edit_with_undo"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:message_flow_name_ends_and_message_ref_edit_with_undo"
    ]
   },
   {
@@ -948,7 +948,7 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_process_collaboration.rs:message_flow_name_and_ends_import"
+    "crates/processcraft-io/tests/bpmn_process_collaboration.rs:message_flow_name_and_ends_import"
    ]
   },
   {
@@ -957,7 +957,7 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_process_collaboration.rs:export_writes_all_values_and_reimport_is_equal"
+    "crates/processcraft-io/tests/bpmn_process_collaboration.rs:export_writes_all_values_and_reimport_is_equal"
    ]
   },
   {
@@ -966,7 +966,7 @@
    "dimension": "render",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-render/tests/m3_process_collaboration.rs:message_flow_name_renders_as_edge_label"
+    "crates/processcraft-render/tests/bpmn_process_collaboration.rs:message_flow_name_renders_as_edge_label"
    ]
   },
   {
@@ -975,7 +975,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:message_flow_name_ends_and_message_ref_edit_with_undo"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:message_flow_name_ends_and_message_ref_edit_with_undo"
    ]
   },
   {
@@ -984,7 +984,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:message_flow_dangling_source_and_message_ref_are_reported"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:message_flow_dangling_source_and_message_ref_are_reported"
    ]
   },
   {
@@ -993,7 +993,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:message_flow_name_ends_and_message_ref_edit_with_undo"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:message_flow_name_ends_and_message_ref_edit_with_undo"
    ]
   },
   {
@@ -1002,7 +1002,7 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_process_collaboration.rs:message_flow_name_and_ends_import"
+    "crates/processcraft-io/tests/bpmn_process_collaboration.rs:message_flow_name_and_ends_import"
    ]
   },
   {
@@ -1011,7 +1011,7 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_repair_process_collaboration.rs:export_writes_the_values_and_reimport_asserts_them_again",
+    "crates/processcraft-io/tests/bpmn_process_collaboration_regressions.rs:export_writes_the_values_and_reimport_asserts_them_again",
     "scripts/check_bpmn20_xsd.py"
    ]
   },
@@ -1021,7 +1021,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:message_flow_dangling_source_and_message_ref_are_reported"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:message_flow_dangling_source_and_message_ref_are_reported"
    ]
   },
   {
@@ -1030,7 +1030,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:root_message_name_and_item_ref_edit_with_undo"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:root_message_name_and_item_ref_edit_with_undo"
    ]
   },
   {
@@ -1039,7 +1039,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:root_message_name_and_item_ref_edit_with_undo"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:root_message_name_and_item_ref_edit_with_undo"
    ]
   },
   {
@@ -1048,7 +1048,7 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_process_collaboration.rs:root_message_name_and_item_ref_import"
+    "crates/processcraft-io/tests/bpmn_process_collaboration.rs:root_message_name_and_item_ref_import"
    ]
   },
   {
@@ -1057,7 +1057,7 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_process_collaboration.rs:export_writes_all_values_and_reimport_is_equal"
+    "crates/processcraft-io/tests/bpmn_process_collaboration.rs:export_writes_all_values_and_reimport_is_equal"
    ]
   },
   {
@@ -1066,7 +1066,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:root_message_name_and_item_ref_edit_with_undo"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:root_message_name_and_item_ref_edit_with_undo"
    ]
   },
   {
@@ -1075,7 +1075,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:root_message_name_and_item_ref_edit_with_undo"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:root_message_name_and_item_ref_edit_with_undo"
    ]
   },
   {
@@ -1084,7 +1084,7 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_process_collaboration.rs:root_message_name_and_item_ref_import"
+    "crates/processcraft-io/tests/bpmn_process_collaboration.rs:root_message_name_and_item_ref_import"
    ]
   },
   {
@@ -1093,7 +1093,7 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_process_collaboration.rs:export_writes_all_values_and_reimport_is_equal"
+    "crates/processcraft-io/tests/bpmn_process_collaboration.rs:export_writes_all_values_and_reimport_is_equal"
    ]
   },
   {
@@ -1102,7 +1102,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:sequence_flow_source_edit_with_undo_and_dangling_source_is_reported"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:sequence_flow_source_edit_with_undo_and_dangling_source_is_reported"
    ]
   },
   {
@@ -1111,7 +1111,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:sequence_flow_source_edit_with_undo_and_dangling_source_is_reported"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:sequence_flow_source_edit_with_undo_and_dangling_source_is_reported"
    ]
   },
   {
@@ -1120,7 +1120,7 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_process_collaboration.rs:sequence_flow_is_immediate_import"
+    "crates/processcraft-io/tests/bpmn_process_collaboration.rs:sequence_flow_is_immediate_import"
    ]
   },
   {
@@ -1129,7 +1129,7 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_process_collaboration.rs:export_writes_all_values_and_reimport_is_equal"
+    "crates/processcraft-io/tests/bpmn_process_collaboration.rs:export_writes_all_values_and_reimport_is_equal"
    ]
   },
   {
@@ -1138,8 +1138,8 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:process_typed_fields_survive_native_json_round_trip",
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:process_type_closed_supports_and_collaboration_ref_edit_with_undo"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:process_typed_fields_survive_native_json_round_trip",
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:process_type_closed_supports_and_collaboration_ref_edit_with_undo"
    ]
   },
   {
@@ -1148,7 +1148,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:process_type_closed_supports_and_collaboration_ref_edit_with_undo"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:process_type_closed_supports_and_collaboration_ref_edit_with_undo"
    ]
   },
   {
@@ -1157,7 +1157,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:process_type_closed_supports_and_collaboration_ref_edit_with_undo"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:process_type_closed_supports_and_collaboration_ref_edit_with_undo"
    ]
   },
   {
@@ -1166,7 +1166,7 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_process_collaboration.rs:process_attributes_supports_and_collaboration_ref_import"
+    "crates/processcraft-io/tests/bpmn_process_collaboration.rs:process_attributes_supports_and_collaboration_ref_import"
    ]
   },
   {
@@ -1175,7 +1175,7 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_process_collaboration.rs:export_writes_all_values_and_reimport_is_equal"
+    "crates/processcraft-io/tests/bpmn_process_collaboration.rs:export_writes_all_values_and_reimport_is_equal"
    ]
   },
   {
@@ -1184,7 +1184,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:process_type_closed_supports_and_collaboration_ref_edit_with_undo"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:process_type_closed_supports_and_collaboration_ref_edit_with_undo"
    ]
   },
   {
@@ -1193,7 +1193,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:process_type_closed_supports_and_collaboration_ref_edit_with_undo"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:process_type_closed_supports_and_collaboration_ref_edit_with_undo"
    ]
   },
   {
@@ -1202,7 +1202,7 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_process_collaboration.rs:process_attributes_supports_and_collaboration_ref_import"
+    "crates/processcraft-io/tests/bpmn_process_collaboration.rs:process_attributes_supports_and_collaboration_ref_import"
    ]
   },
   {
@@ -1211,7 +1211,7 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_process_collaboration.rs:export_writes_all_values_and_reimport_is_equal"
+    "crates/processcraft-io/tests/bpmn_process_collaboration.rs:export_writes_all_values_and_reimport_is_equal"
    ]
   },
   {
@@ -1220,7 +1220,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:process_type_closed_supports_and_collaboration_ref_edit_with_undo"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:process_type_closed_supports_and_collaboration_ref_edit_with_undo"
    ]
   },
   {
@@ -1229,7 +1229,7 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_process_collaboration.rs:process_attributes_supports_and_collaboration_ref_import"
+    "crates/processcraft-io/tests/bpmn_process_collaboration.rs:process_attributes_supports_and_collaboration_ref_import"
    ]
   },
   {
@@ -1238,7 +1238,7 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_process_collaboration.rs:export_writes_all_values_and_reimport_is_equal"
+    "crates/processcraft-io/tests/bpmn_process_collaboration.rs:export_writes_all_values_and_reimport_is_equal"
    ]
   },
   {
@@ -1247,7 +1247,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:process_executable_edit_with_undo"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:process_executable_edit_with_undo"
    ]
   },
   {
@@ -1256,7 +1256,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:process_type_closed_supports_and_collaboration_ref_edit_with_undo"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:process_type_closed_supports_and_collaboration_ref_edit_with_undo"
    ]
   },
   {
@@ -1265,7 +1265,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:process_type_closed_supports_and_collaboration_ref_edit_with_undo"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:process_type_closed_supports_and_collaboration_ref_edit_with_undo"
    ]
   },
   {
@@ -1274,7 +1274,7 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_process_collaboration.rs:process_attributes_supports_and_collaboration_ref_import"
+    "crates/processcraft-io/tests/bpmn_process_collaboration.rs:process_attributes_supports_and_collaboration_ref_import"
    ]
   },
   {
@@ -1283,7 +1283,7 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_process_collaboration.rs:export_writes_all_values_and_reimport_is_equal"
+    "crates/processcraft-io/tests/bpmn_process_collaboration.rs:export_writes_all_values_and_reimport_is_equal"
    ]
   },
   {
@@ -1292,7 +1292,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:process_supports_and_collaboration_ref_dangling_are_reported"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:process_supports_and_collaboration_ref_dangling_are_reported"
    ]
   },
   {
@@ -1301,7 +1301,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:lane_name_members_and_child_lane_set_edit_with_undo"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:lane_name_members_and_child_lane_set_edit_with_undo"
    ]
   },
   {
@@ -1310,7 +1310,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_process_collaboration.rs:existing_lane_rename_and_child_lane_set_edit_each_undo_to_prior_value"
+    "crates/processcraft-core/tests/bpmn_process_collaboration_regressions.rs:existing_lane_rename_and_child_lane_set_edit_each_undo_to_prior_value"
    ]
   },
   {
@@ -1319,7 +1319,7 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_process_collaboration.rs:lane_names_and_flow_node_refs_import"
+    "crates/processcraft-io/tests/bpmn_process_collaboration.rs:lane_names_and_flow_node_refs_import"
    ]
   },
   {
@@ -1328,7 +1328,7 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_process_collaboration.rs:export_writes_all_values_and_reimport_is_equal"
+    "crates/processcraft-io/tests/bpmn_process_collaboration.rs:export_writes_all_values_and_reimport_is_equal"
    ]
   },
   {
@@ -1337,7 +1337,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:lane_name_members_and_child_lane_set_edit_with_undo"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:lane_name_members_and_child_lane_set_edit_with_undo"
    ]
   },
   {
@@ -1346,7 +1346,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_process_collaboration.rs:existing_lane_rename_and_child_lane_set_edit_each_undo_to_prior_value"
+    "crates/processcraft-core/tests/bpmn_process_collaboration_regressions.rs:existing_lane_rename_and_child_lane_set_edit_each_undo_to_prior_value"
    ]
   }
  ]

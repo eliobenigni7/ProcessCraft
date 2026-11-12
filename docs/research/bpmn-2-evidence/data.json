@@ -7,9 +7,9 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m2.rs:typed_data_association_is_scoped_to_owner_ports_and_undoable",
+    "crates/processcraft-core/tests/analyst_workbench.rs:typed_data_association_is_scoped_to_owner_ports_and_undoable",
     "crates/processcraft-core/tests/commands.rs:expanded_data_preserves_omissions_and_validates_transformation",
-    "crates/processcraft-core/tests/m2.rs:nested_data_associations_resolve_ancestor_and_global_endpoints",
+    "crates/processcraft-core/tests/analyst_workbench.rs:nested_data_associations_resolve_ancestor_and_global_endpoints",
     "crates/processcraft-io/tests/interchange.rs:data_io_sets_ports_and_associations_round_trip",
     "scripts/check_bpmn20_xsd.py"
    ]
@@ -20,9 +20,9 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m2.rs:typed_data_association_is_scoped_to_owner_ports_and_undoable",
+    "crates/processcraft-core/tests/analyst_workbench.rs:typed_data_association_is_scoped_to_owner_ports_and_undoable",
     "crates/processcraft-core/tests/commands.rs:expanded_data_preserves_omissions_and_validates_transformation",
-    "crates/processcraft-core/tests/m2.rs:nested_data_associations_resolve_ancestor_and_global_endpoints",
+    "crates/processcraft-core/tests/analyst_workbench.rs:nested_data_associations_resolve_ancestor_and_global_endpoints",
     "crates/processcraft-io/tests/interchange.rs:data_io_sets_ports_and_associations_round_trip",
     "scripts/check_bpmn20_xsd.py"
    ]
@@ -33,9 +33,9 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m2.rs:typed_data_association_is_scoped_to_owner_ports_and_undoable",
+    "crates/processcraft-core/tests/analyst_workbench.rs:typed_data_association_is_scoped_to_owner_ports_and_undoable",
     "crates/processcraft-core/tests/commands.rs:expanded_data_preserves_omissions_and_validates_transformation",
-    "crates/processcraft-core/tests/m2.rs:nested_data_associations_resolve_ancestor_and_global_endpoints",
+    "crates/processcraft-core/tests/analyst_workbench.rs:nested_data_associations_resolve_ancestor_and_global_endpoints",
     "crates/processcraft-io/tests/interchange.rs:data_io_sets_ports_and_associations_round_trip",
     "scripts/check_bpmn20_xsd.py"
    ]
@@ -46,8 +46,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:data_association_source_count_diagnostic_is_negative_tested",
-    "crates/processcraft-core/tests/m3r2_validate.rs:data_association_endpoints_are_validated"
+    "crates/processcraft-core/tests/bpmn_data.rs:data_association_source_count_diagnostic_is_negative_tested",
+    "crates/processcraft-core/tests/validation_rules.rs:data_association_endpoints_are_validated"
    ]
   },
   {
@@ -56,7 +56,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_data.rs:data_association_source_edit_and_undo"
+    "crates/processcraft-core/tests/bpmn_data_regressions.rs:data_association_source_edit_and_undo"
    ]
   },
   {
@@ -65,7 +65,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:data_association_sources_target_transformation_edit_and_undo"
+    "crates/processcraft-core/tests/bpmn_data.rs:data_association_sources_target_transformation_edit_and_undo"
    ]
   },
   {
@@ -74,7 +74,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:data_association_sources_target_transformation_edit_and_undo"
+    "crates/processcraft-core/tests/bpmn_data.rs:data_association_sources_target_transformation_edit_and_undo"
    ]
   },
   {
@@ -83,8 +83,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:data_association_source_count_diagnostic_is_negative_tested",
-    "crates/processcraft-core/tests/m3r2_validate.rs:data_association_endpoints_are_validated"
+    "crates/processcraft-core/tests/bpmn_data.rs:data_association_source_count_diagnostic_is_negative_tested",
+    "crates/processcraft-core/tests/validation_rules.rs:data_association_endpoints_are_validated"
    ]
   },
   {
@@ -126,9 +126,9 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m2.rs:typed_data_association_is_scoped_to_owner_ports_and_undoable",
+    "crates/processcraft-core/tests/analyst_workbench.rs:typed_data_association_is_scoped_to_owner_ports_and_undoable",
     "crates/processcraft-core/tests/commands.rs:expanded_data_preserves_omissions_and_validates_transformation",
-    "crates/processcraft-core/tests/m2.rs:nested_data_associations_resolve_ancestor_and_global_endpoints",
+    "crates/processcraft-core/tests/analyst_workbench.rs:nested_data_associations_resolve_ancestor_and_global_endpoints",
     "crates/processcraft-io/tests/interchange.rs:data_io_sets_ports_and_associations_round_trip",
     "scripts/check_bpmn20_xsd.py"
    ]
@@ -139,9 +139,9 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m2.rs:typed_data_association_is_scoped_to_owner_ports_and_undoable",
+    "crates/processcraft-core/tests/analyst_workbench.rs:typed_data_association_is_scoped_to_owner_ports_and_undoable",
     "crates/processcraft-core/tests/commands.rs:expanded_data_preserves_omissions_and_validates_transformation",
-    "crates/processcraft-core/tests/m2.rs:nested_data_associations_resolve_ancestor_and_global_endpoints",
+    "crates/processcraft-core/tests/analyst_workbench.rs:nested_data_associations_resolve_ancestor_and_global_endpoints",
     "crates/processcraft-io/tests/interchange.rs:data_io_sets_ports_and_associations_round_trip",
     "scripts/check_bpmn20_xsd.py"
    ]
@@ -282,8 +282,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn"
    ]
   },
   {
@@ -292,8 +292,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn"
    ]
   },
   {
@@ -302,7 +302,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:data_association_sources_target_transformation_edit_and_undo"
+    "crates/processcraft-core/tests/bpmn_data.rs:data_association_sources_target_transformation_edit_and_undo"
    ]
   },
   {
@@ -311,7 +311,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_data.rs:data_output_association_source_count_is_diagnosed"
+    "crates/processcraft-core/tests/bpmn_data_regressions.rs:data_output_association_source_count_is_diagnosed"
    ]
   },
   {
@@ -320,7 +320,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo"
+    "crates/processcraft-core/tests/bpmn_data.rs:io_ports_and_sets_edit_and_undo"
    ]
   },
   {
@@ -436,7 +436,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:data_store_attributes_edit_and_undo"
+    "crates/processcraft-core/tests/bpmn_data.rs:data_store_attributes_edit_and_undo"
    ]
   },
   {
@@ -476,7 +476,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_data.rs:io_specification_is_typed_and_round_trips"
+    "crates/processcraft-core/tests/bpmn_data_regressions.rs:io_specification_is_typed_and_round_trips"
    ]
   },
   {
@@ -485,7 +485,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_data.rs:incomplete_io_specification_is_diagnosed_on_node_and_process"
+    "crates/processcraft-core/tests/bpmn_data_regressions.rs:incomplete_io_specification_is_diagnosed_on_node_and_process"
    ]
   },
   {
@@ -560,7 +560,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m2.rs:typed_data_association_is_scoped_to_owner_ports_and_undoable"
+    "crates/processcraft-core/tests/analyst_workbench.rs:typed_data_association_is_scoped_to_owner_ports_and_undoable"
    ]
   },
   {
@@ -569,9 +569,9 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m2.rs:typed_data_association_is_scoped_to_owner_ports_and_undoable",
+    "crates/processcraft-core/tests/analyst_workbench.rs:typed_data_association_is_scoped_to_owner_ports_and_undoable",
     "crates/processcraft-core/tests/commands.rs:expanded_data_preserves_omissions_and_validates_transformation",
-    "crates/processcraft-core/tests/m2.rs:nested_data_associations_resolve_ancestor_and_global_endpoints",
+    "crates/processcraft-core/tests/analyst_workbench.rs:nested_data_associations_resolve_ancestor_and_global_endpoints",
     "crates/processcraft-io/tests/interchange.rs:data_io_sets_ports_and_associations_round_trip",
     "scripts/check_bpmn20_xsd.py"
    ]
@@ -582,8 +582,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn"
    ]
   },
   {
@@ -592,7 +592,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:data_association_sources_target_transformation_edit_and_undo"
+    "crates/processcraft-core/tests/bpmn_data.rs:data_association_sources_target_transformation_edit_and_undo"
    ]
   },
   {
@@ -621,8 +621,8 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo",
-    "crates/processcraft-core/tests/m3_repair_data.rs:data_input_item_subject_ref_edit_and_undo"
+    "crates/processcraft-core/tests/bpmn_data.rs:io_ports_and_sets_edit_and_undo",
+    "crates/processcraft-core/tests/bpmn_data_regressions.rs:data_input_item_subject_ref_edit_and_undo"
    ]
   },
   {
@@ -640,7 +640,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:data_object_collection_and_item_edit_and_undo"
+    "crates/processcraft-core/tests/bpmn_data.rs:data_object_collection_and_item_edit_and_undo"
    ]
   },
   {
@@ -690,8 +690,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn"
    ]
   },
   {
@@ -700,8 +700,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn"
    ]
   },
   {
@@ -710,9 +710,9 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m2.rs:typed_data_association_is_scoped_to_owner_ports_and_undoable",
+    "crates/processcraft-core/tests/analyst_workbench.rs:typed_data_association_is_scoped_to_owner_ports_and_undoable",
     "crates/processcraft-core/tests/commands.rs:expanded_data_preserves_omissions_and_validates_transformation",
-    "crates/processcraft-core/tests/m2.rs:nested_data_associations_resolve_ancestor_and_global_endpoints",
+    "crates/processcraft-core/tests/analyst_workbench.rs:nested_data_associations_resolve_ancestor_and_global_endpoints",
     "crates/processcraft-io/tests/interchange.rs:data_io_sets_ports_and_associations_round_trip",
     "scripts/check_bpmn20_xsd.py"
    ]
@@ -723,7 +723,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_data.rs:data_output_association_source_count_is_diagnosed"
+    "crates/processcraft-core/tests/bpmn_data_regressions.rs:data_output_association_source_count_is_diagnosed"
    ]
   },
   {
@@ -732,7 +732,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo"
+    "crates/processcraft-core/tests/bpmn_data.rs:io_ports_and_sets_edit_and_undo"
    ]
   },
   {
@@ -772,7 +772,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:data_store_reference_target_and_item_edit_and_undo"
+    "crates/processcraft-core/tests/bpmn_data.rs:data_store_reference_target_and_item_edit_and_undo"
    ]
   },
   {
@@ -790,7 +790,7 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
     "scripts/check_bpmn20_xsd.py"
    ]
   },
@@ -863,7 +863,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m2.rs:typed_data_association_is_scoped_to_owner_ports_and_undoable"
+    "crates/processcraft-core/tests/analyst_workbench.rs:typed_data_association_is_scoped_to_owner_ports_and_undoable"
    ]
   },
   {
@@ -925,7 +925,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo"
+    "crates/processcraft-core/tests/bpmn_data.rs:io_ports_and_sets_edit_and_undo"
    ]
   },
   {
@@ -934,8 +934,8 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:data_association_sources_target_transformation_edit_and_undo",
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+    "crates/processcraft-core/tests/bpmn_data.rs:data_association_sources_target_transformation_edit_and_undo",
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
    ]
   },
   {
@@ -944,8 +944,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn"
    ]
   },
   {
@@ -954,8 +954,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn",
     "scripts/check_bpmn20_xsd.py"
    ]
   },
@@ -965,7 +965,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:data_association_source_count_diagnostic_is_negative_tested"
+    "crates/processcraft-core/tests/bpmn_data.rs:data_association_source_count_diagnostic_is_negative_tested"
    ]
   },
   {
@@ -974,8 +974,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn"
    ]
   },
   {
@@ -984,8 +984,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn",
     "scripts/check_bpmn20_xsd.py"
    ]
   },
@@ -995,7 +995,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:data_association_sources_target_transformation_edit_and_undo"
+    "crates/processcraft-core/tests/bpmn_data.rs:data_association_sources_target_transformation_edit_and_undo"
    ]
   },
   {
@@ -1004,7 +1004,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo"
+    "crates/processcraft-core/tests/bpmn_data.rs:io_ports_and_sets_edit_and_undo"
    ]
   },
   {
@@ -1013,8 +1013,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn"
    ]
   },
   {
@@ -1023,8 +1023,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn",
     "scripts/check_bpmn20_xsd.py"
    ]
   },
@@ -1034,8 +1034,8 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo",
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+    "crates/processcraft-core/tests/bpmn_data.rs:io_ports_and_sets_edit_and_undo",
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
    ]
   },
   {
@@ -1044,7 +1044,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_data.rs:data_input_item_subject_ref_edit_and_undo"
+    "crates/processcraft-core/tests/bpmn_data_regressions.rs:data_input_item_subject_ref_edit_and_undo"
    ]
   },
   {
@@ -1053,8 +1053,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn"
    ]
   },
   {
@@ -1063,8 +1063,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn",
     "scripts/check_bpmn20_xsd.py"
    ]
   },
@@ -1074,8 +1074,8 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo",
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+    "crates/processcraft-core/tests/bpmn_data.rs:io_ports_and_sets_edit_and_undo",
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
    ]
   },
   {
@@ -1084,7 +1084,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo"
+    "crates/processcraft-core/tests/bpmn_data.rs:io_ports_and_sets_edit_and_undo"
    ]
   },
   {
@@ -1093,8 +1093,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn"
    ]
   },
   {
@@ -1103,8 +1103,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn",
     "scripts/check_bpmn20_xsd.py"
    ]
   },
@@ -1114,7 +1114,7 @@
    "dimension": "render",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-render/tests/m3_data.rs:data_input_port_draws_name_and_collection_marker"
+    "crates/processcraft-render/tests/bpmn_data.rs:data_input_port_draws_name_and_collection_marker"
    ]
   },
   {
@@ -1123,7 +1123,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:data_object_collection_and_item_edit_and_undo"
+    "crates/processcraft-core/tests/bpmn_data.rs:data_object_collection_and_item_edit_and_undo"
    ]
   },
   {
@@ -1132,7 +1132,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:data_object_collection_and_item_edit_and_undo"
+    "crates/processcraft-core/tests/bpmn_data.rs:data_object_collection_and_item_edit_and_undo"
    ]
   },
   {
@@ -1141,8 +1141,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn"
    ]
   },
   {
@@ -1151,8 +1151,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn",
     "scripts/check_bpmn20_xsd.py"
    ]
   },
@@ -1162,8 +1162,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn"
    ]
   },
   {
@@ -1172,8 +1172,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn",
     "scripts/check_bpmn20_xsd.py"
    ]
   },
@@ -1183,8 +1183,8 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo",
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+    "crates/processcraft-core/tests/bpmn_data.rs:io_ports_and_sets_edit_and_undo",
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
    ]
   },
   {
@@ -1193,7 +1193,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo"
+    "crates/processcraft-core/tests/bpmn_data.rs:io_ports_and_sets_edit_and_undo"
    ]
   },
   {
@@ -1202,8 +1202,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn"
    ]
   },
   {
@@ -1212,8 +1212,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn",
     "scripts/check_bpmn20_xsd.py"
    ]
   },
@@ -1223,7 +1223,7 @@
    "dimension": "render",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-render/tests/m3_data.rs:data_output_port_draws_its_own_name_and_collection_marker"
+    "crates/processcraft-render/tests/bpmn_data.rs:data_output_port_draws_its_own_name_and_collection_marker"
    ]
   },
   {
@@ -1232,8 +1232,8 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo",
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+    "crates/processcraft-core/tests/bpmn_data.rs:io_ports_and_sets_edit_and_undo",
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
    ]
   },
   {
@@ -1242,7 +1242,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo"
+    "crates/processcraft-core/tests/bpmn_data.rs:io_ports_and_sets_edit_and_undo"
    ]
   },
   {
@@ -1251,8 +1251,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn"
    ]
   },
   {
@@ -1261,8 +1261,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn",
     "scripts/check_bpmn20_xsd.py"
    ]
   },
@@ -1272,8 +1272,8 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo",
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+    "crates/processcraft-core/tests/bpmn_data.rs:io_ports_and_sets_edit_and_undo",
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
    ]
   },
   {
@@ -1282,7 +1282,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo"
+    "crates/processcraft-core/tests/bpmn_data.rs:io_ports_and_sets_edit_and_undo"
    ]
   },
   {
@@ -1291,8 +1291,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn"
    ]
   },
   {
@@ -1301,8 +1301,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn",
     "scripts/check_bpmn20_xsd.py"
    ]
   },
@@ -1312,7 +1312,7 @@
    "dimension": "render",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-render/tests/m3_data.rs:data_output_port_draws_its_own_name_and_collection_marker"
+    "crates/processcraft-render/tests/bpmn_data.rs:data_output_port_draws_its_own_name_and_collection_marker"
    ]
   },
   {
@@ -1321,8 +1321,8 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:data_store_reference_target_and_item_edit_and_undo",
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+    "crates/processcraft-core/tests/bpmn_data.rs:data_store_reference_target_and_item_edit_and_undo",
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
    ]
   },
   {
@@ -1331,7 +1331,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:data_store_reference_target_and_item_edit_and_undo"
+    "crates/processcraft-core/tests/bpmn_data.rs:data_store_reference_target_and_item_edit_and_undo"
    ]
   },
   {
@@ -1340,8 +1340,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn"
    ]
   },
   {
@@ -1350,8 +1350,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn",
     "scripts/check_bpmn20_xsd.py"
    ]
   },
@@ -1361,7 +1361,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:data_store_reference_target_and_item_edit_and_undo"
+    "crates/processcraft-core/tests/bpmn_data.rs:data_store_reference_target_and_item_edit_and_undo"
    ]
   },
   {
@@ -1370,7 +1370,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:data_store_attributes_edit_and_undo"
+    "crates/processcraft-core/tests/bpmn_data.rs:data_store_attributes_edit_and_undo"
    ]
   },
   {
@@ -1379,8 +1379,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn"
    ]
   },
   {
@@ -1389,8 +1389,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn",
     "scripts/check_bpmn20_xsd.py"
    ]
   },
@@ -1400,8 +1400,8 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:data_store_attributes_edit_and_undo",
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+    "crates/processcraft-core/tests/bpmn_data.rs:data_store_attributes_edit_and_undo",
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
    ]
   },
   {
@@ -1410,7 +1410,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:data_store_attributes_edit_and_undo"
+    "crates/processcraft-core/tests/bpmn_data.rs:data_store_attributes_edit_and_undo"
    ]
   },
   {
@@ -1419,8 +1419,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn"
    ]
   },
   {
@@ -1429,8 +1429,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn",
     "scripts/check_bpmn20_xsd.py"
    ]
   },
@@ -1440,8 +1440,8 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:data_store_attributes_edit_and_undo",
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+    "crates/processcraft-core/tests/bpmn_data.rs:data_store_attributes_edit_and_undo",
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
    ]
   },
   {
@@ -1450,7 +1450,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:data_store_attributes_edit_and_undo"
+    "crates/processcraft-core/tests/bpmn_data.rs:data_store_attributes_edit_and_undo"
    ]
   },
   {
@@ -1459,8 +1459,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn"
    ]
   },
   {
@@ -1469,8 +1469,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn",
     "scripts/check_bpmn20_xsd.py"
    ]
   },
@@ -1480,7 +1480,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:data_store_attributes_edit_and_undo"
+    "crates/processcraft-core/tests/bpmn_data.rs:data_store_attributes_edit_and_undo"
    ]
   },
   {
@@ -1489,8 +1489,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn"
    ]
   },
   {
@@ -1499,8 +1499,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn",
     "scripts/check_bpmn20_xsd.py"
    ]
   },
@@ -1510,8 +1510,8 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo",
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+    "crates/processcraft-core/tests/bpmn_data.rs:io_ports_and_sets_edit_and_undo",
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
    ]
   },
   {
@@ -1520,7 +1520,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo"
+    "crates/processcraft-core/tests/bpmn_data.rs:io_ports_and_sets_edit_and_undo"
    ]
   },
   {
@@ -1529,8 +1529,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn"
    ]
   },
   {
@@ -1539,8 +1539,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn",
     "scripts/check_bpmn20_xsd.py"
    ]
   },
@@ -1550,8 +1550,8 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo",
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+    "crates/processcraft-core/tests/bpmn_data.rs:io_ports_and_sets_edit_and_undo",
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
    ]
   },
   {
@@ -1560,7 +1560,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo"
+    "crates/processcraft-core/tests/bpmn_data.rs:io_ports_and_sets_edit_and_undo"
    ]
   },
   {
@@ -1569,8 +1569,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn"
    ]
   },
   {
@@ -1579,8 +1579,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn",
     "scripts/check_bpmn20_xsd.py"
    ]
   },
@@ -1590,8 +1590,8 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo",
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+    "crates/processcraft-core/tests/bpmn_data.rs:io_ports_and_sets_edit_and_undo",
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
    ]
   },
   {
@@ -1600,7 +1600,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo"
+    "crates/processcraft-core/tests/bpmn_data.rs:io_ports_and_sets_edit_and_undo"
    ]
   },
   {
@@ -1609,8 +1609,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn"
    ]
   },
   {
@@ -1619,8 +1619,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn",
     "scripts/check_bpmn20_xsd.py"
    ]
   },
@@ -1630,8 +1630,8 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo",
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+    "crates/processcraft-core/tests/bpmn_data.rs:io_ports_and_sets_edit_and_undo",
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
    ]
   },
   {
@@ -1640,7 +1640,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo"
+    "crates/processcraft-core/tests/bpmn_data.rs:io_ports_and_sets_edit_and_undo"
    ]
   },
   {
@@ -1649,8 +1649,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn"
    ]
   },
   {
@@ -1659,8 +1659,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn",
     "scripts/check_bpmn20_xsd.py"
    ]
   },
@@ -1670,8 +1670,8 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo",
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+    "crates/processcraft-core/tests/bpmn_data.rs:io_ports_and_sets_edit_and_undo",
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
    ]
   },
   {
@@ -1680,7 +1680,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo"
+    "crates/processcraft-core/tests/bpmn_data.rs:io_ports_and_sets_edit_and_undo"
    ]
   },
   {
@@ -1689,8 +1689,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn"
    ]
   },
   {
@@ -1699,8 +1699,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn",
     "scripts/check_bpmn20_xsd.py"
    ]
   },
@@ -1710,8 +1710,8 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo",
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+    "crates/processcraft-core/tests/bpmn_data.rs:io_ports_and_sets_edit_and_undo",
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
    ]
   },
   {
@@ -1720,7 +1720,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo"
+    "crates/processcraft-core/tests/bpmn_data.rs:io_ports_and_sets_edit_and_undo"
    ]
   },
   {
@@ -1729,8 +1729,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn"
    ]
   },
   {
@@ -1739,8 +1739,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn",
     "scripts/check_bpmn20_xsd.py"
    ]
   },
@@ -1750,8 +1750,8 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo",
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+    "crates/processcraft-core/tests/bpmn_data.rs:io_ports_and_sets_edit_and_undo",
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
    ]
   },
   {
@@ -1760,7 +1760,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo"
+    "crates/processcraft-core/tests/bpmn_data.rs:io_ports_and_sets_edit_and_undo"
    ]
   },
   {
@@ -1769,8 +1769,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn"
    ]
   },
   {
@@ -1779,8 +1779,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn",
     "scripts/check_bpmn20_xsd.py"
    ]
   },
@@ -1790,8 +1790,8 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo",
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+    "crates/processcraft-core/tests/bpmn_data.rs:io_ports_and_sets_edit_and_undo",
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
    ]
   },
   {
@@ -1800,7 +1800,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_data.rs:output_set_counterpart_and_while_executing_edit_and_undo"
+    "crates/processcraft-core/tests/bpmn_data_regressions.rs:output_set_counterpart_and_while_executing_edit_and_undo"
    ]
   },
   {
@@ -1809,8 +1809,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn"
    ]
   },
   {
@@ -1819,8 +1819,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn",
     "scripts/check_bpmn20_xsd.py"
    ]
   },
@@ -1830,8 +1830,8 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo",
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+    "crates/processcraft-core/tests/bpmn_data.rs:io_ports_and_sets_edit_and_undo",
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
    ]
   },
   {
@@ -1840,7 +1840,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_data.rs:output_set_counterpart_and_while_executing_edit_and_undo"
+    "crates/processcraft-core/tests/bpmn_data_regressions.rs:output_set_counterpart_and_while_executing_edit_and_undo"
    ]
   },
   {
@@ -1849,8 +1849,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn"
    ]
   },
   {
@@ -1859,8 +1859,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn",
     "scripts/check_bpmn20_xsd.py"
    ]
   },
@@ -1870,8 +1870,8 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo",
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
+    "crates/processcraft-core/tests/bpmn_data.rs:io_ports_and_sets_edit_and_undo",
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal"
    ]
   },
   {
@@ -1880,7 +1880,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:io_ports_and_sets_edit_and_undo"
+    "crates/processcraft-core/tests/bpmn_data.rs:io_ports_and_sets_edit_and_undo"
    ]
   },
   {
@@ -1889,8 +1889,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn"
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn"
    ]
   },
   {
@@ -1899,8 +1899,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
-    "tests/fixtures/bpmn/m3-data/data-attributes.bpmn",
+    "crates/processcraft-io/tests/bpmn_data.rs:data_attributes_import_with_values_and_export_reimports_equal",
+    "tests/fixtures/bpmn/data/data-attributes.bpmn",
     "scripts/check_bpmn20_xsd.py"
    ]
   },
@@ -1910,7 +1910,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs:data_association_sources_target_transformation_edit_and_undo"
+    "crates/processcraft-core/tests/bpmn_data.rs:data_association_sources_target_transformation_edit_and_undo"
    ]
   }
  ]

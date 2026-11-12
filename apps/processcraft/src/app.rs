@@ -201,7 +201,7 @@ pub struct ProcessCraft {
     export_uncertain: Option<Box<crate::effects::UncertainExport>>,
     export_lost: Option<Box<crate::effects::WriteContext>>,
     theme: Theme,
-    m3: m3::State,
+    review: review::State,
     collaboration: collaboration::State,
     shell: shell::ShellState,
     doc: usize,
@@ -346,7 +346,7 @@ impl Default for ProcessCraft {
             export_uncertain: None,
             export_lost: None,
             theme: Theme::Light,
-            m3: m3::State::default(),
+            review: review::State::default(),
             collaboration: collaboration::State::default(),
             shell: shell::ShellState::default(),
             doc: 0,
@@ -1445,7 +1445,7 @@ impl ProcessCraft {
                 "Apply or discard the collaboration draft before using history.".into();
             return;
         }
-        if self.m3.has_draft() {
+        if self.review.has_draft() {
             self.ctl.error = "Post or discard the comment draft before using history.".into();
             return;
         }
@@ -1599,7 +1599,7 @@ impl ProcessCraft {
             || self.band_draft.is_some()
             || self.event_draft.is_some()
             || self.event_catalog_draft.is_some()
-            || self.m3.has_draft()
+            || self.review.has_draft()
             || self.draft_dirty
             || self.dictionary_draft_changed(&self.ctl.session.snapshot().project)
     }
@@ -1757,7 +1757,7 @@ impl ProcessCraft {
             self.ctl.error = "Apply or discard the collaboration draft before saving.".into();
             return false;
         }
-        if self.m3.has_draft() {
+        if self.review.has_draft() {
             self.ctl.error = "Post or discard the comment draft before saving.".into();
             return false;
         }
@@ -4615,91 +4615,41 @@ mod tests {
         );
     }
 }
-
-#[path = "app_m2.rs"]
-mod m2;
-
-#[path = "app_band_create.rs"]
+mod analyst_views;
 mod band_create;
-#[path = "app_base_metadata.rs"]
 mod base_metadata;
-#[path = "app_call.rs"]
 mod call;
-#[path = "app_callable.rs"]
 mod callable;
-#[path = "app_callable_io.rs"]
 mod callable_io;
-#[path = "app_canvas.rs"]
 mod canvas;
-#[path = "app_catalog.rs"]
 mod catalog;
-#[path = "app_choreography_flow.rs"]
 mod choreography_flow;
-#[path = "app_correlation.rs"]
-mod correlation;
-#[path = "app_correlation_keys.rs"]
-mod correlation_keys;
-#[path = "app_data.rs"]
-mod data;
-#[path = "app_definitions_extra.rs"]
-mod definitions_extra;
-#[path = "app_di.rs"]
-mod di;
-#[path = "app_di_metadata.rs"]
-mod di_metadata;
-#[path = "app_di_style.rs"]
-mod di_style;
-#[path = "app_documentation.rs"]
-mod documentation;
-#[path = "app_event.rs"]
-mod event;
-#[path = "app_flow_metadata.rs"]
-mod flow_metadata;
-#[path = "app_graph_data.rs"]
-mod graph_data;
-#[path = "app_inspector.rs"]
-mod inspector;
-#[path = "app_loop_advanced.rs"]
-mod loop_advanced;
-#[path = "app_mixed_body.rs"]
-mod mixed_body;
-#[path = "app_participant_di.rs"]
-mod participant_di;
-#[path = "app_process_activity.rs"]
-mod process_activity;
-#[path = "app_roles.rs"]
-mod roles;
-#[path = "app_shell.rs"]
-mod shell;
-#[path = "app_xml.rs"]
-mod xml;
-
-#[path = "app_tree.rs"]
-mod tree;
-
-#[path = "app_m3.rs"]
-mod m3;
-
-#[path = "app_collaboration.rs"]
 mod collaboration;
-
-#[path = "app_partners.rs"]
-mod partners;
-
-#[path = "app_conversation_details.rs"]
-mod conversation_details;
-
-#[path = "app_collaboration_associations.rs"]
-mod collaboration_associations;
-
-#[path = "app_collaboration_participant.rs"]
-mod collaboration_participant;
-
-#[path = "app_collaboration_root.rs"]
-mod collaboration_root;
-
-#[path = "app_collaboration_connection.rs"]
-mod collaboration_connection;
-
-#[path = "app_collaboration_artifacts.rs"]
 mod collaboration_artifacts;
+mod collaboration_associations;
+mod collaboration_connection;
+mod collaboration_participant;
+mod collaboration_root;
+mod conversation_details;
+mod correlation;
+mod correlation_keys;
+mod data;
+mod definitions_extra;
+mod di;
+mod di_metadata;
+mod di_style;
+mod documentation;
+mod event;
+mod flow_metadata;
+mod graph_data;
+mod inspector;
+mod loop_advanced;
+mod mixed_body;
+mod participant_di;
+mod partners;
+mod process_activity;
+mod review;
+mod roles;
+mod shell;
+mod tree;
+mod xml;

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "scope": "Synthetic M0 preservation/text, M1 commands and M2 library/dictionary fixtures; qualified flat BPMN has its own m2-flat-lanes manifest; no full XSD/vendor interchange claim",
+  "scope": "Synthetic M0 preservation/text, M1 commands and M2 library/dictionary fixtures; qualified flat BPMN has its own flat-lanes manifest; no full XSD/vendor interchange claim",
   "fixtures": [
     {
       "path": "bpmn/minimal.bpmn",
@@ -100,7 +100,7 @@
       "semantic_di_checks": "branching procurement process with two lanes, conditions, deterministic diagram shapes, edges, and external labels"
     },
     {
-      "path": "commands/m2-library-dictionary.json",
+      "path": "commands/library-dictionary.json",
       "sha256": "a4b870dda4dfd8b68b52bd7ad984559ce60a1bf52cda4000e3bab6269a227c85",
       "provenance": "Synthetic ProcessCraft M2 library/dictionary qualification authored 2026-11-11; apply after procurement.json",
       "license": "CC0-1.0",

@@ -21,8 +21,8 @@
    "dimension": "render",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-render/tests/m3r2_render.rs:plane_bpmn_element_scopes_nested_children",
-    "crates/processcraft-render/tests/m3_di.rs:diagram_renders_with_plane_and_shapes"
+    "crates/processcraft-render/tests/render_integration.rs:plane_bpmn_element_scopes_nested_children",
+    "crates/processcraft-render/tests/bpmn_di.rs:diagram_renders_with_plane_and_shapes"
    ]
   },
   {
@@ -38,7 +38,7 @@
    "dimension": "render",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-render/tests/m3r2_render.rs:group_label_is_category_name_and_value"
+    "crates/processcraft-render/tests/render_integration.rs:group_label_is_category_name_and_value"
    ],
    "note": "Table 8.21 says delineator '.', the Category section says ':'; ':' (followed by a space, unspecified) is used."
   },
@@ -48,7 +48,7 @@
    "dimension": "render",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-render/tests/m3r2_render.rs:choreography_initiating_participant_selects_top_band"
+    "crates/processcraft-render/tests/render_integration.rs:choreography_initiating_participant_selects_top_band"
    ]
   },
   {
@@ -71,7 +71,7 @@
    "dimension": "render",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-render/tests/m3r2_render.rs:inclusive_gateway_default_flow_draws_slash"
+    "crates/processcraft-render/tests/render_integration.rs:inclusive_gateway_default_flow_draws_slash"
    ]
   },
   {
@@ -108,7 +108,7 @@
    "dimension": "render",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-render/tests/m3r2_render.rs:lane_renders_name_and_hit_tests"
+    "crates/processcraft-render/tests/render_integration.rs:lane_renders_name_and_hit_tests"
    ]
   },
   {
@@ -117,8 +117,8 @@
    "dimension": "render",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-render/tests/m3r2_render.rs:participant_pool_and_message_flow_hit_test",
-    "crates/processcraft-render/tests/m3_process_collaboration.rs:message_flow_name_renders_as_edge_label"
+    "crates/processcraft-render/tests/render_integration.rs:participant_pool_and_message_flow_hit_test",
+    "crates/processcraft-render/tests/bpmn_process_collaboration.rs:message_flow_name_renders_as_edge_label"
    ]
   },
   {
@@ -127,8 +127,8 @@
    "dimension": "render",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-render/tests/m3r2_render.rs:participant_pool_and_message_flow_hit_test",
-    "crates/processcraft-render/tests/m3_process_collaboration.rs:participant_name_renders_as_pool_label"
+    "crates/processcraft-render/tests/render_integration.rs:participant_pool_and_message_flow_hit_test",
+    "crates/processcraft-render/tests/bpmn_process_collaboration.rs:participant_name_renders_as_pool_label"
    ]
   },
   {
@@ -137,7 +137,7 @@
    "dimension": "render",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-render/tests/m3r2_render.rs:sequence_flow_draws_line_label_and_hits"
+    "crates/processcraft-render/tests/render_integration.rs:sequence_flow_draws_line_label_and_hits"
    ]
   }
  ]

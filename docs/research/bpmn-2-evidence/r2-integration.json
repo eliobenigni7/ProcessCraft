@@ -7,8 +7,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_integration.rs",
-    "crates/processcraft-core/tests/m3r2_integration.rs:bpmn_label_style_must_be_owned_by_the_diagram"
+    "crates/processcraft-core/tests/integration.rs",
+    "crates/processcraft-core/tests/integration.rs:bpmn_label_style_must_be_owned_by_the_diagram"
    ]
   },
   {
@@ -17,8 +17,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_integration.rs",
-    "crates/processcraft-core/tests/m3r2_integration.rs:bpmn_label_style_must_be_owned_by_the_diagram"
+    "crates/processcraft-core/tests/integration.rs",
+    "crates/processcraft-core/tests/integration.rs:bpmn_label_style_must_be_owned_by_the_diagram"
    ]
   },
   {
@@ -41,7 +41,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_artifacts.rs:group_category_value_ref_resolves_to_category_value_only"
+    "crates/processcraft-core/tests/bpmn_artifacts_regressions.rs:group_category_value_ref_resolves_to_category_value_only"
    ]
   },
   {
@@ -78,9 +78,9 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_integration.rs",
-    "crates/processcraft-core/tests/m3r2_integration.rs:collaboration_and_its_choreography_must_agree_on_is_closed",
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:collaboration_choreography_ref_dangling_is_reported"
+    "crates/processcraft-core/tests/integration.rs",
+    "crates/processcraft-core/tests/integration.rs:collaboration_and_its_choreography_must_agree_on_is_closed",
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:collaboration_choreography_ref_dangling_is_reported"
    ]
   },
   {
@@ -89,9 +89,9 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_integration.rs",
-    "crates/processcraft-core/tests/m3r2_integration.rs:lane_partition_reference_must_resolve",
-    "crates/processcraft-core/tests/m3r2_integration.rs:lanes_of_one_lane_set_must_share_partition_type"
+    "crates/processcraft-core/tests/integration.rs",
+    "crates/processcraft-core/tests/integration.rs:lane_partition_reference_must_resolve",
+    "crates/processcraft-core/tests/integration.rs:lanes_of_one_lane_set_must_share_partition_type"
    ]
   },
   {
@@ -107,9 +107,9 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_integration.rs",
-    "crates/processcraft-core/tests/m3r2_integration.rs:lane_partition_reference_must_resolve",
-    "crates/processcraft-core/tests/m3r2_integration.rs:lanes_of_one_lane_set_must_share_partition_type"
+    "crates/processcraft-core/tests/integration.rs",
+    "crates/processcraft-core/tests/integration.rs:lane_partition_reference_must_resolve",
+    "crates/processcraft-core/tests/integration.rs:lanes_of_one_lane_set_must_share_partition_type"
    ]
   },
   {
@@ -118,7 +118,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_process_collaboration.rs:lane_membership_and_nesting_violations_name_the_rule"
+    "crates/processcraft-core/tests/bpmn_process_collaboration_regressions.rs:lane_membership_and_nesting_violations_name_the_rule"
    ]
   },
   {
@@ -134,9 +134,9 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_integration.rs",
-    "crates/processcraft-core/tests/m3r2_integration.rs:lane_partition_reference_must_resolve",
-    "crates/processcraft-core/tests/m3r2_integration.rs:lanes_of_one_lane_set_must_share_partition_type"
+    "crates/processcraft-core/tests/integration.rs",
+    "crates/processcraft-core/tests/integration.rs:lane_partition_reference_must_resolve",
+    "crates/processcraft-core/tests/integration.rs:lanes_of_one_lane_set_must_share_partition_type"
    ]
   },
   {
@@ -159,8 +159,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_integration.rs",
-    "crates/processcraft-core/tests/m3r2_integration.rs:message_item_ref_must_resolve_to_an_item_definition"
+    "crates/processcraft-core/tests/integration.rs",
+    "crates/processcraft-core/tests/integration.rs:message_item_ref_must_resolve_to_an_item_definition"
    ]
   },
   {
@@ -176,8 +176,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_integration.rs",
-    "crates/processcraft-core/tests/m3r2_integration.rs:public_process_must_not_be_executable"
+    "crates/processcraft-core/tests/integration.rs",
+    "crates/processcraft-core/tests/integration.rs:public_process_must_not_be_executable"
    ]
   },
   {
@@ -193,8 +193,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_integration.rs",
-    "crates/processcraft-core/tests/m3r2_integration.rs:public_process_must_not_be_executable"
+    "crates/processcraft-core/tests/integration.rs",
+    "crates/processcraft-core/tests/integration.rs:public_process_must_not_be_executable"
    ]
   },
   {
@@ -203,8 +203,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_integration.rs",
-    "crates/processcraft-core/tests/m3r2_integration.rs:text_annotation_text_format_must_be_a_mime_type"
+    "crates/processcraft-core/tests/integration.rs",
+    "crates/processcraft-core/tests/integration.rs:text_annotation_text_format_must_be_a_mime_type"
    ]
   },
   {
@@ -213,8 +213,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_integration.rs",
-    "crates/processcraft-core/tests/m3r2_integration.rs:text_annotation_text_format_must_be_a_mime_type"
+    "crates/processcraft-core/tests/integration.rs",
+    "crates/processcraft-core/tests/integration.rs:text_annotation_text_format_must_be_a_mime_type"
    ]
   },
   {
@@ -223,7 +223,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_foundation.rs:category_value_ref_and_outgoing_are_set_undone_and_dangling_refs_diagnosed"
+    "crates/processcraft-core/tests/bpmn_foundation.rs:category_value_ref_and_outgoing_are_set_undone_and_dangling_refs_diagnosed"
    ]
   },
   {
@@ -239,9 +239,9 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_integration.rs",
-    "crates/processcraft-core/tests/m3r2_integration.rs:collaboration_and_its_choreography_must_agree_on_is_closed",
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:collaboration_choreography_ref_dangling_is_reported"
+    "crates/processcraft-core/tests/integration.rs",
+    "crates/processcraft-core/tests/integration.rs:collaboration_and_its_choreography_must_agree_on_is_closed",
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:collaboration_choreography_ref_dangling_is_reported"
    ]
   },
   {
@@ -250,9 +250,9 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_integration.rs",
-    "crates/processcraft-core/tests/m3r2_integration.rs:lane_partition_reference_must_resolve",
-    "crates/processcraft-core/tests/m3r2_integration.rs:lanes_of_one_lane_set_must_share_partition_type"
+    "crates/processcraft-core/tests/integration.rs",
+    "crates/processcraft-core/tests/integration.rs:lane_partition_reference_must_resolve",
+    "crates/processcraft-core/tests/integration.rs:lanes_of_one_lane_set_must_share_partition_type"
    ]
   },
   {
@@ -261,9 +261,9 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_integration.rs",
-    "crates/processcraft-core/tests/m3r2_integration.rs:lane_partition_reference_must_resolve",
-    "crates/processcraft-core/tests/m3r2_integration.rs:lanes_of_one_lane_set_must_share_partition_type"
+    "crates/processcraft-core/tests/integration.rs",
+    "crates/processcraft-core/tests/integration.rs:lane_partition_reference_must_resolve",
+    "crates/processcraft-core/tests/integration.rs:lanes_of_one_lane_set_must_share_partition_type"
    ]
   },
   {
@@ -272,7 +272,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:message_flow_dangling_source_and_message_ref_are_reported"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:message_flow_dangling_source_and_message_ref_are_reported"
    ]
   },
   {
@@ -281,8 +281,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_integration.rs",
-    "crates/processcraft-core/tests/m3r2_integration.rs:message_item_ref_must_resolve_to_an_item_definition"
+    "crates/processcraft-core/tests/integration.rs",
+    "crates/processcraft-core/tests/integration.rs:message_item_ref_must_resolve_to_an_item_definition"
    ]
   },
   {
@@ -300,8 +300,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_integration.rs:public_process_must_not_be_executable",
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:process_supports_and_collaboration_ref_dangling_are_reported"
+    "crates/processcraft-core/tests/integration.rs:public_process_must_not_be_executable",
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:process_supports_and_collaboration_ref_dangling_are_reported"
    ]
   },
   {
@@ -310,7 +310,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_process_collaboration.rs:sequence_flow_source_edit_with_undo_and_dangling_source_is_reported"
+    "crates/processcraft-core/tests/bpmn_process_collaboration.rs:sequence_flow_source_edit_with_undo_and_dangling_source_is_reported"
    ]
   },
   {
@@ -319,8 +319,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_integration.rs",
-    "crates/processcraft-core/tests/m3r2_integration.rs:text_annotation_text_format_must_be_a_mime_type"
+    "crates/processcraft-core/tests/integration.rs",
+    "crates/processcraft-core/tests/integration.rs:text_annotation_text_format_must_be_a_mime_type"
    ]
   },
   {

@@ -248,7 +248,7 @@ fn preserved_source_folder_omission_requires_acknowledgement() {
 }
 #[test]
 fn lane_and_formal_condition_survive_edit_export_reimport() {
-    let input = include_bytes!("../../../tests/fixtures/bpmn/m2-flat-lanes.bpmn");
+    let input = include_bytes!("../../../tests/fixtures/bpmn/flat-lanes.bpmn");
     let mut b = prepare_import(input, "fixture").unwrap();
     assert!(b.report.editable);
     assert_eq!(b.document.processes[0].lanes[0].members.len(), 2);
@@ -279,12 +279,11 @@ fn lane_and_formal_condition_survive_edit_export_reimport() {
 }
 #[test]
 fn prefixed_formal_expression_retains_namespace() {
-    let input = String::from_utf8(
-        include_bytes!("../../../tests/fixtures/bpmn/m2-flat-lanes.bpmn").to_vec(),
-    )
-    .unwrap()
-    .replace("xmlns:bpmn=", "xmlns:foo=\"urn:foreign\" xmlns:bpmn=")
-    .replace("x &gt; 3", "foo:value");
+    let input =
+        String::from_utf8(include_bytes!("../../../tests/fixtures/bpmn/flat-lanes.bpmn").to_vec())
+            .unwrap()
+            .replace("xmlns:bpmn=", "xmlns:foo=\"urn:foreign\" xmlns:bpmn=")
+            .replace("x &gt; 3", "foo:value");
     let b = prepare_import(input.as_bytes(), "source").unwrap();
     assert!(b.report.editable);
     let again = prepare_import(&export(&b).bytes, "again").unwrap();
@@ -1156,7 +1155,7 @@ fn unrepresented_import_content_is_preserved() {
 fn expression_metadata_preserves_scoped_prefixes_and_default_namespace() {
     use processcraft_core::bpmn_model::{Expression, ExpressionKind};
     let source = std::str::from_utf8(include_bytes!(
-        "../../../tests/fixtures/bpmn/m2-flat-lanes.bpmn"
+        "../../../tests/fixtures/bpmn/flat-lanes.bpmn"
     ))
     .unwrap();
     let input = source.replace("<conditionExpression xsi:type=\"bpmn:tFormalExpression\">x &gt; 3</conditionExpression>", "<bpmn:conditionExpression xmlns=\"urn:body\" xmlns:xsi=\"urn:shadow\" xmlns:i=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:q=\"urn:types\" i:type=\"bpmn:tFormalExpression\" id=\"expr1\" language=\"urn:lang\" evaluatesToTypeRef=\"q:Item\">q:value &gt; 3</bpmn:conditionExpression>");
@@ -1238,7 +1237,7 @@ fn structured_expression_metadata_roundtrips_across_loop_and_adhoc_owners() {
 fn structured_expression_native_namespace_order_does_not_block_export() {
     use processcraft_core::bpmn_model::Expression;
     let mut parsed = prepare_import(
-        include_bytes!("../../../tests/fixtures/bpmn/m2-flat-lanes.bpmn"),
+        include_bytes!("../../../tests/fixtures/bpmn/flat-lanes.bpmn"),
         "condition",
     )
     .unwrap();
@@ -1260,7 +1259,7 @@ fn structured_expression_native_namespace_order_does_not_block_export() {
 fn expression_type_and_unqualified_type_reference_preserve_omission_and_empty_namespace() {
     use processcraft_core::bpmn_model::{Expression, ExpressionKind};
     let source = std::str::from_utf8(include_bytes!(
-        "../../../tests/fixtures/bpmn/m2-flat-lanes.bpmn"
+        "../../../tests/fixtures/bpmn/flat-lanes.bpmn"
     ))
     .unwrap();
     let old =
@@ -2301,7 +2300,7 @@ fn diagram_local_qnames_keep_expanded_names_with_unqualified_lexical_values() {
     use processcraft_io::bpmn::{ExpandedName, import_bpmn};
     for (input, namespace, names) in [
         (
-            include_bytes!("../../../tests/fixtures/bpmn/m2-flat-lanes.bpmn").as_slice(),
+            include_bytes!("../../../tests/fixtures/bpmn/flat-lanes.bpmn").as_slice(),
             Some("urn:test"),
             vec!["p", "task", "f1"],
         ),

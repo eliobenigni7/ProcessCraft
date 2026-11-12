@@ -1,8 +1,8 @@
 {"family": "repair-di", "cells": [
   {"schema": "DC.xsd", "path": "/schema/complexType[@name=Bounds]", "dimension": "validate", "state": "verified",
-   "evidence": ["crates/processcraft-io/tests/m3_repair_di.rs:bounds_validation_names_invalid_geometry", "crates/processcraft-io/tests/m3_repair_di.rs:import_refuses_bad_bounds_and_points_with_geometry_message"],
+   "evidence": ["crates/processcraft-io/tests/bpmn_di_regressions.rs:bounds_validation_names_invalid_geometry", "crates/processcraft-io/tests/bpmn_di_regressions.rs:import_refuses_bad_bounds_and_points_with_geometry_message"],
    "note": "Negative/NaN/infinite/out-of-range Bounds fail ProjectData::validate with the exact 'invalid geometry' diagnostic (shape and label bounds); import refuses the same values with a Geometry error."},
   {"schema": "DC.xsd", "path": "/schema/complexType[@name=Point]", "dimension": "validate", "state": "verified",
-   "evidence": ["crates/processcraft-io/tests/m3_repair_di.rs:point_validation_names_invalid_waypoint", "crates/processcraft-io/tests/m3_repair_di.rs:import_refuses_bad_bounds_and_points_with_geometry_message"],
+   "evidence": ["crates/processcraft-io/tests/bpmn_di_regressions.rs:point_validation_names_invalid_waypoint", "crates/processcraft-io/tests/bpmn_di_regressions.rs:import_refuses_bad_bounds_and_points_with_geometry_message"],
    "note": "NaN/infinite/out-of-range waypoints fail ProjectData::validate with the exact 'invalid waypoint' diagnostic."}
 ]}

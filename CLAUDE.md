@@ -29,7 +29,7 @@ cargo run -p processcraft-cli -- validate target/procurement.processcraft --json
 
 Other CLI subcommands: `info`, `import-bpmn`, `export-bpmn`, `export-image`, `layout-preview`, `layout-apply`, `mcp` (see `apps/processcraft-cli/src/args.rs`).
 
-Qualification harnesses are Cargo examples (`cargo run -p processcraft-io --example <name>_qualify --locked --offline`, `cargo run --release -p processcraft-cli --example m2_qualify -- --out target/...`). The Python scripts in `scripts/` are independent cross-checks of their output and need `lxml` (XSD/XML checks), `pypdf` + `Pillow` and Poppler (PDF/render checks). `python scripts/generate_bpmn20_inventory.py --check` verifies `docs/research/bpmn-2-coverage.json` against the pinned OMG schemas.
+Qualification harnesses are Cargo examples (`cargo run -p processcraft-io --example <name>_qualify --locked --offline`, `cargo run --release -p processcraft-cli --example workbench_qualify -- --out target/...`). The Python scripts in `scripts/` are independent cross-checks of their output and need `lxml` (XSD/XML checks), `pypdf` + `Pillow` and Poppler (PDF/render checks). `python scripts/generate_bpmn20_inventory.py --check` verifies `docs/research/bpmn-2-coverage.json` against the pinned OMG schemas.
 
 The `test-fault` feature on `processcraft-cli` is a debug-only fault-injection seam for tests (`--all-features` enables it); it is compiled out of release builds.
 
@@ -61,7 +61,7 @@ Adding a mutation means touching, in `crates/processcraft-core/src/commands.rs`:
 
 ### GUI structure
 
-`apps/processcraft/src/app.rs` owns the `ProcessCraft` eframe app and pulls in the `app_*.rs` files as `#[path]` submodules (one per inspector/panel area: events, data, collaboration, choreography, DI, catalog, …). Panels never mutate the model directly; they build `Mutation`s and submit them through `controller.rs` (`Controller` wraps the `Session`, save lifecycle, and recovery). Blocking work runs off the UI thread: `effects.rs` (import/export/file writes) and `jobs.rs` (render and recovery writers, latest-wins queues); results are polled and dropped if their generation/key is stale. `attachment.rs` (Windows only) exposes the visible session to `processcraft-cli mcp --attach` over a named pipe.
+`apps/processcraft/src/app.rs` owns the `ProcessCraft` eframe app; its submodules live in `apps/processcraft/src/app/` (one per area: `canvas` for gestures, context pad and popups, `shell` for menus/palette/layout, `inspector` and the per-area property editors such as `event`, `data`, `collaboration`, `catalog`, `di`, plus `analyst_views` for library/dictionary/table and `review` for comments, checkpoints and layout preview). Modeling behavior (rules, append/connect, replace, move/resize, lanes, clipboard, align) lives in `processcraft-core` (`rules.rs`, `modeling.rs`, `replace.rs`, `manipulate.rs`, `containers.rs`, `clipboard.rs`, `arrange.rs`); the canvas only turns gestures into those mutations. Panels never mutate the model directly; they build `Mutation`s and submit them through `controller.rs` (`Controller` wraps the `Session`, save lifecycle, and recovery). Blocking work runs off the UI thread: `effects.rs` (import/export/file writes) and `jobs.rs` (render and recovery writers, latest-wins queues); results are polled and dropped if their generation/key is stale. `attachment.rs` (Windows only) exposes the visible session to `processcraft-cli mcp --attach` over a named pipe.
 
 ### BPMN interchange
 
@@ -79,7 +79,7 @@ Adding a mutation means touching, in `crates/processcraft-core/src/commands.rs`:
 
 ## Documentation map
 
-- `docs/superpowers/specs/2026-11-11-processcraft-solution-design.md` — the architectural source of truth (crate ownership §4, commands/undo §7, native format §8, save/recovery §9, trust boundaries and limits §17, verification §20).
-- `docs/superpowers/plans/` — milestone plans. M0–M2 are implemented; M3 is a partial delivery paused at the user's request; M4 (installer, platform expansion) is planned.
+- `docs/design/solution-design.md` — the architectural source of truth (crate ownership §4, commands/undo §7, native format §8, save/recovery §9, trust boundaries and limits §17, verification §20).
+- `docs/plans/` — milestone plans. M0–M2 are implemented; M3 closed under its adopted required scope; `modeling-parity.md` (bpmn-js-level canvas modeling) is implemented; M4 (installer, accessibility/performance qualification, platform expansion) is planned.
 - `docs/implementation/*-evidence.md` — what was actually verified per milestone, with measured limits. Feature commits update the matching evidence file (and regenerate `docs/research/bpmn-2-coverage.json` when BPMN coverage changes), sometimes in a follow-up "Record …" commit; evidence states measured limits rather than broad claims.
 - `design/` — FigCraft visual prototype (generated from `design/workbench.commands.json`); a design reference, separate from the Rust app.

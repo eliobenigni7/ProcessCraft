@@ -38,4 +38,4 @@ Native QA found and fixed two adapter/layout issues that isolated component test
 
 ## M3 follow-on
 
-[M3.0 auto-layout](../superpowers/plans/2026-11-11-processcraft-m3-auto-layout.md) is now ordered before comments/checkpoints in the main plan. It specifies a bounded deterministic offline algorithm, a supported single-pool/flat-lane profile, explicit preview/Apply/Cancel, stale-session/generation rejection, exact undo/redo and semantic/style preservation through the shared engine. It is planned work; no inactive auto-layout button or command is exposed.
+[M3.0 auto-layout](../plans/m3-auto-layout.md) is now ordered before comments/checkpoints in the main plan. It specifies a bounded deterministic offline algorithm, a supported single-pool/flat-lane profile, explicit preview/Apply/Cancel, stale-session/generation rejection, exact undo/redo and semantic/style preservation through the shared engine. It is planned work; no inactive auto-layout button or command is exposed.

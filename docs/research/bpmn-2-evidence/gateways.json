@@ -43,7 +43,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_gateways.rs:event_based_gateway_attributes_are_edited_and_undone"
+    "crates/processcraft-core/tests/bpmn_gateways.rs:event_based_gateway_attributes_are_edited_and_undone"
    ]
   },
   {
@@ -52,7 +52,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_gateways.rs:event_based_gateway_attributes_are_edited_and_undone"
+    "crates/processcraft-core/tests/bpmn_gateways.rs:event_based_gateway_attributes_are_edited_and_undone"
    ]
   },
   {
@@ -61,7 +61,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_gateways.rs:event_based_gateway_attributes_are_edited_and_undone"
+    "crates/processcraft-core/tests/bpmn_gateways.rs:event_based_gateway_attributes_are_edited_and_undone"
    ]
   },
   {
@@ -79,7 +79,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_gateways.rs:event_based_gateway_attributes_are_edited_and_undone"
+    "crates/processcraft-core/tests/bpmn_gateways.rs:event_based_gateway_attributes_are_edited_and_undone"
    ]
   },
   {
@@ -97,7 +97,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_gateways.rs:event_based_gateway_attributes_are_edited_and_undone"
+    "crates/processcraft-core/tests/bpmn_gateways.rs:event_based_gateway_attributes_are_edited_and_undone"
    ]
   },
   {
@@ -116,7 +116,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_gateways.rs:exclusive_default_flow_is_set_cleared_and_undone"
+    "crates/processcraft-core/tests/bpmn_gateways.rs:exclusive_default_flow_is_set_cleared_and_undone"
    ],
    "note": "name+details edit with undo/redo"
   },
@@ -244,7 +244,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_gateways.rs:inclusive_and_parallel_gateways_are_created_edited_and_undone"
+    "crates/processcraft-core/tests/bpmn_gateways.rs:inclusive_and_parallel_gateways_are_created_edited_and_undone"
    ]
   },
   {
@@ -253,7 +253,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_gateways.rs:inclusive_and_parallel_gateways_are_created_edited_and_undone"
+    "crates/processcraft-core/tests/bpmn_gateways.rs:inclusive_and_parallel_gateways_are_created_edited_and_undone"
    ]
   },
   {
@@ -262,7 +262,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_gateways.rs:inclusive_and_parallel_gateways_are_created_edited_and_undone"
+    "crates/processcraft-core/tests/bpmn_gateways.rs:inclusive_and_parallel_gateways_are_created_edited_and_undone"
    ]
   },
   {
@@ -271,7 +271,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_gateways.rs:inclusive_and_parallel_gateways_are_created_edited_and_undone"
+    "crates/processcraft-core/tests/bpmn_gateways.rs:inclusive_and_parallel_gateways_are_created_edited_and_undone"
    ]
   },
   {
@@ -280,7 +280,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_gateways.rs:inclusive_and_parallel_gateways_are_created_edited_and_undone"
+    "crates/processcraft-core/tests/bpmn_gateways.rs:inclusive_and_parallel_gateways_are_created_edited_and_undone"
    ]
   },
   {
@@ -289,8 +289,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_imports_typed_values",
-    "tests/fixtures/bpmn/m3-gateways/gateways-all.bpmn"
+    "crates/processcraft-io/tests/bpmn_gateways.rs:gateway_fixture_imports_typed_values",
+    "tests/fixtures/bpmn/gateways/gateways-all.bpmn"
    ]
   },
   {
@@ -299,7 +299,7 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
+    "crates/processcraft-io/tests/bpmn_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
    ],
    "note": "export XSD-valid (check_bpmn20_xsd.py on target/m3-gateways-export.bpmn) and re-imports equal"
   },
@@ -309,8 +309,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_imports_typed_values",
-    "tests/fixtures/bpmn/m3-gateways/gateways-all.bpmn"
+    "crates/processcraft-io/tests/bpmn_gateways.rs:gateway_fixture_imports_typed_values",
+    "tests/fixtures/bpmn/gateways/gateways-all.bpmn"
    ]
   },
   {
@@ -319,7 +319,7 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
+    "crates/processcraft-io/tests/bpmn_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
    ],
    "note": "export XSD-valid (check_bpmn20_xsd.py on target/m3-gateways-export.bpmn) and re-imports equal"
   },
@@ -329,8 +329,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_imports_typed_values",
-    "tests/fixtures/bpmn/m3-gateways/gateways-all.bpmn"
+    "crates/processcraft-io/tests/bpmn_gateways.rs:gateway_fixture_imports_typed_values",
+    "tests/fixtures/bpmn/gateways/gateways-all.bpmn"
    ]
   },
   {
@@ -339,7 +339,7 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
+    "crates/processcraft-io/tests/bpmn_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
    ],
    "note": "export XSD-valid (check_bpmn20_xsd.py on target/m3-gateways-export.bpmn) and re-imports equal"
   },
@@ -349,8 +349,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_imports_typed_values",
-    "tests/fixtures/bpmn/m3-gateways/gateways-all.bpmn"
+    "crates/processcraft-io/tests/bpmn_gateways.rs:gateway_fixture_imports_typed_values",
+    "tests/fixtures/bpmn/gateways/gateways-all.bpmn"
    ]
   },
   {
@@ -359,7 +359,7 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
+    "crates/processcraft-io/tests/bpmn_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
    ],
    "note": "export XSD-valid (check_bpmn20_xsd.py on target/m3-gateways-export.bpmn) and re-imports equal"
   },
@@ -369,8 +369,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_imports_typed_values",
-    "tests/fixtures/bpmn/m3-gateways/gateways-all.bpmn"
+    "crates/processcraft-io/tests/bpmn_gateways.rs:gateway_fixture_imports_typed_values",
+    "tests/fixtures/bpmn/gateways/gateways-all.bpmn"
    ]
   },
   {
@@ -379,7 +379,7 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
+    "crates/processcraft-io/tests/bpmn_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
    ],
    "note": "export XSD-valid (check_bpmn20_xsd.py on target/m3-gateways-export.bpmn) and re-imports equal"
   },
@@ -389,8 +389,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_imports_typed_values",
-    "tests/fixtures/bpmn/m3-gateways/gateways-all.bpmn"
+    "crates/processcraft-io/tests/bpmn_gateways.rs:gateway_fixture_imports_typed_values",
+    "tests/fixtures/bpmn/gateways/gateways-all.bpmn"
    ]
   },
   {
@@ -399,7 +399,7 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
+    "crates/processcraft-io/tests/bpmn_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
    ],
    "note": "export XSD-valid (check_bpmn20_xsd.py on target/m3-gateways-export.bpmn) and re-imports equal"
   },
@@ -409,8 +409,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_imports_typed_values",
-    "tests/fixtures/bpmn/m3-gateways/gateways-all.bpmn"
+    "crates/processcraft-io/tests/bpmn_gateways.rs:gateway_fixture_imports_typed_values",
+    "tests/fixtures/bpmn/gateways/gateways-all.bpmn"
    ]
   },
   {
@@ -419,7 +419,7 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
+    "crates/processcraft-io/tests/bpmn_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
    ],
    "note": "export XSD-valid (check_bpmn20_xsd.py on target/m3-gateways-export.bpmn) and re-imports equal"
   },
@@ -429,8 +429,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_imports_typed_values",
-    "tests/fixtures/bpmn/m3-gateways/gateways-all.bpmn"
+    "crates/processcraft-io/tests/bpmn_gateways.rs:gateway_fixture_imports_typed_values",
+    "tests/fixtures/bpmn/gateways/gateways-all.bpmn"
    ]
   },
   {
@@ -439,7 +439,7 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
+    "crates/processcraft-io/tests/bpmn_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
    ],
    "note": "export XSD-valid (check_bpmn20_xsd.py on target/m3-gateways-export.bpmn) and re-imports equal"
   },
@@ -449,8 +449,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_imports_typed_values",
-    "tests/fixtures/bpmn/m3-gateways/gateways-all.bpmn"
+    "crates/processcraft-io/tests/bpmn_gateways.rs:gateway_fixture_imports_typed_values",
+    "tests/fixtures/bpmn/gateways/gateways-all.bpmn"
    ]
   },
   {
@@ -459,7 +459,7 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
+    "crates/processcraft-io/tests/bpmn_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
    ],
    "note": "export XSD-valid (check_bpmn20_xsd.py on target/m3-gateways-export.bpmn) and re-imports equal"
   },
@@ -469,8 +469,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_imports_typed_values",
-    "tests/fixtures/bpmn/m3-gateways/gateways-all.bpmn"
+    "crates/processcraft-io/tests/bpmn_gateways.rs:gateway_fixture_imports_typed_values",
+    "tests/fixtures/bpmn/gateways/gateways-all.bpmn"
    ]
   },
   {
@@ -479,7 +479,7 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
+    "crates/processcraft-io/tests/bpmn_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
    ],
    "note": "export XSD-valid (check_bpmn20_xsd.py on target/m3-gateways-export.bpmn) and re-imports equal"
   },
@@ -489,8 +489,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_imports_typed_values",
-    "tests/fixtures/bpmn/m3-gateways/gateways-all.bpmn"
+    "crates/processcraft-io/tests/bpmn_gateways.rs:gateway_fixture_imports_typed_values",
+    "tests/fixtures/bpmn/gateways/gateways-all.bpmn"
    ]
   },
   {
@@ -499,7 +499,7 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
+    "crates/processcraft-io/tests/bpmn_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
    ],
    "note": "export XSD-valid (check_bpmn20_xsd.py on target/m3-gateways-export.bpmn) and re-imports equal"
   },
@@ -509,8 +509,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_imports_typed_values",
-    "tests/fixtures/bpmn/m3-gateways/gateways-all.bpmn"
+    "crates/processcraft-io/tests/bpmn_gateways.rs:gateway_fixture_imports_typed_values",
+    "tests/fixtures/bpmn/gateways/gateways-all.bpmn"
    ]
   },
   {
@@ -519,7 +519,7 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
+    "crates/processcraft-io/tests/bpmn_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
    ],
    "note": "export XSD-valid (check_bpmn20_xsd.py on target/m3-gateways-export.bpmn) and re-imports equal"
   },
@@ -529,8 +529,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_imports_typed_values",
-    "tests/fixtures/bpmn/m3-gateways/gateways-all.bpmn"
+    "crates/processcraft-io/tests/bpmn_gateways.rs:gateway_fixture_imports_typed_values",
+    "tests/fixtures/bpmn/gateways/gateways-all.bpmn"
    ]
   },
   {
@@ -539,7 +539,7 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
+    "crates/processcraft-io/tests/bpmn_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
    ],
    "note": "export XSD-valid (check_bpmn20_xsd.py on target/m3-gateways-export.bpmn) and re-imports equal"
   },
@@ -549,8 +549,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_imports_typed_values",
-    "tests/fixtures/bpmn/m3-gateways/gateways-all.bpmn"
+    "crates/processcraft-io/tests/bpmn_gateways.rs:gateway_fixture_imports_typed_values",
+    "tests/fixtures/bpmn/gateways/gateways-all.bpmn"
    ]
   },
   {
@@ -559,7 +559,7 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
+    "crates/processcraft-io/tests/bpmn_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
    ],
    "note": "export XSD-valid (check_bpmn20_xsd.py on target/m3-gateways-export.bpmn) and re-imports equal"
   },
@@ -569,8 +569,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_imports_typed_values",
-    "tests/fixtures/bpmn/m3-gateways/gateways-all.bpmn"
+    "crates/processcraft-io/tests/bpmn_gateways.rs:gateway_fixture_imports_typed_values",
+    "tests/fixtures/bpmn/gateways/gateways-all.bpmn"
    ]
   },
   {
@@ -579,7 +579,7 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
+    "crates/processcraft-io/tests/bpmn_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
    ],
    "note": "export XSD-valid (check_bpmn20_xsd.py on target/m3-gateways-export.bpmn) and re-imports equal"
   },
@@ -589,8 +589,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_imports_typed_values",
-    "tests/fixtures/bpmn/m3-gateways/gateways-all.bpmn"
+    "crates/processcraft-io/tests/bpmn_gateways.rs:gateway_fixture_imports_typed_values",
+    "tests/fixtures/bpmn/gateways/gateways-all.bpmn"
    ]
   },
   {
@@ -599,7 +599,7 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
+    "crates/processcraft-io/tests/bpmn_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
    ],
    "note": "export XSD-valid (check_bpmn20_xsd.py on target/m3-gateways-export.bpmn) and re-imports equal"
   },
@@ -609,7 +609,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_gateways.rs:inclusive_and_parallel_gateways_diagnose_misuse"
+    "crates/processcraft-core/tests/bpmn_gateways.rs:inclusive_and_parallel_gateways_diagnose_misuse"
    ]
   },
   {
@@ -618,7 +618,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_gateways.rs:inclusive_and_parallel_gateways_diagnose_misuse"
+    "crates/processcraft-core/tests/bpmn_gateways.rs:inclusive_and_parallel_gateways_diagnose_misuse"
    ]
   },
   {
@@ -627,7 +627,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_gateways.rs:inclusive_and_parallel_gateways_diagnose_misuse"
+    "crates/processcraft-core/tests/bpmn_gateways.rs:inclusive_and_parallel_gateways_diagnose_misuse"
    ]
   },
   {
@@ -636,7 +636,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_gateways.rs:inclusive_and_parallel_gateways_diagnose_misuse"
+    "crates/processcraft-core/tests/bpmn_gateways.rs:inclusive_and_parallel_gateways_diagnose_misuse"
    ]
   },
   {
@@ -645,7 +645,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_gateways.rs:inclusive_and_parallel_gateways_diagnose_misuse"
+    "crates/processcraft-core/tests/bpmn_gateways.rs:inclusive_and_parallel_gateways_diagnose_misuse"
    ]
   },
   {
@@ -654,7 +654,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_gateways.rs:event_based_gateway_attribute_rules_are_diagnosed"
+    "crates/processcraft-core/tests/bpmn_gateways.rs:event_based_gateway_attribute_rules_are_diagnosed"
    ]
   },
   {
@@ -663,7 +663,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_gateways.rs:event_based_gateway_attribute_rules_are_diagnosed"
+    "crates/processcraft-core/tests/bpmn_gateways.rs:event_based_gateway_attribute_rules_are_diagnosed"
    ]
   },
   {
@@ -672,7 +672,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_gateways.rs:event_based_gateway_attribute_rules_are_diagnosed"
+    "crates/processcraft-core/tests/bpmn_gateways.rs:event_based_gateway_attribute_rules_are_diagnosed"
    ]
   },
   {
@@ -681,8 +681,8 @@
    "dimension": "render",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-render/tests/m3_gateways.rs:inclusive_gateway_draws_circle_marker_distinct_from_parallel_plus",
-    "crates/processcraft-render/tests/m3_gateways.rs:inclusive_and_parallel_gateways_hit_test_to_their_element_keys"
+    "crates/processcraft-render/tests/bpmn_gateways.rs:inclusive_gateway_draws_circle_marker_distinct_from_parallel_plus",
+    "crates/processcraft-render/tests/bpmn_gateways.rs:inclusive_and_parallel_gateways_hit_test_to_their_element_keys"
    ]
   },
   {
@@ -691,8 +691,8 @@
    "dimension": "render",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-render/tests/m3_gateways.rs:inclusive_gateway_draws_circle_marker_distinct_from_parallel_plus",
-    "crates/processcraft-render/tests/m3_gateways.rs:inclusive_and_parallel_gateways_hit_test_to_their_element_keys"
+    "crates/processcraft-render/tests/bpmn_gateways.rs:inclusive_gateway_draws_circle_marker_distinct_from_parallel_plus",
+    "crates/processcraft-render/tests/bpmn_gateways.rs:inclusive_and_parallel_gateways_hit_test_to_their_element_keys"
    ]
   }
  ]

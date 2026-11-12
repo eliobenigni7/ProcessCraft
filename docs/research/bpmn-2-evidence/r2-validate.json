@@ -7,8 +7,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:data_object_item_subject_and_collection_are_validated"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:data_object_item_subject_and_collection_are_validated"
    ]
   },
   {
@@ -17,8 +17,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:data_object_item_subject_and_collection_are_validated"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:data_object_item_subject_and_collection_are_validated"
    ]
   },
   {
@@ -27,8 +27,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:data_object_item_subject_and_collection_are_validated"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:data_object_item_subject_and_collection_are_validated"
    ]
   },
   {
@@ -37,8 +37,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:data_object_item_subject_and_collection_are_validated"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:data_object_item_subject_and_collection_are_validated"
    ]
   },
   {
@@ -47,8 +47,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:data_store_and_reference_are_validated"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:data_store_and_reference_are_validated"
    ]
   },
   {
@@ -57,8 +57,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:data_store_and_reference_are_validated"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:data_store_and_reference_are_validated"
    ]
   },
   {
@@ -67,8 +67,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:data_store_and_reference_are_validated"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:data_store_and_reference_are_validated"
    ]
   },
   {
@@ -77,8 +77,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:data_store_and_reference_are_validated"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:data_store_and_reference_are_validated"
    ]
   },
   {
@@ -101,8 +101,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:data_store_and_reference_are_validated"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:data_store_and_reference_are_validated"
    ]
   },
   {
@@ -111,8 +111,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:data_store_and_reference_are_validated"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:data_store_and_reference_are_validated"
    ]
   },
   {
@@ -121,8 +121,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:data_store_and_reference_are_validated"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:data_store_and_reference_are_validated"
    ]
   },
   {
@@ -131,8 +131,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:data_store_and_reference_are_validated"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:data_store_and_reference_are_validated"
    ]
   },
   {
@@ -141,8 +141,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:data_ports_are_validated"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:data_ports_are_validated"
    ]
   },
   {
@@ -151,8 +151,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:data_ports_are_validated"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:data_ports_are_validated"
    ]
   },
   {
@@ -161,8 +161,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:data_ports_are_validated"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:data_ports_are_validated"
    ]
   },
   {
@@ -171,8 +171,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:data_ports_are_validated"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:data_ports_are_validated"
    ]
   },
   {
@@ -188,8 +188,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:data_ports_are_validated"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:data_ports_are_validated"
    ]
   },
   {
@@ -198,8 +198,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:data_ports_are_validated"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:data_ports_are_validated"
    ]
   },
   {
@@ -208,7 +208,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_data.rs:data_output_item_subject_ref_must_resolve"
+    "crates/processcraft-core/tests/bpmn_data_regressions.rs:data_output_item_subject_ref_must_resolve"
    ]
   },
   {
@@ -217,8 +217,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:data_ports_are_validated"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:data_ports_are_validated"
    ]
   },
   {
@@ -234,8 +234,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:input_and_output_set_references_are_validated"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:input_and_output_set_references_are_validated"
    ]
   },
   {
@@ -244,8 +244,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:input_and_output_set_references_are_validated"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:input_and_output_set_references_are_validated"
    ]
   },
   {
@@ -254,7 +254,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_data.rs:set_reference_diagnostics_cover_input_data_refs_and_output_set_members"
+    "crates/processcraft-core/tests/bpmn_data_regressions.rs:set_reference_diagnostics_cover_input_data_refs_and_output_set_members"
    ]
   },
   {
@@ -263,8 +263,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:input_and_output_set_references_are_validated"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:input_and_output_set_references_are_validated"
    ]
   },
   {
@@ -273,8 +273,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:input_and_output_set_references_are_validated"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:input_and_output_set_references_are_validated"
    ]
   },
   {
@@ -283,8 +283,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:input_and_output_set_references_are_validated"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:input_and_output_set_references_are_validated"
    ]
   },
   {
@@ -300,8 +300,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:input_and_output_set_references_are_validated"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:input_and_output_set_references_are_validated"
    ]
   },
   {
@@ -310,8 +310,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:input_and_output_set_references_are_validated"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:input_and_output_set_references_are_validated"
    ]
   },
   {
@@ -320,8 +320,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:input_and_output_set_references_are_validated"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:input_and_output_set_references_are_validated"
    ]
   },
   {
@@ -330,8 +330,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:input_and_output_set_references_are_validated"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:input_and_output_set_references_are_validated"
    ]
   },
   {
@@ -340,7 +340,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_data.rs:set_reference_diagnostics_cover_input_data_refs_and_output_set_members"
+    "crates/processcraft-core/tests/bpmn_data_regressions.rs:set_reference_diagnostics_cover_input_data_refs_and_output_set_members"
    ]
   },
   {
@@ -349,7 +349,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_data.rs:set_reference_diagnostics_cover_input_data_refs_and_output_set_members"
+    "crates/processcraft-core/tests/bpmn_data_regressions.rs:set_reference_diagnostics_cover_input_data_refs_and_output_set_members"
    ]
   },
   {
@@ -365,8 +365,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_data.rs",
-    "crates/processcraft-core/tests/m3_data.rs:data_association_source_count_diagnostic_is_negative_tested"
+    "crates/processcraft-core/tests/bpmn_data.rs",
+    "crates/processcraft-core/tests/bpmn_data.rs:data_association_source_count_diagnostic_is_negative_tested"
    ],
    "note": "With a transformation Expression the single-source rule of section 10.4.1 no longer applies; the negative test shows the diagnostic disappears."
   },
@@ -376,9 +376,9 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:data_association_endpoints_are_validated",
-    "crates/processcraft-core/tests/m3_data.rs:data_association_source_count_diagnostic_is_negative_tested"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:data_association_endpoints_are_validated",
+    "crates/processcraft-core/tests/bpmn_data.rs:data_association_source_count_diagnostic_is_negative_tested"
    ]
   },
   {
@@ -387,9 +387,9 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:data_association_endpoints_are_validated",
-    "crates/processcraft-core/tests/m3_data.rs:data_association_source_count_diagnostic_is_negative_tested"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:data_association_endpoints_are_validated",
+    "crates/processcraft-core/tests/bpmn_data.rs:data_association_source_count_diagnostic_is_negative_tested"
    ]
   },
   {
@@ -398,8 +398,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:standard_loop_maximum_is_validated"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:standard_loop_maximum_is_validated"
    ]
   },
   {
@@ -408,8 +408,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:standard_loop_maximum_is_validated"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:standard_loop_maximum_is_validated"
    ]
   },
   {
@@ -418,8 +418,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:standard_loop_maximum_is_validated"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:standard_loop_maximum_is_validated"
    ]
   },
   {
@@ -442,8 +442,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:multi_instance_initialisation_and_references_are_validated"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:multi_instance_initialisation_and_references_are_validated"
    ]
   },
   {
@@ -452,8 +452,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:multi_instance_initialisation_and_references_are_validated"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:multi_instance_initialisation_and_references_are_validated"
    ]
   },
   {
@@ -462,8 +462,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:multi_instance_data_items_must_be_scalar"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:multi_instance_data_items_must_be_scalar"
    ]
   },
   {
@@ -472,8 +472,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:multi_instance_data_items_must_be_scalar"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:multi_instance_data_items_must_be_scalar"
    ]
   },
   {
@@ -496,8 +496,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:multi_instance_behavior_event_refs_must_match_behavior"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:multi_instance_behavior_event_refs_must_match_behavior"
    ]
   },
   {
@@ -506,8 +506,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:multi_instance_behavior_event_refs_must_match_behavior"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:multi_instance_behavior_event_refs_must_match_behavior"
    ]
   },
   {
@@ -516,8 +516,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:multi_instance_behavior_event_refs_must_match_behavior"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:multi_instance_behavior_event_refs_must_match_behavior"
    ]
   },
   {
@@ -526,8 +526,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:multi_instance_behavior_event_refs_must_match_behavior"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:multi_instance_behavior_event_refs_must_match_behavior"
    ]
   },
   {
@@ -536,8 +536,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:error_and_cancel_boundary_events_must_interrupt"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:error_and_cancel_boundary_events_must_interrupt"
    ]
   },
   {
@@ -546,8 +546,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:conditional_event_needs_formal_expression_when_executable"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:conditional_event_needs_formal_expression_when_executable"
    ]
   },
   {
@@ -556,8 +556,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:conditional_event_needs_formal_expression_when_executable"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:conditional_event_needs_formal_expression_when_executable"
    ]
   },
   {
@@ -566,8 +566,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:conditional_event_needs_formal_expression_when_executable"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:conditional_event_needs_formal_expression_when_executable"
    ]
   },
   {
@@ -576,8 +576,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:compensation_activity_is_not_connected_to_normal_flow"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:compensation_activity_is_not_connected_to_normal_flow"
    ]
   },
   {
@@ -586,8 +586,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:service_task_implementation_and_operation_are_validated"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:service_task_implementation_and_operation_are_validated"
    ]
   },
   {
@@ -596,8 +596,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:service_task_implementation_and_operation_are_validated"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:service_task_implementation_and_operation_are_validated"
    ]
   },
   {
@@ -606,8 +606,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3r2_validate.rs",
-    "crates/processcraft-core/tests/m3r2_validate.rs:flow_elements_cannot_carry_auditing_or_monitoring"
+    "crates/processcraft-core/tests/validation_rules.rs",
+    "crates/processcraft-core/tests/validation_rules.rs:flow_elements_cannot_carry_auditing_or_monitoring"
    ]
   },
   {

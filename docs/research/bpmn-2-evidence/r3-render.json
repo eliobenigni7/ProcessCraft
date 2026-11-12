@@ -1,11 +1,11 @@
 {"family": "r3-render", "cells": [
   {"path": "/schema/complexType[@name=tMessage]/complexContent/extension/attribute[@name=name]", "schema": "Semantic.xsd",
    "dimension": "render", "state": "verified",
-   "evidence": ["crates/processcraft-render/tests/m3_r3_render.rs:message_name_labels_band_envelope_in_both_themes",
-                "crates/processcraft-render/tests/m3_r3_render.rs:message_name_labels_flow_envelope_static_and_viewport"],
+   "evidence": ["crates/processcraft-render/tests/render_regressions.rs:message_name_labels_band_envelope_in_both_themes",
+                "crates/processcraft-render/tests/render_regressions.rs:message_name_labels_flow_envelope_static_and_viewport"],
    "note": "BPMN 2.0.2 section 12.3.2 (Choreography Participant Bands, PDF p.437): the Message name labels the envelope decorator; drawn beside band and message-flow envelopes in static scene and viewport, light and dark."},
   {"path": "/schema/complexType[@name=tLinkEventDefinition]/complexContent/extension/attribute[@name=name]", "schema": "Semantic.xsd",
    "dimension": "render", "state": "verified",
-   "evidence": ["crates/processcraft-render/tests/m3_r3_render.rs:link_definition_name_labels_unnamed_event_in_both_themes"],
+   "evidence": ["crates/processcraft-render/tests/render_regressions.rs:link_definition_name_labels_unnamed_event_in_both_themes"],
    "note": "BPMN 2.0.2 section 10.5.5 (Link Event Definition, Figures 10.83/10.84): paired Link Events share the name; it labels an event without its own name, own name wins; label hit region present."}
 ]}

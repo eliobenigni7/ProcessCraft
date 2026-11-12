@@ -25,7 +25,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "empty-namespace-groups",
         "empty-namespace-message-signal",
         "anonymous-identities",
-        "m2-flat-lanes",
+        "flat-lanes",
         "interop-process",
     ] {
         let input = std::fs::read(fixture_dir.join(format!("{name}.bpmn")))?;

@@ -1,5 +1,5 @@
 {"family": "loops", "cells": [
   {"path": "/schema/complexType[@name=tLoopCharacteristics]", "schema": "Semantic.xsd", "dimension": "validate", "state": "verified",
-   "evidence": ["crates/processcraft-core/tests/m3r2_validate.rs:standard_loop_maximum_is_validated", "crates/processcraft-core/tests/m3r2_validate.rs:multi_instance_behavior_event_refs_must_match_behavior"],
+   "evidence": ["crates/processcraft-core/tests/validation_rules.rs:standard_loop_maximum_is_validated", "crates/processcraft-core/tests/validation_rules.rs:multi_instance_behavior_event_refs_must_match_behavior"],
    "note": "Abstract base: its derived loop kinds are validated with specific codes standardLoopMaximumNotInteger (Table 10.28) and multiInstance{One,None}EventBehaviorMismatch (Table 10.29)."}
 ]}

@@ -17,7 +17,7 @@ BPMN = "http://www.omg.org/spec/BPMN/20100524/MODEL"
 VENDOR = "urn:processcraft:qualification"
 FIXTURES = [
     "interop-process", "event-ownership", "data-metadata", "data-optional",
-    "root-only", "supporting-catalog", "m2-flat-lanes", "activity-bindings",
+    "root-only", "supporting-catalog", "flat-lanes", "activity-bindings",
     "empty-namespace-choreography", "empty-namespace-conversation",
 ]
 # BaseElement-derived owner tags exercised by this focused fixture family.

@@ -7,7 +7,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_choreography.rs:global_choreography_task_kind_and_initiator_are_typed"
+    "crates/processcraft-core/tests/bpmn_choreography_regressions.rs:global_choreography_task_kind_and_initiator_are_typed"
    ]
   },
   {

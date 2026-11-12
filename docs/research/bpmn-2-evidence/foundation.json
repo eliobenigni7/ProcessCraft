@@ -97,7 +97,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_foundation.rs:documentation_id_collision_and_format_diagnostics_are_specific"
+    "crates/processcraft-core/tests/bpmn_foundation_regressions.rs:documentation_id_collision_and_format_diagnostics_are_specific"
    ]
   },
   {
@@ -136,7 +136,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_foundation.rs:documentation_id_collision_and_format_diagnostics_are_specific"
+    "crates/processcraft-core/tests/bpmn_foundation_regressions.rs:documentation_id_collision_and_format_diagnostics_are_specific"
    ]
   },
   {
@@ -163,7 +163,7 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_repair_production.rs:documentation_id_imports_the_fixture_value"
+    "crates/processcraft-io/tests/production_regressions.rs:documentation_id_imports_the_fixture_value"
    ]
   },
   {
@@ -248,8 +248,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_foundation.rs:base_element_id_is_read_back_renamed_and_collision_is_diagnosed",
-    "crates/processcraft-core/tests/m3_repair_foundation.rs:native_duplicate_xml_id_validate_names_the_rule"
+    "crates/processcraft-core/tests/bpmn_foundation_regressions.rs:base_element_id_is_read_back_renamed_and_collision_is_diagnosed",
+    "crates/processcraft-core/tests/bpmn_foundation_regressions.rs:native_duplicate_xml_id_validate_names_the_rule"
    ]
   },
   {
@@ -258,7 +258,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_foundation.rs:base_element_id_is_read_back_renamed_and_collision_is_diagnosed"
+    "crates/processcraft-core/tests/bpmn_foundation_regressions.rs:base_element_id_is_read_back_renamed_and_collision_is_diagnosed"
    ]
   },
   {
@@ -298,8 +298,8 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_foundation.rs:base_element_id_is_read_back_renamed_and_collision_is_diagnosed",
-    "crates/processcraft-core/tests/m3_repair_foundation.rs:native_duplicate_xml_id_validate_names_the_rule"
+    "crates/processcraft-core/tests/bpmn_foundation_regressions.rs:base_element_id_is_read_back_renamed_and_collision_is_diagnosed",
+    "crates/processcraft-core/tests/bpmn_foundation_regressions.rs:native_duplicate_xml_id_validate_names_the_rule"
    ]
   },
   {
@@ -337,7 +337,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_events.rs:root_event_definitions_read_back_and_invalid_event_messages_are_specific"
+    "crates/processcraft-core/tests/bpmn_events_regressions.rs:root_event_definitions_read_back_and_invalid_event_messages_are_specific"
    ]
   },
   {
@@ -393,7 +393,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_foundation.rs:callable_supported_interface_refs_are_set_cleared_and_undone"
+    "crates/processcraft-core/tests/bpmn_foundation_regressions.rs:callable_supported_interface_refs_are_set_cleared_and_undone"
    ]
   },
   {
@@ -402,7 +402,7 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_repair_production.rs:callable_supported_interface_refs_import_and_export_with_values"
+    "crates/processcraft-io/tests/production_regressions.rs:callable_supported_interface_refs_import_and_export_with_values"
    ]
   },
   {
@@ -411,7 +411,7 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_repair_production.rs:callable_supported_interface_refs_import_and_export_with_values",
+    "crates/processcraft-io/tests/production_regressions.rs:callable_supported_interface_refs_import_and_export_with_values",
     "scripts/check_bpmn20_xsd.py"
    ]
   },
@@ -459,7 +459,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_foundation.rs:flow_element_name_edit_model_and_undo_for_node_and_flow"
+    "crates/processcraft-core/tests/bpmn_foundation_regressions.rs:flow_element_name_edit_model_and_undo_for_node_and_flow"
    ]
   },
   {
@@ -468,7 +468,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_foundation.rs:flow_element_name_edit_model_and_undo_for_node_and_flow"
+    "crates/processcraft-core/tests/bpmn_foundation_regressions.rs:flow_element_name_edit_model_and_undo_for_node_and_flow"
    ]
   },
   {
@@ -525,7 +525,7 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_repair_production.rs:flow_node_incoming_and_outgoing_survive_export_with_values",
+    "crates/processcraft-io/tests/production_regressions.rs:flow_node_incoming_and_outgoing_survive_export_with_values",
     "scripts/check_bpmn20_xsd.py"
    ]
   },
@@ -553,7 +553,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_foundation.rs:flow_node_incoming_is_set_cleared_and_undone"
+    "crates/processcraft-core/tests/bpmn_foundation_regressions.rs:flow_node_incoming_is_set_cleared_and_undone"
    ]
   },
   {
@@ -572,7 +572,7 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_repair_production.rs:flow_node_incoming_and_outgoing_survive_export_with_values",
+    "crates/processcraft-io/tests/production_regressions.rs:flow_node_incoming_and_outgoing_survive_export_with_values",
     "scripts/check_bpmn20_xsd.py"
    ]
   },
@@ -591,7 +591,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_foundation.rs:category_value_ref_and_outgoing_are_set_undone_and_dangling_refs_diagnosed"
+    "crates/processcraft-core/tests/bpmn_foundation.rs:category_value_ref_and_outgoing_are_set_undone_and_dangling_refs_diagnosed"
    ]
   },
   {
@@ -610,7 +610,7 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_repair_production.rs:flow_node_incoming_and_outgoing_survive_export_with_values",
+    "crates/processcraft-io/tests/production_regressions.rs:flow_node_incoming_and_outgoing_survive_export_with_values",
     "scripts/check_bpmn20_xsd.py"
    ]
   },
@@ -621,7 +621,7 @@
    "state": "verified",
    "evidence": [
     "crates/processcraft-core/tests/collaboration_model.rs:group_category_reference_preserves_legacy_wire_and_external_namespace",
-    "crates/processcraft-core/tests/m2.rs:descriptive_commands_validate_references_and_undo_atomically"
+    "crates/processcraft-core/tests/analyst_workbench.rs:descriptive_commands_validate_references_and_undo_atomically"
    ]
   },
   {
@@ -630,7 +630,7 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_repair_artifacts.rs:artifacts_export_values_are_in_bytes_reimport_and_xsd_valid",
+    "crates/processcraft-io/tests/bpmn_artifacts_regressions.rs:artifacts_export_values_are_in_bytes_reimport_and_xsd_valid",
     "scripts/check_bpmn20_xsd.py"
    ]
   },
@@ -670,7 +670,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m2.rs:descriptive_commands_validate_references_and_undo_atomically"
+    "crates/processcraft-core/tests/analyst_workbench.rs:descriptive_commands_validate_references_and_undo_atomically"
    ]
   },
   {
@@ -679,7 +679,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_foundation.rs:process_name_rename_is_undoable"
+    "crates/processcraft-core/tests/bpmn_foundation.rs:process_name_rename_is_undoable"
    ]
   },
   {
@@ -688,7 +688,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_foundation.rs:process_name_rename_is_undoable"
+    "crates/processcraft-core/tests/bpmn_foundation.rs:process_name_rename_is_undoable"
    ]
   },
   {
@@ -697,9 +697,9 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_foundation.rs:callable_process_name_and_global_task_implementation_survive_round_trip",
-    "tests/fixtures/bpmn/m3-foundation/callable-name-implementation.bpmn",
-    "tests/fixtures/bpmn/m3-foundation/manifest.md"
+    "crates/processcraft-io/tests/bpmn_foundation.rs:callable_process_name_and_global_task_implementation_survive_round_trip",
+    "tests/fixtures/bpmn/foundation/callable-name-implementation.bpmn",
+    "tests/fixtures/bpmn/foundation/manifest.md"
    ]
   },
   {
@@ -708,8 +708,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_foundation.rs:callable_process_name_and_global_task_implementation_survive_round_trip",
-    "tests/fixtures/bpmn/m3-foundation/manifest.md"
+    "crates/processcraft-io/tests/bpmn_foundation.rs:callable_process_name_and_global_task_implementation_survive_round_trip",
+    "tests/fixtures/bpmn/foundation/manifest.md"
    ]
   },
   {
@@ -718,7 +718,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_foundation.rs:category_value_ref_and_outgoing_are_set_undone_and_dangling_refs_diagnosed"
+    "crates/processcraft-core/tests/bpmn_foundation.rs:category_value_ref_and_outgoing_are_set_undone_and_dangling_refs_diagnosed"
    ]
   },
   {
@@ -727,7 +727,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_foundation.rs:category_value_ref_and_outgoing_are_set_undone_and_dangling_refs_diagnosed"
+    "crates/processcraft-core/tests/bpmn_foundation.rs:category_value_ref_and_outgoing_are_set_undone_and_dangling_refs_diagnosed"
    ]
   },
   {
@@ -736,7 +736,7 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_foundation.rs:process_type_and_category_value_ref_survive_round_trip",
+    "crates/processcraft-io/tests/bpmn_foundation.rs:process_type_and_category_value_ref_survive_round_trip",
     "tests/fixtures/bpmn/activity-correlation.bpmn"
    ]
   },
@@ -746,8 +746,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_foundation.rs:process_type_and_category_value_ref_survive_round_trip",
-    "tests/fixtures/bpmn/m3-foundation/manifest.md"
+    "crates/processcraft-io/tests/bpmn_foundation.rs:process_type_and_category_value_ref_survive_round_trip",
+    "tests/fixtures/bpmn/foundation/manifest.md"
    ]
   },
   {
@@ -756,7 +756,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_foundation.rs:category_value_ref_and_outgoing_are_set_undone_and_dangling_refs_diagnosed"
+    "crates/processcraft-core/tests/bpmn_foundation.rs:category_value_ref_and_outgoing_are_set_undone_and_dangling_refs_diagnosed"
    ]
   },
   {
@@ -765,7 +765,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_foundation.rs:category_value_ref_and_outgoing_are_set_undone_and_dangling_refs_diagnosed"
+    "crates/processcraft-core/tests/bpmn_foundation.rs:category_value_ref_and_outgoing_are_set_undone_and_dangling_refs_diagnosed"
    ]
   },
   {
@@ -774,7 +774,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_foundation.rs:category_value_ref_and_outgoing_are_set_undone_and_dangling_refs_diagnosed"
+    "crates/processcraft-core/tests/bpmn_foundation.rs:category_value_ref_and_outgoing_are_set_undone_and_dangling_refs_diagnosed"
    ]
   },
   {
@@ -783,7 +783,7 @@
    "dimension": "validate",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_repair_foundation.rs:documentation_id_collision_and_format_diagnostics_are_specific"
+    "crates/processcraft-core/tests/bpmn_foundation_regressions.rs:documentation_id_collision_and_format_diagnostics_are_specific"
    ]
   },
   {
@@ -792,7 +792,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_foundation.rs:multi_instance_behavior_values_round_trip_through_set_node_loop_with_undo"
+    "crates/processcraft-core/tests/bpmn_foundation.rs:multi_instance_behavior_values_round_trip_through_set_node_loop_with_undo"
    ]
   },
   {
@@ -801,8 +801,8 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_foundation.rs:callable_process_name_and_global_task_implementation_survive_round_trip",
-    "tests/fixtures/bpmn/m3-foundation/callable-name-implementation.bpmn"
+    "crates/processcraft-io/tests/bpmn_foundation.rs:callable_process_name_and_global_task_implementation_survive_round_trip",
+    "tests/fixtures/bpmn/foundation/callable-name-implementation.bpmn"
    ]
   },
   {
@@ -811,8 +811,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_foundation.rs:callable_process_name_and_global_task_implementation_survive_round_trip",
-    "tests/fixtures/bpmn/m3-foundation/callable-name-implementation.bpmn"
+    "crates/processcraft-io/tests/bpmn_foundation.rs:callable_process_name_and_global_task_implementation_survive_round_trip",
+    "tests/fixtures/bpmn/foundation/callable-name-implementation.bpmn"
    ]
   },
   {
@@ -821,7 +821,7 @@
    "dimension": "model",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-core/tests/m3_foundation.rs:process_type_is_set_read_back_and_undone"
+    "crates/processcraft-core/tests/bpmn_foundation.rs:process_type_is_set_read_back_and_undone"
    ]
   },
   {
@@ -830,7 +830,7 @@
    "dimension": "import",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_foundation.rs:process_type_and_category_value_ref_survive_round_trip",
+    "crates/processcraft-io/tests/bpmn_foundation.rs:process_type_and_category_value_ref_survive_round_trip",
     "tests/fixtures/bpmn/activity-correlation.bpmn"
    ]
   },
@@ -840,8 +840,8 @@
    "dimension": "export",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-io/tests/m3_foundation.rs:process_type_and_category_value_ref_survive_round_trip",
-    "tests/fixtures/bpmn/m3-foundation/manifest.md"
+    "crates/processcraft-io/tests/bpmn_foundation.rs:process_type_and_category_value_ref_survive_round_trip",
+    "tests/fixtures/bpmn/foundation/manifest.md"
    ]
   }
  ]

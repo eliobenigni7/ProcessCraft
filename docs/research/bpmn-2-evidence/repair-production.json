@@ -7,7 +7,7 @@
    "dimension": "render",
    "state": "verified",
    "evidence": [
-    "crates/processcraft-render/tests/m3_choreography.rs:sub_choreography_collapsed_shows_plus_marker_and_expanded_does_not"
+    "crates/processcraft-render/tests/bpmn_choreography.rs:sub_choreography_collapsed_shows_plus_marker_and_expanded_does_not"
    ],
    "note": "Collapsed sub-choreography draws the + marker, expanded does not; hit-test finds the activity."
   }
