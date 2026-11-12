@@ -1048,6 +1048,12 @@ impl ProjectData {
                     );
                 }
             }
+            for issue in crate::validation_data::data_issues(doc) {
+                emit(issue.owner, issue.code, &issue.message);
+            }
+            for issue in crate::validation_flow::flow_issues(doc) {
+                emit(issue.owner, issue.code, &issue.message);
+            }
             let scopes = queries::scopes(doc);
             let mut output_sets: Vec<&crate::bpmn_data::IoSet> = Vec::new();
             for process in &doc.processes {
