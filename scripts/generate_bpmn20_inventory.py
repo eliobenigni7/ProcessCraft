@@ -122,12 +122,12 @@ for declaration in declarations:
         declaration["evidence"] = [
             "crates/processcraft-io/tests/interchange.rs:expression_metadata_preserves_scoped_prefixes_and_default_namespace",
             "crates/processcraft-io/tests/interchange.rs:structured_expression_metadata_roundtrips_across_loop_and_adhoc_owners",
-            "crates/processcraft-io/tests/interchange.rs:expression_mixed_content_remains_preserved",
+            "crates/processcraft-io/tests/interchange.rs:expression_inherited_documentation_mixed_order_roundtrips",
             "tests/fixtures/bpmn/structured-expressions.manifest.json",
         ]
         declaration["limitations"] = (
-            "Structured text, selected owners, optional type/language and namespace context only; "
-            "mixed XML, inherited documentation/extensions and all-owner editing/validation remain unverified or preserved."
+            "Selected expression owners preserve structured text and mixed metadata, optional type/language and namespace context; "
+            "all-owner editing/validation and arbitrary extension semantics remain unverified or preserved."
         )
 # Inline event definitions are a limited local-reference profile, not all contexts.
 for declaration in declarations:
@@ -223,7 +223,29 @@ for declaration in declarations:
             "Bounded event/DI fixture profile; complete contexts, user paths, style, "
             "native interaction and independent consumers remain unverified or preserved."
         )
-result = {"profiles": profiles, "cmof_declarations": cmof, "version": "2.0.2", "coverage_policy": "unverified means no construct-level evidence recorded; raw retention is not modeling support", "sources": sources, "declarations": declarations,
+# Bounded common metadata and label style cases; no full inherited-coverage claim.
+for declaration in declarations:
+    common = (declaration["schema"] == "Semantic.xsd" and (
+        (declaration["kind"] == "element" and declaration["name"] in {"documentation", "script", "text", "extension", "relationship"}) or
+        (declaration["kind"] == "complexType" and declaration["name"] in {"tDocumentation", "tScript", "tText", "tExtension", "tRelationship"})))
+    label = (declaration["schema"] == "BPMNDI.xsd" and declaration["kind"] in {"element", "complexType"}
+             and declaration["name"] in {"BPMNLabel", "BPMNLabelStyle"})
+    if common or label:
+        declaration["coverage"].update({k: "partial" for k in ("model", "edit", "import", "export", "validate")})
+        if label:
+            declaration["coverage"]["render"] = "partial"
+        declaration["evidence"] = [
+            "crates/processcraft-io/tests/interchange.rs:process_documentation_mixed_order_and_namespaces_roundtrip",
+            "crates/processcraft-io/tests/interchange.rs:script_and_annotation_mixed_xml_roundtrip_inertly",
+            "crates/processcraft-io/tests/interchange.rs:definitions_declarations_and_required_unknown_extension_policy",
+            "crates/processcraft-io/tests/interchange.rs:diagram_label_style_and_empty_label_roundtrip",
+            "scripts/qualify_common_metadata.py",
+        ]
+        declaration["limitations"] = (
+            "Bounded common metadata and DI label profiles; all inherited owners, external QName/style resolution, "
+            "arbitrary vendor semantics, native interaction and independent consumer qualification remain open."
+        )
+result = {"implementation_evidence_commit": "5f12202ffe4f0a924d593c41048bb818594bc88e", "implementation_evidence_tree": "a28e6c94d73fd7f09d3f0026e87b72fd0a582f6f", "profiles": profiles, "cmof_declarations": cmof, "version": "2.0.2", "coverage_policy": "unverified means no construct-level evidence recorded; raw retention is not modeling support", "sources": sources, "declarations": declarations,
           "conformance": {"status": "not_assessed", "note": "OMG PDF conformance classes and semantic constraints require separate clause-by-clause mapping; XSD declarations do not establish conformance."}}
 serialized = json.dumps(result, indent=2, ensure_ascii=False) + "\n"
 if "--check" in sys.argv:

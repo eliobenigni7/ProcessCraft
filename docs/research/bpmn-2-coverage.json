@@ -1,4 +1,6 @@
 {
+  "implementation_evidence_commit": "5f12202ffe4f0a924d593c41048bb818594bc88e",
+  "implementation_evidence_tree": "a28e6c94d73fd7f09d3f0026e87b72fd0a582f6f",
   "profiles": {
     "descriptive artifacts": {
       "elements": [
@@ -15289,13 +15291,21 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
-        "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "model": "partial",
+        "edit": "partial",
+        "render": "partial",
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:process_documentation_mixed_order_and_namespaces_roundtrip",
+        "crates/processcraft-io/tests/interchange.rs:script_and_annotation_mixed_xml_roundtrip_inertly",
+        "crates/processcraft-io/tests/interchange.rs:definitions_declarations_and_required_unknown_extension_policy",
+        "crates/processcraft-io/tests/interchange.rs:diagram_label_style_and_empty_label_roundtrip",
+        "scripts/qualify_common_metadata.py"
+      ],
+      "limitations": "Bounded common metadata and DI label profiles; all inherited owners, external QName/style resolution, arbitrary vendor semantics, native interaction and independent consumer qualification remain open."
     },
     {
       "schema": "BPMNDI.xsd",
@@ -15333,13 +15343,21 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
-        "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "model": "partial",
+        "edit": "partial",
+        "render": "partial",
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:process_documentation_mixed_order_and_namespaces_roundtrip",
+        "crates/processcraft-io/tests/interchange.rs:script_and_annotation_mixed_xml_roundtrip_inertly",
+        "crates/processcraft-io/tests/interchange.rs:definitions_declarations_and_required_unknown_extension_policy",
+        "crates/processcraft-io/tests/interchange.rs:diagram_label_style_and_empty_label_roundtrip",
+        "scripts/qualify_common_metadata.py"
+      ],
+      "limitations": "Bounded common metadata and DI label profiles; all inherited owners, external QName/style resolution, arbitrary vendor semantics, native interaction and independent consumer qualification remain open."
     },
     {
       "schema": "BPMNDI.xsd",
@@ -15753,13 +15771,21 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
-        "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "model": "partial",
+        "edit": "partial",
+        "render": "partial",
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:process_documentation_mixed_order_and_namespaces_roundtrip",
+        "crates/processcraft-io/tests/interchange.rs:script_and_annotation_mixed_xml_roundtrip_inertly",
+        "crates/processcraft-io/tests/interchange.rs:definitions_declarations_and_required_unknown_extension_policy",
+        "crates/processcraft-io/tests/interchange.rs:diagram_label_style_and_empty_label_roundtrip",
+        "scripts/qualify_common_metadata.py"
+      ],
+      "limitations": "Bounded common metadata and DI label profiles; all inherited owners, external QName/style resolution, arbitrary vendor semantics, native interaction and independent consumer qualification remain open."
     },
     {
       "schema": "BPMNDI.xsd",
@@ -15797,13 +15823,21 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
-        "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "model": "partial",
+        "edit": "partial",
+        "render": "partial",
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:process_documentation_mixed_order_and_namespaces_roundtrip",
+        "crates/processcraft-io/tests/interchange.rs:script_and_annotation_mixed_xml_roundtrip_inertly",
+        "crates/processcraft-io/tests/interchange.rs:definitions_declarations_and_required_unknown_extension_policy",
+        "crates/processcraft-io/tests/interchange.rs:diagram_label_style_and_empty_label_roundtrip",
+        "scripts/qualify_common_metadata.py"
+      ],
+      "limitations": "Bounded common metadata and DI label profiles; all inherited owners, external QName/style resolution, arbitrary vendor semantics, native interaction and independent consumer qualification remain open."
     },
     {
       "schema": "BPMNDI.xsd",
@@ -20957,13 +20991,21 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:process_documentation_mixed_order_and_namespaces_roundtrip",
+        "crates/processcraft-io/tests/interchange.rs:script_and_annotation_mixed_xml_roundtrip_inertly",
+        "crates/processcraft-io/tests/interchange.rs:definitions_declarations_and_required_unknown_extension_policy",
+        "crates/processcraft-io/tests/interchange.rs:diagram_label_style_and_empty_label_roundtrip",
+        "scripts/qualify_common_metadata.py"
+      ],
+      "limitations": "Bounded common metadata and DI label profiles; all inherited owners, external QName/style resolution, arbitrary vendor semantics, native interaction and independent consumer qualification remain open."
     },
     {
       "schema": "Semantic.xsd",
@@ -20979,13 +21021,21 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:process_documentation_mixed_order_and_namespaces_roundtrip",
+        "crates/processcraft-io/tests/interchange.rs:script_and_annotation_mixed_xml_roundtrip_inertly",
+        "crates/processcraft-io/tests/interchange.rs:definitions_declarations_and_required_unknown_extension_policy",
+        "crates/processcraft-io/tests/interchange.rs:diagram_label_style_and_empty_label_roundtrip",
+        "scripts/qualify_common_metadata.py"
+      ],
+      "limitations": "Bounded common metadata and DI label profiles; all inherited owners, external QName/style resolution, arbitrary vendor semantics, native interaction and independent consumer qualification remain open."
     },
     {
       "schema": "Semantic.xsd",
@@ -21787,10 +21837,10 @@
       "evidence": [
         "crates/processcraft-io/tests/interchange.rs:expression_metadata_preserves_scoped_prefixes_and_default_namespace",
         "crates/processcraft-io/tests/interchange.rs:structured_expression_metadata_roundtrips_across_loop_and_adhoc_owners",
-        "crates/processcraft-io/tests/interchange.rs:expression_mixed_content_remains_preserved",
+        "crates/processcraft-io/tests/interchange.rs:expression_inherited_documentation_mixed_order_roundtrips",
         "tests/fixtures/bpmn/structured-expressions.manifest.json"
       ],
-      "limitations": "Structured text, selected owners, optional type/language and namespace context only; mixed XML, inherited documentation/extensions and all-owner editing/validation remain unverified or preserved."
+      "limitations": "Selected expression owners preserve structured text and mixed metadata, optional type/language and namespace context; all-owner editing/validation and arbitrary extension semantics remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -21816,10 +21866,10 @@
       "evidence": [
         "crates/processcraft-io/tests/interchange.rs:expression_metadata_preserves_scoped_prefixes_and_default_namespace",
         "crates/processcraft-io/tests/interchange.rs:structured_expression_metadata_roundtrips_across_loop_and_adhoc_owners",
-        "crates/processcraft-io/tests/interchange.rs:expression_mixed_content_remains_preserved",
+        "crates/processcraft-io/tests/interchange.rs:expression_inherited_documentation_mixed_order_roundtrips",
         "tests/fixtures/bpmn/structured-expressions.manifest.json"
       ],
-      "limitations": "Structured text, selected owners, optional type/language and namespace context only; mixed XML, inherited documentation/extensions and all-owner editing/validation remain unverified or preserved."
+      "limitations": "Selected expression owners preserve structured text and mixed metadata, optional type/language and namespace context; all-owner editing/validation and arbitrary extension semantics remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -21835,13 +21885,21 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:process_documentation_mixed_order_and_namespaces_roundtrip",
+        "crates/processcraft-io/tests/interchange.rs:script_and_annotation_mixed_xml_roundtrip_inertly",
+        "crates/processcraft-io/tests/interchange.rs:definitions_declarations_and_required_unknown_extension_policy",
+        "crates/processcraft-io/tests/interchange.rs:diagram_label_style_and_empty_label_roundtrip",
+        "scripts/qualify_common_metadata.py"
+      ],
+      "limitations": "Bounded common metadata and DI label profiles; all inherited owners, external QName/style resolution, arbitrary vendor semantics, native interaction and independent consumer qualification remain open."
     },
     {
       "schema": "Semantic.xsd",
@@ -21857,13 +21915,21 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:process_documentation_mixed_order_and_namespaces_roundtrip",
+        "crates/processcraft-io/tests/interchange.rs:script_and_annotation_mixed_xml_roundtrip_inertly",
+        "crates/processcraft-io/tests/interchange.rs:definitions_declarations_and_required_unknown_extension_policy",
+        "crates/processcraft-io/tests/interchange.rs:diagram_label_style_and_empty_label_roundtrip",
+        "scripts/qualify_common_metadata.py"
+      ],
+      "limitations": "Bounded common metadata and DI label profiles; all inherited owners, external QName/style resolution, arbitrary vendor semantics, native interaction and independent consumer qualification remain open."
     },
     {
       "schema": "Semantic.xsd",
@@ -22153,10 +22219,10 @@
       "evidence": [
         "crates/processcraft-io/tests/interchange.rs:expression_metadata_preserves_scoped_prefixes_and_default_namespace",
         "crates/processcraft-io/tests/interchange.rs:structured_expression_metadata_roundtrips_across_loop_and_adhoc_owners",
-        "crates/processcraft-io/tests/interchange.rs:expression_mixed_content_remains_preserved",
+        "crates/processcraft-io/tests/interchange.rs:expression_inherited_documentation_mixed_order_roundtrips",
         "tests/fixtures/bpmn/structured-expressions.manifest.json"
       ],
-      "limitations": "Structured text, selected owners, optional type/language and namespace context only; mixed XML, inherited documentation/extensions and all-owner editing/validation remain unverified or preserved."
+      "limitations": "Selected expression owners preserve structured text and mixed metadata, optional type/language and namespace context; all-owner editing/validation and arbitrary extension semantics remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -22182,10 +22248,10 @@
       "evidence": [
         "crates/processcraft-io/tests/interchange.rs:expression_metadata_preserves_scoped_prefixes_and_default_namespace",
         "crates/processcraft-io/tests/interchange.rs:structured_expression_metadata_roundtrips_across_loop_and_adhoc_owners",
-        "crates/processcraft-io/tests/interchange.rs:expression_mixed_content_remains_preserved",
+        "crates/processcraft-io/tests/interchange.rs:expression_inherited_documentation_mixed_order_roundtrips",
         "tests/fixtures/bpmn/structured-expressions.manifest.json"
       ],
-      "limitations": "Structured text, selected owners, optional type/language and namespace context only; mixed XML, inherited documentation/extensions and all-owner editing/validation remain unverified or preserved."
+      "limitations": "Selected expression owners preserve structured text and mixed metadata, optional type/language and namespace context; all-owner editing/validation and arbitrary extension semantics remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -22211,10 +22277,10 @@
       "evidence": [
         "crates/processcraft-io/tests/interchange.rs:expression_metadata_preserves_scoped_prefixes_and_default_namespace",
         "crates/processcraft-io/tests/interchange.rs:structured_expression_metadata_roundtrips_across_loop_and_adhoc_owners",
-        "crates/processcraft-io/tests/interchange.rs:expression_mixed_content_remains_preserved",
+        "crates/processcraft-io/tests/interchange.rs:expression_inherited_documentation_mixed_order_roundtrips",
         "tests/fixtures/bpmn/structured-expressions.manifest.json"
       ],
-      "limitations": "Structured text, selected owners, optional type/language and namespace context only; mixed XML, inherited documentation/extensions and all-owner editing/validation remain unverified or preserved."
+      "limitations": "Selected expression owners preserve structured text and mixed metadata, optional type/language and namespace context; all-owner editing/validation and arbitrary extension semantics remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -22240,10 +22306,10 @@
       "evidence": [
         "crates/processcraft-io/tests/interchange.rs:expression_metadata_preserves_scoped_prefixes_and_default_namespace",
         "crates/processcraft-io/tests/interchange.rs:structured_expression_metadata_roundtrips_across_loop_and_adhoc_owners",
-        "crates/processcraft-io/tests/interchange.rs:expression_mixed_content_remains_preserved",
+        "crates/processcraft-io/tests/interchange.rs:expression_inherited_documentation_mixed_order_roundtrips",
         "tests/fixtures/bpmn/structured-expressions.manifest.json"
       ],
-      "limitations": "Structured text, selected owners, optional type/language and namespace context only; mixed XML, inherited documentation/extensions and all-owner editing/validation remain unverified or preserved."
+      "limitations": "Selected expression owners preserve structured text and mixed metadata, optional type/language and namespace context; all-owner editing/validation and arbitrary extension semantics remain unverified or preserved."
     },
     {
       "schema": "Semantic.xsd",
@@ -26272,13 +26338,21 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:process_documentation_mixed_order_and_namespaces_roundtrip",
+        "crates/processcraft-io/tests/interchange.rs:script_and_annotation_mixed_xml_roundtrip_inertly",
+        "crates/processcraft-io/tests/interchange.rs:definitions_declarations_and_required_unknown_extension_policy",
+        "crates/processcraft-io/tests/interchange.rs:diagram_label_style_and_empty_label_roundtrip",
+        "scripts/qualify_common_metadata.py"
+      ],
+      "limitations": "Bounded common metadata and DI label profiles; all inherited owners, external QName/style resolution, arbitrary vendor semantics, native interaction and independent consumer qualification remain open."
     },
     {
       "schema": "Semantic.xsd",
@@ -26294,13 +26368,21 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:process_documentation_mixed_order_and_namespaces_roundtrip",
+        "crates/processcraft-io/tests/interchange.rs:script_and_annotation_mixed_xml_roundtrip_inertly",
+        "crates/processcraft-io/tests/interchange.rs:definitions_declarations_and_required_unknown_extension_policy",
+        "crates/processcraft-io/tests/interchange.rs:diagram_label_style_and_empty_label_roundtrip",
+        "scripts/qualify_common_metadata.py"
+      ],
+      "limitations": "Bounded common metadata and DI label profiles; all inherited owners, external QName/style resolution, arbitrary vendor semantics, native interaction and independent consumer qualification remain open."
     },
     {
       "schema": "Semantic.xsd",
@@ -27016,13 +27098,21 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:process_documentation_mixed_order_and_namespaces_roundtrip",
+        "crates/processcraft-io/tests/interchange.rs:script_and_annotation_mixed_xml_roundtrip_inertly",
+        "crates/processcraft-io/tests/interchange.rs:definitions_declarations_and_required_unknown_extension_policy",
+        "crates/processcraft-io/tests/interchange.rs:diagram_label_style_and_empty_label_roundtrip",
+        "scripts/qualify_common_metadata.py"
+      ],
+      "limitations": "Bounded common metadata and DI label profiles; all inherited owners, external QName/style resolution, arbitrary vendor semantics, native interaction and independent consumer qualification remain open."
     },
     {
       "schema": "Semantic.xsd",
@@ -27038,13 +27128,21 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:process_documentation_mixed_order_and_namespaces_roundtrip",
+        "crates/processcraft-io/tests/interchange.rs:script_and_annotation_mixed_xml_roundtrip_inertly",
+        "crates/processcraft-io/tests/interchange.rs:definitions_declarations_and_required_unknown_extension_policy",
+        "crates/processcraft-io/tests/interchange.rs:diagram_label_style_and_empty_label_roundtrip",
+        "scripts/qualify_common_metadata.py"
+      ],
+      "limitations": "Bounded common metadata and DI label profiles; all inherited owners, external QName/style resolution, arbitrary vendor semantics, native interaction and independent consumer qualification remain open."
     },
     {
       "schema": "Semantic.xsd",
@@ -28107,13 +28205,21 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:process_documentation_mixed_order_and_namespaces_roundtrip",
+        "crates/processcraft-io/tests/interchange.rs:script_and_annotation_mixed_xml_roundtrip_inertly",
+        "crates/processcraft-io/tests/interchange.rs:definitions_declarations_and_required_unknown_extension_policy",
+        "crates/processcraft-io/tests/interchange.rs:diagram_label_style_and_empty_label_roundtrip",
+        "scripts/qualify_common_metadata.py"
+      ],
+      "limitations": "Bounded common metadata and DI label profiles; all inherited owners, external QName/style resolution, arbitrary vendor semantics, native interaction and independent consumer qualification remain open."
     },
     {
       "schema": "Semantic.xsd",
@@ -28129,13 +28235,21 @@
       "abstract": null,
       "substitution_group": null,
       "coverage": {
-        "model": "unverified",
-        "edit": "unverified",
+        "model": "partial",
+        "edit": "partial",
         "render": "unverified",
-        "import": "unverified",
-        "export": "unverified",
-        "validate": "unverified"
-      }
+        "import": "partial",
+        "export": "partial",
+        "validate": "partial"
+      },
+      "evidence": [
+        "crates/processcraft-io/tests/interchange.rs:process_documentation_mixed_order_and_namespaces_roundtrip",
+        "crates/processcraft-io/tests/interchange.rs:script_and_annotation_mixed_xml_roundtrip_inertly",
+        "crates/processcraft-io/tests/interchange.rs:definitions_declarations_and_required_unknown_extension_policy",
+        "crates/processcraft-io/tests/interchange.rs:diagram_label_style_and_empty_label_roundtrip",
+        "scripts/qualify_common_metadata.py"
+      ],
+      "limitations": "Bounded common metadata and DI label profiles; all inherited owners, external QName/style resolution, arbitrary vendor semantics, native interaction and independent consumer qualification remain open."
     },
     {
       "schema": "Semantic.xsd",
