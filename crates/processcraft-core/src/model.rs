@@ -508,6 +508,7 @@ impl BpmnDocument {
             for lane in lanes {
                 out.push(&lane.id);
                 out.extend(lane.child_lane_set_id.iter());
+                out.extend(lane.partition_element.iter().map(|p| &p.id));
             }
             for flow in flows {
                 out.push(&flow.id);
@@ -1551,6 +1552,9 @@ pub struct Process {
     pub lane_set_id: Option<crate::ids::ElementIdentity>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lane_set_base: Option<crate::bpmn_metadata::BaseMetadata>,
+    /// tLaneSet@name (BPMN 2.0.2 Table 9.x LaneSet.name).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lane_set_name: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub groups: Vec<crate::bpmn_model::Group>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -1574,6 +1578,9 @@ pub struct FlowContainer {
     pub lane_set_id: Option<crate::ids::ElementIdentity>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lane_set_base: Option<crate::bpmn_metadata::BaseMetadata>,
+    /// tLaneSet@name (BPMN 2.0.2 Table 9.x LaneSet.name).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lane_set_name: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub groups: Vec<crate::bpmn_model::Group>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -1656,6 +1663,16 @@ impl NodeKind {
         )
     }
 }
+/// Inline `partitionElement` of a lane. tBaseElement is abstract in the pinned XSD, so the
+/// element is always written with `xsi:type="tCategoryValue"` (the only concrete type modelled);
+/// `value` is that type's `value` attribute.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct LanePartitionElement {
+    pub id: crate::ids::ElementIdentity,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
+}
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Lane {
@@ -1666,6 +1683,15 @@ pub struct Lane {
     pub child_lane_set_id: Option<crate::ids::ElementIdentity>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub child_lane_set_base: Option<crate::bpmn_metadata::BaseMetadata>,
+    /// tLaneSet@name of the child lane set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub child_lane_set_name: Option<String>,
+    /// tLane `partitionElement` child (an inline BaseElement), written before the flow node refs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub partition_element: Option<LanePartitionElement>,
+    /// tLane@partitionElementRef (QName of the partitioning BaseElement).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub partition_element_ref: Option<crate::bpmn_activity::ModelReference>,
     pub id: crate::ids::ElementIdentity,
     pub name: Option<String>,
     pub parent: Option<crate::ids::ElementSelector>,

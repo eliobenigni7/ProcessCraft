@@ -18,6 +18,7 @@ fn sample() -> ProjectData {
         is_executable: Some(false),
         io_specification: None,
         lane_set_base: None,
+        lane_set_name: None,
         lane_set_id: None,
         groups: vec![],
         data_objects: vec![],
@@ -74,6 +75,9 @@ fn lane_membership_is_not_a_duplicate_node() {
         .push(Lane {
             base: None,
             child_lane_set_base: None,
+            child_lane_set_name: None,
+            partition_element: None,
+            partition_element_ref: None,
             child_lane_set_id: None,
             id: id("lane"),
             name: Some(String::new()),
@@ -147,6 +151,9 @@ fn invalid_reference_is_rejected() {
         .push(Lane {
             base: None,
             child_lane_set_base: None,
+            child_lane_set_name: None,
+            partition_element: None,
+            partition_element_ref: None,
             child_lane_set_id: None,
             id: id("lane"),
             name: Some(String::new()),

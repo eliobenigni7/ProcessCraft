@@ -35,6 +35,7 @@ fn fixture() -> (Session, ElementKey) {
         io_specification: None,
         lane_set_id: None,
         lane_set_base: None,
+        lane_set_name: None,
         groups: vec![],
         data_objects: vec![],
         data_associations: vec![],
@@ -60,6 +61,9 @@ fn fixture() -> (Session, ElementKey) {
             base: None,
             child_lane_set_id: None,
             child_lane_set_base: None,
+            child_lane_set_name: None,
+            partition_element: None,
+            partition_element_ref: None,
             id: id("lane"),
             name: Some("L".into()),
             parent: None,
@@ -218,6 +222,9 @@ fn role_choices_require_explicit_selection_when_ambiguous() {
                     base: None,
                     child_lane_set_id: None,
                     child_lane_set_base: None,
+                    child_lane_set_name: None,
+                    partition_element: None,
+                    partition_element_ref: None,
                     id: id("lane2"),
                     name: Some("L2".into()),
                     parent: None,
@@ -704,6 +711,7 @@ fn nested_scope_edits_and_cross_scope_flows_are_atomic() {
             content: Box::new(FlowContainer {
                 lane_set_id: None,
                 lane_set_base: None,
+                lane_set_name: None,
                 groups: vec![],
                 data_objects: vec![],
                 data_associations: vec![],
@@ -1438,6 +1446,7 @@ fn nested_data_associations_resolve_ancestor_and_global_endpoints() {
         FlowContainer {
             lane_set_id: None,
             lane_set_base: None,
+            lane_set_name: None,
             groups: vec![],
             data_objects: vec![],
             nodes: vec![task],
@@ -1478,6 +1487,7 @@ fn nested_data_associations_resolve_ancestor_and_global_endpoints() {
         FlowContainer {
             lane_set_id: None,
             lane_set_base: None,
+            lane_set_name: None,
             groups: vec![],
             data_objects: vec![DataObject {
                 flow_metadata: None,

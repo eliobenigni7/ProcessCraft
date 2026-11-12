@@ -70,6 +70,7 @@ fn document(flows: Vec<Flow>) -> BpmnDocument {
         io_specification: None,
         lane_set_id: None,
         lane_set_base: None,
+        lane_set_name: None,
         groups: vec![],
         data_objects: vec![],
         data_associations: vec![],

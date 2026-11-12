@@ -716,6 +716,25 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                                 .insert("xsi:type".into(), "tCallableElement".into());
                             continue;
                         }
+                        if item.ns == B
+                            && item.name == "partitionElement"
+                            && uri.0 == "http://www.w3.org/2001/XMLSchema-instance"
+                            && key == "type"
+                        {
+                            let value = a
+                                .normalized_value(XmlVersion::Implicit1_0)
+                                .ok()?
+                                .into_owned();
+                            let (resolved, name) = r.resolver().resolve_element(QName(&value));
+                            if !matches!(resolved, ResolveResult::Bound(uri) if uri.0 == B)
+                                || name.as_ref() != "tCategoryValue"
+                            {
+                                return None;
+                            }
+                            item.attrs
+                                .insert("xsi:type".into(), "tCategoryValue".into());
+                            continue;
+                        }
                         if item.ns != B
                             || !is_expression(&item.name)
                             || uri.0 != "http://www.w3.org/2001/XMLSchema-instance"
@@ -793,6 +812,7 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                                     "innerMessageFlowRef" | "outerMessageFlowRef"
                                 )
                                 | ("process", "definitionalCollaborationRef")
+                                | ("lane", "partitionElementRef")
                                 | ("ioBinding", "operationRef")
                                 | ("resourceParameterBinding", "parameterRef")
                                 | ("correlationSubscription", "correlationKeyRef")
@@ -2603,28 +2623,49 @@ fn parse_lane_set(
     parent: Option<ElementSelector>,
     lanes: &mut Vec<Lane>,
     depth: usize,
+    target_namespace: &str,
 ) -> Option<()> {
     if depth > 32
         || set.ns != B
         || !matches!(set.name.as_str(), "laneSet" | "childLaneSet")
-        || !attrs(set, &["id"])
+        || !attrs(set, &["id", "name"])
     {
         return None;
     }
     for lane in &set.children {
-        if lane.ns != B || lane.name != "lane" || !attrs(lane, &["id", "name"]) {
+        if lane.ns != B
+            || lane.name != "lane"
+            || !attrs(lane, &["id", "name", "partitionElementRef"])
+        {
             return None;
         }
         let lane_id = element_identity(lane)?;
         let mut members = Vec::new();
         let mut child_set = None;
         let mut child_set_base = None;
+        let mut child_set_name = None;
+        let mut partition_element = None;
         let mut seen_child_set = false;
         for child in &lane.children {
             if child.ns != B {
                 return None;
             }
             match child.name.as_str() {
+                // tLane sequence: partitionElement? precedes flowNodeRef* and childLaneSet?.
+                "partitionElement"
+                    if partition_element.is_none()
+                        && members.is_empty()
+                        && !seen_child_set
+                        && attrs(child, &["id", "xsi:type", "value"])
+                        && child.attrs.get("xsi:type").map(String::as_str)
+                            == Some("tCategoryValue")
+                        && child.children.is_empty() =>
+                {
+                    partition_element = Some(processcraft_core::model::LanePartitionElement {
+                        id: element_identity(child)?,
+                        value: child.attrs.get("value").cloned(),
+                    })
+                }
                 "flowNodeRef"
                     if child.attrs.is_empty() && child.children.is_empty() && !seen_child_set =>
                 {
@@ -2633,18 +2674,34 @@ fn parse_lane_set(
                 "childLaneSet" if !seen_child_set => {
                     seen_child_set = true;
                     child_set = optional_id(child)?;
+                    child_set_name = child.attrs.get("name").cloned();
                     child_set_base = take_anonymous_base(child);
-                    if child_set_base.is_none() && child_set.is_none() && child.children.is_empty()
+                    if child_set_base.is_none()
+                        && child_set.is_none()
+                        && child_set_name.is_none()
+                        && child.children.is_empty()
                     {
                         child_set_base = Some(Default::default());
                     }
-                    parse_lane_set(child, Some(lane_id.selector()), lanes, depth + 1)?;
+                    parse_lane_set(
+                        child,
+                        Some(lane_id.selector()),
+                        lanes,
+                        depth + 1,
+                        target_namespace,
+                    )?;
                 }
                 _ => return None,
             }
         }
         lanes.push(Lane {
             child_lane_set_base: child_set_base,
+            child_lane_set_name: child_set_name,
+            partition_element,
+            partition_element_ref: lane
+                .catalog_qnames
+                .get("partitionElementRef")
+                .map(|q| event_reference(q, target_namespace)),
             base: take_anonymous_base(lane),
             child_lane_set_id: child_set,
             id: lane_id,
@@ -2662,6 +2719,7 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
     let mut p = Process {
         activity_metadata: None,
         lane_set_base: None,
+        lane_set_name: None,
         base_extras: anonymous_extras(e),
         is_executable: optional_bool(e.attrs.get("isExecutable"))?,
         io_specification: None,
@@ -2798,11 +2856,16 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
             }
             seen_lane_set = true;
             p.lane_set_id = optional_id(n)?;
+            p.lane_set_name = n.attrs.get("name").cloned();
             p.lane_set_base = take_anonymous_base(n);
-            if p.lane_set_base.is_none() && p.lane_set_id.is_none() && n.children.is_empty() {
+            if p.lane_set_base.is_none()
+                && p.lane_set_id.is_none()
+                && p.lane_set_name.is_none()
+                && n.children.is_empty()
+            {
                 p.lane_set_base = Some(Default::default());
             }
-            parse_lane_set(n, None, &mut p.lanes, 0)?;
+            parse_lane_set(n, None, &mut p.lanes, 0, target_namespace)?;
             continue;
         }
         if n.name == "group" {
@@ -3075,6 +3138,7 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
                 details: Some(NodeDetails::SubProcess {
                     content: Box::new(FlowContainer {
                         lane_set_base: child.lane_set_base,
+                        lane_set_name: child.lane_set_name,
                         lane_set_id: child.lane_set_id,
                         groups: child.groups,
                         data_objects: child.data_objects,
@@ -7276,14 +7340,34 @@ fn write_lanes(
     lanes: &[Lane],
     parent: Option<&ElementSelector>,
     document: &ExportContext,
+    namespace: &str,
 ) {
     for lane in lanes.iter().filter(|lane| lane.parent.as_ref() == parent) {
         xml.push_str("<lane");
         write_xml_id(xml, &lane.id);
         write_xml_name(xml, lane.name.as_deref());
+        if let Some(reference) = &lane.partition_element_ref {
+            let q = event_reference_qname(reference, namespace, document);
+            match lane.base.as_ref().filter(|b| !b.namespaces.is_empty()) {
+                Some(base) => {
+                    write_context_qname_attribute(xml, "partitionElementRef", &q, &base.namespaces)
+                }
+                None => write_catalog_qname_attribute(xml, "partitionElementRef", &q, "pc_part"),
+            }
+        }
         anonymous_base_attributes(xml, Some(&lane.id), lane.base.as_ref());
         xml.push('>');
         anonymous_base_children(xml, Some(&lane.id), lane.base.as_ref());
+        if let Some(partition) = &lane.partition_element {
+            xml.push_str(&format!(
+                "<partitionElement xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:pc_bpmn=\"{B}\" xsi:type=\"pc_bpmn:tCategoryValue\""
+            ));
+            write_xml_id(xml, &partition.id);
+            if let Some(value) = &partition.value {
+                xml.push_str(&format!(" value=\"{}\"", esc(value)));
+            }
+            xml.push_str("/>");
+        }
         for member in &lane.members {
             xml.push_str(&format!(
                 "<flowNodeRef>{}</flowNodeRef>",
@@ -7293,6 +7377,7 @@ fn write_lanes(
         let lane_selector = lane.id.selector();
         if lane.child_lane_set_id.is_some()
             || lane.child_lane_set_base.is_some()
+            || lane.child_lane_set_name.is_some()
             || lanes
                 .iter()
                 .any(|child| child.parent.as_ref() == Some(&lane_selector))
@@ -7301,6 +7386,7 @@ fn write_lanes(
             if let Some(id) = &lane.child_lane_set_id {
                 write_xml_id(xml, id);
             }
+            write_xml_name(xml, lane.child_lane_set_name.as_deref());
             anonymous_base_attributes(
                 xml,
                 lane.child_lane_set_id.as_ref(),
@@ -7312,7 +7398,7 @@ fn write_lanes(
                 lane.child_lane_set_id.as_ref(),
                 lane.child_lane_set_base.as_ref(),
             );
-            write_lanes(xml, lanes, Some(&lane_selector), document);
+            write_lanes(xml, lanes, Some(&lane_selector), document, namespace);
             xml.push_str("</childLaneSet>");
         }
         xml.push_str("</lane>");
@@ -8500,12 +8586,14 @@ fn write_scope(
         if let Some(NodeDetails::SubProcess { content }) = &n.details {
             if content.lane_set_id.is_some()
                 || content.lane_set_base.is_some()
+                || content.lane_set_name.is_some()
                 || !content.lanes.is_empty()
             {
                 xml.push_str("<laneSet");
                 if let Some(id) = &content.lane_set_id {
                     write_xml_id(xml, id);
                 }
+                write_xml_name(xml, content.lane_set_name.as_deref());
                 anonymous_base_attributes(
                     xml,
                     content.lane_set_id.as_ref(),
@@ -8517,7 +8605,7 @@ fn write_scope(
                     content.lane_set_id.as_ref(),
                     content.lane_set_base.as_ref(),
                 );
-                write_lanes(xml, &content.lanes, None, document);
+                write_lanes(xml, &content.lanes, None, document, namespace);
                 xml.push_str("</laneSet>");
             }
             write_scope(
@@ -9981,15 +10069,20 @@ fn export_document(
                 write_event_property(&mut xml, property, false);
             }
         }
-        if p.lane_set_id.is_some() || p.lane_set_base.is_some() || !p.lanes.is_empty() {
+        if p.lane_set_id.is_some()
+            || p.lane_set_base.is_some()
+            || p.lane_set_name.is_some()
+            || !p.lanes.is_empty()
+        {
             xml.push_str("<laneSet");
             if let Some(id) = &p.lane_set_id {
                 write_xml_id(&mut xml, id);
             }
+            write_xml_name(&mut xml, p.lane_set_name.as_deref());
             anonymous_base_attributes(&mut xml, p.lane_set_id.as_ref(), p.lane_set_base.as_ref());
             xml.push('>');
             anonymous_base_children(&mut xml, p.lane_set_id.as_ref(), p.lane_set_base.as_ref());
-            write_lanes(&mut xml, &p.lanes, None, &context);
+            write_lanes(&mut xml, &p.lanes, None, &context, &namespace);
             xml.push_str("</laneSet>");
         }
         write_scope(

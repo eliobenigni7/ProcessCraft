@@ -851,7 +851,7 @@ impl ProcessCraft {
                                 let lane: ElementSelector = lane_id.clone().into();
                                 let lane_bounds = Bounds { x: self.camera.0 + 30.0, y: self.camera.1 + 80.0 + p.lanes.len() as f64 * 160.0, width: 600.0, height: 150.0 };
                                 let Some((bounds, moves)) = self.role_assignment_bounds(d, &element, &lane_bounds) else { return };
-                                let mut mutations = vec![Mutation::CreateLane {  document_id: d.id, process_id: p.id.selector(), lane: Lane { base: None, child_lane_set_base: None,
+                                let mut mutations = vec![Mutation::CreateLane {  document_id: d.id, process_id: p.id.selector(), lane: Lane { base: None, child_lane_set_base: None, child_lane_set_name: None, partition_element: None, partition_element_ref: None,
     child_lane_set_id: None, id: lane_id.into(), name: Some(role.name.clone()), parent: None, members: vec![] } }, Mutation::SetDictionaryLinks { source: processcraft_core::ids::ElementKey { document_id: d.id, xml_id: lane.clone() }, kind: DictionaryKind::Role, targets: vec![DictionaryTarget::Entry(role.id)] }];
                                 if let Some(diagram) = d.diagrams.iter().find(|diagram| self.diagram_id.as_ref().is_none_or(|id| &diagram.id == id)) {
                                     mutations.push(Mutation::CreateShape {  document_id: d.id, diagram_id: diagram.id.selector(), shape: Shape { di_metadata: None, is_message_visible: None, participant_band_kind: None, choreography_activity_shape: None, label_visibility: Some(DiLabelVisibility::Explicit), is_horizontal: None, is_marker_visible: None,
@@ -1328,6 +1328,9 @@ mod tests {
         }
         p.lanes.push(Lane {
             child_lane_set_base: None,
+            child_lane_set_name: None,
+            partition_element: None,
+            partition_element_ref: None,
             base: None,
             child_lane_set_id: None,
             id: lane.clone().into(),

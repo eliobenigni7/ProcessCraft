@@ -309,6 +309,24 @@ pub enum Mutation {
         lane_id: ElementSelector,
         child_lane_set_id: Option<crate::ids::ElementIdentity>,
     },
+    SetLaneSetName {
+        document_id: DocumentId,
+        scope_id: ElementSelector,
+        lane_set_name: Option<String>,
+    },
+    SetChildLaneSetName {
+        document_id: DocumentId,
+        scope_id: ElementSelector,
+        lane_id: ElementSelector,
+        child_lane_set_name: Option<String>,
+    },
+    SetLanePartition {
+        document_id: DocumentId,
+        scope_id: ElementSelector,
+        lane_id: ElementSelector,
+        partition_element: Option<crate::model::LanePartitionElement>,
+        partition_element_ref: Option<crate::bpmn_activity::ModelReference>,
+    },
     SetLabelBounds {
         document_id: DocumentId,
         diagram_id: ElementSelector,
@@ -2735,6 +2753,34 @@ fn lane_set_mut<'a>(
     }
     Err(invalid("process or subprocess not found"))
 }
+fn lane_set_name_mut<'a>(
+    document: &'a mut BpmnDocument,
+    id: &ElementSelector,
+) -> Result<&'a mut Option<String>, CommandError> {
+    if let Some(index) = document.processes.iter().position(|p| &p.id == id) {
+        return Ok(&mut document.processes[index].lane_set_name);
+    }
+    for process in &mut document.processes {
+        if let Some(scope) = nested_scope_mut(&mut process.nodes, id, 0) {
+            return Ok(&mut scope.lane_set_name);
+        }
+    }
+    Err(invalid("process or subprocess not found"))
+}
+/// tLaneSet@name is an xsd:string: only XML 1.0 characters, bounded length.
+fn check_lane_set_name(name: &Option<String>) -> Result<(), CommandError> {
+    match name {
+        Some(n)
+            if n.len() > 16_384
+                || n.chars().any(|c| {
+                    !matches!(c as u32, 9 | 10 | 13 | 0x20..=0xD7FF | 0xE000..=0xFFFD | 0x10000..=0x10FFFF)
+                }) =>
+        {
+            Err(invalid("invalid lane set name"))
+        }
+        _ => Ok(()),
+    }
+}
 fn flow_mut<'a>(
     d: &'a mut BpmnDocument,
     id: &ElementSelector,
@@ -3684,6 +3730,43 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                 .find(|lane| lane.id == lane_id)
                 .ok_or_else(|| invalid("lane not found"))?
                 .child_lane_set_id = child_lane_set_id;
+        }
+        Mutation::SetLaneSetName {
+            document_id,
+            scope_id,
+            lane_set_name,
+        } => {
+            check_lane_set_name(&lane_set_name)?;
+            *lane_set_name_mut(doc(p, document_id, true)?, &scope_id)? = lane_set_name;
+        }
+        Mutation::SetChildLaneSetName {
+            document_id,
+            scope_id,
+            lane_id,
+            child_lane_set_name,
+        } => {
+            check_lane_set_name(&child_lane_set_name)?;
+            scope_parts_mut(doc(p, document_id, true)?, &scope_id)?
+                .1
+                .iter_mut()
+                .find(|lane| lane.id == lane_id)
+                .ok_or_else(|| invalid("lane not found"))?
+                .child_lane_set_name = child_lane_set_name;
+        }
+        Mutation::SetLanePartition {
+            document_id,
+            scope_id,
+            lane_id,
+            partition_element,
+            partition_element_ref,
+        } => {
+            let lane = scope_parts_mut(doc(p, document_id, true)?, &scope_id)?
+                .1
+                .iter_mut()
+                .find(|lane| lane.id == lane_id)
+                .ok_or_else(|| invalid("lane not found"))?;
+            lane.partition_element = partition_element;
+            lane.partition_element_ref = partition_element_ref;
         }
         Mutation::SetLabelBounds {
             document_id,
@@ -5486,6 +5569,9 @@ static COMMAND_DESCRIPTORS: &[CommandDescriptor] = &[
     descriptor!("setAssociationDirection","Set association direction","document_id":"DocumentId","flow_id":"ElementSelector","direction":"AssociationDirection|null"),
     descriptor!("setLaneSetId","Set lane set ID","document_id":"DocumentId","scope_id":"ElementSelector","lane_set_id":"XmlId|null"),
     descriptor!("setChildLaneSetId","Set child lane set ID","document_id":"DocumentId","scope_id":"ElementSelector","lane_id":"ElementSelector","child_lane_set_id":"XmlId|null"),
+    descriptor!("setLaneSetName","Set lane set name","document_id":"DocumentId","scope_id":"ElementSelector","lane_set_name":"string|null"),
+    descriptor!("setChildLaneSetName","Set child lane set name","document_id":"DocumentId","scope_id":"ElementSelector","lane_id":"ElementSelector","child_lane_set_name":"string|null"),
+    descriptor!("setLanePartition","Set lane partition element and partition element reference","document_id":"DocumentId","scope_id":"ElementSelector","lane_id":"ElementSelector","partition_element":"LanePartitionElement|null","partition_element_ref":"ModelReference|null"),
     descriptor!("setLabelBounds", "Set label bounds", "document_id":"DocumentId", "diagram_id":"ElementSelector", "representation_id":"ElementSelector", "bounds":"Bounds"),
     descriptor!("setNodeIoSpecification", "Set activity input/output", "document_id":"DocumentId", "element_id":"ElementSelector", "io_specification":"IoSpecification|null"),
     descriptor!("createDataStore","Create data store","document_id":"DocumentId","data_store":"DataStore"),

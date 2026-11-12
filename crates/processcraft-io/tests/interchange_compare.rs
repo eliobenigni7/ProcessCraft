@@ -493,6 +493,9 @@ fn anonymous_lane_wrapper_identity_keeps_presence_after_xml_id_normalization() {
                 members: vec![],
                 child_lane_set_id: Some(ElementIdentity::anonymous()),
                 child_lane_set_base: None,
+                child_lane_set_name: None,
+                partition_element: None,
+                partition_element_ref: None,
             });
         } else {
             document.processes[0].lane_set_id = Some(ElementIdentity::anonymous());

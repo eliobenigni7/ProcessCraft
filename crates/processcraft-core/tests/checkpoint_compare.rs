@@ -251,6 +251,7 @@ fn comparison_separates_rename_properties_geometry_and_frozen_context() {
         io_specification: None,
         lane_set_id: None,
         lane_set_base: None,
+        lane_set_name: None,
         groups: vec![],
         id: "Process".parse().unwrap(),
         name: Some("Process".into()),

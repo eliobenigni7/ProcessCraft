@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:t="urn:pc-r2" targetNamespace="urn:pc-r2" id="Definitions">
+ <message id="Msg" name="Order message"/>
+ <collaboration id="Collab" name="Order handling">
+  <participant id="Buyer" name="Buyer" processRef="t:Main"/>
+  <participant id="Seller" name="Seller"/>
+  <messageFlow id="Order" name="Order" sourceRef="t:Buyer" targetRef="t:Seller" messageRef="t:Msg"/>
+ </collaboration>
+ <process id="Main" name="Main process" isExecutable="false">
+  <laneSet id="Lanes" name="By role">
+   <lane id="LaneA" name="Clerk">
+    <partitionElement xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="tCategoryValue" id="Part" value="Office"/>
+    <flowNodeRef>Start</flowNodeRef>
+    <childLaneSet id="Sub" name="By skill">
+     <lane id="LaneC" name="Junior"><flowNodeRef>Work</flowNodeRef></lane>
+    </childLaneSet>
+   </lane>
+   <lane id="LaneB" name="Manager" partitionElementRef="t:Buyer"><flowNodeRef>End</flowNodeRef></lane>
+  </laneSet>
+  <startEvent id="Start"/>
+  <task id="Work" name="Work"/>
+  <endEvent id="End"/>
+  <sequenceFlow id="F1" sourceRef="Start" targetRef="Work"/>
+  <sequenceFlow id="F2" sourceRef="Work" targetRef="End"/>
+ </process>
+</definitions>
