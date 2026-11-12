@@ -576,3 +576,92 @@ fn collaboration_and_diagram_names_preserve_omission_and_empty_values() {
     );
     assert_eq!(restored.documents[0].diagrams[0].name.as_deref(), Some(""));
 }
+
+/// The identity definition before per-document caching: one serialize, parse,
+/// normalize and serialize pass over the whole project.
+fn whole_project_identity(p: &ProjectData) -> [u8; 32] {
+    use sha2::{Digest, Sha256};
+    fn normalize(v: &mut serde_json::Value) {
+        match v {
+            serde_json::Value::Number(n) if n.as_f64() == Some(0.0) && n.is_f64() => {
+                *v = serde_json::Value::from(0.0)
+            }
+            serde_json::Value::Array(a) => a.iter_mut().for_each(normalize),
+            serde_json::Value::Object(o) => o.values_mut().for_each(normalize),
+            _ => {}
+        }
+    }
+    let mut stripped = p.clone();
+    stripped.checkpoints.clear();
+    for resource in &mut stripped.resources {
+        resource.bytes = Default::default();
+    }
+    let mut value: serde_json::Value =
+        serde_json::from_slice(&serde_json::to_vec(&stripped).unwrap()).unwrap();
+    value["resources"]
+        .as_array_mut()
+        .unwrap()
+        .sort_by(|a, b| a["id"].as_str().cmp(&b["id"].as_str()));
+    normalize(&mut value);
+    let mut h = Sha256::new();
+    h.update(b"ProcessCraft persistent content v1\0");
+    h.update(serde_json::to_vec(&value).unwrap());
+    let mut resources: Vec<_> = p.resources.iter().collect();
+    resources.sort_by(|a, b| a.id.cmp(&b.id));
+    for resource in resources {
+        h.update((resource.bytes.len() as u64).to_be_bytes());
+        h.update(&*resource.bytes);
+    }
+    h.finalize().into()
+}
+
+#[test]
+fn cached_per_document_identity_equals_whole_project_identity() {
+    use processcraft_core::commands::{Envelope, Request, Session};
+    let mut p = sample();
+    let mut second = (*p.documents[0]).clone();
+    second.id = DocumentId::new();
+    second.name = "Second -0".into();
+    p.documents.push(second.into());
+    p.resources.push(Resource::new(
+        id("b_resource"),
+        "image/png".into(),
+        vec![1u8, 2, 3].into(),
+    ));
+    p.resources.push(Resource::new(
+        id("a_resource"),
+        "image/png".into(),
+        vec![4u8].into(),
+    ));
+    p.dictionary_links.push(DictionaryLink {
+        source: ElementKey {
+            document_id: p.documents[0].id,
+            xml_id: id("task"),
+        },
+        kind: DictionaryKind::System,
+        target: DictionaryTarget::Literal("ERP".into()),
+    });
+    assert_eq!(p.content_identity().unwrap(), whole_project_identity(&p));
+    // The session reuses cached documents across edits, undo and redo.
+    let document_id = p.documents[1].id;
+    let mut session = Session::new(p).unwrap();
+    let mut apply = |request: Request| {
+        let envelope = Envelope {
+            request_id: "r".into(),
+            session_id: session.id(),
+            expected_generation: None,
+        };
+        session.apply(envelope, request).unwrap();
+        let snapshot = session.snapshot();
+        assert_eq!(
+            snapshot.content_id,
+            whole_project_identity(&snapshot.project)
+        );
+    };
+    let rename: Request = serde_json::from_value(serde_json::json!({"type":"batch","mutations":[
+        {"type":"rename","document_id":document_id,"element_id":"task","name":"Renamed"}]}))
+    .unwrap();
+    apply(rename);
+    apply(Request::Undo);
+    apply(Request::Redo);
+}

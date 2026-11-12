@@ -49,7 +49,13 @@ fn label(l: &Option<Label>) -> Result<(), String> {
     }
     Ok(())
 }
-fn inspect(v: &Value) -> Result<(), String> {
+/// `depth` counts the arrays and objects enclosing `v` in the whole project JSON.
+/// Nesting is bounded exactly like serde_json's reader (127 levels), so a value
+/// serialized from the model is readable back without reparsing it here.
+fn inspect(v: &Value, depth: usize) -> Result<(), String> {
+    if matches!(v, Value::Array(_) | Value::Object(_)) && depth + 1 >= 128 {
+        return fail("project JSON is not readable: recursion limit exceeded");
+    }
     match v {
         Value::String(s) if s.len() > 1_048_576 => fail("string exceeds 1 MiB"),
         Value::Array(a) => {
@@ -57,13 +63,13 @@ fn inspect(v: &Value) -> Result<(), String> {
                 return fail("collection exceeds limit");
             }
             for x in a {
-                inspect(x)?;
+                inspect(x, depth + 1)?;
             }
             Ok(())
         }
         Value::Object(o) => {
             for x in o.values() {
-                inspect(x)?;
+                inspect(x, depth + 1)?;
             }
             Ok(())
         }
@@ -259,6 +265,21 @@ struct CheckpointFacts {
 pub(crate) struct CheckpointCache {
     checkpoints: Vec<CheckpointFacts>,
     resources: Vec<Resource>,
+    documents: Vec<DocumentFacts>,
+}
+/// Facts proven about one immutable document `Arc` (validated against the listed
+/// resource IDs): its element count and canonical JSON (sorted keys, normalized
+/// numbers). An unchanged document is neither re-validated nor re-serialized.
+#[derive(Clone)]
+struct DocumentFacts {
+    document: std::sync::Arc<BpmnDocument>,
+    resource_ids: Vec<XmlId>,
+    elements: usize,
+    canonical: std::sync::Arc<[u8]>,
+}
+struct Validated {
+    metadata: Value,
+    documents: Vec<std::sync::Arc<[u8]>>,
 }
 fn same_checkpoint(a: &Checkpoint, b: &Checkpoint) -> bool {
     let (x, y) = (&a.content, &b.content);
@@ -313,9 +334,10 @@ impl ProjectData {
         self.validate_cached(&mut CheckpointCache::default())
             .map(drop)
     }
-    /// Validates and returns the project JSON value without checkpoints and
-    /// resource bytes, so identity reuses it instead of serializing again.
-    fn validate_cached(&self, cache: &mut CheckpointCache) -> Result<Value, String> {
+    /// Validates and returns the project JSON value without documents, checkpoints
+    /// and resource bytes, plus each document's canonical JSON, so identity reuses
+    /// them instead of serializing again.
+    fn validate_cached(&self, cache: &mut CheckpointCache) -> Result<Validated, String> {
         short(&self.name)?;
         if self.checkpoints.len() > 20 {
             return fail("checkpoint limit exceeded");
@@ -323,16 +345,43 @@ impl ProjectData {
         let mut checkpoint_ids = HashSet::new();
         let mut current_metadata = self.clone();
         current_metadata.checkpoints.clear();
+        current_metadata.documents.clear();
         for resource in &mut current_metadata.resources {
             resource.bytes = Default::default();
         }
-        // Apply serde_json's reader recursion budget to the combined document,
-        // rather than separately bounding graph and mixed-XML depths. Native
-        // archives deserialize the same document nesting through serde_json.
-        let current_json = serde_json::to_vec(&current_metadata).map_err(|e| e.to_string())?;
-        let current_value = serde_json::from_slice::<serde_json::Value>(&current_json)
-            .map_err(|e| format!("project JSON is not readable: {e}"))?;
-        let mut checkpoint_bytes = current_json.len();
+        // Apply serde_json's reader recursion budget to the combined document
+        // (see `inspect`), rather than separately bounding graph and mixed-XML
+        // depths. Native archives deserialize the same nesting through serde_json.
+        let current_value = serde_json::to_value(&current_metadata).map_err(|e| e.to_string())?;
+        let resource_ids: Vec<XmlId> = self.resources.iter().map(|r| r.id.clone()).collect();
+        let mut documents = Vec::with_capacity(self.documents.len());
+        for d in &self.documents {
+            let cached = cache.documents.iter().find(|facts| {
+                std::sync::Arc::ptr_eq(&facts.document, d) && facts.resource_ids == resource_ids
+            });
+            documents.push(match cached {
+                Some(facts) => (facts.canonical.clone(), Some(facts.elements)),
+                None => {
+                    let mut value = serde_json::to_value(&**d).map_err(|e| e.to_string())?;
+                    // Nested in the project object and its `documents` array.
+                    inspect(&value, 2)?;
+                    normalize(&mut value);
+                    let bytes = serde_json::to_vec(&value).map_err(|e| e.to_string())?;
+                    (bytes.into(), None)
+                }
+            });
+        }
+        // Serialized length of the project without checkpoints: `"documents":[]`
+        // filled with the comma-separated documents.
+        let current_len = serde_json::to_vec(&current_value)
+            .map_err(|e| e.to_string())?
+            .len()
+            + documents
+                .iter()
+                .map(|(bytes, _)| bytes.len())
+                .sum::<usize>()
+            + documents.len().saturating_sub(1);
+        let mut checkpoint_bytes = current_len;
         checkpoint_bytes = checkpoint_bytes
             .checked_add(1024 + self.checkpoints.len() * 512)
             .ok_or("checkpoint size overflow")?;
@@ -370,7 +419,10 @@ impl ProjectData {
                     serde_json::from_slice::<serde_json::Value>(&checkpoint_json)
                         .map_err(|e| format!("checkpoint JSON is not readable: {e}"))?;
                     let entry = serde_json::to_value(&stripped).map_err(|e| e.to_string())?;
-                    inspect(&entry)?;
+                    // Content nesting was bounded by reading `checkpoint_json` back.
+                    for field in entry.as_object().into_iter().flat_map(|o| o.values()) {
+                        inspect(field, 0)?;
+                    }
                     CheckpointFacts {
                         checkpoint: checkpoint.clone(),
                         content_len: checkpoint_json.len(),
@@ -441,23 +493,35 @@ impl ProjectData {
         if resource_bytes > 256 * 1024 * 1024 {
             return fail("resources exceed package limit");
         }
-        // `current_value` is this project without checkpoints or resource bytes;
-        // its re-serialized length equals `current_json`. Checkpoint entries were
-        // inspected and measured individually above.
-        inspect(&current_value)?;
-        if json_len_with_checkpoints(current_json.len(), &validated) > 64 * 1024 * 1024 {
+        // `current_value` is this project without documents, checkpoints or
+        // resource bytes (documents were inspected above); `current_len` is the
+        // serialized length with documents. Checkpoint entries were inspected and
+        // measured individually above.
+        inspect(&current_value, 0)?;
+        if json_len_with_checkpoints(current_len, &validated) > 64 * 1024 * 1024 {
             return fail("project JSON exceeds 64 MiB");
         }
         let mut docs = HashSet::new();
         let mut total = 0usize;
-        for d in &self.documents {
+        let mut document_facts = Vec::with_capacity(self.documents.len());
+        for (d, (canonical, elements)) in self.documents.iter().zip(&documents) {
             if !docs.insert(d.id) {
                 return fail("duplicate document ID");
             }
             if d.folder.as_ref().is_some_and(|f| !folders.contains_key(f)) {
                 return fail("missing document folder");
             }
-            total += validate_document(d, &resources)?;
+            let elements = match elements {
+                Some(elements) => *elements,
+                None => validate_document(d, &resources)?,
+            };
+            total += elements;
+            document_facts.push(DocumentFacts {
+                document: d.clone(),
+                resource_ids: resource_ids.clone(),
+                elements,
+                canonical: canonical.clone(),
+            });
         }
         if total > 100_000 {
             return fail("project element limit exceeded");
@@ -537,7 +601,23 @@ impl ProjectData {
         }
         cache.checkpoints = validated;
         cache.resources = self.resources.clone();
-        Ok(current_value)
+        // Keep the current documents plus a few earlier versions, so undo and redo
+        // of recent edits find their documents again.
+        let keep = document_facts.len() + 8;
+        for facts in std::mem::take(&mut cache.documents) {
+            if !document_facts
+                .iter()
+                .any(|kept| std::sync::Arc::ptr_eq(&kept.document, &facts.document))
+            {
+                document_facts.push(facts);
+            }
+        }
+        document_facts.truncate(keep);
+        cache.documents = document_facts;
+        Ok(Validated {
+            metadata: current_value,
+            documents: documents.into_iter().map(|(bytes, _)| bytes).collect(),
+        })
     }
     pub fn content_identity(&self) -> Result<[u8; 32], String> {
         self.identity_version(false, &mut CheckpointCache::default())
@@ -560,7 +640,10 @@ impl ProjectData {
     ) -> Result<[u8; 32], String> {
         // Equal to serializing the project without checkpoints, resource bytes
         // stripped and resources stably sorted by ID.
-        let mut value = self.validate_cached(cache)?;
+        let Validated {
+            metadata: mut value,
+            documents,
+        } = self.validate_cached(cache)?;
         if let Some(Value::Array(resources)) = value.get_mut("resources") {
             resources.sort_by(|a, b| a["id"].as_str().cmp(&b["id"].as_str()));
         }
@@ -598,13 +681,42 @@ impl ProjectData {
             object.remove("dictionary_links");
         }
         normalize(&mut value);
-        let bytes = serde_json::to_vec(&value).map_err(|e| e.to_string())?;
-        if bytes.len() > 64 * 1024 * 1024 {
-            return fail("project JSON exceeds 64 MiB");
-        }
         let mut h = Sha256::new();
         h.update(b"ProcessCraft persistent content v1\0");
-        h.update(bytes);
+        // Same bytes as serializing the whole normalized project value: its keys
+        // are sorted, and `documents` is filled with the cached canonical documents.
+        let Value::Object(fields) = &value else {
+            return fail("project JSON is not an object");
+        };
+        let mut len = 0usize;
+        let mut put = |bytes: &[u8]| {
+            h.update(bytes);
+            len += bytes.len();
+        };
+        put(b"{");
+        for (i, (key, field)) in fields.iter().enumerate() {
+            if i > 0 {
+                put(b",");
+            }
+            put(&serde_json::to_vec(key).map_err(|e| e.to_string())?);
+            put(b":");
+            if key == "documents" {
+                put(b"[");
+                for (j, document) in documents.iter().enumerate() {
+                    if j > 0 {
+                        put(b",");
+                    }
+                    put(document);
+                }
+                put(b"]");
+            } else {
+                put(&serde_json::to_vec(field).map_err(|e| e.to_string())?);
+            }
+        }
+        put(b"}");
+        if len > 64 * 1024 * 1024 {
+            return fail("project JSON exceeds 64 MiB");
+        }
         let mut resources: Vec<_> = self.resources.iter().collect();
         resources.sort_by(|a, b| a.id.cmp(&b.id));
         for resource in resources {
@@ -2842,10 +2954,12 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             };
             let (inputs, outputs): (&[crate::bpmn_data::DataPort], &[crate::bpmn_data::DataPort]) =
                 if owner.kind.is_activity() {
-                    let Some(io) = &owner.io_specification else {
-                        return fail("data association requires activity ports");
-                    };
-                    (&io.inputs, &io.outputs)
+                    // Modelers such as bpmn.io write no ioSpecification: inputs then target an
+                    // activity property and outputs carry no source (both XSD-valid).
+                    owner
+                        .io_specification
+                        .as_ref()
+                        .map_or((&[], &[]), |io| (&io.inputs, &io.outputs))
                 } else if let Some(crate::bpmn_model::NodeDetails::Event {
                     io: Some(event_io),
                     ..
@@ -2916,11 +3030,18 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             }
             let valid = match association.kind {
                 DataAssociationKind::Input => {
-                    inputs.iter().any(|port| {
+                    (inputs.iter().any(|port| {
                         port.id
                             .as_ref()
                             .is_some_and(|identity| identity == &association.target)
-                    }) && association.sources.iter().all(|id| local(id, true))
+                    }) || owner.activity.as_ref().is_some_and(|activity| {
+                        activity.properties.iter().any(|property| {
+                            property
+                                .id
+                                .as_ref()
+                                .is_some_and(|identity| identity == &association.target)
+                        })
+                    })) && association.sources.iter().all(|id| local(id, true))
                 }
                 DataAssociationKind::Output => {
                     local(&association.target, false)

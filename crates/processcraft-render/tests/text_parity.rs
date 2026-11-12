@@ -20,7 +20,16 @@ fn same_layout_drives_all_outputs() {
     );
     let svg = scene.to_svg();
     assert_eq!(svg.matches("<path ").count(), paths.len());
-    assert!(!svg.contains("<text"));
+    // Outlines stay the only visible ink; one transparent, searchable text line
+    // carries the same string with the pinned-metric advance.
+    assert_eq!(svg.matches("<text ").count(), 1);
+    assert!(svg.contains("<g fill-opacity=\"0\" font-family=\"'Noto Sans', 'Noto Sans Arabic', 'Noto Sans CJK SC', sans-serif\""));
+    let line = &layout.visible_lines()[0];
+    assert_eq!(line.text, "Café e\u{301} مرحبا 世界");
+    assert!(svg.contains(&format!(
+        "textLength=\"{}\" lengthAdjust=\"spacingAndGlyphs\">Café e\u{301} مرحبا 世界</tspan>",
+        line.width
+    )));
     let before = format!("{:?}", scene.labels());
     assert_eq!(scene.rasterize(1.0).unwrap().width(), 400);
     assert_eq!(scene.rasterize(2.0).unwrap().width(), 800);

@@ -9589,31 +9589,9 @@ fn export_document(
         report.blocked.push(reason);
         return Err(ExportFailure { report });
     }
-    if all_scopes
-        .iter()
-        .flat_map(|p| p.nodes)
-        .any(|n| match &n.details {
-            Some(NodeDetails::CallActivity {
-                called_element: Some(called_element),
-            }) => {
-                called_element.namespace == namespace
-                    && !document
-                        .processes
-                        .iter()
-                        .any(|p| p.id.xml_id() == Some(&called_element.local))
-                    && !document.global_tasks.iter().any(|task| {
-                        task.id.as_ref().and_then(ElementIdentity::xml_id)
-                            == Some(&called_element.local)
-                    })
-            }
-            _ => false,
-        })
-    {
-        report
-            .blocked
-            .push("Call activity target is not a local callable element".into());
-        return Err(ExportFailure { report });
-    }
+    // Call activity targets are checked by core reference validation above: a calledElement
+    // resolving to a local non-callable element is refused, one naming nothing in this file
+    // is an external callable (e.g. an engine process key) and is written verbatim.
     let mut xml = format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?><definitions xmlns=\"{B}\"");
     write_xml_id(&mut xml, &document.definitions_id);
     xml.push_str(&format!(" targetNamespace=\"{}\">", esc(&namespace)));

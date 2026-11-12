@@ -97,6 +97,9 @@ pub fn export_diagram(
                 "width=\"{width}\" height=\"{height}\" viewBox=\"0 0 {width} {height}\"><g transform=\"scale({})\">",
                 options.scale
             );
+            // Reported after the acknowledgement gate: nothing is lost relative to
+            // the scene, so this is information rather than a lossy diagnostic.
+            built.diagnostics.push(crate::scene::SVG_TEXT_NOTICE.into());
             svg.replacen(&old, &new, 1)
                 .replacen("</svg>", "</g></svg>", 1)
                 .into_bytes()

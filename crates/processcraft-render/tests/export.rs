@@ -100,6 +100,34 @@ fn exports_full_scene_and_exact_dimensions() {
     assert_eq!(&png.bytes[..8], b"\x89PNG\r\n\x1a\n");
 }
 #[test]
+fn svg_export_carries_searchable_text_and_reports_it() {
+    let d = document();
+    let opts = ExportOptions {
+        format: ExportFormat::Svg,
+        appearance: Appearance::Light,
+        scale: 1.,
+        acknowledge_diagnostics: false,
+    };
+    // Informational: no acknowledgement is needed, unlike the outlined PDF.
+    let svg = export_diagram(
+        &d,
+        &"d".parse().unwrap(),
+        opts,
+        &mut TextEngine::new(),
+        "Noto Sans",
+    )
+    .unwrap();
+    assert!(
+        svg.diagnostics
+            .iter()
+            .any(|m| m.contains("searchable and selectable"))
+    );
+    let text = String::from_utf8(svg.bytes).unwrap();
+    assert!(text.contains("lengthAdjust=\"spacingAndGlyphs\">A &amp; B</tspan>"));
+    assert!(text.contains("<g fill-opacity=\"0\""));
+    assert!(text.contains("<path "));
+}
+#[test]
 fn rejects_preserved_placeholder_and_oversized() {
     let mut d = document();
     d.capability = Capability::PreservedSource {

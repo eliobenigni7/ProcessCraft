@@ -1386,3 +1386,61 @@ fn task_gateway_loop_back_layout_succeeds_with_and_without_lane() {
         assert_layout_succeeds(&d);
     }
 }
+#[test]
+fn eight_nested_loop_backs_in_one_band_layout_succeeds() {
+    use NodeKind::*;
+    let names: Vec<String> = (1..=16).map(|i| format!("t{i:02}")).collect();
+    let mut nodes: Vec<(&str, NodeKind)> = vec![("start", StartEvent)];
+    nodes.extend(names.iter().map(|n| (n.as_str(), Task)));
+    let mut flows: Vec<(&str, &str)> = vec![("start", names[0].as_str())];
+    flows.extend(names.windows(2).map(|w| (w[0].as_str(), w[1].as_str())));
+    // t09->t08, t10->t07, ..., t16->t01: eight nested loop-backs in one band.
+    flows.extend((0..8).map(|i| (names[8 + i].as_str(), names[7 - i].as_str())));
+    for lane in [false, true] {
+        assert_layout_succeeds(&ordinary_process(&nodes, &flows, lane));
+    }
+}
+#[test]
+fn loop_back_from_stacked_node_routes_around_the_node_above() {
+    use NodeKind::*;
+    for lane in [false, true] {
+        let d = ordinary_process(
+            &[
+                ("start", StartEvent),
+                ("xor", ExclusiveGateway),
+                ("t1", Task),
+                ("t2", Task),
+                ("join", ExclusiveGateway),
+                ("end", EndEvent),
+            ],
+            &[
+                ("start", "xor"),
+                ("xor", "t1"),
+                ("xor", "t2"),
+                ("t1", "join"),
+                ("t2", "join"),
+                ("join", "end"),
+                ("t2", "start"),
+            ],
+            lane,
+        );
+        assert_layout_succeeds(&d);
+        // t2 sits under t1 in its column, so the loop runs in a channel below it.
+        let p = layout(&d);
+        let t2 = &p
+            .proposed
+            .shapes
+            .iter()
+            .find(|s| s.id == id::<ElementSelector>("shape_t2"))
+            .unwrap()
+            .bounds;
+        let edge = p
+            .proposed
+            .edges
+            .iter()
+            .find(|e| e.id == id::<ElementSelector>("di_t2_start"))
+            .unwrap();
+        assert!(edge.waypoints[0].y == t2.y + t2.height);
+        assert!(edge.waypoints.iter().all(|w| w.y >= t2.y));
+    }
+}

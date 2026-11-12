@@ -6,7 +6,7 @@ mod text;
 
 pub use bpmn::{Appearance, BpmnScene, BpmnViewport, HitGeometry, HitRegion, Viewport};
 pub use scene::{DiagramScene, Label, ScenePath};
-pub use text::{Glyph, TextEngine, TextLayout, TextRequest};
+pub use text::{Glyph, TextEngine, TextLayout, TextRequest, VisibleLine};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RenderError(pub &'static str);

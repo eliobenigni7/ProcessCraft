@@ -2541,6 +2541,7 @@ pub(crate) fn activity_family_reference_scan(
         .map(|process| &process.id)
         .chain(doc.global_tasks.iter().filter_map(|task| task.id.as_ref()))
         .collect();
+    let mut reference_index = None;
     let mut keys = Vec::new();
     for collaboration in doc
         .collaboration
@@ -3898,12 +3899,25 @@ pub(crate) fn activity_family_reference_scan(
                 called_element: Some(reference),
             }) = &node.details
             {
-                check(
-                    node.id.selector(),
-                    "callActivity.calledElement",
-                    &ModelReference::Qualified(reference.clone()),
-                    callable_ids.clone(),
+                let reference = ModelReference::Qualified(reference.clone());
+                // A calledElement naming no element of this file is a callable defined
+                // elsewhere (e.g. an engine process key): keep it as an external reference.
+                let missing = matches!(
+                    reference_index
+                        .get_or_insert_with(|| {
+                            crate::reference_resolution::ReferenceIndex::new(doc)
+                        })
+                        .resolve(&reference),
+                    crate::reference_resolution::ReferenceResolution::MissingLocal
                 );
+                if !missing {
+                    check(
+                        node.id.selector(),
+                        "callActivity.calledElement",
+                        &reference,
+                        callable_ids.clone(),
+                    );
+                }
             }
             if let Some(NodeDetails::DataStoreReference {
                 data_store_ref: Some(reference),

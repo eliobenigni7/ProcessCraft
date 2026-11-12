@@ -1324,10 +1324,91 @@ pub fn propose_layout(
         }
         singles.reverse();
     }
+    // Back-edges run in a channel over the top of the higher band. When a node
+    // stacked in an endpoint's column blocks that vertical leg (and nothing blocks
+    // the way down), they run in a channel under the lower band instead. Channels
+    // are assigned innermost-first by column span so nested loops never cross,
+    // and each band's margins grow with its channel count.
+    let slot = |i: usize| row[i].unwrap_or(0);
+    let blocked = |e: usize, other: usize, above: bool| {
+        (0..n).any(|j| {
+            j != e
+                && j != other
+                && rank[j] == rank[e]
+                && if band_of(j) == band_of(e) {
+                    if above {
+                        slot(j) < slot(e)
+                    } else {
+                        slot(j) > slot(e)
+                    }
+                } else if above {
+                    band_of(j) < band_of(e) && band_of(j) >= band_of(other).min(band_of(e))
+                } else {
+                    band_of(j) > band_of(e) && band_of(j) <= band_of(other).max(band_of(e))
+                }
+        })
+    };
+    let mut planned = Vec::new();
+    for f in flows.values() {
+        let (
+            Some(crate::bpmn_model::EventReference::Local(s)),
+            Some(crate::bpmn_model::EventReference::Local(t)),
+        ) = (&f.source, &f.target)
+        else {
+            continue;
+        };
+        let (a, b) = (indices[s], indices[t]);
+        if a == b || rank[a] < rank[b] {
+            continue;
+        }
+        let bottom = (blocked(a, b, true) || blocked(b, a, true))
+            && !blocked(a, b, false)
+            && !blocked(b, a, false);
+        let band = if bottom {
+            band_of(a).max(band_of(b))
+        } else {
+            band_of(a).min(band_of(b))
+        };
+        planned.push((bottom, band, rank[a] - rank[b], f.id.selector()));
+    }
+    planned.sort_by_key(|(bottom, band, span, _)| (*bottom, *band, *span));
+    let mut channel_count = vec![[0usize; 2]; bands];
+    let mut loop_plan = BTreeMap::new();
+    for (bottom, band, _, flow) in planned {
+        let count = &mut channel_count[band][usize::from(bottom)];
+        loop_plan.insert(flow, (bottom, band, *count));
+        *count += 1;
+    }
+    // Nodes start `top` below their band edge; top channel k sits 12 + 8k above them.
+    let top: Vec<f64> = channel_count
+        .iter()
+        .map(|c| (12.0 + 8.0 * c[0] as f64).max(60.0))
+        .collect();
+    // Bottom channels sit 12 + 8k below the lowest node or external label of the band.
+    let mut lowest = vec![0.0_f64; bands];
+    for (i, id) in ids.iter().enumerate() {
+        let shape = &d.shapes[shape_by_element[id]];
+        let y = top[band_of(i)]
+            + slot(i) as f64 * (max_height + 80.0)
+            + (max_height - shape.bounds.height) / 2.0;
+        let label = shape
+            .label
+            .as_ref()
+            .and_then(|l| l.bounds.as_ref())
+            .map_or(0.0, |l| l.y - shape.bounds.y + l.height);
+        lowest[band_of(i)] = lowest[band_of(i)].max(y + shape.bounds.height.max(label));
+    }
     let mut band_heights = vec![120.0_f64; bands];
     for (i, slot) in row.iter().enumerate() {
-        let h = (slot.unwrap_or(0) + 1) as f64 * (max_height + 80.0) + 40.0;
+        let h =
+            (slot.unwrap_or(0) + 1) as f64 * (max_height + 80.0) + 40.0 + top[band_of(i)] - 60.0;
         band_heights[band_of(i)] = band_heights[band_of(i)].max(h);
+    }
+    for (band, count) in channel_count.iter().enumerate() {
+        if count[1] > 0 {
+            band_heights[band] =
+                band_heights[band].max(lowest[band] + 16.0 + 8.0 * count[1] as f64);
+        }
     }
     let mut band_y = vec![0.0; bands];
     for i in 1..bands {
@@ -1346,7 +1427,7 @@ pub fn propose_layout(
             let out = &mut result.shapes[index[&shape.id.selector()]];
             let x = 80.0 + layer as f64 * (max_width + 160.0);
             let y = band_y[band]
-                + 60.0
+                + top[band]
                 + row[i].unwrap_or(0) as f64 * (max_height + 80.0)
                 + (max_height - out.bounds.height) / 2.0;
             let dx = x - out.bounds.x;
@@ -1458,7 +1539,11 @@ pub fn propose_layout(
                 // 0 top, 1 right, 2 bottom, 3 left.
                 let horizontal = if source { 1 } else { 3 };
                 let preferred = if back_pass {
-                    0
+                    if loop_plan[&flow.id.selector()].0 {
+                        2
+                    } else {
+                        0
+                    }
                 } else if (ocy - cy).abs() < 0.5 {
                     horizontal
                 } else if ocy > cy {
@@ -1502,7 +1587,6 @@ pub fn propose_layout(
             }
         }
     }
-    let mut loop_channels = vec![0usize; bands];
     for (number, flow) in flows.values().enumerate() {
         cancelled(cancel)?;
         let (
@@ -1591,14 +1675,12 @@ pub fn propose_layout(
                 end.clone(),
             ]
         } else if back {
-            // Loop back over the top, inside the topmost band's free margin above
-            // its first row (nodes start 60 below the band edge).
-            let band = band_of(indices[source_id]).min(band_of(indices[target_id]));
-            let channel_y = band_y[band] + 48.0 - 8.0 * loop_channels[band] as f64;
-            loop_channels[band] += 1;
-            if channel_y <= band_y[band] {
-                return Err(err("routing", "Too many loop-back routes in one band"));
-            }
+            let (bottom, band, k) = loop_plan[&flow.id.selector()];
+            let channel_y = if bottom {
+                band_y[band] + lowest[band] + 12.0 + 8.0 * k as f64
+            } else {
+                band_y[band] + top[band] - 12.0 - 8.0 * k as f64
+            };
             vec![
                 start.clone(),
                 Point {
