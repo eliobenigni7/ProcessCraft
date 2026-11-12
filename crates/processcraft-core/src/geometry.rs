@@ -152,6 +152,65 @@ fn compact(path: Vec<Point>) -> Vec<Point> {
     }
     out
 }
+/// Route for a new connection between two shapes, shared by every entry point.
+/// Leaves and enters on the sides that face each other with one orthogonal elbow; when that
+/// elbow crosses another shape it tries the bounded [`route`] search, and otherwise keeps the
+/// elbow (a visible route the user can reroute). Bounds containing either endpoint's centre
+/// (pools, lanes, expanded subprocesses) and the endpoints themselves are not obstacles.
+pub fn connection_route(a: &Bounds, b: &Bounds, shapes: &[Bounds]) -> Vec<Point> {
+    let (ax, ay) = (a.x + a.width / 2.0, a.y + a.height / 2.0);
+    let (bx, by) = (b.x + b.width / 2.0, b.y + b.height / 2.0);
+    let horizontal = (bx - ax).abs() >= (by - ay).abs();
+    let (start, end) = if horizontal {
+        let forward = bx >= ax;
+        (
+            p(if forward { a.x + a.width } else { a.x }, ay),
+            p(if forward { b.x } else { b.x + b.width }, by),
+        )
+    } else {
+        let down = by >= ay;
+        (
+            p(ax, if down { a.y + a.height } else { a.y }),
+            p(bx, if down { b.y } else { b.y + b.height }),
+        )
+    };
+    let elbow = if horizontal {
+        let mid = (start.x + end.x) / 2.0;
+        compact(vec![
+            start.clone(),
+            p(mid, start.y),
+            p(mid, end.y),
+            end.clone(),
+        ])
+    } else {
+        let mid = (start.y + end.y) / 2.0;
+        compact(vec![
+            start.clone(),
+            p(start.x, mid),
+            p(end.x, mid),
+            end.clone(),
+        ])
+    };
+    let contains = |r: &Bounds, x: f64, y: f64| {
+        x >= r.x && x <= r.x + r.width && y >= r.y && y <= r.y + r.height
+    };
+    let obstacles: Vec<Bounds> = shapes
+        .iter()
+        .filter(|r| *r != a && *r != b && !contains(r, ax, ay) && !contains(r, bx, by))
+        .cloned()
+        .collect();
+    if clear(&elbow, &obstacles) {
+        return elbow;
+    }
+    match route(start, end, &obstacles, 10.0, 512) {
+        Ok(RouteResult {
+            waypoints: Some(waypoints),
+            ..
+        }) => waypoints,
+        _ => elbow,
+    }
+}
+
 /// Searches a bounded set of orthogonal corridors. A failure is explicit; no unsafe fallback is returned.
 /// The caller must exclude the source and destination shapes from `obstacles`.
 pub fn route(

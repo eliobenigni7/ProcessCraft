@@ -6,6 +6,7 @@ mod collaboration_export;
 pub mod recovery;
 mod root_order_export;
 mod save;
+pub mod settings;
 pub use recovery::{RecoveryOrigin, RecoveryRecord, RecoveryStore};
 
 pub use access::{Access, FileGrant};

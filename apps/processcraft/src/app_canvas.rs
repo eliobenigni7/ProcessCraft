@@ -7,7 +7,7 @@ use egui::{Color32, Pos2, Rect, Sense, Vec2};
 use processcraft_core::{
     commands::Mutation,
     ids::ElementSelector,
-    model::{Bounds, FlowKind, NodeKind, Point, Shape},
+    model::{Bounds, FlowKind, NodeKind, Shape},
 };
 use processcraft_render::{Appearance, HitGeometry, Viewport};
 
@@ -147,32 +147,6 @@ fn resize_bounds(b: &Bounds, corner: usize, dx: f64, dy: f64) -> Bounds {
         y: top,
         width: right - left,
         height: bottom - top,
-    }
-}
-
-/// Orthogonal route leaving and entering on the sides that face each other.
-pub(super) fn elbow_route(a: &Bounds, b: &Bounds) -> Vec<Point> {
-    let (ax, ay) = (a.x + a.width / 2.0, a.y + a.height / 2.0);
-    let (bx, by) = (b.x + b.width / 2.0, b.y + b.height / 2.0);
-    let p = |x, y| Point { x, y };
-    if (bx - ax).abs() >= (by - ay).abs() {
-        let forward = bx >= ax;
-        let start = p(if forward { a.x + a.width } else { a.x }, ay);
-        let end = p(if forward { b.x } else { b.x + b.width }, by);
-        if (start.y - end.y).abs() < 0.5 {
-            return vec![p(start.x, start.y), p(end.x, start.y)];
-        }
-        let mid = (start.x + end.x) / 2.0;
-        vec![p(start.x, start.y), p(mid, start.y), p(mid, end.y), end]
-    } else {
-        let down = by >= ay;
-        let start = p(ax, if down { a.y + a.height } else { a.y });
-        let end = p(bx, if down { b.y } else { b.y + b.height });
-        if (start.x - end.x).abs() < 0.5 {
-            return vec![p(start.x, start.y), p(start.x, end.y)];
-        }
-        let mid = (start.y + end.y) / 2.0;
-        vec![p(start.x, start.y), p(start.x, mid), p(end.x, mid), end]
     }
 }
 
@@ -1347,28 +1321,6 @@ mod tests {
             resize_bounds(&start, 3, 0.0, -500.0),
             b(0.0, 0.0, 100.0, 20.0)
         );
-    }
-
-    #[test]
-    fn elbow_route_picks_facing_sides() {
-        let a = b(0.0, 0.0, 100.0, 80.0);
-        let right = elbow_route(&a, &b(200.0, 0.0, 100.0, 80.0));
-        assert_eq!(right.len(), 2);
-        assert_eq!((right[0].x, right[1].x), (100.0, 200.0));
-        let below_right = elbow_route(&a, &b(300.0, 100.0, 100.0, 80.0));
-        assert_eq!(below_right.len(), 4);
-        assert_eq!((below_right[0].x, below_right[0].y), (100.0, 40.0));
-        assert_eq!((below_right[3].x, below_right[3].y), (300.0, 140.0));
-        assert!(
-            below_right
-                .windows(2)
-                .all(|w| w[0].x == w[1].x || w[0].y == w[1].y)
-        );
-        let above = elbow_route(&a, &b(10.0, -300.0, 100.0, 80.0));
-        assert_eq!((above[0].x, above[0].y), (50.0, 0.0));
-        assert_eq!(above.last().map(|p| p.y), Some(-220.0));
-        let left = elbow_route(&a, &b(-300.0, 0.0, 100.0, 80.0));
-        assert_eq!((left[0].x, left[1].x), (0.0, -200.0));
     }
 
     #[test]

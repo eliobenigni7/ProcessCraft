@@ -17,6 +17,40 @@ fn coords(points: &[Point]) -> Vec<(f64, f64)> {
     points.iter().map(|p| (p.x, p.y)).collect()
 }
 #[test]
+fn connection_route_faces_shapes_and_avoids_obstacles() {
+    let a = rect(0.0, 0.0, 100.0, 80.0);
+    let right = connection_route(&a, &rect(200.0, 0.0, 100.0, 80.0), &[]);
+    assert_eq!(coords(&right), vec![(100.0, 40.0), (200.0, 40.0)]);
+    let below_right = connection_route(&a, &rect(300.0, 100.0, 100.0, 80.0), &[]);
+    assert_eq!(below_right.len(), 4);
+    assert_eq!(coords(&below_right)[0], (100.0, 40.0));
+    assert_eq!(coords(&below_right)[3], (300.0, 140.0));
+    let above = connection_route(&a, &rect(10.0, -300.0, 100.0, 80.0), &[]);
+    assert_eq!((above[0].x, above[0].y), (50.0, 0.0));
+    let left = connection_route(&a, &rect(-300.0, 0.0, 100.0, 80.0), &[]);
+    assert_eq!((left[0].x, left[1].x), (0.0, -200.0));
+    // A shape between the endpoints is routed around; an enclosing pool is not an obstacle.
+    let target = rect(400.0, 0.0, 100.0, 80.0);
+    let blocker = rect(200.0, 0.0, 100.0, 80.0);
+    let pool = rect(-50.0, -50.0, 600.0, 300.0);
+    let around = connection_route(
+        &a,
+        &target,
+        &[a.clone(), blocker.clone(), pool, target.clone()],
+    );
+    assert!(
+        around
+            .windows(2)
+            .all(|w| w[0].x == w[1].x || w[0].y == w[1].y)
+    );
+    assert!(
+        around
+            .iter()
+            .all(|q| !(q.x > 200.0 && q.x < 300.0 && q.y > 0.0 && q.y < 80.0))
+    );
+    assert_ne!(around.len(), 2);
+}
+#[test]
 fn routing_is_deterministic() {
     let obstacle = rect(4.0, -1.0, 2.0, 2.0);
     let a = route(

@@ -5,12 +5,13 @@ mod attachment;
 mod controller;
 mod effects;
 mod jobs;
-mod settings;
 mod theme;
 mod widgets;
 
 fn main() -> eframe::Result {
-    let settings = settings::Settings::load();
+    let settings = processcraft_io::settings::Settings::load(
+        processcraft_io::settings::Settings::default_location(),
+    );
     let size = settings.window.unwrap_or([1440.0, 900.0]);
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()

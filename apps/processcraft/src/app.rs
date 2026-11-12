@@ -101,6 +101,15 @@ fn node_kind_label(kind: NodeKind) -> &'static str {
         NodeKind::CallActivity => "Call activity",
     }
 }
+/// New-connection route from the shared core router, avoiding the diagram's other shapes.
+fn connection_route(
+    a: &processcraft_core::model::Bounds,
+    b: &processcraft_core::model::Bounds,
+    diagram: &Diagram,
+) -> Vec<processcraft_core::model::Point> {
+    let shapes: Vec<_> = diagram.shapes.iter().map(|s| s.bounds.clone()).collect();
+    processcraft_core::geometry::connection_route(a, b, &shapes)
+}
 fn diagram_extents(diagram: &Diagram) -> Option<(f64, f64, f64, f64)> {
     let mut result: Option<(f64, f64, f64, f64)> = None;
     let mut include = |x: f64, y: f64| {
@@ -272,7 +281,7 @@ pub struct ProcessCraft {
     diagnostics: crate::jobs::DiagnosticsWorker,
     /// Context of the running UI, used to wake it when background work finishes.
     repaint: egui::Context,
-    settings: crate::settings::Settings,
+    settings: processcraft_io::settings::Settings,
     /// Path chosen from Open recent, opened once any unsaved-changes prompt is resolved.
     pending_open: Option<std::path::PathBuf>,
     recovery_records: Vec<processcraft_io::recovery::RecoveryRecord>,
@@ -417,7 +426,7 @@ impl Default for ProcessCraft {
             recovery: crate::jobs::RecoveryWriter::new(),
             diagnostics: crate::jobs::DiagnosticsWorker::new(),
             repaint: egui::Context::default(),
-            settings: crate::settings::Settings::default(),
+            settings: processcraft_io::settings::Settings::default(),
             pending_open: None,
             recovery_records,
             recovery_visible: true,
@@ -459,7 +468,7 @@ impl ProcessCraft {
     pub fn apply_theme(&self, ctx: &egui::Context) {
         self.theme.apply(ctx);
     }
-    pub fn apply_settings(&mut self, settings: crate::settings::Settings) {
+    pub fn apply_settings(&mut self, settings: processcraft_io::settings::Settings) {
         self.theme = if settings.dark {
             Theme::Dark
         } else {
@@ -1785,7 +1794,7 @@ impl ProcessCraft {
                         target_element: None,
                         id: controller::id("Edge").into(),
                         element: flow.into(),
-                        waypoints: canvas::elbow_route(&source.bounds, &shape.bounds),
+                        waypoints: connection_route(&source.bounds, &shape.bounds, diagram),
                         label: Some(Label::default()),
                         style: None,
                     },
@@ -2141,7 +2150,7 @@ impl ProcessCraft {
             document_id: d.id,
             diagram_id: diagram.id.selector(),
             edge_id: edge.id.selector(),
-            waypoints: canvas::elbow_route(&a.bounds, &b.bounds),
+            waypoints: connection_route(&a.bounds, &b.bounds, diagram),
         }]);
     }
     fn connect(&mut self) {
@@ -2197,7 +2206,7 @@ impl ProcessCraft {
             }
         });
         let eid = controller::id("Flow");
-        let points = canvas::elbow_route(&sa.bounds, &sb.bounds);
+        let points = connection_route(&sa.bounds, &sb.bounds, diagram);
         self.ctl.mutate(vec![
             Mutation::CreateFlow {
                 document_id: d.id,
@@ -2303,7 +2312,7 @@ impl ProcessCraft {
     fn dialogs_ui(&mut self, ctx: &egui::Context) {
         if let Some(lost) = &self.export_lost {
             let details = format!(
-                "Target: {} · session: {} · operation: {} · SHA-256: {} · {} bytes",
+                "Target: {} Â· session: {} Â· operation: {} Â· SHA-256: {} Â· {} bytes",
                 lost.path.display(),
                 lost.session,
                 lost.operation,
@@ -2360,7 +2369,7 @@ impl ProcessCraft {
                 ui.horizontal(|ui| {
                     (
                         ui.button("Cancel").clicked(),
-                        ui.button("Accept and choose destination…").clicked(),
+                        ui.button("Accept and choose destinationâ€¦").clicked(),
                     )
                 })
                 .inner
@@ -2421,7 +2430,7 @@ impl ProcessCraft {
                     for record in &records {
                         ui.horizontal(|ui| {
                             ui.label(format!(
-                                "{} · {} · revision {}",
+                                "{} Â· {} Â· revision {}",
                                 record
                                     .origin
                                     .original_path

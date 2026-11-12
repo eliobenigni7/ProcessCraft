@@ -1,5 +1,6 @@
 //! Per-user workbench preferences (window size, panels, theme, recent files).
 //! Stored as JSON next to the recovery folder; a missing or unreadable file means defaults.
+//! Preferences live outside every project and never affect its content or dirty state.
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -15,42 +16,39 @@ pub struct Settings {
     pub show_right: Option<bool>,
     pub dark: bool,
     pub recent: Vec<PathBuf>,
+    /// Where `save` writes; `None` (the default, e.g. in tests) keeps preferences in memory.
+    #[serde(skip)]
+    pub location: Option<PathBuf>,
 }
 
 impl Settings {
-    fn location() -> PathBuf {
-        #[cfg(test)]
-        {
-            std::env::temp_dir().join(format!(
-                "processcraft-unit-settings-{}.json",
-                std::process::id()
-            ))
-        }
-        #[cfg(not(test))]
-        {
-            std::env::var_os("LOCALAPPDATA")
-                .map(PathBuf::from)
-                .unwrap_or_else(std::env::temp_dir)
-                .join("ProcessCraft")
-                .join("settings.json")
-        }
+    pub fn default_location() -> PathBuf {
+        std::env::var_os("LOCALAPPDATA")
+            .map(PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir)
+            .join("ProcessCraft")
+            .join("settings.json")
     }
-    pub fn load() -> Self {
-        std::fs::read(Self::location())
+    pub fn load(location: PathBuf) -> Self {
+        let mut settings: Self = std::fs::read(&location)
             .ok()
             .and_then(|bytes| serde_json::from_slice(&bytes).ok())
-            .unwrap_or_default()
+            .unwrap_or_default();
+        settings.location = Some(location);
+        settings
     }
     /// Best effort: preferences are a convenience, never a reason to interrupt the user.
     pub fn save(&self) {
-        let path = Self::location();
+        let Some(path) = &self.location else {
+            return;
+        };
         if let Some(dir) = path.parent() {
             let _ = std::fs::create_dir_all(dir);
         }
         if let Ok(bytes) = serde_json::to_vec_pretty(self) {
             let temp = path.with_extension("json.tmp");
             if std::fs::write(&temp, bytes).is_ok() {
-                let _ = std::fs::rename(&temp, &path);
+                let _ = std::fs::rename(&temp, path);
             }
         }
     }
@@ -88,5 +86,16 @@ mod tests {
             serde_json::from_slice::<Settings>(b"{}").unwrap(),
             Settings::default()
         );
+    }
+    #[test]
+    fn settings_round_trip_through_their_file() {
+        let path =
+            std::env::temp_dir().join(format!("processcraft-settings-{}.json", std::process::id()));
+        let mut settings = Settings::load(path.clone());
+        settings.dark = true;
+        settings.remember(Path::new("a.processcraft"));
+        settings.save();
+        assert_eq!(Settings::load(path.clone()), settings);
+        let _ = std::fs::remove_file(path);
     }
 }
