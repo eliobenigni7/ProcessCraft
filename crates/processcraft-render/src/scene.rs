@@ -232,15 +232,12 @@ impl DiagramScene {
             .collect::<Vec<_>>()
             .into_iter()
     }
-    /// Outlined, font-independent SVG with escaped source labels as metadata.
+    /// Outlined, font-independent SVG drawing plus a transparent text layer.
     pub fn to_svg(&self) -> String {
         let mut svg = format!(
             "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\"><title>ProcessCraft M0 shared outlines</title><rect width=\"100%\" height=\"100%\" fill=\"white\"/>",
             self.width, self.height, self.width, self.height
         );
-        for label in &self.labels {
-            let _ = write!(svg, "<desc>{}</desc>", xml_escape(label.layout.text()));
-        }
         for item in self.paths() {
             let _ = write!(
                 svg,
@@ -266,11 +263,60 @@ impl DiagramScene {
             }
             svg.push_str("\"/>");
         }
-        svg.push_str("</svg>");
+        // The outlines above are the only visible rendering. This transparent layer
+        // makes labels selectable and searchable; textLength pins each line to the
+        // bundled-font advance so selection boxes match the drawn glyphs.
+        let _ = write!(
+            svg,
+            "<g fill-opacity=\"0\" font-family=\"{SVG_FONT_STACK}\" xml:space=\"preserve\">"
+        );
+        for label in &self.labels {
+            let layout = &label.layout;
+            let lines = layout.visible_lines();
+            if lines.is_empty() && !layout.partial() {
+                continue;
+            }
+            let _ = write!(
+                svg,
+                "<text transform=\"translate({} {}){}\" font-size=\"{}\"{}{}>",
+                label.x,
+                label.y,
+                if layout.rotated() { " rotate(-90)" } else { "" },
+                layout.font_size(),
+                if layout.bold() {
+                    " font-weight=\"bold\""
+                } else {
+                    ""
+                },
+                if layout.italic() {
+                    " font-style=\"italic\""
+                } else {
+                    ""
+                }
+            );
+            if layout.partial() {
+                let _ = write!(svg, "<desc>{}</desc>", xml_escape(layout.text()));
+            }
+            for line in lines {
+                let _ = write!(
+                    svg,
+                    "<tspan x=\"{}\" y=\"{}\" textLength=\"{}\" lengthAdjust=\"spacingAndGlyphs\">{}</tspan>",
+                    line.x,
+                    line.baseline,
+                    line.width,
+                    xml_escape(&line.text)
+                );
+            }
+            svg.push_str("</text>");
+        }
+        svg.push_str("</g></svg>");
         svg
     }
 }
 
+/// The pinned catalog, in fallback order, then a generic family.
+const SVG_FONT_STACK: &str = "'Noto Sans', 'Noto Sans Arabic', 'Noto Sans CJK SC', sans-serif";
+pub(crate) const SVG_TEXT_NOTICE: &str = "SVG text is drawn as outlines from the bundled fonts, so appearance is preserved; a transparent text layer (Noto Sans font stack, line lengths pinned to the bundled metrics) makes labels searchable and selectable. That layer is not tagged for accessibility, and selection boxes follow the viewer's font fitted to those lengths.";
 fn coordinates(values: &[f32]) -> Result<(), RenderError> {
     if values
         .iter()

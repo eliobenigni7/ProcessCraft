@@ -1,4 +1,4 @@
-﻿use processcraft_core::model::{
+use processcraft_core::model::{
     Bounds, BpmnDocument, Capability, Diagram, Node, NodeKind, Process, Shape, Style,
 };
 use processcraft_render::{Appearance, BpmnScene, TextEngine};
@@ -1504,6 +1504,29 @@ fn choreography_task_shows_participant_bands_and_sequence_flow() {
         == id::<processcraft_core::ids::ElementSelector>("seller_band")
         && h.contains(10.0, 120.0, 0.0)));
     assert!(explicit.scene.paths().any(|p| p.color == [225, 225, 225]));
+    // The bottom band's fill follows the owner's rounded corner instead of
+    // poking out of it: the pixel just inside the square corner is not band grey.
+    let pixels = explicit.scene.rasterize(1.0).unwrap();
+    let corner = pixels
+        .pixel(
+            (1.0 - explicit.origin.0) as u32,
+            (138.0 - explicit.origin.1) as u32,
+        )
+        .unwrap();
+    assert_ne!(
+        [corner.red(), corner.green(), corner.blue()],
+        [225, 225, 225]
+    );
+    let inside = pixels
+        .pixel(
+            (130.0 - explicit.origin.0) as u32,
+            (130.0 - explicit.origin.1) as u32,
+        )
+        .unwrap();
+    assert_eq!(
+        [inside.red(), inside.green(), inside.blue()],
+        [225, 225, 225]
+    );
     assert_eq!(explicit.scene.to_svg().matches("Buyer").count(), 1);
     assert_eq!(explicit.scene.to_svg().matches("Seller").count(), 1);
     let buyer = d.diagrams[0]
@@ -3295,14 +3318,22 @@ fn lane_orientation_places_divider_on_corresponding_axis() {
         last.top() < first.top(),
         "glyphs advance upward in the rotated title band"
     );
-    let x = (24.0 - horizontal.origin.0) as f32;
+    // The searchable SVG text turns with the rotated title outlines.
+    assert!(
+        horizontal
+            .scene
+            .to_svg()
+            .contains(" rotate(-90)\" font-size=")
+    );
+    // 30 px header band, as bpmn.io and most modelers author lane DI.
+    let x = (30.0 - horizontal.origin.0) as f32;
     assert!(horizontal.scene.paths().any(|path| {
         let b = path.path.bounds();
         (b.left() - x).abs() < 2.0 && b.height() > 75.0 && b.width() < 3.0
     }));
     d.diagrams[0].shapes[0].is_horizontal = Some(false);
     let vertical = build(&d, Appearance::Light);
-    let y = (24.0 - vertical.origin.1) as f32;
+    let y = (30.0 - vertical.origin.1) as f32;
     assert!(vertical.scene.paths().any(|path| {
         let b = path.path.bounds();
         (b.top() - y).abs() < 2.0 && b.width() > 95.0 && b.height() < 3.0

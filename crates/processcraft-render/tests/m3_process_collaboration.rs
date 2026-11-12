@@ -143,6 +143,41 @@ fn participant_name_renders_as_pool_label() {
 }
 
 #[test]
+fn pool_fill_listed_after_message_flow_does_not_hide_it() {
+    use processcraft_core::model::Style;
+    let mut d = document(None);
+    let diagram = &mut d.diagrams[0];
+    diagram.plane_order = Some(vec![
+        id("order_edge"),
+        id("Buyer_shape"),
+        id("Seller_shape"),
+    ]);
+    diagram.shapes[1].style = Some(Style {
+        fill: Some("#00ff00".into()),
+        stroke: None,
+        font: None,
+    });
+    diagram.edges[0].style = Some(Style {
+        fill: None,
+        stroke: Some("#ff0000".into()),
+        font: None,
+    });
+    diagram.edges[0].waypoints[1].y = 300.0;
+    let scene = BpmnScene::build(
+        &d,
+        &id("diagram"),
+        Appearance::Light,
+        &mut TextEngine::new(),
+        "Noto Sans",
+    )
+    .unwrap();
+    let colors: Vec<_> = scene.scene.paths().map(|p| p.color).collect();
+    let last_fill = colors.iter().rposition(|c| *c == [0, 255, 0]).unwrap();
+    let first_flow = colors.iter().position(|c| *c == [255, 0, 0]).unwrap();
+    assert!(first_flow > last_fill);
+}
+
+#[test]
 fn message_flow_name_renders_as_edge_label() {
     assert!(!svg(&document(None)).contains("Order request"));
     let svg = svg(&document(Some("Order request")));

@@ -74,13 +74,86 @@ pub struct Glyph {
 #[derive(Clone, Debug)]
 pub struct TextLayout {
     text: String,
+    /// The text actually laid out (an ellipsized candidate keeps `text` as the source).
+    shown: String,
     glyphs: Vec<Glyph>,
     diagnostics: Vec<String>,
     line_count: usize,
     height: f32,
+    font_size: f32,
+    bold: bool,
+    italic: bool,
+    rotated: bool,
+    partial: bool,
+}
+/// One visual line of laid-out text, positioned with the pinned font metrics.
+#[derive(Clone, Debug, PartialEq)]
+pub struct VisibleLine {
+    pub text: String,
+    pub x: f32,
+    pub baseline: f32,
+    /// Measured advance of the visible glyphs on this line.
+    pub width: f32,
 }
 impl TextLayout {
+    /// Visible text per visual line (clipped glyphs excluded), for text-carrying sinks.
+    pub fn visible_lines(&self) -> Vec<VisibleLine> {
+        let sources: Vec<&str> = self.shown.lines().collect();
+        // (visual line, source line, baseline, byte start, byte end, left, right)
+        let mut spans: Vec<(usize, usize, f32, usize, usize, f32, f32)> = Vec::new();
+        // Whitespace glyphs do not extend a line: SVG collapses edge whitespace.
+        let ink = |g: &&Glyph| {
+            sources
+                .get(g.source_line)
+                .and_then(|s| s.get(g.cluster.clone()))
+                .is_some_and(|t| !t.trim().is_empty())
+        };
+        for g in self.glyphs.iter().filter(ink) {
+            match spans.last_mut() {
+                Some(s) if s.0 == g.visual_line => {
+                    s.3 = s.3.min(g.cluster.start);
+                    s.4 = s.4.max(g.cluster.end);
+                    s.5 = s.5.min(g.x);
+                    s.6 = s.6.max(g.x + g.advance);
+                }
+                _ => spans.push((
+                    g.visual_line,
+                    g.source_line,
+                    g.baseline,
+                    g.cluster.start,
+                    g.cluster.end,
+                    g.x,
+                    g.x + g.advance,
+                )),
+            }
+        }
+        spans
+            .into_iter()
+            .filter_map(|(_, source, baseline, start, end, left, right)| {
+                Some(VisibleLine {
+                    text: sources.get(source)?.get(start..end)?.to_owned(),
+                    x: left,
+                    baseline,
+                    width: right - left,
+                })
+            })
+            .collect()
+    }
+    pub fn font_size(&self) -> f32 {
+        self.font_size
+    }
+    pub fn bold(&self) -> bool {
+        self.bold
+    }
+    pub fn italic(&self) -> bool {
+        self.italic
+    }
+    /// True after a counter-clockwise quarter turn (vertical pool/lane headers).
+    pub fn rotated(&self) -> bool {
+        self.rotated
+    }
     pub(crate) fn rotate_counterclockwise(&mut self) {
+        self.rotated = !self.rotated;
         let transform = tiny_skia::Transform::from_row(0.0, -1.0, 1.0, 0.0, 0.0, 0.0);
         for glyph in &mut self.glyphs {
             glyph.outline = glyph
@@ -106,11 +179,18 @@ impl TextLayout {
         let before = self.glyphs.len();
         self.glyphs
             .retain(|glyph| Self::glyph_fits(glyph, width, height));
-        before != self.glyphs.len() || self.height > height
+        let clipped = before != self.glyphs.len() || self.height > height;
+        self.partial |= clipped;
+        clipped
     }
     /// Keep the full source text (SVG description) for an ellipsized layout.
     pub(crate) fn set_source_text(&mut self, text: &str) {
         self.text = text.to_owned();
+        self.partial = true;
+    }
+    /// True when the visible glyphs show less than `text()` (ellipsized or clipped).
+    pub fn partial(&self) -> bool {
+        self.partial
     }
     pub fn text(&self) -> &str {
         &self.text
@@ -303,10 +383,16 @@ impl TextEngine {
         }
         Ok(TextLayout {
             text: request.text.to_owned(),
+            shown: request.text.to_owned(),
             glyphs,
             diagnostics,
             line_count,
             height,
+            font_size: request.font_size,
+            bold: request.bold,
+            italic: request.italic,
+            rotated: false,
+            partial: false,
         })
     }
 }

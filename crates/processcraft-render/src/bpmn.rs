@@ -13,6 +13,9 @@ use processcraft_core::{
 };
 use tiny_skia::PathBuilder;
 
+/// Pool/lane header band width, shared with the modeling rules (bpmn.io and most
+/// modelers place lanes 30 px inside the pool edge).
+const HEADER: f64 = processcraft_core::containers::LANE_INDENTATION;
 const DI_EXTENSION_DIAGNOSTIC: &str = "DI extensions/foreign attributes are preserved in BPMN; their visual effects are not interpreted.";
 
 fn has_uninterpreted_di(diagram: &processcraft_core::model::Diagram) -> bool {
@@ -533,6 +536,24 @@ impl<'a> SemanticIndex<'a> {
     fn lane(&self, id: &ElementSelector) -> Option<(&'a Lane, usize)> {
         self.lanes.iter().copied().find(|(lane, _)| &lane.id == id)
     }
+    /// Authored paint rank of an edge. Message flows are lifted above every shape,
+    /// as in common modelers, so a pool or participant band fill listed later in the
+    /// plane never hides them.
+    fn edge_paint_rank(
+        &self,
+        ranks: &std::collections::BTreeMap<ElementSelector, usize>,
+        edge: &processcraft_core::model::Edge,
+    ) -> usize {
+        let rank = *ranks.get(&edge.id.selector()).unwrap_or(&(ranks.len() + 1));
+        if self
+            .flow(&edge.element)
+            .is_some_and(|flow| matches!(flow.kind, FlowKind::Message))
+        {
+            rank + ranks.len() + 1
+        } else {
+            rank
+        }
+    }
     fn flow(&self, id: &ElementSelector) -> Option<&'a Flow> {
         self.flows.iter().copied().find(|f| &f.id == id)
     }
@@ -724,7 +745,7 @@ fn shape_label_layout(
         return if shape.is_horizontal == Some(false) {
             (
                 Bounds {
-                    height: b.height.min(24.0),
+                    height: b.height.min(HEADER),
                     ..b.clone()
                 },
                 LabelAlign::TopLeft,
@@ -732,7 +753,7 @@ fn shape_label_layout(
         } else {
             (
                 Bounds {
-                    width: b.width.min(24.0),
+                    width: b.width.min(HEADER),
                     ..b.clone()
                 },
                 LabelAlign::Center,
@@ -1300,7 +1321,29 @@ impl BpmnScene {
                     shape.style.as_ref().and_then(|s| s.fill.as_deref()),
                     default_band_fill,
                 );
-                scene.add_background_rect(x, y, w, h, band_fill)?;
+                // Corners shared with the owner's rounded outline are clipped to it.
+                let band_path = {
+                    let o = owner.map_or(b, |owner| &owner.bounds);
+                    let near = |a: f64, b: f64| (a - b).abs() < 0.5;
+                    let (top, bottom, left, right) = (
+                        near(b.y, o.y),
+                        near(b.y + b.height, o.y + o.height),
+                        near(b.x, o.x),
+                        near(b.x + b.width, o.x + o.width),
+                    );
+                    let mut p = PathBuilder::new();
+                    rounded_corners(
+                        &mut p,
+                        x,
+                        y,
+                        w,
+                        h,
+                        rounding(o.width as f32, o.height as f32),
+                        [top && left, top && right, bottom && right, bottom && left],
+                    );
+                    p.finish().ok_or(RenderError("Invalid participant band"))?
+                };
+                scene.add_path(band_path.clone(), band_fill)?;
                 let band_fg = if non_initiating {
                     if low_contrast([26, 37, 52], band_fill) {
                         [255, 255, 255]
@@ -1330,12 +1373,7 @@ impl BpmnScene {
                 {
                     diagnostics.push(format!("Participant band {} explicit label color has low contrast against its fill", shape.id));
                 }
-                lines(
-                    &mut scene,
-                    &[(x, y), (x + w, y), (x + w, y + h), (x, y + h), (x, y)],
-                    stroke,
-                    1.0,
-                )?;
+                outline(&mut scene, &band_path, stroke, 1.0)?;
                 if participant
                     .multiplicity
                     .as_ref()
@@ -1791,13 +1829,20 @@ impl BpmnScene {
                     [237, 241, 245]
                 };
                 if w > 2.0 && band_h > 1.0 {
-                    scene.add_background_rect(
+                    // Bottom corners follow the rounded outline, 1 px inside it.
+                    let mut band = PathBuilder::new();
+                    rounded_corners(
+                        &mut band,
                         x + 1.0,
                         y + h - band_h,
-                        (w - 2.0).max(0.0),
-                        (band_h - 1.0).max(0.0),
-                        band_color,
-                    )?;
+                        w - 2.0,
+                        band_h - 1.0,
+                        rounding(w, h) - 1.0,
+                        [false, false, true, true],
+                    );
+                    if let Some(band) = band.finish() {
+                        scene.add_path(band, band_color)?;
+                    }
                 }
             }
             match kind {
@@ -2088,9 +2133,21 @@ impl BpmnScene {
                 }
                 None if conversation.is_none() && choreography.is_none() => {
                     if shape.is_horizontal == Some(false) {
-                        lines(&mut scene, &[(x, y + 24.0), (x + w, y + 24.0)], stroke, 1.0)?;
+                        let header = HEADER as f32;
+                        lines(
+                            &mut scene,
+                            &[(x, y + header), (x + w, y + header)],
+                            stroke,
+                            1.0,
+                        )?;
                     } else {
-                        lines(&mut scene, &[(x + 24.0, y), (x + 24.0, y + h)], stroke, 1.0)?;
+                        let header = HEADER as f32;
+                        lines(
+                            &mut scene,
+                            &[(x + header, y), (x + header, y + h)],
+                            stroke,
+                            1.0,
+                        )?;
                     }
                 }
                 _ => {}
@@ -2526,7 +2583,7 @@ impl BpmnScene {
         }
         for edge in &diagram.edges {
             if let Some(ranks) = &paint_ranks {
-                scene.set_paint_rank(*ranks.get(&edge.id.selector()).unwrap_or(&(ranks.len() + 1)));
+                scene.set_paint_rank(semantics.edge_paint_rank(ranks, edge));
             }
             if semantics.edge_visibility(edge, diagram).0 {
                 continue;
@@ -3907,24 +3964,61 @@ fn dashed_lines(
 }
 
 fn rounded(p: &mut PathBuilder, x: f32, y: f32, w: f32, h: f32) {
-    let r = 10.0_f32.min(w / 2.0).min(h / 2.0);
+    rounded_corners(p, x, y, w, h, rounding(w, h), [true; 4]);
+}
+/// Corner radius of a rounded activity outline.
+fn rounding(w: f32, h: f32) -> f32 {
+    10.0_f32.min(w / 2.0).min(h / 2.0)
+}
+/// Rectangle with the selected corners (top-left, top-right, bottom-right,
+/// bottom-left) rounded by `r`.
+fn rounded_corners(p: &mut PathBuilder, x: f32, y: f32, w: f32, h: f32, r: f32, c: [bool; 4]) {
     let k = 0.5522848;
-    p.move_to(x + r, y);
-    p.line_to(x + w - r, y);
-    p.cubic_to(x + w - r + k * r, y, x + w, y + r - k * r, x + w, y + r);
-    p.line_to(x + w, y + h - r);
-    p.cubic_to(
-        x + w,
-        y + h - r + k * r,
-        x + w - r + k * r,
-        y + h,
-        x + w - r,
-        y + h,
-    );
-    p.line_to(x + r, y + h);
-    p.cubic_to(x + r - k * r, y + h, x, y + h - r + k * r, x, y + h - r);
-    p.line_to(x, y + r);
-    p.cubic_to(x, y + r - k * r, x + r - k * r, y, x + r, y);
+    let [tl, tr, br, bl] = c.map(|on| {
+        if on {
+            r.min(w / 2.0).min(h).max(0.0)
+        } else {
+            0.0
+        }
+    });
+    p.move_to(x + tl, y);
+    p.line_to(x + w - tr, y);
+    if tr > 0.0 {
+        p.cubic_to(
+            x + w - tr + k * tr,
+            y,
+            x + w,
+            y + tr - k * tr,
+            x + w,
+            y + tr,
+        );
+    }
+    p.line_to(x + w, y + h - br);
+    if br > 0.0 {
+        p.cubic_to(
+            x + w,
+            y + h - br + k * br,
+            x + w - br + k * br,
+            y + h,
+            x + w - br,
+            y + h,
+        );
+    }
+    p.line_to(x + bl, y + h);
+    if bl > 0.0 {
+        p.cubic_to(
+            x + bl - k * bl,
+            y + h,
+            x,
+            y + h - bl + k * bl,
+            x,
+            y + h - bl,
+        );
+    }
+    p.line_to(x, y + tl);
+    if tl > 0.0 {
+        p.cubic_to(x, y + tl - k * tl, x + tl - k * tl, y, x + tl, y);
+    }
     p.close();
 }
 
@@ -4361,7 +4455,7 @@ impl BpmnViewport {
             if let Some(ranks) = &paint_ranks {
                 built
                     .scene
-                    .set_paint_rank(*ranks.get(&edge.id.selector()).unwrap_or(&(ranks.len() + 1)));
+                    .set_paint_rank(semantics.edge_paint_rank(ranks, edge));
             }
             if semantics.edge_visibility(edge, original).0 {
                 continue;
