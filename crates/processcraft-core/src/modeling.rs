@@ -253,13 +253,27 @@ pub fn auto_place(
         }
         centred(center, size)
     };
-    let (right, top, bottom) = (s.x + s.width, s.y, s.y + s.height);
+    let (left, right, top, bottom) = (s.x, s.x + s.width, s.y, s.y + s.height);
+    // Vertical pools and lanes place south of the source (minimum distance 90, steps along x).
+    let vertical = vertical_at(diagram, s);
     Some(match kind {
+        NodeKind::TextAnnotation if vertical => place(
+            (right + 50.0 + size.0 / 2.0, bottom + size.1 / 2.0),
+            false,
+            30.0,
+            20.0,
+        ),
         NodeKind::TextAnnotation => place(
             (right + size.0 / 2.0, top - 50.0 - size.1 / 2.0),
             true,
             -30.0,
             20.0,
+        ),
+        NodeKind::DataObjectReference | NodeKind::DataStoreReference if vertical => place(
+            (left - 40.0 - size.0 / 2.0, bottom - 10.0 + size.1 / 2.0),
+            true,
+            30.0,
+            30.0,
         ),
         NodeKind::DataObjectReference | NodeKind::DataStoreReference => place(
             (right - 10.0 + size.0 / 2.0, bottom + 40.0 + size.0 / 2.0),
@@ -271,33 +285,54 @@ pub fn auto_place(
             let side = host
                 .and_then(|h| shape_bounds(diagram, h))
                 .and_then(|h| boundary_side(s, h));
+            let min_distance = if vertical { 90.0 } else { 80.0 };
+            let (start, end) = if vertical {
+                (Side::Left, Side::Right)
+            } else {
+                (Side::Top, Side::Bottom)
+            };
             let (offset, margin) = match side {
-                Some(Side::Top) => (-80.0, -30.0),
-                Some(Side::Bottom) => (80.0, 30.0),
+                Some(side) if side == start => (-min_distance, -30.0),
+                Some(side) if side == end => (min_distance, 30.0),
                 _ => (0.0, 30.0),
             };
-            let gap = learned_gap(&flows, diagram, source, s);
-            place(
-                (right + gap + size.0 / 2.0, mid(s).1 + offset),
-                true,
-                margin,
-                80.0,
-            )
+            let gap = learned_gap(&flows, diagram, source, s, vertical);
+            let center = if vertical {
+                (mid(s).0 + offset, bottom + gap + size.1 / 2.0)
+            } else {
+                (right + gap + size.0 / 2.0, mid(s).1 + offset)
+            };
+            place(center, !vertical, margin, min_distance)
         }
     })
 }
-/// Most common gap (0-250 px) from the source to its sequence-flow neighbours to the east:
-/// outgoing targets count +1, incoming sources -1 (bpmn-js `getConnectedDistance`).
-fn learned_gap(flows: &[&Flow], diagram: &Diagram, source: &ElementSelector, s: &Bounds) -> f64 {
+/// Most common gap (0-250 px) from the source to its sequence-flow neighbours to the east
+/// (south when `vertical`): outgoing targets count +1, incoming sources -1 (bpmn-js
+/// `getConnectedDistance`).
+fn learned_gap(
+    flows: &[&Flow],
+    diagram: &Diagram,
+    source: &ElementSelector,
+    s: &Bounds,
+    vertical: bool,
+) -> f64 {
+    let span = |b: &Bounds| {
+        if vertical {
+            (b.y, b.y + b.height)
+        } else {
+            (b.x, b.x + b.width)
+        }
+    };
+    let (s_start, s_end) = span(s);
     let mut seen = Vec::new();
     for f in flows.iter().filter(|f| f.kind == FlowKind::Sequence) {
         let (Some(from), Some(to)) = (endpoint(&f.source), endpoint(&f.target)) else {
             continue;
         };
         let entry = if from == source {
-            shape_bounds(diagram, to).map(|t| (to, t.x - (s.x + s.width), 1))
+            shape_bounds(diagram, to).map(|t| (to, span(t).0 - s_end, 1))
         } else if to == source {
-            shape_bounds(diagram, from).map(|o| (from, s.x - (o.x + o.width), -1))
+            shape_bounds(diagram, from).map(|o| (from, s_start - span(o).1, -1))
         } else {
             None
         };
@@ -339,16 +374,37 @@ pub(crate) fn route(
     a: &Bounds,
     b: &Bounds,
 ) -> Vec<Point> {
+    route_from(diagram, kind, source, target_kind, a, b, Side::Bottom)
+}
+/// [`route`] where a self-loop leaves from `loop_side` (bpmn-js keeps a loop's first side).
+pub(crate) fn route_from(
+    diagram: &Diagram,
+    kind: ConnectionKind,
+    source: Option<&Node>,
+    target_kind: Option<NodeKind>,
+    a: &Bounds,
+    b: &Bounds,
+    loop_side: Side,
+) -> Vec<Point> {
     let layout = match kind {
+        _ if a == b => RouteLayout::Loop(loop_side),
         ConnectionKind::Message => RouteLayout::Message,
-        ConnectionKind::Sequence => {
+        ConnectionKind::Sequence | ConnectionKind::CompensationAssociation => {
             let side = source
                 .and_then(rules::attached_to)
                 .and_then(|host| shape_bounds(diagram, host))
                 .and_then(|host| boundary_side(a, host));
+            // bpmn-js lays out flows into or out of an expanded subprocess h:h.
+            let expanded = |bounds: &Bounds| {
+                diagram
+                    .shapes
+                    .iter()
+                    .any(|s| s.bounds == *bounds && s.is_expanded == Some(true))
+            };
             match (source.map(|n| n.kind), side) {
-                (Some(k), _) if rules::is_gateway(k) => RouteLayout::FromGateway,
                 (_, Some(side)) => RouteLayout::FromBoundary(side),
+                _ if expanded(a) || expanded(b) => RouteLayout::Sequence,
+                (Some(k), _) if rules::is_gateway(k) => RouteLayout::FromGateway,
                 _ if target_kind.is_some_and(rules::is_gateway) => RouteLayout::IntoGateway,
                 _ => RouteLayout::Sequence,
             }
@@ -356,7 +412,31 @@ pub(crate) fn route(
         _ => RouteLayout::Auto,
     };
     let shapes: Vec<Bounds> = diagram.shapes.iter().map(|s| s.bounds.clone()).collect();
-    layout_route(a, b, &shapes, layout)
+    if vertical_at(diagram, a) {
+        crate::geometry::layout_route_vertical(a, b, &shapes, layout)
+    } else {
+        layout_route(a, b, &shapes, layout)
+    }
+}
+/// Whether the innermost pool or lane under `b`'s centre is vertical (bpmn-js
+/// `isDirectionHorizontal`); only pools and lanes carry `isHorizontal`.
+pub(crate) fn vertical_at(diagram: &Diagram, b: &Bounds) -> bool {
+    let (x, y) = mid(b);
+    diagram
+        .shapes
+        .iter()
+        .filter(|s| {
+            let c = &s.bounds;
+            s.is_horizontal.is_some()
+                && x >= c.x
+                && x <= c.x + c.width
+                && y >= c.y
+                && y <= c.y + c.height
+        })
+        .min_by(|p, q| {
+            (p.bounds.width * p.bounds.height).total_cmp(&(q.bounds.width * q.bounds.height))
+        })
+        .is_some_and(|s| s.is_horizontal == Some(false))
 }
 pub(crate) fn edge(id: ElementIdentity, element: ElementSelector, waypoints: Vec<Point>) -> Edge {
     Edge {
@@ -569,6 +649,62 @@ fn add_port(
     })
 }
 
+/// The collaboration `diagram` shows, else the document's first one.
+pub(crate) fn diagram_collaboration(
+    doc: &BpmnDocument,
+    diagram: &Diagram,
+) -> Result<Collaboration, String> {
+    doc.collaborations()
+        .find(|c| c.id == diagram.plane)
+        .or_else(|| doc.collaborations().next())
+        .cloned()
+        .ok_or_else(|| "Message flows need pools; add a pool for each process first".into())
+}
+/// bpmn-js CompensateBoundaryEventBehavior for a new compensation association `event ->
+/// activity`: the activity becomes `isForCompensation`, losing its sequence flows and boundary
+/// events (no longer allowed), and the event's previous compensation association goes.
+fn compensation_handler(
+    doc: &BpmnDocument,
+    event: &ElementSelector,
+    activity: &ElementSelector,
+) -> Result<Vec<Mutation>, String> {
+    let target = crate::queries::find_node(doc, activity).ok_or("element not found")?;
+    let mut batch: Vec<Mutation> = all_flows(doc)
+        .into_iter()
+        .filter(|f| {
+            let (from, to) = (endpoint(&f.source), endpoint(&f.target));
+            (f.kind == FlowKind::Sequence && (from == Some(activity) || to == Some(activity)))
+                || (f.kind == FlowKind::Association
+                    && from == Some(event)
+                    && to
+                        .and_then(|t| crate::queries::find_node(doc, t))
+                        .is_some_and(rules::is_for_compensation))
+        })
+        .map(|f| f.id.selector())
+        .chain(
+            crate::queries::scopes(doc)
+                .into_iter()
+                .flat_map(|s| s.nodes)
+                .filter(|n| rules::attached_to(n) == Some(activity))
+                .map(|n| n.id.selector()),
+        )
+        .map(|element_id| Mutation::Delete {
+            document_id: doc.id,
+            element_id,
+        })
+        .collect();
+    if !rules::is_for_compensation(target) {
+        let mut activity_properties = target.activity.clone().unwrap_or_default();
+        activity_properties.is_for_compensation = Some(true);
+        batch.push(Mutation::SetActivityProperties {
+            document_id: doc.id,
+            element_id: activity.clone(),
+            activity: Some(activity_properties),
+        });
+    }
+    Ok(batch)
+}
+
 /// Connect `source` to `target` with the connection [`rules::can_connect`] picks: a sequence
 /// flow or association in their scope, a message flow in the collaboration root, or a data
 /// association bound to a new port of the activity/event. The edge is routed in `diagram_id`.
@@ -591,30 +727,63 @@ pub fn connect(
     let waypoints = route(diagram, kind, s.node, t.node.map(|n| n.kind), a, b);
     let mut batch = Vec::new();
     match kind {
-        ConnectionKind::Sequence | ConnectionKind::Association => {
+        ConnectionKind::Sequence => {
             batch.push(Mutation::CreateFlow {
                 document_id: doc.id,
                 process_id: s.scope.clone(),
-                flow: flow(
-                    flow_id.clone(),
-                    if kind == ConnectionKind::Sequence {
-                        FlowKind::Sequence
-                    } else {
-                        FlowKind::Association
-                    },
-                    source,
-                    target,
-                ),
+                flow: flow(flow_id.clone(), FlowKind::Sequence, source, target),
+            });
+        }
+        ConnectionKind::Association => {
+            let value = flow(flow_id.clone(), FlowKind::Association, source, target);
+            if let (Some(source_scope), Some(target_scope)) = (&s.scope, &t.scope) {
+                // The association lives with the annotation; its other end may be in any scope.
+                let annotation = s.node.is_some_and(|n| n.kind == NodeKind::TextAnnotation);
+                batch.push(Mutation::CreateFlow {
+                    document_id: doc.id,
+                    process_id: Some(
+                        if annotation {
+                            source_scope
+                        } else {
+                            target_scope
+                        }
+                        .clone(),
+                    ),
+                    flow: value,
+                });
+            } else {
+                // A pool or a collaboration annotation: a collaboration artifact.
+                let mut root = diagram_collaboration(doc, diagram)?;
+                root.extras
+                    .get_or_insert_with(Default::default)
+                    .artifacts
+                    .push(
+                        crate::bpmn_collaboration::CollaborationArtifact::Association(Box::new(
+                            Flow {
+                                name: None,
+                                ..value
+                            },
+                        )),
+                    );
+                batch.push(Mutation::SetCollaborationRoot {
+                    document_id: doc.id,
+                    collaboration: root,
+                });
+            }
+        }
+        ConnectionKind::CompensationAssociation => {
+            batch.extend(compensation_handler(doc, source, target)?);
+            batch.push(Mutation::CreateFlow {
+                document_id: doc.id,
+                process_id: s.scope.clone(),
+                flow: Flow {
+                    association_direction: Some(crate::bpmn_model::AssociationDirection::One),
+                    ..flow(flow_id.clone(), FlowKind::Association, source, target)
+                },
             });
         }
         ConnectionKind::Message => {
-            // The collaboration this diagram shows, else the first one.
-            let mut root = doc
-                .collaborations()
-                .find(|c| c.id == diagram.plane)
-                .or_else(|| doc.collaborations().next())
-                .ok_or("Message flows need pools; add a pool for each process first")?
-                .clone();
+            let mut root = diagram_collaboration(doc, diagram)?;
             root.flows
                 .push(flow(flow_id.clone(), FlowKind::Message, source, target));
             batch.push(Mutation::SetCollaborationRoot {

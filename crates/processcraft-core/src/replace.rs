@@ -1013,7 +1013,8 @@ fn replace_node(
         3 => (100.0, 80.0),
         _ => modeling::default_size(kind),
     };
-    for diagram in &mut doc.diagrams {
+    let mut resized = Vec::new();
+    for (di, diagram) in doc.diagrams.iter_mut().enumerate() {
         let Some(shape) = diagram.shapes.iter_mut().find(|s| s.element == *id) else {
             continue;
         };
@@ -1021,6 +1022,7 @@ fn replace_node(
         if old_class == new_class {
             continue;
         }
+        resized.push(di);
         let o = shape.bounds.clone();
         let (cx, cy) = (o.x + o.width / 2.0, o.y + o.height / 2.0);
         let b = Bounds {
@@ -1037,11 +1039,56 @@ fn replace_node(
             }
         }
         shape.bounds = b.clone();
-        // Edge ends docked on the old outline move proportionally onto the new one.
+        // Other edge ends docked on the old outline (associations, data associations) move
+        // proportionally onto the new one, keeping their interior points.
         for edge in &mut diagram.edges {
             if let Some(points) = geometry::redock(&edge.waypoints, &o, &b) {
                 edge.waypoints = points;
             }
+        }
+    }
+    // Sequence and message flows of the replaced element are laid out again (bpmn-js
+    // LayoutConnectionBehavior), a loop keeping the side it leaves from.
+    for di in resized {
+        let diagram = &doc.diagrams[di];
+        let mut routes = Vec::new();
+        for (ei, edge) in diagram.edges.iter().enumerate() {
+            let Some(flow) = all_flows(doc).find(|f| {
+                f.id == edge.element && matches!(f.kind, FlowKind::Sequence | FlowKind::Message)
+            }) else {
+                continue;
+            };
+            let (Some(source), Some(target)) = (endpoint(&flow.source), endpoint(&flow.target))
+            else {
+                continue;
+            };
+            if source != id && target != id {
+                continue;
+            }
+            let (Some(a), Some(b)) = (
+                modeling::shape_bounds(diagram, source),
+                modeling::shape_bounds(diagram, target),
+            ) else {
+                continue;
+            };
+            let side = edge
+                .waypoints
+                .first()
+                .map_or(geometry::Side::Bottom, |p| geometry::side_of(p, a));
+            let connection = if flow.kind == FlowKind::Message {
+                rules::ConnectionKind::Message
+            } else {
+                rules::ConnectionKind::Sequence
+            };
+            let source_node = queries::find_node(doc, source);
+            let target_kind = queries::find_node(doc, target).map(|n| n.kind);
+            routes.push((
+                ei,
+                modeling::route_from(diagram, connection, source_node, target_kind, a, b, side),
+            ));
+        }
+        for (ei, points) in routes {
+            doc.diagrams[di].edges[ei].waypoints = points;
         }
     }
     Ok(incompatible_flows(doc, id, kind))

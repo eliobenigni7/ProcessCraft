@@ -284,8 +284,9 @@ fn growing_into_an_expanded_subprocess_resizes_around_the_center_and_redocks_edg
             .map(|p| (p.x, p.y))
             .collect::<Vec<_>>()
     };
-    // The left-middle entry and right-middle exit move with the outline.
-    assert_eq!(points("flow_approved").last(), Some(&(410.0, 310.0)));
+    // Incident flows are laid out again (bpmn-js LayoutConnectionBehavior): the gateway above
+    // enters the top middle (v:v), the exit leaves the right middle (h:h).
+    assert_eq!(points("flow_approved").last(), Some(&(585.0, 210.0)));
     assert_eq!(points("flow_order_end").first(), Some(&(760.0, 310.0)));
     assert!(matches!(
         node(&s, "order").details,

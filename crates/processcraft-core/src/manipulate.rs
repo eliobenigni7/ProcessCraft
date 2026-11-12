@@ -189,9 +189,32 @@ pub fn attach_host<'a>(
     })
 }
 
-/// The sequence flow in `scope` whose edge in `diagram` passes through `point` and that `node`
-/// can be inserted into (bpmn-js `canInsert`: a flow node other than a boundary event, not
-/// already an end of the flow, connectable from the source and to the target).
+fn flow_kind(kind: rules::ConnectionKind) -> Option<FlowKind> {
+    match kind {
+        rules::ConnectionKind::Sequence => Some(FlowKind::Sequence),
+        rules::ConnectionKind::Message => Some(FlowKind::Message),
+        _ => None,
+    }
+}
+/// The flow kinds of `source -> node` and `node -> target` when both are sequence or message
+/// flows and one of them keeps `kind` (so the split flow can keep its ID on that part).
+fn split_kinds(
+    doc: &BpmnDocument,
+    source: &ElementSelector,
+    node: &ElementSelector,
+    target: &ElementSelector,
+    kind: FlowKind,
+) -> Option<(FlowKind, FlowKind)> {
+    let into = flow_kind(rules::can_connect(doc, source, node).ok()?)?;
+    let out = flow_kind(rules::can_connect(doc, node, target).ok()?)?;
+    (into == kind || out == kind).then_some((into, out))
+}
+
+/// The sequence flow of `scope`, or a message flow, whose edge in `diagram` passes through
+/// `point` and that `node` (already in `doc`) can be inserted into (bpmn-js `canInsert`: a flow
+/// node other than a boundary event, not already an end of the flow, connectable from the source
+/// and to the target). A message flow splits into the connections the rules pick for each part,
+/// e.g. a message flow into the node and a sequence flow on to the target in the same pool.
 pub fn flow_under<'a>(
     doc: &'a BpmnDocument,
     diagram: &Diagram,
@@ -203,6 +226,7 @@ pub fn flow_under<'a>(
         return None;
     }
     let scope = queries::scopes(doc).into_iter().find(|s| *s.id == *scope)?;
+    let id = node.id.selector();
     diagram
         .edges
         .iter()
@@ -211,24 +235,40 @@ pub fn flow_under<'a>(
             let flow = scope
                 .flows
                 .iter()
-                .find(|f| f.id == edge.element && f.kind == FlowKind::Sequence)?;
+                .find(|f| f.id == edge.element && f.kind == FlowKind::Sequence)
+                .or_else(|| {
+                    doc.collaborations()
+                        .flat_map(|c| &c.flows)
+                        .find(|f| f.id == edge.element && f.kind == FlowKind::Message)
+                })?;
             let (source, target) = (local(&flow.source)?, local(&flow.target)?);
-            if *source == node.id || *target == node.id {
+            if *source == id || *target == id {
                 return None;
             }
-            let (s, t) = (
-                queries::find_node(doc, source)?,
-                queries::find_node(doc, target)?,
-            );
-            (rules::sequence_refusal(s, node).is_none()
-                && rules::sequence_refusal(node, t).is_none())
-            .then_some(flow)
+            split_kinds(doc, source, &id, target, flow.kind).map(|_| flow)
         })
 }
 
-/// Split `flow_id` at `node` (bpmn-js DropOnFlowBehavior): the flow now ends at the node, a new
-/// sequence flow runs from the node to the old target, both are routed again, and a flow that
-/// would duplicate an existing connection is removed instead.
+/// A flow's former source loses its default-flow marker for it.
+fn clear_default(doc: &mut BpmnDocument, source: &ElementSelector, flow_id: &ElementSelector) {
+    if let Ok(node) = crate::commands::node_mut(doc, source) {
+        if let Some(a) = &mut node.activity
+            && a.default_flow.as_ref() == Some(flow_id)
+        {
+            a.default_flow = None;
+        }
+        if let Some(NodeDetails::Gateway { default_flow, .. }) = &mut node.details
+            && default_flow.as_ref() == Some(flow_id)
+        {
+            *default_flow = None;
+        }
+    }
+}
+
+/// Split `flow_id` at `node` (bpmn-js DropOnFlowBehavior): the flow keeps the part of its own
+/// kind (the incoming one when both match) and ends, or starts, at the node; a new flow of the
+/// kind the rules pick covers the other part; both are routed again, and a part that would
+/// duplicate an existing connection is removed instead.
 fn split(
     doc: &mut BpmnDocument,
     diagram_id: &ElementSelector,
@@ -245,6 +285,9 @@ fn split(
         local(&flow.source).ok_or("flow source not found")?.clone(),
         local(&flow.target).ok_or("flow target not found")?.clone(),
     );
+    let (kind_in, kind_out) = split_kinds(doc, &source, node, &target, flow.kind)
+        .ok_or("The element cannot be inserted into this flow")?;
+    let keep_in = kind_in == flow.kind;
     let diagram = modeling::find_diagram(doc, diagram_id)?;
     let edge = edges_of(doc, flow_id)
         .next()
@@ -256,82 +299,220 @@ fn split(
     ) else {
         return Err("The flow's ends are not shown in this diagram".into());
     };
-    let connected = |from: &ElementSelector, to: &ElementSelector| {
+    let connected = |from: &ElementSelector, to: &ElementSelector, kind: FlowKind| {
         all_flows(doc).any(|f| {
-            f.kind == FlowKind::Sequence
+            f.kind == kind
                 && f.id != *flow_id
                 && local(&f.source) == Some(from)
                 && local(&f.target) == Some(to)
         })
     };
-    let (duplicate_in, duplicate_out) = (connected(&source, node), connected(node, &target));
-    let source_node = queries::find_node(doc, &source).cloned();
-    let node_kind = queries::find_node(doc, node).map(|n| n.kind);
+    let (duplicate_in, duplicate_out) = (
+        connected(&source, node, kind_in),
+        connected(node, &target, kind_out),
+    );
     let node_value = queries::find_node(doc, node).cloned();
+    let connection = |kind| match kind {
+        FlowKind::Message => rules::ConnectionKind::Message,
+        _ => rules::ConnectionKind::Sequence,
+    };
     let into = modeling::route(
         diagram,
-        rules::ConnectionKind::Sequence,
-        source_node.as_ref(),
-        node_kind,
+        connection(kind_in),
+        queries::find_node(doc, &source),
+        node_value.as_ref().map(|n| n.kind),
         &a,
         node_bounds,
     );
     let out = modeling::route(
         diagram,
-        rules::ConnectionKind::Sequence,
+        connection(kind_out),
         node_value.as_ref(),
-        Some(
-            queries::find_node(doc, &target)
-                .ok_or("target not found")?
-                .kind,
-        ),
+        queries::find_node(doc, &target).map(|n| n.kind),
         node_bounds,
         &b,
     );
-    let scope = queries::scopes(doc)
-        .into_iter()
-        .find(|s| s.flows.iter().any(|f| f.id == *flow_id))
-        .map(|s| s.id.selector());
+    let (kept, kept_route, new_kind, new_ends, new_route, kept_duplicate, new_duplicate) =
+        if keep_in {
+            (
+                (&source, node),
+                into,
+                kind_out,
+                (node, &target),
+                out,
+                duplicate_in,
+                duplicate_out,
+            )
+        } else {
+            (
+                (node, &target),
+                out,
+                kind_in,
+                (&source, node),
+                into,
+                duplicate_out,
+                duplicate_in,
+            )
+        };
+    let new_scope = match new_kind {
+        FlowKind::Sequence => rules::locate(doc, node).and_then(|l| l.scope),
+        _ => None,
+    };
     let mut batch = Vec::new();
-    if duplicate_in {
+    if kept_duplicate {
         batch.push(Mutation::Delete {
             document_id: doc.id,
             element_id: flow_id.clone(),
         });
     } else {
-        flow_mut(doc, flow_id).ok_or("flow not found")?.target =
-            Some(ModelReference::Local(node.clone()));
+        if !keep_in {
+            clear_default(doc, &source, flow_id);
+        }
+        let value = flow_mut(doc, flow_id).ok_or("flow not found")?;
+        value.source = Some(ModelReference::Local(kept.0.clone()));
+        value.target = Some(ModelReference::Local(kept.1.clone()));
         batch.push(Mutation::Reroute {
             document_id: doc.id,
             diagram_id: diagram_id.clone(),
             edge_id: edge.id.selector(),
-            waypoints: into,
+            waypoints: kept_route,
         });
     }
-    if !duplicate_out {
+    if !new_duplicate {
         batch.push(Mutation::CreateFlow {
             document_id: doc.id,
-            process_id: scope,
-            flow: modeling::flow(ids.0.clone(), FlowKind::Sequence, node, &target),
+            process_id: new_scope,
+            flow: modeling::flow(ids.0.clone(), new_kind, new_ends.0, new_ends.1),
         });
         batch.push(Mutation::CreateEdge {
             document_id: doc.id,
             diagram_id: diagram_id.clone(),
-            edge: modeling::edge(ids.1, ids.0.selector(), out),
+            edge: modeling::edge(ids.1, ids.0.selector(), new_route),
         });
     }
     Ok(batch)
 }
 
-/// Whether `id` has no flows, data associations, or boundary events, so it can change scope.
-fn detached(doc: &BpmnDocument, id: &ElementSelector) -> bool {
-    !all_flows(doc).any(|f| local(&f.source) == Some(id) || local(&f.target) == Some(id))
-        && !queries::scopes(doc).iter().any(|s| {
+/// Remove flow `id` from its scope or collaboration root.
+fn take_flow(doc: &mut BpmnDocument, id: &ElementSelector) -> Option<Flow> {
+    let scope = queries::scopes(doc)
+        .iter()
+        .find(|s| s.flows.iter().any(|f| f.id == *id))
+        .map(|s| s.id.selector());
+    let flows = match scope {
+        Some(scope) => crate::commands::scope_parts_mut(doc, &scope).ok()?.2,
+        None => doc
+            .collaboration
+            .iter_mut()
+            .chain(&mut doc.additional_collaborations)
+            .map(|c| &mut c.flows)
+            .find(|flows| flows.iter().any(|f| f.id == *id))?,
+    };
+    let index = flows.iter().position(|f| f.id == *id)?;
+    Some(flows.remove(index))
+}
+/// Move flow nodes into other scopes (each with its boundary events) and fix their flows
+/// (bpmn-js ReplaceConnectionBehavior after a move): a flow still allowed keeps its kind and
+/// moves to the scope that now owns it; a sequence flow that now crosses pools becomes a message
+/// flow and a message flow now inside one scope a sequence flow, when nothing kind-specific
+/// (condition, message) would be lost; other flows are deleted. Elements with data associations
+/// are refused. Returns the deletions and the flows whose route must be laid out again.
+fn change_scope(
+    doc: &mut BpmnDocument,
+    moves: &[(ElementSelector, ElementSelector)],
+) -> Result<(Vec<Mutation>, Vec<ElementSelector>), String> {
+    let mut moved = Vec::new();
+    for (id, target) in moves {
+        if queries::scopes(doc).iter().any(|s| {
             s.data_associations
                 .iter()
                 .any(|a| a.owner == *id || a.target == *id || a.sources.contains(id))
-                || s.nodes.iter().any(|n| rules::attached_to(n) == Some(id))
+        }) {
+            return Err(
+                "Only an element without data associations can move into another process or subprocess"
+                    .into(),
+            );
+        }
+        let attachers: Vec<ElementSelector> = queries::scopes(doc)
+            .iter()
+            .flat_map(|s| s.nodes)
+            .filter(|n| rules::attached_to(n) == Some(id))
+            .map(|n| n.id.selector())
+            .collect();
+        for element in std::iter::once(id.clone()).chain(attachers) {
+            reparent(doc, &element, target)?;
+            moved.push(element);
+        }
+    }
+    let touched: Vec<Flow> = all_flows(doc)
+        .filter(|f| {
+            f.kind != FlowKind::Association
+                && [local(&f.source), local(&f.target)]
+                    .iter()
+                    .any(|end| end.is_some_and(|e| moved.contains(e)))
         })
+        .cloned()
+        .collect();
+    let (mut deleted, mut relaid) = (Vec::new(), Vec::new());
+    for flow in touched {
+        let id = flow.id.selector();
+        let (Some(source), Some(target)) = (local(&flow.source), local(&flow.target)) else {
+            continue;
+        };
+        let scope = rules::locate(doc, source).and_then(|l| l.scope);
+        let home = queries::scopes(doc)
+            .iter()
+            .find(|s| s.flows.iter().any(|f| f.id == id))
+            .map(|s| s.id.selector());
+        let allowed = rules::can_connect(doc, source, target)
+            .ok()
+            .and_then(flow_kind);
+        let representable = match allowed {
+            Some(FlowKind::Sequence) => flow.message_ref.is_none(),
+            Some(FlowKind::Message) => flow.condition.is_none(),
+            _ => false,
+        };
+        if !representable {
+            deleted.push(Mutation::Delete {
+                document_id: doc.id,
+                element_id: id,
+            });
+            continue;
+        }
+        let kind = allowed.unwrap_or(flow.kind);
+        if kind == flow.kind && (kind == FlowKind::Message || home == scope) {
+            continue;
+        }
+        if kind == FlowKind::Message {
+            clear_default(doc, source, &id);
+        }
+        let mut value = take_flow(doc, &id).ok_or("flow not found")?;
+        value.kind = kind;
+        match kind {
+            FlowKind::Sequence => {
+                let scope = scope.ok_or("scope not found")?;
+                let flows = crate::commands::scope_parts_mut(doc, &scope)
+                    .map_err(|_| "scope not found")?
+                    .2;
+                // Sequence flows precede associations, as BPMN export writes them.
+                let at = flows
+                    .iter()
+                    .position(|f| f.kind == FlowKind::Association)
+                    .unwrap_or(flows.len());
+                flows.insert(at, value);
+            }
+            _ => doc
+                .collaboration
+                .as_mut()
+                .ok_or("Message flows need pools; add a pool for each process first")?
+                .flows
+                .push(value),
+        }
+        if kind != flow.kind {
+            relaid.push(id);
+        }
+    }
+    Ok((deleted, relaid))
 }
 /// Move node `id` from its scope into `scope`, leaving its lanes.
 fn reparent(
@@ -406,11 +587,13 @@ fn lane_of(
 }
 
 /// Move shapes as one gesture (bpmn-js move with its behaviors). Boundary events follow their
-/// hosts ([`geometry::prepare_move`]). With `semantic` set, moved flow nodes join the lane under
-/// their centre, and a single moved element also: attaches to an activity border (intermediate
-/// event becomes a boundary event) or detaches from its host (boundary becomes an intermediate
-/// event); changes scope when dropped into another expanded subprocess or pool, if it has no
-/// connections; and, with `split` IDs, is inserted into the sequence flow under its centre.
+/// hosts ([`geometry::prepare_move`]). With `semantic` set, every moved flow node (not inside
+/// another moved subprocess) joins the lane under its centre and changes scope when dropped into
+/// another expanded subprocess or pool (its flows are kept, converted between sequence and
+/// message flow, or deleted, see [`change_scope`]); a single moved element also attaches to an
+/// activity border (intermediate event becomes a boundary event) or detaches from its host
+/// (boundary becomes an intermediate event), and, with `split` IDs, is inserted into the
+/// sequence or message flow under its centre. Route-repair warnings go to the change set.
 pub fn move_elements(
     doc: &mut BpmnDocument,
     diagram_id: &ElementSelector,
@@ -428,14 +611,16 @@ pub fn move_elements(
     };
     let mut follow_up = Vec::new();
     let mut split_at = None;
+    let mut relaid = Vec::new();
+    let moved_ids: Vec<ElementSelector> = shapes.iter().filter_map(element).collect();
+    let mut attach_handled = false;
     if semantic
         && shapes.len() == 1
         && let Some(id) = element(&shapes[0])
         && let Some(node) = queries::find_node(doc, &id).cloned()
         && rules::locate(doc, &id).is_some_and(|l| l.node.is_some())
     {
-        let bounds = shapes[0].bounds.clone();
-        let center = mid(&bounds);
+        let center = mid(&shapes[0].bounds);
         let container = container_at(doc, &diagram, &center, Some(&id));
         let scope = rules::locate(doc, &id).and_then(|l| l.scope);
         let event = matches!(
@@ -450,6 +635,7 @@ pub fn move_elements(
             .map(|h| h.id.selector());
         let current = rules::attached_to(&node).cloned();
         if let Some(host) = host {
+            attach_handled = true;
             if current.as_ref() != Some(&host) {
                 if rules::locate(doc, &host).and_then(|l| l.scope) != scope {
                     return Err("Attach to an activity in the same process or subprocess".into());
@@ -457,34 +643,114 @@ pub fn move_elements(
                 follow_up = crate::replace::set_attachment(doc, &id, Some(&host))?;
             }
         } else if current.is_some() {
+            attach_handled = true;
             rules::can_drop(Dropped::Node(&node), container.target)?;
             follow_up = crate::replace::set_attachment(doc, &id, None)?;
-        } else if let Some(target) = container
-            .scope
-            .clone()
-            .filter(|s| rules::is_flow_node(node.kind) && Some(s) != scope.as_ref())
-        {
-            rules::can_drop(Dropped::Node(&node), container.target)?;
-            if !detached(doc, &id) {
-                return Err(
-                    "Only an element without connections can move into another process or subprocess"
-                        .into(),
-                );
+        }
+    }
+    if semantic && !attach_handled {
+        // Scope changes of every top-level moved flow node (bpmn-js moves the whole selection);
+        // nothing changes scope when its old or new container moves along.
+        let container_moving = |scope: &ElementSelector| {
+            moved_ids.contains(scope)
+                || doc.collaborations().flat_map(|c| &c.participants).any(|p| {
+                    local(&p.process) == Some(scope) && moved_ids.contains(&p.id.selector())
+                })
+        };
+        let mut moves = Vec::new();
+        for b in &shapes {
+            let Some(id) = element(b) else { continue };
+            let Some(located) = rules::locate(doc, &id) else {
+                continue;
+            };
+            let (Some(node), Some(scope)) = (located.node, located.scope.clone()) else {
+                continue;
+            };
+            if !rules::is_flow_node(node.kind)
+                || node.kind == NodeKind::BoundaryEvent
+                || located.ancestors.iter().any(|a| moved_ids.contains(a))
+                || container_moving(&scope)
+            {
+                continue;
             }
-            reparent(doc, &id, &target)?;
-        } else if let (Some(ids), Some(scope)) = (split_ids, &scope)
-            && let Some(flow) = flow_under(doc, &diagram, &node, scope, &center)
-        {
-            split_at = Some((flow.id.selector(), id.clone(), bounds, ids));
+            let container = container_at(doc, &diagram, &mid(&b.bounds), Some(&id));
+            if let Some(target) = container
+                .scope
+                .filter(|s| *s != scope && !container_moving(s))
+            {
+                rules::can_drop(Dropped::Node(node), container.target)?;
+                moves.push((id, target));
+            }
+        }
+        if moves.is_empty() {
+            if let (Some(ids), [moved]) = (split_ids, shapes.as_slice())
+                && let Some(id) = element(moved)
+                && let Some(node) = queries::find_node(doc, &id)
+                && let Some(scope) = rules::locate(doc, &id).and_then(|l| l.scope)
+                && let Some(flow) = flow_under(doc, &diagram, node, &scope, &mid(&moved.bounds))
+            {
+                split_at = Some((flow.id.selector(), id.clone(), moved.bounds.clone(), ids));
+            }
+        } else {
+            let (deleted, converted) = change_scope(doc, &moves)?;
+            follow_up = deleted;
+            relaid = converted;
         }
     }
     let prepared = geometry::prepare_move(doc, diagram_id, shapes.clone())?;
+    crate::commands::warn(prepared.warnings);
     let crate::commands::Request::Batch {
         mutations: mut batch,
     } = prepared.request
     else {
         return Err("invalid move".into());
     };
+    // Converted flows get the preferred layout of their new kind between the moved shapes.
+    for flow_id in relaid {
+        let Some(flow) = all_flows(doc).find(|f| f.id == flow_id) else {
+            continue;
+        };
+        let (Some(source), Some(target)) = (local(&flow.source), local(&flow.target)) else {
+            continue;
+        };
+        let moved_bounds = |e: &ElementSelector| {
+            let shape = diagram.shapes.iter().find(|s| s.element == *e)?;
+            Some(
+                batch
+                    .iter()
+                    .find_map(|m| match m {
+                        Mutation::MoveShape {
+                            shape_id, bounds, ..
+                        } if *shape_id == shape.id => Some(bounds.clone()),
+                        _ => None,
+                    })
+                    .unwrap_or_else(|| shape.bounds.clone()),
+            )
+        };
+        let (Some(a), Some(b)) = (moved_bounds(source), moved_bounds(target)) else {
+            continue;
+        };
+        let kind = match flow.kind {
+            FlowKind::Message => rules::ConnectionKind::Message,
+            _ => rules::ConnectionKind::Sequence,
+        };
+        let waypoints = modeling::route(
+            &diagram,
+            kind,
+            queries::find_node(doc, source),
+            queries::find_node(doc, target).map(|n| n.kind),
+            &a,
+            &b,
+        );
+        for edge in diagram.edges.iter().filter(|e| e.element == flow_id) {
+            batch.push(Mutation::Reroute {
+                document_id: doc.id,
+                diagram_id: diagram_id.clone(),
+                edge_id: edge.id.selector(),
+                waypoints: waypoints.clone(),
+            });
+        }
+    }
     batch.extend(follow_up);
     if let Some((flow, node, bounds, ids)) = split_at {
         batch.extend(split(doc, diagram_id, &flow, &node, &bounds, ids)?);
@@ -734,7 +1000,10 @@ pub fn reconnect(
         (kind, flow.kind),
         (rules::ConnectionKind::Sequence, FlowKind::Sequence)
             | (rules::ConnectionKind::Message, FlowKind::Message)
-            | (rules::ConnectionKind::Association, FlowKind::Association)
+            | (
+                rules::ConnectionKind::Association | rules::ConnectionKind::CompensationAssociation,
+                FlowKind::Association
+            )
     );
     if !same_kind {
         return Err("These elements need another kind of connection; delete this one and connect them instead".into());
@@ -743,7 +1012,7 @@ pub fn reconnect(
         .into_iter()
         .find(|s| s.flows.iter().any(|f| f.id == *flow_id))
         .map(|s| s.id.selector());
-    if flow.kind != FlowKind::Message
+    if flow.kind == FlowKind::Sequence
         && rules::locate(doc, source).and_then(|l| l.scope) != scope_of_flow
     {
         return Err("The flow must stay within its process or subprocess".into());
@@ -901,22 +1170,30 @@ pub fn create_at(
             }],
         });
     }
-    if let (Some(flow), Some(edge)) = (ids.flow, ids.edge)
-        && let Some(found) = flow_under(doc, &diagram, &node, &scope, &center)
-    {
-        let found = found.id.selector();
-        // The split routes from the new node, so it needs the node in the document first.
+    if let (Some(flow), Some(edge)) = (ids.flow, ids.edge) {
+        // The rules and the split route from the new node, so it goes into a probe first.
         let mut probe = doc.clone();
         crate::commands::scope_parts_mut(&mut probe, &scope)
             .map_err(|_| "scope not found")?
             .0
             .push(node);
-        let mut tail = split(&mut probe, diagram_id, &found, &id, &bounds, (flow, edge))?;
-        let retargeted = all_flows(&probe).find(|f| f.id == found).cloned();
-        if let Some(value) = retargeted {
-            *flow_mut(doc, &found).ok_or("flow not found")? = value;
+        let found = queries::find_node(&probe, &id)
+            .and_then(|n| flow_under(&probe, &diagram, n, &scope, &center))
+            .map(|f| (f.id.selector(), local(&f.source).cloned()));
+        if let Some((found, source)) = found {
+            let mut tail = split(&mut probe, diagram_id, &found, &id, &bounds, (flow, edge))?;
+            // Copy back the split flow and its source (which may lose a default marker).
+            if let Some(value) = all_flows(&probe).find(|f| f.id == found).cloned() {
+                *flow_mut(doc, &found).ok_or("flow not found")? = value;
+            }
+            if let Some(source) = source
+                && let Some(value) = queries::find_node(&probe, &source).cloned()
+                && let Ok(node) = crate::commands::node_mut(doc, &source)
+            {
+                *node = value;
+            }
+            batch.append(&mut tail);
         }
-        batch.append(&mut tail);
     }
     Ok(batch)
 }

@@ -7,7 +7,10 @@ use crate::{
     model::{Bounds, BpmnDocument, NodeKind},
 };
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
+#[serde(rename_all = "camelCase")]
 pub enum Alignment {
     Left,
     Center,
@@ -17,7 +20,10 @@ pub enum Alignment {
     Bottom,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
+#[serde(rename_all = "camelCase")]
 pub enum Distribution {
     Horizontal,
     Vertical,

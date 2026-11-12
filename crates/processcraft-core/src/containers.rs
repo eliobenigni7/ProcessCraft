@@ -19,7 +19,6 @@ use std::collections::HashMap;
 pub const LANE_INDENTATION: f64 = 30.0;
 /// Height of a lane added above or below another.
 pub const LANE_SIZE: f64 = 120.0;
-const VERTICAL: &str = "Vertical lanes cannot be added or split yet";
 
 /// The axis the space tool works along.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
@@ -516,7 +515,7 @@ fn create_lanes(
     }
     Ok(())
 }
-/// The selected lane or pool of a lane command, refusing vertical lanes.
+/// The selected lane or pool of a lane command.
 fn lane_target(
     doc: &BpmnDocument,
     diagram_id: &ElementSelector,
@@ -525,15 +524,40 @@ fn lane_target(
     let di = diagram_index(doc, diagram_id)?;
     let diagram = &doc.diagrams[di];
     let target = shape_index(diagram, element)?;
-    if diagram.shapes[target].is_horizontal == Some(false) {
-        return Err(VERTICAL.into());
-    }
     Ok((di, target, lane_context(doc, diagram, element)?))
+}
+/// Lanes stack along y in a horizontal pool and along x in a vertical one; the indentation
+/// (the pool's header) is on the other axis. Returns `(stack, across)`.
+fn lane_axes(shape: &Shape) -> (Axis, Axis) {
+    if shape.is_horizontal == Some(false) {
+        (Axis::X, Axis::Y)
+    } else {
+        (Axis::Y, Axis::X)
+    }
+}
+/// Bounds inside `s` from `start` for `length` along `stack`, indented by `indent` across.
+fn lane_bounds(
+    s: &Bounds,
+    (stack, across): (Axis, Axis),
+    start: f64,
+    length: f64,
+    indent: f64,
+) -> Bounds {
+    let mut b = s.clone();
+    set(
+        &mut b,
+        across,
+        lo(s, across) + indent,
+        len(s, across) - indent,
+    );
+    set(&mut b, stack, start, length);
+    b
 }
 
 /// Add a lane above or below a lane or pool (bpmn-js AddLaneHandler): a 120 high lane at the
 /// pool's indentation; lanes and shapes beyond it in the pool move away and the pool and parent
-/// lanes grow. A pool without lanes first gets one lane covering its body.
+/// lanes grow. A pool without lanes first gets one lane covering its body. In a vertical pool
+/// lanes stack along x: above means left and below means right.
 pub fn add_lane(
     doc: &mut BpmnDocument,
     diagram_id: &ElementSelector,
@@ -546,16 +570,14 @@ pub fn add_lane(
     let lanes = shown_lanes(doc, diagram, &ctx);
     let s = diagram.shapes[target].bounds.clone();
     let horizontal = diagram.shapes[target].is_horizontal;
+    let axes = lane_axes(&diagram.shapes[target]);
+    let stack = axes.0;
     let is_root = ctx.lane.is_none();
     let mut created = Vec::new();
     if is_root && !lanes.iter().any(|(l, _)| l.parent.is_none()) {
         created.push((
             None,
-            Bounds {
-                x: s.x + LANE_INDENTATION,
-                width: s.width - LANE_INDENTATION,
-                ..s.clone()
-            },
+            lane_bounds(&s, axes, lo(&s, stack), len(&s, stack), LANE_INDENTATION),
         ));
     }
     // The pool alone grows when it is the target; otherwise everything in the pool but the
@@ -578,15 +600,15 @@ pub fn add_lane(
     let above = location == LaneLocation::Above;
     let space = if above {
         Space {
-            axis: Axis::Y,
-            start: s.y + 10.0,
+            axis: stack,
+            start: lo(&s, stack) + 10.0,
             delta: -LANE_SIZE,
             after: false,
         }
     } else {
         Space {
-            axis: Axis::Y,
-            start: s.y + s.height - 10.0,
+            axis: stack,
+            start: lo(&s, stack) + len(&s, stack) - 10.0,
             delta: LANE_SIZE,
             after: true,
         }
@@ -594,18 +616,14 @@ pub fn add_lane(
     let mut changes = Changes::new();
     adjust(doc, diagram, &candidates, space, &mut changes);
     let indent = if is_root { LANE_INDENTATION } else { 0.0 };
+    let start = if above {
+        lo(&s, stack) - LANE_SIZE
+    } else {
+        lo(&s, stack) + len(&s, stack)
+    };
     created.push((
         ctx.lane.as_ref().and_then(|l| l.parent.clone()),
-        Bounds {
-            x: s.x + indent,
-            y: if above {
-                s.y - LANE_SIZE
-            } else {
-                s.y + s.height
-            },
-            width: s.width - indent,
-            height: LANE_SIZE,
-        },
+        lane_bounds(&s, axes, start, LANE_SIZE, indent),
     ));
     commit(doc, di, &changes, Some(space));
     create_lanes(doc, di, &ctx.scope, created, horizontal)?;
@@ -632,31 +650,32 @@ pub fn split_lane(
         .into_iter()
         .filter(|(l, _)| l.parent == parent)
         .collect();
+    let axes = lane_axes(&diagram.shapes[target]);
+    let stack = axes.0;
     children.sort_by(|a, b| {
-        diagram.shapes[a.1]
-            .bounds
-            .y
-            .total_cmp(&diagram.shapes[b.1].bounds.y)
+        lo(&diagram.shapes[a.1].bounds, stack).total_cmp(&lo(&diagram.shapes[b.1].bounds, stack))
     });
     if children.len() > usize::from(count) {
         return Err(format!("It already has more than {count} lanes"));
     }
     let s = diagram.shapes[target].bounds.clone();
     let horizontal = diagram.shapes[target].is_horizontal;
-    let size = (s.height / f64::from(count)).round();
+    let size = (len(&s, stack) / f64::from(count)).round();
     let mut changes = Changes::new();
     let mut created = Vec::new();
     for idx in 0..usize::from(count) {
-        let bounds = Bounds {
-            x: s.x + LANE_INDENTATION,
-            y: s.y + idx as f64 * size,
-            width: s.width - LANE_INDENTATION,
-            height: if idx + 1 == usize::from(count) {
-                s.height - size * idx as f64
-            } else {
-                size
-            },
+        let length = if idx + 1 == usize::from(count) {
+            len(&s, stack) - size * idx as f64
+        } else {
+            size
         };
+        let bounds = lane_bounds(
+            &s,
+            axes,
+            lo(&s, stack) + idx as f64 * size,
+            length,
+            LANE_INDENTATION,
+        );
         match children.get(idx) {
             Some((_, i)) => {
                 changes.insert(*i, bounds);
@@ -1029,28 +1048,30 @@ pub fn toggle_collapse(
             for e in &mut edges {
                 translate_edge(e, dx, dy);
             }
-            match doc.diagrams.iter_mut().find(|d| d.plane == *id) {
-                Some(plane) => {
-                    if let Some(order) = &mut plane.plane_order {
-                        order.extend(moved);
-                    }
-                    plane.shapes.extend(shapes);
-                    plane.edges.extend(edges);
+        }
+        // The collapsed subprocess gets its own diagram, empty when it has no content yet
+        // (bpmn-js SubProcessPlaneBehavior).
+        match doc.diagrams.iter_mut().find(|d| d.plane == *id) {
+            Some(plane) => {
+                if let Some(order) = &mut plane.plane_order {
+                    order.extend(moved);
                 }
-                None => doc.diagrams.push(Diagram {
-                    plane_metadata: None,
-                    plane_order: None,
-                    name: None,
-                    documentation: None,
-                    resolution: None,
-                    label_styles: Vec::new(),
-                    id: fresh("BPMNDiagram"),
-                    plane_id: fresh("BPMNPlane"),
-                    plane: id.clone(),
-                    shapes,
-                    edges,
-                }),
+                plane.shapes.extend(shapes);
+                plane.edges.extend(edges);
             }
+            None => doc.diagrams.push(Diagram {
+                plane_metadata: None,
+                plane_order: None,
+                name: None,
+                documentation: None,
+                resolution: None,
+                label_styles: Vec::new(),
+                id: fresh("BPMNDiagram"),
+                plane_id: fresh("BPMNPlane"),
+                plane: id.clone(),
+                shapes,
+                edges,
+            }),
         }
         let di = diagram_index(doc, diagram_id)?;
         let target = shape_index(&doc.diagrams[di], id)?;
@@ -1151,7 +1172,9 @@ pub fn collapse_toggle_target(
 /// crossing the line grow or shrink, boundary events follow their hosts, edges between affected
 /// shapes keep their points before the line, and lane membership follows the new geometry.
 /// Refused when a container would shrink below its minimum size. `semantic` allows the lane
-/// membership update (a diagram-only edit otherwise).
+/// membership update (a diagram-only edit otherwise). When the drag starts at `at` inside a
+/// pool, only that pool and the shapes in it take part (whole diagram otherwise).
+#[allow(clippy::too_many_arguments)]
 pub fn make_space(
     doc: &mut BpmnDocument,
     diagram_id: &ElementSelector,
@@ -1160,7 +1183,11 @@ pub fn make_space(
     delta: f64,
     after: bool,
     semantic: bool,
+    at: Option<Point>,
 ) -> Result<(), String> {
+    if at.as_ref().is_some_and(|p| !geometry::valid_point(p)) {
+        return Err("invalid position".into());
+    }
     if !start.is_finite()
         || !delta.is_finite()
         || start.abs() > geometry::COORDINATE_LIMIT
@@ -1181,7 +1208,24 @@ pub fn make_space(
         after,
     };
     let mut changes = Changes::new();
-    let all: Vec<usize> = (0..diagram.shapes.len()).collect();
+    // bpmn-js: a drag that starts in a pool only makes space in that pool.
+    let pool = at.and_then(|p| {
+        diagram.shapes.iter().find(|s| {
+            contains(&s.bounds, &p)
+                && doc
+                    .collaborations()
+                    .flat_map(|c| &c.participants)
+                    .any(|x| x.id == s.element)
+        })
+    });
+    let all: Vec<usize> = (0..diagram.shapes.len())
+        .filter(|&i| {
+            pool.is_none_or(|pool| {
+                diagram.shapes[i].id == pool.id
+                    || contains(&pool.bounds, &mid(&diagram.shapes[i].bounds))
+            })
+        })
+        .collect();
     adjust(doc, diagram, &all, space, &mut changes);
     for (i, b) in &changes {
         let shape = &diagram.shapes[*i];

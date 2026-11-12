@@ -175,6 +175,81 @@ pub enum RouteLayout {
     Message,
     /// Out of a boundary event: leave from the side it is attached to.
     FromBoundary(Side),
+    /// A self-loop leaving from a side and returning clockwise: t:r, r:b, b:l, l:t.
+    Loop(Side),
+}
+/// The side of `bounds` that `point` lies beyond (bpmn-js orientation, the nearest side when it
+/// lies inside): the side used to keep a loop's layout.
+pub fn side_of(point: &Point, bounds: &Bounds) -> Side {
+    let (left, right) = (point.x - bounds.x, bounds.x + bounds.width - point.x);
+    let (top, bottom) = (point.y - bounds.y, bounds.y + bounds.height - point.y);
+    let nearest = left.min(right).min(top).min(bottom);
+    if nearest == top {
+        Side::Top
+    } else if nearest == right {
+        Side::Right
+    } else if nearest == left {
+        Side::Left
+    } else {
+        Side::Bottom
+    }
+}
+fn loop_route(b: &Bounds, side: Side) -> Vec<Point> {
+    const M: f64 = 20.0;
+    let (l, t, r, bt) = (b.x, b.y, b.x + b.width, b.y + b.height);
+    let (mx, my) = (b.x + b.width / 2.0, b.y + b.height / 2.0);
+    let points = match side {
+        Side::Top => [(mx, t), (mx, t - M), (r + M, t - M), (r + M, my), (r, my)],
+        Side::Right => [
+            (r, my),
+            (r + M, my),
+            (r + M, bt + M),
+            (mx, bt + M),
+            (mx, bt),
+        ],
+        Side::Bottom => [
+            (mx, bt),
+            (mx, bt + M),
+            (l - M, bt + M),
+            (l - M, my),
+            (l, my),
+        ],
+        Side::Left => [(l, my), (l - M, my), (l - M, t - M), (mx, t - M), (mx, t)],
+    };
+    points.into_iter().map(|(x, y)| p(x, y)).collect()
+}
+fn transpose_bounds(b: &Bounds) -> Bounds {
+    Bounds {
+        x: b.y,
+        y: b.x,
+        width: b.height,
+        height: b.width,
+    }
+}
+/// [`layout_route`] for a vertical pool or lane (bpmn-js swaps h and v, loops turn
+/// counter-clockwise): the horizontal layout of the transposed geometry, transposed back.
+pub fn layout_route_vertical(
+    a: &Bounds,
+    b: &Bounds,
+    shapes: &[Bounds],
+    layout: RouteLayout,
+) -> Vec<Point> {
+    let side = |s: Side| match s {
+        Side::Top => Side::Left,
+        Side::Left => Side::Top,
+        Side::Right => Side::Bottom,
+        Side::Bottom => Side::Right,
+    };
+    let layout = match layout {
+        RouteLayout::FromBoundary(s) => RouteLayout::FromBoundary(side(s)),
+        RouteLayout::Loop(s) => RouteLayout::Loop(side(s)),
+        other => other,
+    };
+    let shapes: Vec<Bounds> = shapes.iter().map(transpose_bounds).collect();
+    layout_route(&transpose_bounds(a), &transpose_bounds(b), &shapes, layout)
+        .into_iter()
+        .map(|q| p(q.y, q.x))
+        .collect()
 }
 /// Route for a new connection between two shapes, shared by every entry point.
 /// Equivalent to [`layout_route`] with [`RouteLayout::Auto`].
@@ -188,6 +263,9 @@ pub fn connection_route(a: &Bounds, b: &Bounds, shapes: &[Bounds]) -> Vec<Point>
 /// endpoints themselves are not obstacles.
 pub fn layout_route(a: &Bounds, b: &Bounds, shapes: &[Bounds], layout: RouteLayout) -> Vec<Point> {
     const APART: f64 = 20.0;
+    if let RouteLayout::Loop(side) = layout {
+        return loop_route(a, side);
+    }
     let (ax, ay) = (a.x + a.width / 2.0, a.y + a.height / 2.0);
     let (bx, by) = (b.x + b.width / 2.0, b.y + b.height / 2.0);
     let horizontal_apart = b.x >= a.x + a.width + APART || b.x + b.width <= a.x - APART;
@@ -1671,8 +1749,9 @@ pub fn prepare_move(
         if let (Some((dx, dy)), Some(other)) = (source_delta, target_delta)
             && (dx, dy) == other
             && (dx != 0.0 || dy != 0.0)
-            && nested_translated.contains(source)
-            && nested_translated.contains(target)
+            // Both ends inside a moved subprocess, or a self-loop on a moved shape: translate.
+            && ((nested_translated.contains(source) && nested_translated.contains(target))
+                || source == target)
         {
             if let Some(mut bounds) = edge.label.as_ref().and_then(|label| label.bounds.clone()) {
                 bounds.x += dx;
@@ -1808,14 +1887,31 @@ pub fn prepare_move(
             let target_bounds = owner(target, edge.target_element.as_ref())?;
             let start_point = start.unwrap_or_else(|| edge.waypoints[0].clone());
             let end_point = end.unwrap_or_else(|| edge.waypoints[edge.waypoints.len() - 1].clone());
-            let repaired = repair_owned_endpoints(
+            let repaired = match repair_owned_endpoints(
                 &edge.waypoints,
                 start_point,
                 end_point,
                 &source_bounds,
                 &target_bounds,
                 &obstacles,
-            )?;
+            ) {
+                Ok(repaired) => repaired,
+                // diagram-js repairConnection: when the kept bendpoints cannot be repaired
+                // (e.g. a fresh copy dropped over its original), lay the connection out again.
+                Err(reason @ "cannot safely repair endpoint route") => {
+                    warnings.push(format!(
+                        "edge {}: {reason}; the route was laid out again",
+                        edge.id
+                    ));
+                    layout_route(
+                        &source_bounds,
+                        &target_bounds,
+                        &obstacles,
+                        RouteLayout::Sequence,
+                    )
+                }
+                Err(reason) => return Err(reason),
+            };
             routes.push((diagram_id.clone(), edge.id.selector(), repaired));
             continue;
         }

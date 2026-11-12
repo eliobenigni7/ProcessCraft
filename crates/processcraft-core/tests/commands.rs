@@ -3005,6 +3005,9 @@ fn descriptors_match_protocol_tags() {
         "createPool",
         "toggleCollapse",
         "makeSpace",
+        "align",
+        "distribute",
+        "duplicate",
     ];
     assert_eq!(
         descriptors.iter().map(|d| d.serde_tag).collect::<Vec<_>>(),

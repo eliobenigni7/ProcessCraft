@@ -154,6 +154,14 @@ pub enum Command {
         json: bool,
     },
     /// Apply a command batch to a new or existing project and save it to --out.
+    ///
+    /// Besides the primitive mutations, a batch can use the compound modeling commands that the
+    /// GUI and MCP share: connect, append, createAt, moveElements, resizeShape, reconnect,
+    /// replaceElement, addLane, splitLane, createPool, toggleCollapse, makeSpace, align
+    /// (`shape_ids`, `alignment`: left|center|right|top|middle|bottom), distribute
+    /// (`shape_ids`, `distribution`: horizontal|vertical), and duplicate (`element_ids`, `dx`,
+    /// `dy`, optional `target_diagram_id`; copy and paste with fresh IDs). The whole batch is
+    /// one undo step. `commands --json` lists every command with its parameters.
     Run {
         /// Start from a new project with this name.
         #[arg(
