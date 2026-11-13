@@ -12,6 +12,7 @@ pub use recovery::{RecoveryOrigin, RecoveryRecord, RecoveryStore};
 pub use access::{Access, FileGrant};
 pub use save::{OpenSession, SaveOutcome, SavePoint, WriterSession};
 pub mod bpmn;
+pub mod drawio;
 pub mod native;
 
 pub mod project;

@@ -1748,6 +1748,8 @@ pub(super) enum BottomTab {
     Revisions,
 }
 
+use crate::effects::ExportKind;
+
 impl ProcessCraft {
     fn interchange_ui(&mut self, ui: &mut egui::Ui, include_import: bool) {
         let ctx = ui.ctx().clone();
@@ -1775,10 +1777,20 @@ impl ProcessCraft {
                     );
                 }
                 for (label, format) in [
-                    ("Export BPMN…", None),
-                    ("Export SVG…", Some(processcraft_render::ExportFormat::Svg)),
-                    ("Export PNG…", Some(processcraft_render::ExportFormat::Png)),
-                    ("Export PDF…", Some(processcraft_render::ExportFormat::Pdf)),
+                    ("Export BPMN…", ExportKind::Bpmn),
+                    ("Export draw.io…", ExportKind::Drawio),
+                    (
+                        "Export SVG…",
+                        ExportKind::Image(processcraft_render::ExportFormat::Svg),
+                    ),
+                    (
+                        "Export PNG…",
+                        ExportKind::Image(processcraft_render::ExportFormat::Png),
+                    ),
+                    (
+                        "Export PDF…",
+                        ExportKind::Image(processcraft_render::ExportFormat::Pdf),
+                    ),
                 ] {
                     if ui.button(label).clicked()
                         && self.commit_draft()

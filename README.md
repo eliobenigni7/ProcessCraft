@@ -149,6 +149,7 @@ processcraft-cli query procurement.processcraft replace-options <document-id> <e
 processcraft-cli import-bpmn diagram.bpmn --out diagram.processcraft
 processcraft-cli export-bpmn diagram.processcraft --document-id <id> --out diagram.bpmn
 processcraft-cli export-image diagram.processcraft --document-id <id> --diagram-id <id> --format svg --out diagram.svg
+processcraft-cli export-drawio diagram.processcraft --document-id <id> --diagram-id <id> --out diagram.drawio
 ```
 
 The modeling operations — `append`, `connect`, `createAt`, `replaceElement`, `moveElements`,

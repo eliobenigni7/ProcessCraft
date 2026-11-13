@@ -5,6 +5,13 @@ use processcraft_core::{
 use processcraft_io::{Access, FileGrant, OpenSession, SaveOutcome, WriterSession, interchange};
 use processcraft_render::{Appearance, ExportFormat, ExportOptions, TextEngine};
 use sha2::{Digest, Sha256};
+
+#[derive(Clone, Copy)]
+pub enum ExportKind {
+    Bpmn,
+    Drawio,
+    Image(ExportFormat),
+}
 use std::{
     path::PathBuf,
     sync::{Arc, mpsc},
@@ -169,11 +176,31 @@ impl Effects {
         project: Arc<ProjectData>,
         doc: DocumentId,
         diagram: Option<ElementSelector>,
-        format: Option<ExportFormat>,
+        format: ExportKind,
         appearance: Appearance,
     ) {
         self.start(ctx, "Preparing export…", move || {
-            if let Some(format) = format {
+            if let ExportKind::Drawio = format {
+                let Some(document) = project.documents.iter().find(|d| d.id == doc) else {
+                    return ResultValue::Failed("Document not found.".into());
+                };
+                let Some(diagram) = diagram else {
+                    return ResultValue::Failed("No diagram selected.".into());
+                };
+                return match processcraft_io::drawio::export_drawio(document, &diagram) {
+                    Ok(out) => ResultValue::Export {
+                        bytes: out.bytes,
+                        report: out
+                            .approximated
+                            .into_iter()
+                            .map(|e| format!("Drawn as plain geometry: {e}"))
+                            .collect(),
+                        extension: "drawio",
+                    },
+                    Err(e) => ResultValue::Failed(format!("Export failed: {e}")),
+                };
+            }
+            if let ExportKind::Image(format) = format {
                 let Some(document) = project.documents.iter().find(|d| d.id == doc) else {
                     return ResultValue::Failed("Document not found.".into());
                 };

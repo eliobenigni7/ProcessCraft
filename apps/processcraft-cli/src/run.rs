@@ -438,6 +438,13 @@ pub fn execute(command: Command) -> Result<(), Error> {
             overwrite,
             acknowledge_native_fields,
         ),
+        Command::ExportDrawio {
+            input,
+            document_id,
+            diagram_id,
+            out,
+            overwrite,
+        } => export_drawio_cli(&input, &document_id, &diagram_id, &out, overwrite),
         Command::Mcp {
             new,
             input,
@@ -910,6 +917,36 @@ fn export_bpmn_cli(
         out,
         &result.bytes,
         json!({"retained":result.report.retained,"transformed":result.report.transformed,"omitted":result.report.omitted}),
+        false,
+    )
+}
+
+fn export_drawio_cli(
+    input: &Path,
+    document_id: &str,
+    diagram_id: &str,
+    out: &Path,
+    overwrite: bool,
+) -> Result<(), Error> {
+    if out.exists() && !overwrite {
+        return Err(error(4, "output exists; --overwrite is required"));
+    }
+    distinct_files(input, out)?;
+    let loaded = native::load_bytes(&read_native(input)?).map_err(|e| error(3, e))?;
+    let id: processcraft_core::ids::DocumentId = document_id.parse().map_err(|e| error(2, e))?;
+    let diagram = diagram_id.parse().map_err(|e| error(2, e))?;
+    let document = loaded
+        .project
+        .documents
+        .iter()
+        .find(|d| d.id == id)
+        .ok_or_else(|| error(2, "document not found"))?;
+    let result =
+        processcraft_io::drawio::export_drawio(document, &diagram).map_err(|e| error(3, e))?;
+    write_export(
+        out,
+        &result.bytes,
+        json!({"approximated":result.approximated}),
         false,
     )
 }

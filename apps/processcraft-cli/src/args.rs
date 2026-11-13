@@ -98,6 +98,23 @@ pub enum Command {
         #[arg(long)]
         acknowledge_native_fields: bool,
     },
+    /// Export one diagram as an uncompressed draw.io file using draw.io's BPMN shapes.
+    ExportDrawio {
+        /// Input .processcraft project.
+        input: PathBuf,
+        /// Document ID (listed by `info`).
+        #[arg(long)]
+        document_id: String,
+        /// Diagram ID within the document (listed by `info`).
+        #[arg(long)]
+        diagram_id: String,
+        /// .drawio file to write.
+        #[arg(long)]
+        out: PathBuf,
+        /// Replace the output file if it exists.
+        #[arg(long)]
+        overwrite: bool,
+    },
     /// Serve the Model Context Protocol over stdio, standalone or attached to the GUI.
     Mcp {
         /// Start from a new, unsaved project with this name.

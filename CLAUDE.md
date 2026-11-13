@@ -27,7 +27,7 @@ cargo run -p processcraft-cli -- query target/procurement.processcraft dictionar
 cargo run -p processcraft-cli -- validate target/procurement.processcraft --json
 ```
 
-Other CLI subcommands: `info`, `import-bpmn`, `export-bpmn`, `export-image`, `layout-preview`, `layout-apply`, `mcp` (see `apps/processcraft-cli/src/args.rs`).
+Other CLI subcommands: `info`, `import-bpmn`, `export-bpmn`, `export-image`, `export-drawio`, `layout-preview`, `layout-apply`, `mcp` (see `apps/processcraft-cli/src/args.rs`).
 
 Qualification harnesses are Cargo examples (`cargo run -p processcraft-io --example <name>_qualify --locked --offline`, `cargo run --release -p processcraft-cli --example workbench_qualify -- --out target/...`). The Python scripts in `scripts/` are independent cross-checks of their output and need `lxml` (XSD/XML checks), `pypdf` + `Pillow` and Poppler (PDF/render checks). `python scripts/generate_bpmn20_inventory.py --check` verifies `docs/research/bpmn-2-coverage.json` against the pinned OMG schemas.
 
