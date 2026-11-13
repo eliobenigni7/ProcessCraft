@@ -286,3 +286,102 @@ use"), as asserted in the core tests.
   owners) stays untouched source or extension content.
 - No performance measurement; the bounds tested are the 200-attribute limit and
   the existing XML limits. No BPMN conformance claim follows from this phase.
+
+## M5.1c — desktop editing of custom attributes
+
+### What exists
+
+- New `apps/processcraft/src/app/attributes.rs`; the shared table widget
+  `data_table` in `analyst_views.rs` is now a wrapper over
+  `data_table_editable`, which takes a per-cell callback (`true` = the callback
+  drew the cell, `false` = default text label).
+- Dictionary view: an "Entries / Attributes" tab. The Attributes tab lists
+  definitions (name, type, applies to, value count), creates and edits them,
+  and has "Add starter attributes" (`CreateAttributeDefinition` for the starter
+  names the project lacks, one batch). The form shows `validate_shape` messages
+  from core; the type is read-only on an existing definition. A save that core
+  refuses as is but accepts with `Clear` (removed or renamed option in use,
+  narrowed `applies_to` in use) is not submitted: it opens an inline prompt
+  with "Clear the affected values", a per-option mapping (`MapOptions`) and
+  Cancel. "Delete attribute…" always opens a prompt (Discard, "Move the
+  values to…" for same-type definitions, or Delete when nothing uses it, plus
+  Cancel).
+- Inspector: an "Attributes" section for the selected element (and for the
+  process when nothing is selected) with one typed editor per applicable
+  definition (text, number, currency, date, URL and duration as text fields;
+  option list as a combo; dictionary entries as checkboxes). Duration accepts
+  `2h 30m` (units d, h, m, s) or ISO 8601 and shows the stored value in the
+  friendly form. Text-like editors keep a draft and commit when the field
+  loses focus; choices commit when changed; each commit is one
+  `SetAttributeValues`. An invalid draft shows the core validator message,
+  stays, and is not submitted; selecting another element or navigating is
+  refused while it exists ("Discard edit" removes it). Values whose definition
+  no longer applies are listed under "No longer applicable to this element"
+  with a Clear button.
+- Table: "Attribute columns…" menu (activity-applicable definitions; view state
+  only), editable cells through the same typed editor, Ctrl/Shift+click toggles
+  rows into a multi-row selection, and editing an attribute cell of one marked
+  row submits one batch with one `SetAttributeValues` per marked row.
+- Controls carry accessible names (`labelled_by` for labelled fields,
+  `accessible_name` for table cells and combos); they are standard egui
+  widgets, so they take keyboard focus like the dictionary controls.
+
+### Tests
+
+`cargo test -p processcraft` (167 passed). Added:
+
+- `app::attributes::tests::invalid_draft_does_not_submit_and_is_kept`
+- `app::attributes::tests::multi_row_edit_is_one_undo_step`
+- `app::attributes::tests::drafts_survive_view_changes` (cell draft and
+  definition draft across five view/tab switches rendered through
+  `analyst_views_panel`; generation unchanged)
+- `app::attributes::tests::durations_use_friendly_text_and_core_messages`
+- `app::attributes::tests::starter_attributes_are_added_once`
+- `app::attributes::tests::stale_value_is_shown_and_clearable` (renders the
+  inspector section for a stale value without panicking, then clears it)
+- `app::attributes::tests::editable_cell_callback_replaces_the_default_label`
+- `app::attributes::tests::marked_rows_are_limited_to_visible_rows_each_frame`
+- `app::attributes::tests::new_or_opened_project_discards_attribute_state`
+- `app::attributes::tests::unusable_drafts_are_pruned_and_errors_name_the_element`
+- `app::attributes::tests::move_targets_mirror_core_checks`
+- `app::analyst_views::tests::restricted_definition_update_opens_the_prompt_instead_of_submitting`
+- `app::analyst_views::tests::deleting_a_used_definition_opens_the_prompt_instead_of_submitting`
+- `app::analyst_views::tests::attribute_tab_and_table_columns_render`
+
+### Review fixes
+
+- Attribute state is reset by `discard_property_drafts` (new/open/recovery) and
+  counted by `has_drafts()`.
+- Cell drafts whose element, definition or applicability is gone are dropped on
+  commit; hiding a column drops its drafts; an invalid draft's message names
+  the element, and the error area has "Discard attribute edits".
+- Marked rows are `(document, element)` keys intersected with the visible rows
+  every frame; Ctrl+click seeds only from a visible activity row. Setting the
+  value a marked row already has still applies to all marked rows. Drafts
+  committed by navigation/select/undo write their own element only, so marks
+  are cleared first (no fan-out).
+- The update prompt closes when the form is edited and keeps its option
+  mappings after a refused resolution; the move-to list mirrors core's checks
+  (type, unit, dictionary kind, option coverage, applies_to, free target);
+  Save with no changes does not submit; the stale-value Clear button is named
+  "Clear <definition>"; the Attributes section is hidden for elements without
+  an attribute target and values.
+- Not covered by tests: the Discard attribute edits button and the
+  prompt-closes-on-edit behaviour (code only), and the force path of the
+  table editors.
+
+### Limits and what is not established
+
+- No screenshot and no manual GUI session: pointer clicks, Ctrl+click row
+  selection, Enter/blur commits and the visual layout were not exercised; the
+  tests call the same methods the controls call and render frames without
+  asserting pixels. Keyboard reachability and accessible names rest on the
+  widget choice, not on a screen-reader or Tab-order test.
+- The restricted-update check is a dry run of core's `apply_update` on a clone
+  of the project (`Reject` refused and `Clear` accepted); core was not changed.
+- Marked table rows are view state and are not cleared when the model changes
+  underneath them; an edit that core refuses for any marked row fails the whole
+  batch with core's message.
+- The Attributes tab shows definitions in one stacked list/editor layout (no
+  side-by-side panel as in Entries).
+- Clipboard and duplicate still do not copy attribute values (decision 6).

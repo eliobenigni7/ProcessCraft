@@ -296,22 +296,22 @@ fixtures under `tests/fixtures/bpmn/attributes/`.
 **Own:** `apps/processcraft/src/app/{inspector,analyst_views}.rs`, new
 `apps/processcraft/src/app/attributes.rs`, and the editable-cell callback in the shared table widget.
 
-- [ ] New `apps/processcraft/src/app/attributes.rs`: an "Attributes" tab in the Dictionary view
+- [x] New `apps/processcraft/src/app/attributes.rs`: an "Attributes" tab in the Dictionary view
   (`analyst_views.rs`, beside the entry list) to create, edit and delete definitions. Delete and the
   restricted updates open the same kind of explicit resolution prompt the dictionary delete uses. An
   "Add starter attributes" action submits `CreateAttributeDefinition` for the starter definitions
   missing by name.
-- [ ] Inspector (`inspector.rs`): an "Attributes" `widgets::section` listing the definitions that
+- [x] Inspector (`inspector.rs`): an "Attributes" `widgets::section` listing the definitions that
   apply to the selected element, with a typed editor per type (text field, validated decimal, duration
   field, option list, date field, dictionary entry picker reusing `dictionary_links_ui` patterns, URL
   text). Edits go through the existing draft/auto-commit path and submit one `SetAttributeValues`.
   Invalid input keeps the draft and shows the validator message; it never submits.
-- [ ] Table (`activity_table_ui`): a column chooser for attribute definitions that apply to
+- [x] Table (`activity_table_ui`): a column chooser for attribute definitions that apply to
   activities; chosen columns are view state, not project content. Cells edit in place and submit
   `SetAttributeValues`; a multi-row selection applies one value to all selected rows as one batch.
   `data_table` currently renders fixed text cells, so it gains an editable-cell callback rather than
   a second table implementation.
-- [ ] Every new control has an accessible name and is reachable by keyboard, as the existing
+- [x] Every new control has an accessible name and is reachable by keyboard, as the existing
   dictionary and table controls are.
 
 #### Tests

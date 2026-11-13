@@ -770,6 +770,12 @@ impl ProcessCraft {
                                 if dismiss.clicked() {
                                     self.ctl.error.clear();
                                 }
+                                if self.attributes.has_cell_drafts()
+                                    && ui.small_button("Discard attribute edits").clicked()
+                                {
+                                    self.attributes.cells.clear();
+                                    self.ctl.error.clear();
+                                }
                                 if self.ctl.uncertain
                                     && ui.small_button("Check save outcome").clicked()
                                 {
@@ -976,7 +982,11 @@ impl ProcessCraft {
             self.ctl.error = "Post or discard the comment draft before navigating.".into();
             return false;
         }
-        if self.dictionary_draft_changed(&self.ctl.session.snapshot().project) {
+        if self.attributes.definition_changed() {
+            self.ctl.error =
+                "Save or discard the attribute definition draft before navigating.".into();
+            false
+        } else if self.dictionary_draft_changed(&self.ctl.session.snapshot().project) {
             self.ctl.error = "Save or discard the dictionary draft before navigating.".into();
             false
         } else {

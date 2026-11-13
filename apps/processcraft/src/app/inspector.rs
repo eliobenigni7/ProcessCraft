@@ -1116,6 +1116,11 @@ impl ProcessCraft {
                     self.dictionary_links_ui(side);
                     });
                     }
+                    if self.attributes_section_visible(selected) {
+                        widgets::section(side, "Attributes", None, false, |side| {
+                            self.attributes_inspector_ui(side, selected, editable)
+                        });
+                    }
                     widgets::section(side, "Advanced BPMN", None, false, |side| {
                         let xml_id = snap.project.documents.get(self.doc)
                             .and_then(|document| processcraft_core::queries::element_identity(document, selected))
@@ -1251,6 +1256,11 @@ impl ProcessCraft {
                         }
                     }
                     });
+                    if let Some(scope) = process.as_ref().filter(|scope| self.attributes_section_visible(&scope.id.selector())) {
+                        widgets::section(side, "Attributes", None, false, |side| {
+                            self.attributes_inspector_ui(side, &scope.id.selector(), editable)
+                        });
+                    }
                     if self.take_collaboration_request() {
                         widgets::open_section(side.ctx(), "Data & collaboration");
                     }

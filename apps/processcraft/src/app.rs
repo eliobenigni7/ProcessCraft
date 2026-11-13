@@ -217,6 +217,7 @@ pub struct ProcessCraft {
     dictionary_name: String,
     dictionary_description: String,
     dictionary_kind: DictionaryKind,
+    attributes: attributes::State,
     selected: Option<ElementSelector>,
     graph_selection: Option<(ElementSelector, ElementSelector, u64)>,
     multi: Vec<ElementSelector>,
@@ -364,6 +365,7 @@ impl Default for ProcessCraft {
             dictionary_name: String::new(),
             dictionary_description: String::new(),
             dictionary_kind: DictionaryKind::Role,
+            attributes: attributes::State::default(),
             selected: None,
             graph_selection: None,
             multi: vec![],
@@ -490,6 +492,7 @@ impl ProcessCraft {
     }
     fn select(&mut self, id: Option<ElementSelector>) {
         if (self.draft_dirty
+            || self.attributes.has_cell_drafts()
             || self.expression_draft.is_some()
             || self.catalog_draft.is_some()
             || self.binding_draft.is_some()
@@ -1082,7 +1085,7 @@ impl ProcessCraft {
     }
     /// Typed drafts, then the simple fields.
     fn commit_all_drafts(&mut self) -> bool {
-        self.commit_typed_drafts() && self.commit_draft()
+        self.commit_typed_drafts() && self.commit_attribute_drafts() && self.commit_draft()
     }
     fn commit_draft(&mut self) -> bool {
         if self.event_draft.is_some() || self.event_catalog_draft.is_some() {
@@ -1576,6 +1579,7 @@ impl ProcessCraft {
     }
     fn has_drafts(&self) -> bool {
         self.collaboration.has_draft()
+            || self.attributes.has_draft()
             || self.expression_draft.is_some()
             || self.catalog_draft.is_some()
             || self.binding_draft.is_some()
@@ -1658,6 +1662,7 @@ impl ProcessCraft {
         self.confirm.take()
     }
     fn discard_property_drafts(&mut self) {
+        self.attributes.reset();
         self.expression_draft = None;
         self.catalog_draft = None;
         self.binding_draft = None;
@@ -4658,6 +4663,7 @@ mod tests {
     }
 }
 mod analyst_views;
+mod attributes;
 mod band_create;
 mod base_metadata;
 mod call;

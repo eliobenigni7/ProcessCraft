@@ -1,13 +1,17 @@
 use super::*;
-use processcraft_core::{commands::DictionaryDeleteResolution, queries};
+use processcraft_core::{
+    attributes::{AttributeDefinition, AttributeTarget},
+    commands::DictionaryDeleteResolution,
+    queries,
+};
 
 use egui_extras::{Column, TableBuilder};
 
-struct TableItem {
-    key: String,
-    cells: Vec<String>,
-    tooltip: String,
-    selected: bool,
+pub(super) struct TableItem {
+    pub(super) key: String,
+    pub(super) cells: Vec<String>,
+    pub(super) tooltip: String,
+    pub(super) selected: bool,
 }
 
 pub(super) fn capability_label(capability: &Capability) -> &'static str {
@@ -24,13 +28,27 @@ pub(super) fn dictionary_kind_label(kind: DictionaryKind) -> &'static str {
         DictionaryKind::Document => "Document",
     }
 }
-fn data_table(
+pub(super) fn data_table(
     ui: &mut egui::Ui,
     id: &'static str,
     headings: &[&str],
     widths: &[f32],
     rows: &[TableItem],
     height: f32,
+) -> Option<(usize, bool)> {
+    data_table_editable(ui, id, headings, widths, rows, height, &mut |_, _, _| false)
+}
+
+/// `cell(ui, row, column)` may draw an editor into a cell and return `true`; `false` leaves the
+/// default text label.
+pub(super) fn data_table_editable(
+    ui: &mut egui::Ui,
+    id: &'static str,
+    headings: &[&str],
+    widths: &[f32],
+    rows: &[TableItem],
+    height: f32,
+    cell: &mut dyn FnMut(&mut egui::Ui, usize, usize) -> bool,
 ) -> Option<(usize, bool)> {
     let mut clicked = None;
     let text_color = ui.visuals().text_color();
@@ -116,6 +134,9 @@ fn data_table(
                                         response.on_hover_text(&item.tooltip).clicked();
                                 }
                                 ui.add_space(8.0);
+                                if cell(ui, index, column) {
+                                    return;
+                                }
                                 ui.add(
                                     egui::Label::new(egui::RichText::new(text).color(text_color))
                                         .truncate(),
@@ -363,6 +384,19 @@ impl ProcessCraft {
                         self.dictionary_description.clear();
                     }
                 });
+                ui.horizontal(|ui| {
+                    for (tab, text) in [
+                        (attributes::Tab::Entries, "Entries"),
+                        (attributes::Tab::Attributes, "Attributes"),
+                    ] {
+                        ui.selectable_value(&mut self.attributes.tab, tab, text);
+                    }
+                });
+                if self.attributes.tab == attributes::Tab::Attributes {
+                    ui.add_space(8.0);
+                    self.attribute_definitions_ui(ui, project);
+                    return;
+                }
                 ui.label(egui::RichText::new("Shared terms used across your models").weak());
                 ui.add_space(12.0);
                 ui.horizontal_wrapped(|ui| {
@@ -800,6 +834,60 @@ impl ProcessCraft {
             return;
         };
         ui.add_space(12.0);
+        // Attribute columns are view state; a deleted or no longer applicable one drops out.
+        self.attributes.columns.retain(|id| {
+            project
+                .attribute_definitions
+                .iter()
+                .any(|d| d.id == *id && d.applies_to.contains(&AttributeTarget::Activity))
+        });
+        ui.horizontal_wrapped(|ui| {
+            ui.menu_button("Attribute columns…", |ui| {
+                let mut any = false;
+                for definition in project
+                    .attribute_definitions
+                    .iter()
+                    .filter(|d| d.applies_to.contains(&AttributeTarget::Activity))
+                {
+                    any = true;
+                    let mut on = self.attributes.columns.contains(&definition.id);
+                    if ui.checkbox(&mut on, &definition.name).changed() {
+                        if on {
+                            self.attributes.columns.push(definition.id);
+                        } else {
+                            self.attributes.columns.retain(|id| *id != definition.id);
+                            // A hidden column keeps no unsaved text.
+                            self.attributes
+                                .cells
+                                .retain(|(_, id), _| *id != definition.id);
+                        }
+                    }
+                }
+                if !any {
+                    ui.label("No attribute applies to activities. Create one under Dictionary, Attributes.");
+                }
+            });
+            if !self.attributes.marked.is_empty() && ui.button("Clear row selection").clicked() {
+                self.attributes.marked.clear();
+            }
+            ui.label(
+                egui::RichText::new(
+                    "Ctrl+click rows to select several; editing an attribute cell in one of them sets it on all.",
+                )
+                .small()
+                .weak(),
+            );
+        });
+        // Marked rows must be visible rows of this document and process.
+        self.attributes
+            .marked
+            .retain(|key| rows.iter().any(|row| row.key == *key));
+        let columns: Vec<&AttributeDefinition> = self
+            .attributes
+            .columns
+            .iter()
+            .filter_map(|id| project.attribute_definitions.iter().find(|d| d.id == *id))
+            .collect();
         let items: Vec<_> = rows
             .iter()
             .map(|row| {
@@ -849,31 +937,121 @@ impl ProcessCraft {
                 } else {
                     summary
                 };
+                let mut cells = vec![
+                    row.name.clone().unwrap_or_default(),
+                    row.role.clone().unwrap_or_else(|| "—".into()),
+                    lane.into(),
+                    systems,
+                    documents,
+                    outgoing.clone(),
+                ];
+                for definition in &columns {
+                    cells.push(
+                        row.attributes
+                            .iter()
+                            .find(|cell| cell.definition_id == definition.id)
+                            .map_or_else(
+                                || "—".to_owned(),
+                                |cell| attributes::display_value(project, &cell.value),
+                            ),
+                    );
+                }
                 TableItem {
                     key: format!("{} / {}", row.key.document_id, row.key.xml_id),
-                    cells: vec![
-                        row.name.clone().unwrap_or_default(),
-                        row.role.clone().unwrap_or_else(|| "—".into()),
-                        lane.into(),
-                        systems,
-                        documents,
-                        outgoing.clone(),
-                    ],
+                    cells,
                     tooltip: format!("{} / {}\n{}", row.key.document_id, row.key.xml_id, outgoing),
-                    selected: self.selected.as_ref() == Some(&row.key.xml_id),
+                    selected: if self.attributes.marked.is_empty() {
+                        self.selected.as_ref() == Some(&row.key.xml_id)
+                    } else {
+                        self.attributes.marked.contains(&row.key)
+                    },
                 }
             })
             .collect();
         let table_height = (ui.available_height() * 0.5).max(150.0);
-        if let Some((index, _)) = data_table(
+        let mut headings = vec!["NAME", "ROLE", "LANE", "SYSTEMS", "DOCUMENTS", "OUTGOING"];
+        let mut widths = vec![190.0, 110.0, 110.0, 125.0, 125.0, 180.0];
+        for definition in &columns {
+            headings.push(definition.name.as_str());
+            widths.push(140.0);
+        }
+        let editable = d.capability.allows_structural_editing();
+        let mut edits = Vec::new();
+        let mut invalid = None;
+        let marked = &self.attributes.marked;
+        let drafts = &mut self.attributes.cells;
+        let clicked = data_table_editable(
             ui,
             "activity_table",
-            &["NAME", "ROLE", "LANE", "SYSTEMS", "DOCUMENTS", "OUTGOING"],
-            &[190.0, 110.0, 110.0, 125.0, 125.0, 180.0],
+            &headings,
+            &widths,
             &items,
             table_height,
-        ) {
-            self.select(Some(rows[index].key.xml_id.clone()));
+            &mut |ui, index, column| {
+                let Some(definition) = column.checked_sub(6).and_then(|i| columns.get(i)) else {
+                    return false;
+                };
+                let row = &rows[index];
+                let current = row
+                    .attributes
+                    .iter()
+                    .find(|cell| cell.definition_id == definition.id)
+                    .map(|cell| &cell.value);
+                let outcome = attributes::value_editor(
+                    ui,
+                    drafts,
+                    attributes::Field {
+                        project,
+                        key: &row.key,
+                        definition,
+                        current,
+                        enabled: editable,
+                        compact: true,
+                        force: marked.len() > 1 && marked.contains(&row.key),
+                        name: format!(
+                            "{} for {}",
+                            definition.name,
+                            row.name.as_deref().unwrap_or("unnamed activity")
+                        ),
+                        label: None,
+                    },
+                );
+                match outcome {
+                    attributes::Edit::Commit(value) => {
+                        edits.push((row.key.clone(), definition.id, value))
+                    }
+                    attributes::Edit::Invalid(message) => invalid = Some(message),
+                    attributes::Edit::Idle => {}
+                }
+                true
+            },
+        );
+        if let Some(message) = invalid {
+            self.ctl.error = message;
+        }
+        for (key, definition, value) in edits {
+            self.apply_table_edit(&key, definition, value);
+        }
+        if let Some((index, _)) = clicked {
+            let key = rows[index].key.clone();
+            if ui.input(|i| i.modifiers.command || i.modifiers.shift) {
+                // Seed from the selected row only when it is a visible activity row.
+                if self.attributes.marked.is_empty()
+                    && let Some(current) = rows
+                        .iter()
+                        .find(|row| self.selected.as_ref() == Some(&row.key.xml_id))
+                {
+                    self.attributes.marked.push(current.key.clone());
+                }
+                if let Some(position) = self.attributes.marked.iter().position(|m| *m == key) {
+                    self.attributes.marked.remove(position);
+                } else {
+                    self.attributes.marked.push(key);
+                }
+            } else {
+                self.attributes.marked.clear();
+                self.select(Some(key.xml_id));
+            }
         }
         if items.is_empty() {
             ui.label("No activities in this process.");
@@ -1270,6 +1448,10 @@ impl ProcessCraft {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use processcraft_core::attributes::{
+        AttributeDeleteResolution, AttributeOptionMapping, AttributeUpdateResolution,
+        AttributeValue,
+    };
     #[test]
     fn filtered_table_click_selects_matching_stable_key() {
         let ctx = egui::Context::default();
@@ -1402,6 +1584,165 @@ mod tests {
                 "view {view}: {content_height}"
             );
         }
+    }
+    /// An app with one task carrying `Risk = High` (options Low, High, applies to activities).
+    fn app_with_risk() -> (
+        ProcessCraft,
+        processcraft_core::attributes::AttributeDefinition,
+    ) {
+        use processcraft_core::attributes::*;
+        let mut project = controller::blank_project();
+        let document = std::sync::Arc::make_mut(&mut project.documents[0]);
+        let id = controller::id("Node");
+        document.processes[0].nodes.push(Node {
+            flow_metadata: None,
+            base_extras: None,
+            item_aware: None,
+            activity: None,
+            io_specification: None,
+            loop_characteristics: None,
+            details: None,
+            id: id.clone().into(),
+            name: Some("Task".into()),
+            documentation: String::new().into(),
+            kind: NodeKind::Task,
+            owner: String::new(),
+            contact: String::new(),
+        });
+        let key = processcraft_core::ids::ElementKey {
+            document_id: document.id,
+            xml_id: id.into(),
+        };
+        let risk = AttributeDefinition {
+            id: processcraft_core::ids::AttributeDefinitionId::new(),
+            name: "Risk".into(),
+            description: String::new(),
+            value_type: AttributeType::Enum,
+            unit: None,
+            options: vec!["Low".into(), "High".into()],
+            dictionary_kind: None,
+            applies_to: vec![AttributeTarget::Activity],
+            required: false,
+        };
+        let mut app = ProcessCraft::default();
+        app.ctl.session = processcraft_core::commands::Session::new(project).unwrap();
+        assert!(app.ctl.mutate(vec![
+            Mutation::CreateAttributeDefinition {
+                definition: risk.clone()
+            },
+            Mutation::SetAttributeValues {
+                source: key,
+                values: vec![AttributeValueInput {
+                    definition_id: risk.id,
+                    value: Some(AttributeValue::Enum("High".into())),
+                }],
+            },
+        ]));
+        let snap = app.ctl.session.snapshot();
+        app.choose_definition(&snap.project, Some(risk.id));
+        (app, risk)
+    }
+    #[test]
+    fn restricted_definition_update_opens_the_prompt_instead_of_submitting() {
+        let (mut app, risk) = app_with_risk();
+        let before = app.ctl.session.snapshot().generation;
+        // Removing the option "High" that a value uses is restricted.
+        app.attributes.draft.as_mut().unwrap().options = "Low".into();
+        assert!(!app.save_definition_draft());
+        assert!(app.prompt_open());
+        assert_eq!(app.ctl.session.snapshot().generation, before);
+        assert_eq!(
+            app.ctl.session.snapshot().project.attribute_definitions[0]
+                .options
+                .len(),
+            2
+        );
+        // Mapping the removed option onto a kept one resolves it in one step.
+        assert!(
+            app.resolve_definition_update(AttributeUpdateResolution::MapOptions(vec![
+                AttributeOptionMapping {
+                    from: "High".into(),
+                    to: "Low".into()
+                }
+            ]))
+        );
+        assert!(!app.prompt_open());
+        let snap = app.ctl.session.snapshot();
+        assert_eq!(snap.project.attribute_definitions[0].options, vec!["Low"]);
+        assert_eq!(
+            snap.project.attribute_values[0].value,
+            AttributeValue::Enum("Low".into())
+        );
+        // Narrowing applies_to is restricted too; an unrestricted rename is submitted directly.
+        app.attributes.draft.as_mut().unwrap().applies = [false; 8];
+        app.attributes.draft.as_mut().unwrap().applies[1] = true;
+        let before = app.ctl.session.snapshot().generation;
+        assert!(!app.save_definition_draft());
+        assert!(app.prompt_open());
+        assert_eq!(app.ctl.session.snapshot().generation, before);
+        app.attributes.prompt = None;
+        app.attributes.draft.as_mut().unwrap().applies = [false; 8];
+        app.attributes.draft.as_mut().unwrap().applies[0] = true;
+        app.attributes.draft.as_mut().unwrap().name = "Risk level".into();
+        assert!(app.save_definition_draft());
+        assert!(!app.prompt_open());
+        assert_eq!(
+            app.ctl.session.snapshot().project.attribute_definitions[0].name,
+            "Risk level"
+        );
+        assert_eq!(
+            risk.id,
+            app.ctl.session.snapshot().project.attribute_definitions[0].id
+        );
+    }
+    #[test]
+    fn deleting_a_used_definition_opens_the_prompt_instead_of_submitting() {
+        let (mut app, _) = app_with_risk();
+        let before = app.ctl.session.snapshot().generation;
+        app.request_definition_delete();
+        assert!(app.prompt_open());
+        assert_eq!(app.ctl.session.snapshot().generation, before);
+        // Reject is refused by core while values use the definition.
+        assert!(!app.resolve_definition_delete(AttributeDeleteResolution::Reject));
+        assert_eq!(
+            app.ctl
+                .session
+                .snapshot()
+                .project
+                .attribute_definitions
+                .len(),
+            1
+        );
+        assert!(app.resolve_definition_delete(AttributeDeleteResolution::Discard));
+        let snap = app.ctl.session.snapshot();
+        assert!(snap.project.attribute_definitions.is_empty());
+        assert!(snap.project.attribute_values.is_empty());
+        assert!(!app.prompt_open());
+    }
+    #[test]
+    fn attribute_tab_and_table_columns_render() {
+        let (mut app, risk) = app_with_risk();
+        app.view = 2;
+        app.attributes.tab = attributes::Tab::Attributes;
+        let ctx = egui::Context::default();
+        let frame = |app: &mut ProcessCraft| {
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(900.0, 700.0),
+                    )),
+                    ..Default::default()
+                },
+                |ui| app.analyst_views_panel(ui),
+            );
+            output.textures_delta.clear();
+        };
+        frame(&mut app);
+        app.view = 3;
+        app.attributes.columns = vec![risk.id];
+        frame(&mut app);
+        assert_eq!(app.attributes.columns, vec![risk.id]);
     }
     #[test]
     fn reselecting_dictionary_entry_preserves_its_draft() {
