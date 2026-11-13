@@ -1,6 +1,6 @@
 # UX/UI shell redesign
 
-Status: planned (decisions agreed 2026-11-13). Scope: the desktop GUI shell in `apps/processcraft`
+Status: implemented 2026-11-13; evidence in [`docs/implementation/ux-shell-evidence.md`](../implementation/ux-shell-evidence.md). Scope: the desktop GUI shell in `apps/processcraft`
 and a screen-only canvas appearance in `processcraft-render`. Modeling behavior is unchanged.
 
 ## Goals

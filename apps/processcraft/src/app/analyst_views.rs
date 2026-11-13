@@ -323,7 +323,19 @@ impl ProcessCraft {
                                 }
                             }
                             if items.is_empty() {
-                                ui.label("No models match this search.");
+                                ui.horizontal(|ui| {
+                                    ui.label(
+                                        egui::RichText::new("No models match this search.").weak(),
+                                    );
+                                    if !self.library_filter.is_empty()
+                                        && ui.button("Clear search").clicked()
+                                    {
+                                        self.library_filter.clear();
+                                    }
+                                    if crate::widgets::primary_button(ui, "New model").clicked() {
+                                        self.new_model();
+                                    }
+                                });
                             }
                         },
                     );
@@ -441,7 +453,21 @@ impl ProcessCraft {
                                 self.choose_dictionary_entry(project, entries[index]);
                             }
                             if items.is_empty() {
-                                ui.label("No entries match this search.");
+                                ui.horizontal(|ui| {
+                                    ui.label(
+                                        egui::RichText::new(if project.dictionary_entries.is_empty() {
+                                            "No shared terms yet. Add the roles, IT systems and documents your models use."
+                                        } else {
+                                            "No entries match this search."
+                                        })
+                                        .weak(),
+                                    );
+                                    if !self.dictionary_filter.is_empty()
+                                        && ui.button("Clear search").clicked()
+                                    {
+                                        self.dictionary_filter.clear();
+                                    }
+                                });
                             }
                         },
                     );

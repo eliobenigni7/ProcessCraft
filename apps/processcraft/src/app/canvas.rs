@@ -618,6 +618,33 @@ impl FlowVariant {
         }
     }
 }
+/// Single-key element shortcuts, shared by the palette (add) and the context pad (append).
+pub(super) const ELEMENT_KEYS: [(egui::Key, NodeKind); 9] = [
+    (egui::Key::Num1, NodeKind::StartEvent),
+    (egui::Key::Num2, NodeKind::IntermediateThrowEvent),
+    (egui::Key::Num3, NodeKind::EndEvent),
+    (egui::Key::X, NodeKind::ExclusiveGateway),
+    (egui::Key::P, NodeKind::ParallelGateway),
+    (egui::Key::T, NodeKind::Task),
+    (egui::Key::U, NodeKind::UserTask),
+    (egui::Key::B, NodeKind::SubProcess),
+    (egui::Key::N, NodeKind::TextAnnotation),
+];
+/// Kinds the context pad appends; their keys append to a single selected shape.
+const APPEND_KINDS: [NodeKind; 5] = [
+    NodeKind::Task,
+    NodeKind::ExclusiveGateway,
+    NodeKind::IntermediateThrowEvent,
+    NodeKind::EndEvent,
+    NodeKind::TextAnnotation,
+];
+/// The shortcut shown in a palette tooltip, e.g. "Task (T)".
+pub(super) fn element_key(kind: NodeKind) -> Option<&'static str> {
+    ELEMENT_KEYS
+        .iter()
+        .find(|(_, k)| *k == kind)
+        .map(|(key, _)| key.symbol_or_name())
+}
 impl PadAction {
     fn label(self) -> &'static str {
         match self {
@@ -628,14 +655,14 @@ impl PadAction {
             Self::AddLane(LaneLocation::Below) => "Add lane below",
             Self::Split(2) => "Divide into two lanes",
             Self::Split(_) => "Divide into three lanes",
-            Self::Append(NodeKind::Task) => "Append task",
-            Self::Append(NodeKind::ExclusiveGateway) => "Append exclusive gateway",
-            Self::Append(NodeKind::IntermediateThrowEvent) => "Append intermediate event",
-            Self::Append(NodeKind::EndEvent) => "Append end event",
-            Self::Append(_) => "Append text annotation",
-            Self::Connect => "Connect (click or drag to the target)",
+            Self::Append(NodeKind::Task) => "Append task (T)",
+            Self::Append(NodeKind::ExclusiveGateway) => "Append exclusive gateway (X)",
+            Self::Append(NodeKind::IntermediateThrowEvent) => "Append intermediate event (2)",
+            Self::Append(NodeKind::EndEvent) => "Append end event (3)",
+            Self::Append(_) => "Append text annotation (N)",
+            Self::Connect => "Connect (C, then click or drag to the target)",
             Self::Replace => "Change type (R)",
-            Self::Delete => "Delete",
+            Self::Delete => "Delete (Del)",
         }
     }
 }
@@ -1989,22 +2016,22 @@ impl ProcessCraft {
                     && d.capability.allows_structural_editing()
                 {
                     painter.text(
-                        rect.center() - egui::vec2(0.0, 14.0),
+                        rect.center() - egui::vec2(0.0, 44.0),
                         egui::Align2::CENTER_CENTER,
                         "Build your process",
-                        egui::FontId::proportional(20.0),
+                        crate::theme::semibold(20.0),
                         palette.text,
                     );
                     painter.text(
-                        rect.center() + egui::vec2(0.0, 16.0),
+                        rect.center() - egui::vec2(0.0, 16.0),
                         egui::Align2::CENTER_CENTER,
-                        "Add an element from the BPMN palette to begin.",
-                        egui::FontId::proportional(12.0),
+                        "Pick an element from the palette, drag it in, or press 1 for a start event.",
+                        egui::FontId::proportional(12.5),
                         palette.muted,
                     );
                     if interactive {
                         painter.text(
-                            rect.center() + egui::vec2(0.0, 38.0),
+                            rect.center() + egui::vec2(0.0, 58.0),
                             egui::Align2::CENTER_CENTER,
                             "Drag empty space to pan · Shift-drag to select · Ctrl+wheel to zoom · Double-click or E to rename · Select an element for its context pad",
                             egui::FontId::proportional(11.0),
@@ -3505,6 +3532,40 @@ impl ProcessCraft {
         {
             self.open_replace(element);
         }
+        // Element keys: with one shape selected they append and connect, like the context pad;
+        // otherwise they add the element, like the palette. C starts click-to-connect.
+        if editable
+            && let Some(kind) = ctx.input_mut(|i| {
+                ELEMENT_KEYS
+                    .iter()
+                    .find(|(key, _)| i.consume_key(Modifiers::NONE, *key))
+                    .map(|(_, kind)| *kind)
+            })
+        {
+            match self.selected.clone().filter(|_| self.multi.len() == 1) {
+                Some(source) if APPEND_KINDS.contains(&kind) => {
+                    self.append(source, kind);
+                }
+                _ => self.add_entry(kind.into()),
+            }
+        }
+        if editable
+            && self.multi.len() == 1
+            && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::C))
+            && let Some(element) = self.selected.clone()
+            && let Some(bounds) = self
+                .ctl
+                .session
+                .snapshot()
+                .project
+                .documents
+                .get(self.doc)
+                .and_then(|d| self.current_diagram(d))
+                .and_then(|diagram| diagram.shapes.iter().find(|s| s.element == element))
+                .map(|shape| shape.bounds.clone())
+        {
+            self.canvas.connect_click = Some((element, bounds));
+        }
         // E: direct editing of the selected element's label (bpmn-js).
         if editable
             && self.multi.len() <= 1
@@ -4168,6 +4229,52 @@ mod tests {
                 .iter()
                 .any(|f| ends(f) == (second.clone(), first.clone()))
         );
+    }
+
+    #[test]
+    fn element_keys_add_from_the_palette_and_append_from_the_pad() {
+        let mut app = ProcessCraft::default();
+        let context = egui::Context::default();
+        let run = |app: &mut ProcessCraft, key| {
+            let mut output = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(900., 600.))),
+                    events: vec![egui::Event::Key {
+                        key,
+                        physical_key: None,
+                        pressed: true,
+                        repeat: false,
+                        modifiers: egui::Modifiers::NONE,
+                    }],
+                    ..Default::default()
+                },
+                |ui| {
+                    app.canvas_shortcuts(ui.ctx());
+                    app.canvas_ui(ui)
+                },
+            );
+            output.textures_delta.clear();
+        };
+        let counts = |app: &ProcessCraft| {
+            let snap = app.ctl.session.snapshot();
+            let process = &snap.project.documents[0].processes[0];
+            (process.nodes.len(), process.flows.len())
+        };
+        // Nothing selected: T adds a task, like clicking the palette.
+        run(&mut app, egui::Key::T);
+        assert_eq!(counts(&app), (1, 0), "{}", app.ctl.error);
+        assert_eq!(app.multi.len(), 1, "the new task is selected");
+        // One shape selected: 3 appends a connected end event, like the context pad.
+        run(&mut app, egui::Key::Num3);
+        assert_eq!(counts(&app), (2, 1), "{}", app.ctl.error);
+        let snap = app.ctl.session.snapshot();
+        assert!(
+            snap.project.documents[0].processes[0]
+                .nodes
+                .iter()
+                .any(|n| n.kind == NodeKind::EndEvent)
+        );
+        assert_eq!(element_key(NodeKind::UserTask), Some("U"));
     }
 
     #[test]

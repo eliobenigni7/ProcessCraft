@@ -272,6 +272,23 @@ impl ProcessCraft {
                     });
                 });
             });
+        // Empty diagram: one obvious first step under the "Build your process" message.
+        let empty = document
+            .diagrams
+            .iter()
+            .find(|d| self.diagram_id.as_ref().is_none_or(|id| d.id == *id))
+            .is_some_and(|d| d.shapes.is_empty() && d.edges.is_empty());
+        if empty && editable {
+            egui::Area::new(egui::Id::unique("processcraft-empty-canvas"))
+                .order(egui::Order::Middle)
+                .pivot(egui::Align2::CENTER_CENTER)
+                .fixed_pos(canvas.center() + Vec2::new(0.0, 16.0))
+                .show(ctx, |ui| {
+                    if widgets::primary_button(ui, "Add start event").clicked() {
+                        self.add_entry(NodeKind::StartEvent.into());
+                    }
+                });
+        }
         if self.multi.len() >= 2 {
             egui::Area::new(egui::Id::unique("processcraft-arrange-capsule"))
                 .order(egui::Order::Middle)
@@ -337,6 +354,12 @@ impl ProcessCraft {
             }
             for (label, tool) in *group {
                 let selected = matches!(tool, Tool::Space) && self.canvas.space_tool;
+                let hint = match tool {
+                    Tool::Element(entry) => canvas::element_key(entry.kind)
+                        .map(|key| format!("{label} ({key}) · click or drag")),
+                    _ => None,
+                };
+                let label = hint.as_deref().unwrap_or(label);
                 let response = tool_button(ui, label, selected, |painter, r, c| {
                     paint_tool(painter, *tool, r, c)
                 });
@@ -371,7 +394,15 @@ impl ProcessCraft {
             .show(|ui| {
                 ui.set_min_width(240.0);
                 for (label, entry) in std::iter::once(("Manual task", NodeKind::ManualTask.into()))
-                    .chain(super::shell::more_palette_entries())
+                    .chain(std::iter::once((
+                        "Text annotation (N)",
+                        NodeKind::TextAnnotation.into(),
+                    )))
+                    .chain(
+                        super::shell::more_palette_entries()
+                            .into_iter()
+                            .filter(|(_, e)| e.kind != NodeKind::TextAnnotation),
+                    )
                 {
                     let (row, item) = ui.allocate_exact_size(
                         Vec2::new(ui.available_width(), 26.0),

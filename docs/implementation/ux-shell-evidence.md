@@ -143,3 +143,44 @@ tests. Native screenshots of the release build (1560×960, sample project from
 - **Test:** `shell::tests::rail_has_three_places_and_library_shows_model_details`.
 - **Screenshot:** `step6-start.png` (empty project, three-place rail and empty canvas state). Library
   needs a click to reach and is covered by the test.
+
+## 7. Polish
+
+- **Element keys:** `canvas::ELEMENT_KEYS` defines one key per element:
+
+  | Key | Element |
+  |---|---|
+  | `1` `2` `3` | Start, intermediate throw and end event |
+  | `T` | Task |
+  | `U` | User task |
+  | `B` | Subprocess |
+  | `X` | Exclusive gateway |
+  | `P` | Parallel gateway |
+  | `N` | Text annotation |
+
+  With one shape selected, the five kinds the context pad offers are appended and connected to it.
+  Every other case adds the element as the palette does.
+- **Other shortcuts:** `C` starts click-to-connect from the selection. Palette tooltips and
+  context-pad tooltips name their keys, including `R` and `Del`. Lane and split pad entries have no
+  key.
+- **Empty states with an action:**
+  - Empty canvas: "Build your process", a hint and an "Add start event" primary button.
+  - Library: Clear search and New model.
+  - Dictionary: an explanation when it is empty, and Clear search.
+  - Problems: a success check.
+- **Documentation:** the README shortcut table, the plan status and CLAUDE.md's GUI and plan map
+  are updated.
+- **Test:** `canvas::tests::element_keys_add_from_the_palette_and_append_from_the_pad`.
+- **Screenshots:** `step7-empty-state.png` and `step7-dark.png`.
+- **Final gates:** `cargo fmt --check`, workspace all-target/all-feature Clippy `-D warnings` and the
+  workspace tests all passed. The GUI crate has 153 tests.
+
+## Not done and limits
+
+- **Document tabs:** they keep their own painted tabs. Only the bottom panel uses `craft_ui::tabs`.
+- **Library columns:** owner and modified are not shown, because the model has no such data.
+- **Narrow windows (< 980 px):** they still float the Project and Properties panels, as decided for
+  M4.
+- **Selection screenshots:** clicks and keys sent to a background window are not rendered, so
+  screenshots show only startup states. Interactive states are covered by the GUI tests named
+  above.

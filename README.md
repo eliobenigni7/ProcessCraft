@@ -109,8 +109,9 @@ cargo run --release -p processcraft-cli -- --help    # command-line tool
 
 | Action | How |
 |---|---|
-| Add an element | Click a palette entry (auto-placed and connected to the selection), or drag it onto the canvas |
-| Append, connect, change type, delete | The context pad next to the selection |
+| Add an element | Click an entry of the floating palette (auto-placed and connected to the selection), or drag it onto the canvas |
+| Element keys | `1` `2` `3` start, intermediate and end event · `T` task · `U` user task · `B` subprocess · `X` `P` exclusive and parallel gateway · `N` annotation (appended to a single selected shape) |
+| Append, connect, change type, delete | The context pad next to the selection · `C` connect · `R` · `Del` |
 | Rename / edit annotation text | Double-click or `E` (`Ctrl+Enter` finishes multi-line text) |
 | Change type | `R` |
 | Pan / zoom | Drag empty canvas, middle mouse or `Space`+drag · `Ctrl`+wheel · `Ctrl` `+` `−` `0` |
@@ -119,9 +120,10 @@ cargo run --release -p processcraft-cli -- --help    # command-line tool
 | Clipboard | `Ctrl+C` `Ctrl+X` `Ctrl+V` `Ctrl+D`; pasting BPMN XML from another tool imports it |
 | Find · space tool | `Ctrl+F` · `S` |
 | Undo / redo · save / open / new | `Ctrl+Z` / `Ctrl+Y` · `Ctrl+S` / `Ctrl+O` / `Ctrl+N` |
+| Focus mode · bottom panel | `Ctrl+.` · `Ctrl+J` (Problems, Comments, Revisions) |
 
 Properties of the selected element live in the **Properties** panel and apply when you press Enter
-or leave a field; rarely used BPMN and XML details sit under **Advanced**.
+or leave a field; rarely used BPMN and XML details sit under **Advanced BPMN**.
 
 ## For agents: CLI and MCP
 
