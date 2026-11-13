@@ -423,28 +423,28 @@ passes; `validate` exit codes follow §16.1.
 analyst_views.rs`; `apps/processcraft-cli/src/{args,run,mcp}.rs`; `apps/processcraft/src/
 attachment.rs`.
 
-- [ ] Three well-known definitions with fixed IDs in `attributes.rs`: Accountable, Consulted,
+- [x] Three well-known definitions with fixed IDs in `attributes.rs`: Accountable, Consulted,
   Informed; type `DictionaryRef` with `dictionary_kind: Role`, `applies_to: [Activity]`. They are
   created by a normal `CreateAttributeDefinition` the first time the RACI view assigns a value, never
   implicitly on load. Fixed IDs let BPMN round trips and other projects recognise them.
-- [ ] `queries::raci_matrix(project, document_id, process_id) -> Option<RaciMatrix>`: columns are the
+- [x] `queries::raci_matrix(project, document_id, process_id) -> Option<RaciMatrix>`: columns are the
   roles in use (dictionary entries first, then literals), rows are the activities of
   `activity_table`, each cell a set of R/A/C/I. Responsible is derived, read-only: the `Role` link
   target of the activity's lane, read from `dictionary_links` as a `DictionaryTarget`, not the
   `ActivityRow.role` label (finding 9). A/C/I come from the three attributes. Columns are keyed by
   `DictionaryTarget` (entry ID, or literal text), so R and A/C/I for the same entry share one
   column even after a rename, and two entries with the same name stay two columns.
-- [ ] `queries::raci_csv(&RaciMatrix) -> String`: RFC 4180 quoting, CRLF, UTF-8 with BOM, first
+- [x] `queries::raci_csv(&RaciMatrix) -> String`: RFC 4180 quoting, CRLF, UTF-8 with BOM, first
   column activity name, one column per role, cells such as `R` or `A,C`. Cells that begin with `=`,
   `+`, `-` or `@` are prefixed with `'` so imported names cannot become spreadsheet formulas.
-- [ ] CLI: `query raci <document_id> <process_id>` (JSON) and `export-raci … --out <file.csv>
+- [x] CLI: `query raci <document_id> <process_id>` (JSON) and `export-raci … --out <file.csv>
   [--overwrite]` using the existing `write_export` path. MCP: `Query::Raci` in both enums; no CSV
   file tool (an agent can format the JSON).
-- [ ] Desktop: a third segment "RACI" beside "Model" and "Table" in `activity_table_ui`. A grid with
+- [x] Desktop: a third segment "RACI" beside "Model" and "Table" in `activity_table_ui`. A grid with
   a sticky first column; A/C/I cells toggle by click or keyboard and submit `SetAttributeValues`; the
   R cell explains that it follows the lane's role. "Export CSV" writes through
   `Effects::write` with an explicit save dialog grant.
-- [ ] The handbook export listed in the roadmap consumes `raci_matrix` in M6.1; nothing to do here.
+- [x] The handbook export listed in the roadmap consumes `raci_matrix` in M6.1; nothing to do here.
 
 **Tests:** `crates/processcraft-core/tests/attributes.rs` additions or a new `raci.rs`: derivation
 from lanes, literals versus entries, role rename reflected, activities outside lanes, CSV quoting and

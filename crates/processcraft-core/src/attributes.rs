@@ -994,6 +994,65 @@ pub fn starter_definitions() -> Vec<AttributeDefinition> {
     ]
 }
 
+/// The three RACI attributes (M5.3). Their IDs are fixed so BPMN round trips
+/// and other projects recognise them; Responsible is never stored, it follows
+/// the lane's role. Nothing creates them implicitly: the RACI view issues a
+/// normal `CreateAttributeDefinition` the first time it assigns one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum RaciAttribute {
+    Accountable,
+    Consulted,
+    Informed,
+}
+
+impl RaciAttribute {
+    pub const ALL: [Self; 3] = [Self::Accountable, Self::Consulted, Self::Informed];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Accountable => "Accountable",
+            Self::Consulted => "Consulted",
+            Self::Informed => "Informed",
+        }
+    }
+
+    pub fn letter(self) -> char {
+        match self {
+            Self::Accountable => 'A',
+            Self::Consulted => 'C',
+            Self::Informed => 'I',
+        }
+    }
+
+    pub fn id(self) -> AttributeDefinitionId {
+        let text = match self {
+            Self::Accountable => "5a3c0001-7a1c-4c0e-9a11-00000000aca1",
+            Self::Consulted => "5a3c0002-7a1c-4c0e-9a11-00000000aca2",
+            Self::Informed => "5a3c0003-7a1c-4c0e-9a11-00000000aca3",
+        };
+        text.parse()
+            .expect("fixed RACI attribute ID is a valid UUID")
+    }
+
+    pub fn from_id(id: AttributeDefinitionId) -> Option<Self> {
+        Self::ALL.into_iter().find(|raci| raci.id() == id)
+    }
+
+    pub fn definition(self) -> AttributeDefinition {
+        AttributeDefinition {
+            id: self.id(),
+            name: self.name().to_owned(),
+            description: format!("RACI: roles that are {}.", self.name().to_lowercase()),
+            value_type: AttributeType::DictionaryRef,
+            unit: None,
+            options: Vec::new(),
+            dictionary_kind: Some(DictionaryKind::Role),
+            applies_to: vec![AttributeTarget::Activity],
+            required: false,
+        }
+    }
+}
+
 /// Structural checks for `ProjectData::validate` (called from `identity.rs`).
 /// `applies_to` is deliberately not checked here: it is enforced when a value
 /// is set, so `replaceElement` can never make a project unloadable.

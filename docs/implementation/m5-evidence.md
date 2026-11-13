@@ -385,3 +385,81 @@ use"), as asserted in the core tests.
 - The Attributes tab shows definitions in one stacked list/editor layout (no
   side-by-side panel as in Entries).
 - Clipboard and duplicate still do not copy attribute values (decision 6).
+
+## M5.3 RACI matrix
+
+Scope: fixed RACI attribute definitions, `queries::raci_matrix` / `raci_csv`,
+CLI `query raci` and `export-raci`, MCP and attached `query` kind `raci`, and a
+RACI segment in the activity table. Statements below are what the named tests
+assert; nothing else is claimed.
+
+### What the tests establish
+
+- `crates/processcraft-core/tests/raci.rs`:
+  - `responsible_follows_lanes_and_attributes_fill_a_c_i`: on the pinned
+    two-lane procurement fixture (`tests/fixtures/commands/raci.json`) the
+    columns are the three dictionary roles by name then the literal "Legal",
+    rows are the two activities only, and the cells are exactly R/A/C/I as
+    authored (one role holds `R,A`).
+  - `responsible_reads_the_link_target_not_the_label`: two role entries with
+    the same name stay two columns; R lands on the lane's linked entry, A on the
+    same-named twin.
+  - `role_rename_is_reflected_in_the_column_name_only` and
+    `rename_keeps_one_column_and_same_name_entries_stay_two`: a rename changes
+    the column name, not the column key or its cells.
+  - `literals_follow_entries_and_are_keyed_by_their_text`: literals sort after
+    entries, by text; the same literal text is one column.
+  - `activity_outside_any_lane_has_no_responsible_and_ghost_roles_are_skipped`:
+    an activity in no lane has no R; rows keep the activity-table order.
+  - `csv_matches_the_pinned_file_and_is_deterministic`: the CSV equals the
+    byte-pinned `raci.expected.csv` (UTF-8 BOM, CRLF) and two calls agree.
+  - `csv_quotes_fields_and_neutralises_formulas`: quotes, commas and newlines
+    follow RFC 4180; fields starting with `=`, `+`, `-` or `@` (activity names,
+    role names, literals) are prefixed with `'`.
+  - `raci_definitions_have_fixed_ids_and_are_valid_mutations`: the three IDs are
+    distinct, match the fixture, round-trip through `from_id`, and all three are
+    accepted by `CreateAttributeDefinition` (a second creation is refused).
+  - `unknown_process_has_no_matrix`.
+- `apps/processcraft-cli/tests/cli.rs`
+  `export_raci_writes_the_pinned_csv_and_refuses_to_overwrite`: `export-raci`
+  writes the pinned bytes, leaves an existing file untouched without
+  `--overwrite`, replaces it with the flag, and `query raci` reports the same
+  columns and the same cells for the checked row.
+- `apps/processcraft` unit test
+  `app::analyst_views::tests::toggling_a_raci_cell_is_one_undo_step_and_creates_the_definition_once`:
+  the first toggle creates the fixed definition and the value in one batch
+  (generation +1); a second toggle clears the value; each toggle is one undo
+  step.
+
+### Design decisions where the plan was silent
+
+- Matrix cells are sparse per row (a role without a letter has no cell) and each
+  cell carries its target and name, so a row is readable without the column
+  list; the MCP and attached `raci` query page the rows (items), not the
+  columns. The CLI `query raci` returns the whole matrix.
+- A role is a column only when it holds at least one letter in the process. The
+  desktop grid additionally offers "Add role column…" for dictionary roles not
+  yet in use; those extra columns are view state and are not part of the query
+  or the CSV.
+- If a lane has several `Role` links, the first one in link order is the
+  Responsible role (as `ActivityRow.role`). Dictionary targets that no longer
+  resolve to a name are skipped.
+- The fixed RACI definitions are created with their fixed ID by the first
+  toggle, in the same batch as the value. If a project already has a different
+  definition named "Accountable" (and so a different ID), creation is refused by
+  core and the GUI shows core's message.
+- The RACI segment selection is view state in egui memory, not project data.
+
+### Limits and what is not established
+
+- The RACI grid, its sticky name column, keyboard toggling and the "Export CSV"
+  save dialog were not exercised manually and not rendered in a test; only the
+  mutation path behind the toggle is tested. Keyboard reachability rests on the
+  use of standard selectable labels, not on a Tab-order test.
+- MCP and attached `query raci` compile against the same code as the other query
+  kinds but have no dedicated transport test; the CLI test covers the shared
+  core projection only.
+- The matrix is recomputed when the model generation changes; no timing was
+  measured (M5.6).
+- Attribute values on activities are not copied by clipboard or duplicate
+  (decision 6), so RACI assignments are not either.

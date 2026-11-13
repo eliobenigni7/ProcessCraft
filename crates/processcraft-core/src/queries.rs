@@ -887,6 +887,190 @@ pub fn activity_table(
     Some(rows)
 }
 
+/// One role column of the RACI matrix, keyed by its dictionary target so an
+/// entry renamed after assignment stays one column and two entries with the
+/// same name stay two.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RaciColumn {
+    pub target: DictionaryTarget,
+    pub name: String,
+}
+
+/// The RACI letters one role holds on one activity. Responsible is derived
+/// from the lane; the other three come from the fixed RACI attributes.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RaciCell {
+    pub target: DictionaryTarget,
+    pub name: String,
+    pub responsible: bool,
+    pub accountable: bool,
+    pub consulted: bool,
+    pub informed: bool,
+}
+
+impl RaciCell {
+    /// `R`, `A,C`, ... in R, A, C, I order.
+    pub fn letters(&self) -> String {
+        [
+            (self.responsible, "R"),
+            (self.accountable, "A"),
+            (self.consulted, "C"),
+            (self.informed, "I"),
+        ]
+        .into_iter()
+        .filter_map(|(on, letter)| on.then_some(letter))
+        .collect::<Vec<_>>()
+        .join(",")
+    }
+}
+
+/// One activity; `cells` is sparse (roles holding no letter are absent) and
+/// follows the column order, so a row is readable without the column list.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RaciRow {
+    pub key: ElementKey,
+    pub name: Option<String>,
+    pub lane: Option<ElementSelector>,
+    pub cells: Vec<RaciCell>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RaciMatrix {
+    pub columns: Vec<RaciColumn>,
+    pub rows: Vec<RaciRow>,
+}
+
+/// RACI matrix of one process. Columns are the roles in use (dictionary
+/// entries by name then ID, then literals by text); rows are the rows of
+/// [`activity_table`]. Responsible reads the lane's `Role` link target itself,
+/// never the `ActivityRow.role` label.
+pub fn raci_matrix(
+    project: &ProjectData,
+    document_id: DocumentId,
+    process_id: &ElementSelector,
+) -> Option<RaciMatrix> {
+    use crate::attributes::{AttributeValue, RaciAttribute};
+    let table = activity_table(project, document_id, process_id)?;
+    // First Role link per lane, in link order (as `ActivityRow.role`).
+    let mut lane_role: HashMap<&ElementSelector, &DictionaryTarget> = HashMap::new();
+    for link in project
+        .dictionary_links
+        .iter()
+        .filter(|l| l.source.document_id == document_id && l.kind == DictionaryKind::Role)
+    {
+        if target_name(project, &link.target).is_some() {
+            lane_role.entry(&link.source.xml_id).or_insert(&link.target);
+        }
+    }
+    // (target, letters) per row; letters index 0..4 = R, A, C, I.
+    let mut per_row: Vec<HashMap<DictionaryTarget, [bool; 4]>> = Vec::with_capacity(table.len());
+    for row in &table {
+        let mut roles: HashMap<DictionaryTarget, [bool; 4]> = HashMap::new();
+        if let Some(target) = row.lane.as_ref().and_then(|lane| lane_role.get(lane)) {
+            roles.entry((*target).clone()).or_default()[0] = true;
+        }
+        for cell in &row.attributes {
+            let Some(raci) = RaciAttribute::from_id(cell.definition_id) else {
+                continue;
+            };
+            let AttributeValue::DictionaryRefs(refs) = &cell.value else {
+                continue;
+            };
+            let slot = match raci {
+                RaciAttribute::Accountable => 1,
+                RaciAttribute::Consulted => 2,
+                RaciAttribute::Informed => 3,
+            };
+            for target in refs.iter().filter(|t| target_name(project, t).is_some()) {
+                roles.entry(target.clone()).or_default()[slot] = true;
+            }
+        }
+        per_row.push(roles);
+    }
+    let mut columns: Vec<RaciColumn> = per_row
+        .iter()
+        .flat_map(|roles| roles.keys())
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .filter_map(|target| {
+            Some(RaciColumn {
+                name: target_name(project, target)?.to_owned(),
+                target: target.clone(),
+            })
+        })
+        .collect();
+    let rank = |column: &RaciColumn| match &column.target {
+        DictionaryTarget::Entry(id) => (0, column.name.clone(), id.to_string()),
+        DictionaryTarget::Literal(text) => (1, text.clone(), String::new()),
+    };
+    columns.sort_by_key(rank);
+    let rows = table
+        .into_iter()
+        .zip(per_row)
+        .map(|(row, roles)| RaciRow {
+            cells: columns
+                .iter()
+                .filter_map(|column| {
+                    let [responsible, accountable, consulted, informed] =
+                        *roles.get(&column.target)?;
+                    Some(RaciCell {
+                        target: column.target.clone(),
+                        name: column.name.clone(),
+                        responsible,
+                        accountable,
+                        consulted,
+                        informed,
+                    })
+                })
+                .collect(),
+            key: row.key,
+            name: row.name,
+            lane: row.lane,
+        })
+        .collect();
+    Some(RaciMatrix { columns, rows })
+}
+
+/// RFC 4180 CSV of a [`RaciMatrix`]: UTF-8 with BOM, CRLF, one column per role.
+/// A field starting with `=`, `+`, `-` or `@` is prefixed with `'` so an
+/// imported name cannot become a spreadsheet formula.
+pub fn raci_csv(matrix: &RaciMatrix) -> String {
+    fn field(text: &str) -> String {
+        let text = if text.starts_with(['=', '+', '-', '@']) {
+            format!("'{text}")
+        } else {
+            text.to_owned()
+        };
+        if text.contains([',', '"', '\r', '\n']) {
+            format!("\"{}\"", text.replace('"', "\"\""))
+        } else {
+            text
+        }
+    }
+    let mut out = String::from('\u{feff}');
+    let header = std::iter::once("Activity")
+        .chain(matrix.columns.iter().map(|c| c.name.as_str()))
+        .map(field)
+        .collect::<Vec<_>>();
+    out.push_str(&header.join(","));
+    out.push_str("\r\n");
+    for row in &matrix.rows {
+        let mut fields = vec![field(row.name.as_deref().unwrap_or(""))];
+        for column in &matrix.columns {
+            let letters = row
+                .cells
+                .iter()
+                .find(|cell| cell.target == column.target)
+                .map(RaciCell::letters)
+                .unwrap_or_default();
+            fields.push(field(&letters));
+        }
+        out.push_str(&fields.join(","));
+        out.push_str("\r\n");
+    }
+    out
+}
+
 /// True when a retained comment no longer points at an existing model element.
 pub fn comment_is_orphan(project: &ProjectData, comment: &Comment) -> bool {
     !project

@@ -114,6 +114,22 @@
       "license": "CC0-1.0",
       "expected_mode": "native editable project",
       "semantic_di_checks": "Stable document, definition and entry IDs; all eight attribute types set on one activity; decimal, duration and date values stored canonically"
+    },
+    {
+      "path": "commands/raci.json",
+      "sha256": "0f42bab213eeecfeeb1d648879492372203d3e76d4d5e0176d8c242e2def9da9",
+      "provenance": "Synthetic ProcessCraft M5.3 RACI batch authored 2026-11-13; procurement.json mutations plus three Role entries, two lane role links, the three fixed RACI definitions and A/C/I values (an unlinked literal included)",
+      "license": "CC0-1.0",
+      "expected_mode": "native editable project",
+      "semantic_di_checks": "Two lanes with Role links; A/C/I values on two activities; one role is both Responsible (lane) and Accountable"
+    },
+    {
+      "path": "commands/raci.expected.csv",
+      "sha256": "0d97fdc328fb372892175b401329cb666220e98ad795c7e68d07cb501a8b1afa",
+      "provenance": "Hand-written expected `export-raci` output for commands/raci.json (process procurement) authored 2026-11-13; UTF-8 BOM, CRLF",
+      "license": "CC0-1.0",
+      "expected_mode": "not a project: expected CSV bytes compared by the CLI test",
+      "semantic_di_checks": "Columns: dictionary entries by name, then literals; cells R,A,C,I in that order"
     }
   ],
   "fonts": [

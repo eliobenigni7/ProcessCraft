@@ -2,6 +2,7 @@ use super::*;
 use processcraft_core::{
     attributes::{AttributeDefinition, AttributeTarget},
     commands::DictionaryDeleteResolution,
+    ids::{DictionaryEntryId, DocumentId, ElementKey},
     queries,
 };
 
@@ -12,6 +13,51 @@ pub(super) struct TableItem {
     pub(super) cells: Vec<String>,
     pub(super) tooltip: String,
     pub(super) selected: bool,
+}
+
+/// The mutations of one RACI toggle: the fixed definition is created in the
+/// same batch when the project has none yet, then the role is added to or
+/// removed from the activity's list (an empty list clears the value).
+pub(super) fn raci_toggle_mutations(
+    project: &ProjectData,
+    key: &ElementKey,
+    raci: processcraft_core::attributes::RaciAttribute,
+    target: &DictionaryTarget,
+) -> Vec<Mutation> {
+    use processcraft_core::attributes::{AttributeValue, AttributeValueInput};
+    let mut refs = project
+        .attribute_values
+        .iter()
+        .find(|v| v.source == *key && v.definition == raci.id())
+        .and_then(|v| match &v.value {
+            AttributeValue::DictionaryRefs(refs) => Some(refs.clone()),
+            _ => None,
+        })
+        .unwrap_or_default();
+    match refs.iter().position(|t| t == target) {
+        Some(index) => {
+            refs.remove(index);
+        }
+        None => refs.push(target.clone()),
+    }
+    let mut mutations = Vec::new();
+    if !project
+        .attribute_definitions
+        .iter()
+        .any(|d| d.id == raci.id())
+    {
+        mutations.push(Mutation::CreateAttributeDefinition {
+            definition: raci.definition(),
+        });
+    }
+    mutations.push(Mutation::SetAttributeValues {
+        source: key.clone(),
+        values: vec![AttributeValueInput {
+            definition_id: raci.id(),
+            value: (!refs.is_empty()).then_some(AttributeValue::DictionaryRefs(refs)),
+        }],
+    });
+    mutations
 }
 
 pub(super) fn capability_label(capability: &Capability) -> &'static str {
@@ -774,6 +820,9 @@ impl ProcessCraft {
             return;
         };
         ui.label(egui::RichText::new(format!("{}  ›  Activities", project.name)).weak());
+        // View state only: never project content, never saved.
+        let raci_flag = egui::Id::unique("activity_table_raci");
+        let raci_on = ui.ctx().data(|data| data.get_temp::<bool>(raci_flag)) == Some(true);
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new(&d.name).font(crate::theme::semibold(18.0)));
             ui.add_space(8.0);
@@ -790,7 +839,12 @@ impl ProcessCraft {
                         {
                             self.view = 0;
                         }
-                        let _ = super::shell::segment(ui, true, "Table");
+                        if super::shell::segment(ui, !raci_on, "Table").clicked() {
+                            ui.ctx().data_mut(|data| data.insert_temp(raci_flag, false));
+                        }
+                        if super::shell::segment(ui, raci_on, "RACI").clicked() {
+                            ui.ctx().data_mut(|data| data.insert_temp(raci_flag, true));
+                        }
                     });
                 });
         });
@@ -800,6 +854,11 @@ impl ProcessCraft {
         else {
             return;
         };
+        if raci_on {
+            let editable = d.capability.allows_structural_editing();
+            self.raci_ui(ui, project, d.id, &p.id.selector(), editable);
+            return;
+        }
         // The table query walks the whole process; reuse it until the model changes.
         let key = (
             self.ctl.session.id(),
@@ -1085,6 +1144,287 @@ impl ProcessCraft {
         let preview_height = ui.available_height().clamp(180.0, 260.0);
         self.diagram_preview(ui, preview_height);
     }
+    /// Toggles one role in one A/C/I attribute of one activity: one batch, so
+    /// one undo step, which also creates the fixed definition on first use.
+    pub(super) fn toggle_raci(
+        &mut self,
+        key: &ElementKey,
+        raci: processcraft_core::attributes::RaciAttribute,
+        target: &DictionaryTarget,
+    ) -> bool {
+        let snap = self.ctl.session.snapshot();
+        let mutations = raci_toggle_mutations(&snap.project, key, raci, target);
+        self.ctl.mutate(mutations)
+    }
+
+    /// Third segment of the activity table: role columns, activity rows, R/A/C/I cells. The
+    /// activity names stay fixed on the left while the role columns scroll.
+    fn raci_ui(
+        &mut self,
+        ui: &mut egui::Ui,
+        project: &ProjectData,
+        document: DocumentId,
+        process: &ElementSelector,
+        editable: bool,
+    ) {
+        use processcraft_core::attributes::RaciAttribute;
+        const ROW: f32 = 30.0;
+        const NAME_WIDTH: f32 = 220.0;
+        const COLUMN: f32 = 112.0;
+        // The matrix walks the whole process; reuse it until the model changes.
+        let key = (
+            self.ctl.session.id(),
+            self.ctl.session.snapshot().generation,
+            document,
+            process.clone(),
+        );
+        let slot = egui::Id::unique("raci_matrix_cache");
+        type Cached = std::sync::Arc<(
+            (String, u64, DocumentId, ElementSelector),
+            Option<queries::RaciMatrix>,
+        )>;
+        let cached = ui
+            .ctx()
+            .data(|data| data.get_temp::<Cached>(slot))
+            .filter(|cached| cached.0 == key);
+        let cached = cached.unwrap_or_else(|| {
+            let fresh: Cached = std::sync::Arc::new((
+                key.clone(),
+                queries::raci_matrix(project, document, process),
+            ));
+            ui.ctx()
+                .data_mut(|data| data.insert_temp(slot, fresh.clone()));
+            fresh
+        });
+        let Some(matrix) = &cached.1 else {
+            return;
+        };
+        // Roles added to the grid before they hold a letter: view state.
+        let extra_slot = egui::Id::unique("raci_extra_roles");
+        let mut extra: Vec<DictionaryEntryId> = ui
+            .ctx()
+            .data(|data| data.get_temp(extra_slot))
+            .unwrap_or_default();
+        let mut columns = matrix.columns.clone();
+        extra.retain(|id| {
+            project
+                .dictionary_entries
+                .iter()
+                .any(|e| e.id == *id && e.kind == DictionaryKind::Role)
+        });
+        for id in &extra {
+            let target = DictionaryTarget::Entry(*id);
+            if !columns.iter().any(|c| c.target == target)
+                && let Some(entry) = project.dictionary_entries.iter().find(|e| e.id == *id)
+            {
+                columns.push(queries::RaciColumn {
+                    target,
+                    name: entry.name.clone(),
+                });
+            }
+        }
+        ui.add_space(12.0);
+        let mut export = false;
+        ui.horizontal_wrapped(|ui| {
+            ui.menu_button("Add role column…", |ui| {
+                let mut any = false;
+                for entry in project
+                    .dictionary_entries
+                    .iter()
+                    .filter(|e| e.kind == DictionaryKind::Role)
+                    .filter(|e| {
+                        !columns
+                            .iter()
+                            .any(|c| c.target == DictionaryTarget::Entry(e.id))
+                    })
+                {
+                    any = true;
+                    if ui.button(&entry.name).clicked() {
+                        extra.push(entry.id);
+                        ui.close();
+                    }
+                }
+                if !any {
+                    ui.label("Every role of the dictionary is already a column.");
+                }
+            });
+            export = ui.button("Export CSV").clicked();
+            ui.label(
+                egui::RichText::new(
+                    "R follows the role of the activity's lane. Click A, C or I to toggle; \
+                     the CSV lists the columns that hold a letter.",
+                )
+                .small()
+                .weak(),
+            );
+        });
+        ui.ctx()
+            .data_mut(|data| data.insert_temp(extra_slot, extra));
+        if export {
+            self.export_raci_csv(ui.ctx().clone(), matrix);
+        }
+        if matrix.rows.is_empty() {
+            ui.label("No activities in this process.");
+            return;
+        }
+        let muted = ui.visuals().weak_text_color();
+        let mut toggles = Vec::new();
+        egui::ScrollArea::vertical()
+            .id_salt("raci_vertical")
+            .max_height((ui.available_height() * 0.8).max(150.0))
+            .show(ui, |ui| {
+                ui.horizontal_top(|ui| {
+                    ui.spacing_mut().item_spacing = egui::vec2(4.0, 2.0);
+                    ui.vertical(|ui| {
+                        ui.set_width(NAME_WIDTH);
+                        ui.add_sized(
+                            [NAME_WIDTH, ROW],
+                            egui::Label::new(
+                                egui::RichText::new("ACTIVITY")
+                                    .size(12.0)
+                                    .strong()
+                                    .color(muted),
+                            ),
+                        );
+                        for row in &matrix.rows {
+                            ui.add_sized(
+                                [NAME_WIDTH, ROW],
+                                egui::Label::new(row.name.as_deref().unwrap_or("Unnamed activity"))
+                                    .truncate(),
+                            )
+                            .on_hover_text(format!("{} / {}", row.key.document_id, row.key.xml_id));
+                        }
+                    });
+                    egui::ScrollArea::horizontal()
+                        .id_salt("raci_horizontal")
+                        .show(ui, |ui| {
+                            ui.horizontal_top(|ui| {
+                                for column in &columns {
+                                    ui.vertical(|ui| {
+                                        ui.set_width(COLUMN);
+                                        ui.add_sized(
+                                            [COLUMN, ROW],
+                                            egui::Label::new(
+                                                egui::RichText::new(&column.name)
+                                                    .size(12.0)
+                                                    .strong()
+                                                    .color(muted),
+                                            )
+                                            .truncate(),
+                                        )
+                                        .on_hover_text(&column.name);
+                                        for row in &matrix.rows {
+                                            let cell = row
+                                                .cells
+                                                .iter()
+                                                .find(|cell| cell.target == column.target);
+                                            ui.allocate_ui_with_layout(
+                                                egui::vec2(COLUMN, ROW),
+                                                egui::Layout::left_to_right(egui::Align::Center),
+                                                |ui| {
+                                                    let responsible =
+                                                        cell.is_some_and(|c| c.responsible);
+                                                    let r = egui::RichText::new("R");
+                                                    ui.label(if responsible {
+                                                        r.strong()
+                                                    } else {
+                                                        r.weak()
+                                                    })
+                                                    .on_hover_text(
+                                                        "Responsible is derived: it follows the \
+                                                         role linked to the activity's lane. \
+                                                         Change the lane's role to change it.",
+                                                    );
+                                                    for raci in RaciAttribute::ALL {
+                                                        let on = cell.is_some_and(|c| match raci {
+                                                            RaciAttribute::Accountable => {
+                                                                c.accountable
+                                                            }
+                                                            RaciAttribute::Consulted => c.consulted,
+                                                            RaciAttribute::Informed => c.informed,
+                                                        });
+                                                        let response = ui
+                                                            .add_enabled_ui(editable, |ui| {
+                                                                ui.selectable_label(
+                                                                    on,
+                                                                    raci.letter().to_string(),
+                                                                )
+                                                            })
+                                                            .inner
+                                                            .on_hover_text(format!(
+                                                                "{} for {}: {}",
+                                                                raci.name(),
+                                                                row.name
+                                                                    .as_deref()
+                                                                    .unwrap_or("unnamed activity"),
+                                                                column.name
+                                                            ));
+                                                        if response.clicked() {
+                                                            toggles.push((
+                                                                row.key.clone(),
+                                                                raci,
+                                                                column.target.clone(),
+                                                            ));
+                                                        }
+                                                    }
+                                                },
+                                            );
+                                        }
+                                    });
+                                }
+                            });
+                        });
+                });
+            });
+        for (key, raci, target) in toggles {
+            self.toggle_raci(&key, raci, &target);
+        }
+    }
+
+    /// Asks for a destination and writes the CSV through the same grant-checked path as the
+    /// other exports.
+    fn export_raci_csv(&mut self, ctx: egui::Context, matrix: &queries::RaciMatrix) {
+        if self.ctl.is_saving() {
+            self.ctl.error = "Wait for the project save to finish before exporting.".into();
+            return;
+        }
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("CSV", &["csv"])
+            .set_file_name("raci.csv")
+            .save_file()
+        else {
+            return;
+        };
+        let grant = match processcraft_io::FileGrant::new(&path, processcraft_io::Access::Write)
+            .and_then(|grant| {
+                if self
+                    .ctl
+                    .file
+                    .as_ref()
+                    .map(|file| file.same_target(&grant))
+                    .transpose()?
+                    .unwrap_or(false)
+                {
+                    return Err(std::io::Error::other(
+                        "Choose a destination other than the open project file.",
+                    ));
+                }
+                Ok(grant)
+            }) {
+            Ok(grant) => grant,
+            Err(error) => {
+                self.ctl.error = format!("Cannot use export destination: {error}");
+                return;
+            }
+        };
+        self.effects.write(
+            ctx,
+            grant,
+            queries::raci_csv(matrix).into_bytes(),
+            self.ctl.session.id(),
+        );
+    }
+
     pub(super) fn dictionary_links_ui(&mut self, ui: &mut egui::Ui) {
         let snap = self.ctl.session.snapshot();
         let (Some(d), Some(element)) =
@@ -1641,6 +1981,72 @@ mod tests {
         let snap = app.ctl.session.snapshot();
         app.choose_definition(&snap.project, Some(risk.id));
         (app, risk)
+    }
+    #[test]
+    fn toggling_a_raci_cell_is_one_undo_step_and_creates_the_definition_once() {
+        use processcraft_core::attributes::{AttributeValue, RaciAttribute};
+        let (mut app, _) = app_with_risk();
+        let key = app.ctl.session.snapshot().project.attribute_values[0]
+            .source
+            .clone();
+        let role = DictionaryEntry {
+            id: processcraft_core::ids::DictionaryEntryId::new(),
+            kind: DictionaryKind::Role,
+            name: "Buyer".into(),
+            description: String::new(),
+        };
+        let target = DictionaryTarget::Entry(role.id);
+        assert!(
+            app.ctl
+                .mutate(vec![Mutation::CreateDictionaryEntry { entry: role }])
+        );
+        let before = app.ctl.session.snapshot().generation;
+        assert!(app.toggle_raci(&key, RaciAttribute::Accountable, &target));
+        let after = app.ctl.session.snapshot();
+        assert_eq!(
+            after.generation,
+            before + 1,
+            "definition and value in one batch"
+        );
+        assert!(
+            after
+                .project
+                .attribute_definitions
+                .iter()
+                .any(|d| d.id == RaciAttribute::Accountable.id())
+        );
+        assert!(after.project.attribute_values.iter().any(|v| {
+            v.definition == RaciAttribute::Accountable.id()
+                && v.value == AttributeValue::DictionaryRefs(vec![target.clone()])
+        }));
+        // A second toggle only changes the value, then one undo restores the first state.
+        assert!(app.toggle_raci(&key, RaciAttribute::Accountable, &target));
+        assert!(
+            !app.ctl
+                .session
+                .snapshot()
+                .project
+                .attribute_values
+                .iter()
+                .any(|v| v.definition == RaciAttribute::Accountable.id())
+        );
+        assert!(app.ctl.apply(Request::Undo));
+        assert!(app.ctl.apply(Request::Undo));
+        let undone = app.ctl.session.snapshot();
+        assert!(
+            !undone
+                .project
+                .attribute_definitions
+                .iter()
+                .any(|d| d.id == RaciAttribute::Accountable.id())
+        );
+        assert!(
+            undone
+                .project
+                .attribute_values
+                .iter()
+                .all(|v| v.definition != RaciAttribute::Accountable.id())
+        );
     }
     #[test]
     fn restricted_definition_update_opens_the_prompt_instead_of_submitting() {

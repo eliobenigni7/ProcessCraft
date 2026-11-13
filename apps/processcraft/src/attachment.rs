@@ -181,6 +181,12 @@ enum Query {
         offset: usize,
         limit: usize,
     },
+    Raci {
+        document_id: processcraft_core::ids::DocumentId,
+        process_id: processcraft_core::ids::ElementSelector,
+        offset: usize,
+        limit: usize,
+    },
     Attributes {
         document_id: processcraft_core::ids::DocumentId,
         offset: usize,
@@ -641,6 +647,12 @@ impl Attachment {
                             return json!({"ok":false,"error":"process not found"});
                         };
                         (rows.into_iter().map(|row| json!({"key":row.key,"name":row.name,"lane":row.lane,"role":row.role,"systems":row.systems,"documents":row.documents,"attributes":row.attributes,"outgoing":row.outgoing.into_iter().map(|f| json!({"id":f.id,"target":f.target,"condition":f.condition})).collect::<Vec<_>>() })).collect(),offset,limit)
+                    }
+                    Query::Raci { document_id, process_id, offset, limit } => {
+                        let Some(matrix) = processcraft_core::queries::raci_matrix(&snapshot.project, document_id, &process_id) else {
+                            return json!({"ok":false,"error":"process not found"});
+                        };
+                        (matrix.rows.into_iter().map(|row| json!(row)).collect(), offset, limit)
                     }
                     Query::Attributes { document_id, offset, limit } => {
                         let Some(rows) = processcraft_core::queries::element_attributes(&snapshot.project, document_id) else {

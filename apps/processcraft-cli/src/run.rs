@@ -445,6 +445,13 @@ pub fn execute(command: Command) -> Result<(), Error> {
             out,
             overwrite,
         } => export_drawio_cli(&input, &document_id, &diagram_id, &out, overwrite),
+        Command::ExportRaci {
+            input,
+            document_id,
+            process_id,
+            out,
+            overwrite,
+        } => export_raci_cli(&input, &document_id, &process_id, &out, overwrite),
         Command::Mcp {
             new,
             input,
@@ -675,6 +682,15 @@ fn query_project(path: &Path, query: Query) -> Result<(), Error> {
                 .ok_or_else(|| error(3, "process not found"))?;
             let rows: Vec<_> = rows.into_iter().map(|row| json!({"key":row.key,"name":row.name,"lane":row.lane,"role":row.role,"systems":row.systems,"documents":row.documents,"attributes":row.attributes,"outgoing":row.outgoing.into_iter().map(|flow| json!({"id":flow.id,"target":flow.target,"condition":flow.condition})).collect::<Vec<_>>() })).collect();
             json!({"rows":rows})
+        }
+        Query::Raci {
+            document_id,
+            process_id,
+        } => {
+            let document: DocumentId = document_id.parse().map_err(|e| error(2, e))?;
+            let process: ElementSelector = process_id.parse().map_err(|e| error(2, e))?;
+            json!({"raci": queries::raci_matrix(project, document, &process)
+                .ok_or_else(|| error(3, "process not found"))?})
         }
         Query::Attributes { document_id } => {
             let document: DocumentId = document_id.parse().map_err(|e| error(2, e))?;
@@ -991,6 +1007,30 @@ fn export_drawio_cli(
         out,
         &result.bytes,
         json!({"approximated":result.approximated}),
+        false,
+    )
+}
+
+fn export_raci_cli(
+    input: &Path,
+    document_id: &str,
+    process_id: &str,
+    out: &Path,
+    overwrite: bool,
+) -> Result<(), Error> {
+    if out.exists() && !overwrite {
+        return Err(error(4, "output exists; --overwrite is required"));
+    }
+    distinct_files(input, out)?;
+    let loaded = native::load_bytes(&read_native(input)?).map_err(|e| error(3, e))?;
+    let document = document_id.parse().map_err(|e| error(2, e))?;
+    let process = process_id.parse().map_err(|e| error(2, e))?;
+    let matrix = processcraft_core::queries::raci_matrix(&loaded.project, document, &process)
+        .ok_or_else(|| error(3, "process not found"))?;
+    write_export(
+        out,
+        processcraft_core::queries::raci_csv(&matrix).as_bytes(),
+        json!({"columns":matrix.columns.len(),"rows":matrix.rows.len()}),
         false,
     )
 }

@@ -115,6 +115,21 @@ pub enum Command {
         #[arg(long)]
         overwrite: bool,
     },
+    /// Export the RACI matrix of one process as CSV (UTF-8 with BOM, CRLF).
+    ExportRaci {
+        /// Input .processcraft project.
+        input: PathBuf,
+        /// Document ID (listed by `info`).
+        document_id: String,
+        /// Process ID within the document.
+        process_id: String,
+        /// .csv file to write.
+        #[arg(long)]
+        out: PathBuf,
+        /// Replace the output file if it exists.
+        #[arg(long)]
+        overwrite: bool,
+    },
     /// Serve the Model Context Protocol over stdio, standalone or attached to the GUI.
     Mcp {
         /// Start from a new, unsaved project with this name.
@@ -292,6 +307,11 @@ pub enum Query {
         entry_id: String,
     },
     Table {
+        document_id: String,
+        process_id: String,
+    },
+    /// RACI matrix of one process: role columns, activity rows, R/A/C/I cells.
+    Raci {
         document_id: String,
         process_id: String,
     },

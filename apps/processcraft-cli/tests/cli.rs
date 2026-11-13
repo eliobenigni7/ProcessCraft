@@ -1338,3 +1338,103 @@ fn mcp_attributes_query_matches_cli_values() {
         serde_json::to_vec(&content["definitions"]).unwrap()
     );
 }
+
+#[test]
+fn export_raci_writes_the_pinned_csv_and_refuses_to_overwrite() {
+    let commands = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("tests/fixtures/commands");
+    let t = Temp::new();
+    let project = t.path("raci.processcraft");
+    let result = cli(
+        &[
+            "run".as_ref(),
+            "--new".as_ref(),
+            "Procurement".as_ref(),
+            "--batch".as_ref(),
+            commands.join("raci.json").as_os_str(),
+            "--out".as_ref(),
+            project.as_os_str(),
+        ],
+        &t.0,
+    );
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let document_id = "11111111-1111-4111-8111-111111111111";
+    let expected = fs::read(commands.join("raci.expected.csv")).unwrap();
+    let csv = t.path("raci.csv");
+    let args = |overwrite: bool| {
+        let mut args: Vec<&std::ffi::OsStr> = vec![
+            "export-raci".as_ref(),
+            project.as_os_str(),
+            document_id.as_ref(),
+            "procurement".as_ref(),
+            "--out".as_ref(),
+            csv.as_os_str(),
+        ];
+        if overwrite {
+            args.push("--overwrite".as_ref());
+        }
+        args
+    };
+    let first = cli(&args(false), &t.0);
+    assert!(
+        first.status.success(),
+        "{}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+    assert_eq!(fs::read(&csv).unwrap(), expected);
+    // A second export without the flag keeps the existing bytes.
+    fs::write(&csv, b"keep").unwrap();
+    let refused = cli(&args(false), &t.0);
+    assert!(!refused.status.success());
+    assert_eq!(fs::read(&csv).unwrap(), b"keep");
+    let replaced = cli(&args(true), &t.0);
+    assert!(replaced.status.success());
+    assert_eq!(fs::read(&csv).unwrap(), expected);
+
+    // `query raci` agrees with the CSV: same columns and the same cells.
+    let query = cli(
+        &[
+            "query".as_ref(),
+            project.as_os_str(),
+            "raci".as_ref(),
+            document_id.as_ref(),
+            "procurement".as_ref(),
+        ],
+        &t.0,
+    );
+    assert!(query.status.success());
+    let value: serde_json::Value = serde_json::from_slice(&query.stdout).unwrap();
+    let columns: Vec<_> = value["raci"]["columns"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        columns,
+        ["Finance manager", "Procurement", "Requester", "Legal"]
+    );
+    let place = value["raci"]["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["name"] == "Place order")
+        .unwrap();
+    let procurement = place["cells"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|cell| cell["name"] == "Procurement")
+        .unwrap();
+    assert_eq!(procurement["responsible"], true);
+    assert_eq!(procurement["accountable"], true);
+    assert_eq!(procurement["consulted"], false);
+}
