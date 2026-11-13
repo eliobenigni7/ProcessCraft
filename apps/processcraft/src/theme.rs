@@ -42,7 +42,6 @@ pub struct Palette {
     pub warning: Color32,
     pub warning_soft: Color32,
     pub danger: Color32,
-    #[expect(dead_code, reason = "used by later steps of docs/plans/ux-shell.md")]
     pub danger_soft: Color32,
     pub success: Color32,
 }

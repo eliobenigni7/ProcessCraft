@@ -316,7 +316,8 @@ pub(super) struct ShellState {
     automation: bool,
     properties: bool,
     project: bool,
-    pub(super) problems: bool,
+    /// The open bottom-panel tab, or `None` when the panel is closed.
+    pub(super) bottom: Option<BottomTab>,
     search: String,
     /// Focus mode (Ctrl+.): only the canvas and its capsules.
     pub(super) focus: bool,
@@ -339,6 +340,12 @@ impl ProcessCraft {
         self.shell.wide = wide;
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::Period)) {
             self.shell.focus = !self.shell.focus;
+        }
+        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::J)) {
+            self.shell.bottom = match self.shell.bottom {
+                Some(_) => None,
+                None => Some(BottomTab::Problems),
+            };
         }
         let focus = self.shell.focus && self.view == 0;
         ui.spacing_mut().item_spacing.y = 0.0;
@@ -430,7 +437,10 @@ impl ProcessCraft {
                         ui.checkbox(&mut self.shell.project, "Project panel");
                         ui.checkbox(&mut self.shell.properties, "Properties panel");
                     }
-                    ui.checkbox(&mut self.shell.problems, "Problems");
+                    let mut problems = self.shell.bottom.is_some();
+                    if ui.checkbox(&mut problems, "Bottom panel    Ctrl+J").changed() {
+                        self.shell.bottom = problems.then_some(BottomTab::Problems);
+                    }
                     ui.checkbox(&mut self.shell.focus, "Focus mode    Ctrl+.");
                     ui.checkbox(&mut self.canvas.grid_snap, "Snap to 10 px grid");
                     ui.checkbox(&mut self.canvas.space_tool, "Space tool (S)")
@@ -474,10 +484,11 @@ impl ProcessCraft {
                     }
                     if ui.button("Element comments…").clicked() {
                         self.open_comments();
+                        self.shell.bottom = Some(BottomTab::Comments);
                         ui.close();
                     }
                     if ui.button("Checkpoints and reference…").clicked() {
-                        self.open_checkpoints();
+                        self.shell.bottom = Some(BottomTab::Revisions);
                         ui.close();
                     }
                     ui.separator();
@@ -487,7 +498,7 @@ impl ProcessCraft {
                     }
                     self.model_selectors(ui);
                     if ui.button("Validate model").clicked() {
-                        self.shell.problems = true;
+                        self.shell.bottom = Some(BottomTab::Problems);
                         ui.close();
                     }
                 });
@@ -577,13 +588,18 @@ impl ProcessCraft {
                         egui::Stroke::new(1.0, p.border),
                     );
                 }
-                if app.shell.problems && !focus {
-                    let max_height = (ui.available_height() * 0.28).clamp(60.0, 150.0);
-                    egui::Panel::bottom("model_problems")
+                if app.shell.bottom.is_some() && !focus {
+                    let max = (ui.available_height() * 0.6).max(80.0);
+                    egui::Panel::bottom("bottom_panel")
                         .resizable(true)
-                        .default_size(max_height)
-                        .size_range(40.0..=200.0)
-                        .show(ui, |ui| app.problems_ui(ui));
+                        .frame(
+                            egui::Frame::new()
+                                .fill(p.base)
+                                .inner_margin(egui::Margin::symmetric(12, 4)),
+                        )
+                        .default_size((ui.available_height() * 0.3).clamp(80.0, 260.0))
+                        .size_range(80.0..=max)
+                        .show(ui, |ui| app.bottom_panel_ui(ui));
                 }
                 app.canvas_ui(ui);
             } else {
@@ -1130,10 +1146,19 @@ impl ProcessCraft {
         let validate = if labels {
             widgets::primary_button(ui, "Validate")
         } else {
-            widgets::icon_button(ui, Icon::Check, "Validate model", self.shell.problems)
+            widgets::icon_button(
+                ui,
+                Icon::Check,
+                "Validate model",
+                self.shell.bottom == Some(BottomTab::Problems),
+            )
         };
         if validate.on_hover_text("Validate model").clicked() {
-            self.shell.problems = !self.shell.problems;
+            self.shell.bottom = if self.shell.bottom == Some(BottomTab::Problems) {
+                None
+            } else {
+                Some(BottomTab::Problems)
+            };
         }
         let export = if labels {
             ui.menu_button("Export", |ui| self.interchange_ui(ui, false))
@@ -1513,37 +1538,197 @@ impl ProcessCraft {
             }
         });
     }
-    fn problems_ui(&mut self, ui: &mut egui::Ui) {
+    /// The docked bottom panel: Problems, Comments and Revisions as tabs.
+    fn bottom_panel_ui(&mut self, ui: &mut egui::Ui) {
+        let p = self.theme.palette();
+        let errors = self
+            .problems
+            .iter()
+            .filter(|d| d.severity == processcraft_core::validation::DiagnosticSeverity::Error)
+            .count();
+        let comments = self.ctl.session.snapshot().project.comments.len();
         ui.horizontal(|ui| {
-            ui.strong(format!("Problems · {}", self.problems.len()));
-            if widgets::icon_button(ui, Icon::X, "Close problems", false).clicked() {
-                self.shell.problems = false;
-            }
-        });
-        if self.problems.is_empty() {
-            ui.label("No model problems found.");
-        }
-        egui::ScrollArea::vertical()
-            .id_salt("problem_rows")
-            .show(ui, |ui| {
-                for problem in self.problems.clone() {
-                    if ui.button(&problem.message).clicked() && self.prepare_navigation() {
-                        let snap = self.ctl.session.snapshot();
-                        if let Some(index) = snap
-                            .project
-                            .documents
-                            .iter()
-                            .position(|d| d.id == problem.document_id)
-                        {
-                            self.doc = index;
-                            self.process_id = None;
-                            self.diagram_id = None;
-                            self.select(problem.element_id);
-                        }
+            ui.spacing_mut().item_spacing.x = 2.0;
+            for (tab, icon, label, count) in [
+                (
+                    BottomTab::Problems,
+                    Icon::Alert,
+                    "Problems",
+                    Some(self.problems.len()),
+                ),
+                (
+                    BottomTab::Comments,
+                    Icon::Comment,
+                    "Comments",
+                    Some(comments),
+                ),
+                (BottomTab::Revisions, Icon::History, "Revisions", None),
+            ] {
+                let selected = self.shell.bottom == Some(tab);
+                let text = egui::RichText::new(label).font(crate::theme::medium(12.0));
+                let galley = ui.painter().layout_no_wrap(
+                    label.to_owned(),
+                    crate::theme::medium(12.0),
+                    p.text,
+                );
+                let badge = count.filter(|n| *n > 0).map(|n| n.to_string());
+                let width = 32.0
+                    + galley.size().x
+                    + badge
+                        .as_ref()
+                        .map_or(0.0, |b| 10.0 + 7.0 * b.len() as f32 + 8.0);
+                let (rect, _) =
+                    ui.allocate_exact_size(egui::vec2(width, 32.0), egui::Sense::hover());
+                let response = craft_ui::tabs::Tab::new(
+                    egui::Id::unique(("bottom-tab", label)),
+                    label,
+                    selected,
+                )
+                .focus_stroke(egui::Stroke::new(1.5, p.accent))
+                .show_at(ui, rect, |ui, response| {
+                    let color = if selected || response.hovered() {
+                        p.text
+                    } else {
+                        p.muted
+                    };
+                    widgets::paint_icon(
+                        ui,
+                        icon,
+                        Rect::from_center_size(
+                            rect.left_center() + egui::vec2(16.0, 0.0),
+                            egui::Vec2::splat(15.0),
+                        ),
+                        if tab == BottomTab::Problems && errors > 0 {
+                            p.danger
+                        } else {
+                            color
+                        },
+                    );
+                    ui.painter().text(
+                        rect.left_center() + egui::vec2(28.0, 0.0),
+                        egui::Align2::LEFT_CENTER,
+                        text.text(),
+                        crate::theme::medium(12.0),
+                        color,
+                    );
+                    if let Some(badge) = &badge {
+                        let pill = Rect::from_min_size(
+                            egui::pos2(rect.left() + 32.0 + galley.size().x, rect.center().y - 8.0),
+                            egui::vec2(7.0 * badge.len() as f32 + 8.0, 16.0),
+                        );
+                        let (fill, ink) = if tab == BottomTab::Problems && errors > 0 {
+                            (p.danger_soft, p.danger)
+                        } else {
+                            (p.secondary, p.muted)
+                        };
+                        ui.painter().rect_filled(pill, 8.0, fill);
+                        ui.painter().text(
+                            pill.center(),
+                            egui::Align2::CENTER_CENTER,
+                            badge,
+                            crate::theme::medium(10.5),
+                            ink,
+                        );
+                    }
+                    if selected {
+                        ui.painter().hline(
+                            rect.x_range(),
+                            rect.bottom() - 1.0,
+                            egui::Stroke::new(2.0, p.accent),
+                        );
+                    }
+                });
+                if response.clicked() {
+                    self.shell.bottom = Some(tab);
+                    if tab == BottomTab::Comments {
+                        self.open_comments();
                     }
                 }
+            }
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if widgets::icon_button_sized(ui, Icon::X, "Close panel", false, 26.0).clicked() {
+                    self.shell.bottom = None;
+                }
+            });
+        });
+        let line = ui.available_rect_before_wrap();
+        ui.painter().hline(
+            line.x_range(),
+            line.top() - 3.0,
+            egui::Stroke::new(1.0, p.border),
+        );
+        egui::ScrollArea::vertical()
+            .id_salt(("bottom-panel", self.shell.bottom))
+            .auto_shrink(false)
+            .show(ui, |ui| match self.shell.bottom {
+                Some(BottomTab::Problems) => self.problems_ui(ui),
+                Some(BottomTab::Comments) => self.comments_ui(ui),
+                Some(BottomTab::Revisions) => self.checkpoints_ui(ui),
+                None => {}
             });
     }
+    fn problems_ui(&mut self, ui: &mut egui::Ui) {
+        let p = self.theme.palette();
+        if self.problems.is_empty() {
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                widgets::icon(ui, Icon::Check, 16.0, p.success);
+                ui.label(egui::RichText::new("No model problems found.").color(p.muted));
+            });
+            return;
+        }
+        for problem in self.problems.clone() {
+            let error =
+                problem.severity == processcraft_core::validation::DiagnosticSeverity::Error;
+            let (row, response) = ui
+                .allocate_exact_size(egui::vec2(ui.available_width(), 26.0), egui::Sense::click());
+            response.widget_info(|| {
+                egui::WidgetInfo::labeled(egui::Role::Button, true, &problem.message)
+            });
+            if response.hovered() {
+                ui.painter()
+                    .rect_filled(row, crate::theme::RADIUS, p.secondary);
+            }
+            widgets::paint_icon(
+                ui,
+                Icon::Alert,
+                Rect::from_center_size(
+                    row.left_center() + egui::vec2(14.0, 0.0),
+                    egui::Vec2::splat(14.0),
+                ),
+                if error { p.danger } else { p.warning },
+            );
+            ui.painter().text(
+                row.left_center() + egui::vec2(30.0, 0.0),
+                egui::Align2::LEFT_CENTER,
+                &problem.message,
+                crate::theme::regular(12.5),
+                p.text,
+            );
+            if response.clicked() && self.prepare_navigation() {
+                let snap = self.ctl.session.snapshot();
+                if let Some(index) = snap
+                    .project
+                    .documents
+                    .iter()
+                    .position(|d| d.id == problem.document_id)
+                {
+                    self.doc = index;
+                    self.process_id = None;
+                    self.diagram_id = None;
+                    self.select(problem.element_id);
+                }
+            }
+        }
+    }
+}
+
+/// Tabs of the bottom panel.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(super) enum BottomTab {
+    Problems,
+    Comments,
+    Revisions,
 }
 
 impl ProcessCraft {
@@ -1842,6 +2027,63 @@ mod tests {
                 assert_eq!(task_after, task_before);
             }
         }
+    }
+    #[test]
+    fn bottom_panel_tabs_replace_the_review_windows() {
+        let mut app = ProcessCraft::default();
+        let context = egui::Context::default();
+        context.enable_accesskit();
+        app.apply_theme(&context);
+        for (tab, expected) in [
+            (BottomTab::Problems, "No model problems found."),
+            (BottomTab::Comments, "Plain-text local notes"),
+            (BottomTab::Revisions, "Named local snapshots"),
+        ] {
+            app.shell.bottom = Some(tab);
+            let mut output = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1440.0, 900.0))),
+                    ..Default::default()
+                },
+                |ui| app.workbench_ui(ui),
+            );
+            output.textures_delta.clear();
+            let tree = output
+                .platform_output
+                .accesskit_update
+                .expect("accessibility");
+            let labels: Vec<_> = tree
+                .nodes
+                .iter()
+                .filter_map(|(_, node)| node.label().or(node.value()))
+                .collect();
+            assert!(
+                labels.iter().any(|label| label.contains(expected)),
+                "{tab:?}: {labels:?}"
+            );
+            // No floating window duplicates the docked review content.
+            assert!(!labels.contains(&"Local comments"));
+        }
+        app.shell.focus = true;
+        let mut output = context.run_ui(
+            egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1440.0, 900.0))),
+                ..Default::default()
+            },
+            |ui| app.workbench_ui(ui),
+        );
+        output.textures_delta.clear();
+        let tree = output
+            .platform_output
+            .accesskit_update
+            .expect("accessibility");
+        assert!(
+            !tree
+                .nodes
+                .iter()
+                .any(|(_, node)| node.label() == Some("Close panel")),
+            "focus mode hides the bottom panel"
+        );
     }
     #[test]
     fn short_viewport_keeps_canvas_usable_in_both_themes() {

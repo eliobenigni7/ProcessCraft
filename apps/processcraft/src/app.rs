@@ -2725,7 +2725,7 @@ impl eframe::App for ProcessCraft {
         {
             self.problems = problems;
         }
-        if self.shell.problems && self.problem_key.as_ref() != Some(&problem_key) {
+        if self.shell.bottom.is_some() && self.problem_key.as_ref() != Some(&problem_key) {
             self.diagnostics
                 .submit(problem_key.clone(), snapshot.project.clone(), ctx.clone());
             self.problem_key = Some(problem_key);

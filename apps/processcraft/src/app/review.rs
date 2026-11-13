@@ -12,8 +12,6 @@ use std::sync::{
 #[derive(Default)]
 pub(super) struct State {
     session: String,
-    comments_open: bool,
-    checkpoints_open: bool,
     target: Option<ElementKey>,
     author: String,
     text: String,
@@ -477,36 +475,10 @@ impl ProcessCraft {
                 })
             });
         }
-        self.review.comments_open = true;
+        self.shell.bottom = Some(super::shell::BottomTab::Comments);
     }
-    pub(super) fn open_checkpoints(&mut self) {
-        self.review.checkpoints_open = true;
-    }
+
     pub(super) fn review_windows(&mut self, ctx: &egui::Context) {
-        if self.review.comments_open {
-            let mut open = true;
-            egui::Window::new("Local comments")
-                .open(&mut open)
-                .default_width(560.0)
-                .max_width((ctx.content_rect().width() - 32.0).max(150.0))
-                .default_height(500.0)
-                .max_height((ctx.content_rect().height() - 64.0).max(100.0))
-                .vscroll(true)
-                .show(ctx, |ui| self.comments_ui(ui));
-            self.review.comments_open = open;
-        }
-        if self.review.checkpoints_open {
-            let mut open = true;
-            egui::Window::new("Checkpoints and local reference")
-                .open(&mut open)
-                .default_width(600.0)
-                .max_width((ctx.content_rect().width() - 32.0).max(150.0))
-                .default_height(520.0)
-                .max_height((ctx.content_rect().height() - 64.0).max(100.0))
-                .vscroll(true)
-                .show(ctx, |ui| self.checkpoints_ui(ui));
-            self.review.checkpoints_open = open;
-        }
         self.reference_window(ctx);
         if let Some(id) = self.review.restore {
             egui::Window::new("Restore checkpoint?").collapsible(false).show(ctx,|ui| {
@@ -522,7 +494,7 @@ impl ProcessCraft {
             });
         }
     }
-    fn comments_ui(&mut self, ui: &mut egui::Ui) {
+    pub(super) fn comments_ui(&mut self, ui: &mut egui::Ui) {
         let snap = self.ctl.session.snapshot();
         ui.label("Plain-text local notes. Author names are descriptive and are not authenticated.");
         let pages = snap.project.comments.len().div_ceil(50).max(1);
@@ -734,7 +706,7 @@ impl ProcessCraft {
         });
         self.review.reference_view = open.then_some((id, index));
     }
-    fn checkpoints_ui(&mut self, ui: &mut egui::Ui) {
+    pub(super) fn checkpoints_ui(&mut self, ui: &mut egui::Ui) {
         let snap = self.ctl.session.snapshot();
         ui.label(
             "Named local snapshots. A local reference is a comparison marker, not an approval.",

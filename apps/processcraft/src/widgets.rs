@@ -22,20 +22,8 @@ pub enum Icon {
     ZoomIn,
     ZoomOut,
     Maximize,
-    #[expect(
-        dead_code,
-        reason = "used by the bottom panel step of docs/plans/ux-shell.md"
-    )]
     Alert,
-    #[expect(
-        dead_code,
-        reason = "used by the bottom panel step of docs/plans/ux-shell.md"
-    )]
     Comment,
-    #[expect(
-        dead_code,
-        reason = "used by the bottom panel step of docs/plans/ux-shell.md"
-    )]
     History,
     Check,
     Focus,

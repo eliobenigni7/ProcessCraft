@@ -77,3 +77,26 @@ tests. Native screenshots of the release build (1560×960, sample project from
   screenshots capture only the app window (PrintWindow).
 - **Limit:** the synthetic click in the screenshot harness does not reach winit, so selection is
   covered by code and the existing GUI tests, not by a screenshot.
+
+## 4. Bottom panel
+
+- **One docked panel:** a single resizable bottom panel (`ShellState::bottom`, a `BottomTab`)
+  replaces the Problems panel and the floating "Local comments" and "Checkpoints and local
+  reference" windows.
+- **Tabs:**
+  - Tabs are `craft_ui::tabs::Tab`, with Lucide icons, an amber underline on the active tab and
+    count pills.
+  - The Problems icon and pill turn red when errors exist.
+  - Problems rows show a severity icon, and selecting a row selects the element.
+  - The empty state shows "No model problems found." with a success check.
+- **Opening the panel:**
+  - Validate, the Model menu entries, the inspector's "Element comments…", View › Bottom panel and
+    the new `Ctrl+J` all open the matching tab. Focus mode hides it.
+  - Validation still runs off the UI thread, only while the panel is open.
+- **Modal dialogs kept:** the restore confirmation and the frozen checkpoint viewer stay modal
+  windows.
+- **Test:** `shell::tests::bottom_panel_tabs_replace_the_review_windows` renders each tab and checks
+  its content in the accessibility tree, that no comments window appears, and that focus mode hides
+  the panel.
+- **Limit:** inputs sent to a background window do not produce a new frame, so this step has no
+  screenshot. The test above is the evidence.
