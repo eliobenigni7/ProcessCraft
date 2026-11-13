@@ -415,7 +415,7 @@ use"), as asserted in the core tests.
   `unnamedExclusiveGateway` by `labelRequired` (only when its kinds include `Gateway`). A built-in
   is dropped only for editable documents, which are the only ones the rules evaluate.
   `unconnectedNode` and `gatewayDoesNotSplitOrMerge` are kept.
-- CLI: `validate --json` adds `diagnostics`, `errorCount`, `warningCount` (native and BPMN input);
+- CLI: `validate --json` adds `diagnostics`, `errorCount`, `warningCount` (native and BPMN input, including preserved-source BPMN, where the rules skip the document and only the built-in coverage warning is reported);
   `--profile <FILE>` (strict JSON: duplicate keys and unknown fields refused, 4 MiB, bounds
   checked, exit 2) replaces the stored profile; exit 3 when an `error` diagnostic exists, or any
   diagnostic with `--fail-on warning`; the JSON is printed before the exit. New `query diagnostics`.
@@ -460,7 +460,12 @@ use"), as asserted in the core tests.
   submitted snapshot, including convention results. `apps/processcraft/src/app/conventions.rs`:
   the draft round-trips with `recommended()`, Apply is one undo step, and an out-of-bounds draft is
   not submitted.
-- Gates in this worktree: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets --all-features --locked --offline -- -D warnings` and `python scripts/check_text_hygiene.py` pass; `cargo test --workspace --all-targets --all-features --locked --offline` reports 119 `test result: ok` lines, 1,206 tests passed, 0 failed.
+- Review fixes: `compare_checkpoint` reports `conventions_changed` (shown in the Review panel, tested
+  by `checkpoint_comparison_reports_a_changed_profile`); the history memory estimate counts the profile
+  (rule list, kinds and verb strings) for the live project and checkpoints, with no direct test; Apply
+  with an unchanged draft submits nothing; `validate` on preserved-source BPMN is covered by
+  `validate_on_preserved_source_bpmn_keeps_the_output_shape`.
+- Gates in this worktree: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets --all-features --locked --offline -- -D warnings` and `python scripts/check_text_hygiene.py` pass; `cargo test --workspace --all-targets --all-features --locked --offline` reports 119 `test result: ok` lines, 1,209 tests passed, 0 failed.
 
 ### Limits and what is not established
 
@@ -481,7 +486,6 @@ use"), as asserted in the core tests.
 - Not verified: the attached-session `Query::Diagnostics` and `validate` additions in
   `attachment.rs` (the code mirrors `mcp.rs` and compiles; there is no attach test for them); no
   GUI session or screenshot of the Conventions window or of the Problems header button, no keyboard
-  or screen-reader check; the checkpoint comparison query does not report a changed profile; the
-  profile is not included in the history memory estimate; BPMN export does not carry the profile
+  or screen-reader check; BPMN export does not carry the profile
   (it is native-only, like dictionary links); no timing measurement of `diagnostics_with` was taken
   (M5.6).

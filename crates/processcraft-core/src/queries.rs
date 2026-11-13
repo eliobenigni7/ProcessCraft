@@ -933,6 +933,8 @@ pub struct CheckpointComparison {
     pub dictionary_changed: bool,
     /// Attribute definitions or values differ from the checkpoint.
     pub attributes_changed: bool,
+    /// The modeling conventions profile differs from the checkpoint.
+    pub conventions_changed: bool,
     pub resources_changed: bool,
     pub comments_changed: bool,
     pub links_changed: bool,
@@ -993,6 +995,7 @@ pub fn compare_checkpoint(project: &ProjectData, id: CheckpointId) -> Option<Che
         != sorted_rows(serde_json::to_value(&frozen.attribute_definitions))
         || sorted_rows(serde_json::to_value(&project.attribute_values))
             != sorted_rows(serde_json::to_value(&frozen.attribute_values));
+    let conventions_changed = project.conventions != frozen.conventions;
     let resource_keys = |resources: &[Resource]| {
         resources
             .iter()
@@ -1312,6 +1315,7 @@ pub fn compare_checkpoint(project: &ProjectData, id: CheckpointId) -> Option<Che
         changed_documents,
         dictionary_changed,
         attributes_changed,
+        conventions_changed,
         resources_changed,
     })
 }

@@ -160,6 +160,8 @@ impl ProcessCraft {
             return true;
         };
         match draft.to_profile() {
+            // An unchanged draft is not an edit: no empty undo step.
+            Ok(profile) if profile == self.ctl.session.snapshot().project.conventions => true,
             Ok(profile) => self
                 .ctl
                 .mutate(vec![Mutation::SetConventionsProfile { profile }]),
@@ -293,5 +295,26 @@ mod tests {
         assert!(!app.apply_conventions());
         assert_eq!(app.ctl.session.snapshot().generation, before);
         assert!(app.ctl.error.contains("limit"), "{}", app.ctl.error);
+    }
+
+    #[test]
+    fn unchanged_apply_is_not_an_edit_and_parameters_survive_off_and_on() {
+        let mut app = ProcessCraft::default();
+        let mut profile = ConventionsProfile::recommended();
+        if let ConventionRule::MaxElements { limit, .. } = &mut profile.rules[5] {
+            *limit = 7;
+        }
+        assert!(app.ctl.mutate(vec![Mutation::SetConventionsProfile {
+            profile: Some(profile.clone())
+        }]));
+        app.open_conventions();
+        let before = app.ctl.session.snapshot().generation;
+        assert!(app.apply_conventions());
+        assert_eq!(app.ctl.session.snapshot().generation, before);
+        // Off and back On inside the window keeps the limit.
+        let draft = app.conventions.draft.as_mut().unwrap();
+        draft.levels[5] = Level::Off;
+        draft.levels[5] = Level::Warning;
+        assert_eq!(draft.to_profile(), Ok(Some(profile)));
     }
 }

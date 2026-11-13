@@ -666,3 +666,30 @@ fn profile_json_is_strict_and_part_of_content_identity() {
     });
     assert!(p.validate().is_err());
 }
+
+#[test]
+fn checkpoint_comparison_reports_a_changed_profile() {
+    let mut session = fixture("pass");
+    let id: processcraft_core::ids::CheckpointId = id("66666666-6666-4666-8666-666666666666");
+    apply(
+        &mut session,
+        vec![Mutation::CreateCheckpoint {
+            id,
+            name: "Baseline".into(),
+            created_unix_ms: 0,
+        }],
+    )
+    .unwrap();
+    let compare = |s: &Session| {
+        processcraft_core::queries::compare_checkpoint(&s.snapshot().project, id).unwrap()
+    };
+    assert!(!compare(&session).conventions_changed);
+    apply(
+        &mut session,
+        vec![Mutation::SetConventionsProfile { profile: None }],
+    )
+    .unwrap();
+    assert!(compare(&session).conventions_changed);
+    apply(&mut session, vec![Mutation::RestoreCheckpoint { id }]).unwrap();
+    assert!(!compare(&session).conventions_changed);
+}

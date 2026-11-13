@@ -1573,3 +1573,37 @@ fn diagnostics_are_identical_across_validate_query_and_mcp() {
         );
     }
 }
+
+#[test]
+fn validate_on_preserved_source_bpmn_keeps_the_output_shape() {
+    let t = Temp::new();
+    let source = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("tests/fixtures/bpmn/choreography/bad-references.bpmn");
+    let profile = t.path("profile.json");
+    fs::write(
+        &profile,
+        r#"{"rules":[{"type":"singleStartEnd","severity":"error"}]}"#,
+    )
+    .unwrap();
+    let (code, value) = validate(&t, &source, &["--profile".as_ref(), profile.as_os_str()]);
+    assert_eq!(value["capability"], "preservedSource");
+    // Rules skip non-editable documents; the built-in coverage warning stays.
+    let codes: Vec<_> = value["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|d| d["code"].as_str().unwrap())
+        .collect();
+    assert_eq!(codes, ["semanticCoverageLimited"]);
+    assert_eq!(
+        (value["errorCount"].as_u64(), value["warningCount"].as_u64()),
+        (Some(0), Some(1))
+    );
+    assert_eq!(code, 0);
+    let (code, _) = validate(&t, &source, &["--fail-on".as_ref(), "warning".as_ref()]);
+    assert_eq!(code, 3);
+}
