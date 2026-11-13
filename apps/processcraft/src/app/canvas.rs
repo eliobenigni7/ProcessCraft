@@ -1911,10 +1911,11 @@ impl ProcessCraft {
                         key: key.clone(),
                         document: d.clone(),
                         diagram: diagram.id.selector(),
-                        appearance: if self.theme == Theme::Dark {
-                            Appearance::Dark
-                        } else {
-                            Appearance::Light
+                        appearance: match (self.theme == Theme::Dark, interactive) {
+                            (false, false) => Appearance::Light,
+                            (true, false) => Appearance::Dark,
+                            (false, true) => Appearance::CanvasLight,
+                            (true, true) => Appearance::CanvasDark,
                         },
                         view,
                     });
@@ -2012,7 +2013,8 @@ impl ProcessCraft {
                     }
                 }
                 if interactive {
-                    let accent = ui.visuals().selection.stroke.color;
+                    // Canvas selection is blue; amber stays the app's identity colour.
+                    let accent = palette.selection;
                     if self.canvas.space_tool {
                         painter.text(
                             rect.left_top() + egui::vec2(12.0, 12.0),
@@ -2038,9 +2040,11 @@ impl ProcessCraft {
                         })
                         .collect();
                     for shape in &selected_shapes {
+                        let outline = to_screen(rect, camera, zoom, &shape.bounds).expand(3.0);
+                        painter.rect_filled(outline, 6.0, accent.gamma_multiply(0.08));
                         painter.rect_stroke(
-                            to_screen(rect, camera, zoom, &shape.bounds).expand(2.0),
-                            2.0,
+                            outline,
+                            6.0,
                             egui::Stroke::new(2.0, accent),
                             egui::StrokeKind::Outside,
                         );
@@ -2062,7 +2066,10 @@ impl ProcessCraft {
                                 )
                             })
                             .collect();
-                        painter.add(egui::Shape::line(points, egui::Stroke::new(3.0, accent)));
+                        painter.add(egui::Shape::line(
+                            points,
+                            egui::Stroke::new(3.0, accent.gamma_multiply(0.85)),
+                        ));
                     }
                     // Handles of a single selected shape: resize corners and the context pad,
                     // hidden while a gesture or label edit is running.
@@ -2131,11 +2138,11 @@ impl ProcessCraft {
                             .map(|r| resize_handles(screen, r.east_west_only))
                             .unwrap_or_default()
                         {
-                            let handle = Rect::from_center_size(pos, Vec2::splat(7.0));
-                            painter.rect_filled(handle, 1.0, palette.base);
+                            let handle = Rect::from_center_size(pos, Vec2::splat(8.0));
+                            painter.rect_filled(handle, 2.0, palette.base);
                             painter.rect_stroke(
                                 handle,
-                                1.0,
+                                2.0,
                                 egui::Stroke::new(1.5, accent),
                                 egui::StrokeKind::Inside,
                             );
@@ -2166,17 +2173,17 @@ impl ProcessCraft {
                             let hovered = hover.is_some_and(|pos| r.contains(pos));
                             painter.rect_filled(
                                 *r,
-                                3.0,
+                                crate::theme::RADIUS,
                                 if hovered {
-                                    palette.accent_soft
+                                    palette.selection_soft
                                 } else {
                                     palette.base
                                 },
                             );
                             painter.rect_stroke(
                                 *r,
-                                3.0,
-                                egui::Stroke::new(1.0, palette.border_strong),
+                                crate::theme::RADIUS,
+                                egui::Stroke::new(1.0, palette.border),
                                 egui::StrokeKind::Inside,
                             );
                             paint_pad_icon(
@@ -2513,7 +2520,7 @@ impl ProcessCraft {
                     {
                         let offset = drag.offset
                             + Vec2::new(drag.snap.dx as f32, drag.snap.dy as f32) * zoom;
-                        let guide = egui::Stroke::new(1.0, CONNECT_OK);
+                        let guide = egui::Stroke::new(1.0, palette.selection.gamma_multiply(0.6));
                         if let Some(x) = drag.snap.guide_x {
                             let x = rect.left() + (x - camera.0) as f32 * zoom;
                             painter.line_segment(

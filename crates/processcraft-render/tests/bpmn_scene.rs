@@ -4276,3 +4276,48 @@ fn arrowhead_ignores_coincident_final_waypoints() {
         (b.width() - 8.63).abs() < 0.1 && (b.height() - 7.9).abs() < 0.1
     }));
 }
+#[test]
+fn canvas_appearance_adds_dots_and_keeps_export_appearances_plain() {
+    use processcraft_render::{BpmnViewport, Viewport};
+    let d = fixture();
+    let render = |appearance, zoom| {
+        BpmnViewport::build(
+            &d,
+            &id("diagram"),
+            appearance,
+            &mut TextEngine::new(),
+            "Noto Sans",
+            Viewport {
+                x: -400.,
+                y: -400.,
+                width: 64.,
+                height: 64.,
+                zoom,
+            },
+        )
+        .unwrap()
+        .pixels
+    };
+    let colors = |pixmap: &tiny_skia::Pixmap| {
+        let mut colors: Vec<_> = pixmap
+            .pixels()
+            .iter()
+            .map(|p| (p.red(), p.green(), p.blue()))
+            .collect();
+        colors.sort_unstable();
+        colors.dedup();
+        colors
+    };
+    // Empty space far from the diagram: plain paper for export appearances...
+    assert_eq!(
+        colors(&render(Appearance::Light, 1.0)),
+        vec![(255, 255, 255)]
+    );
+    assert_eq!(colors(&render(Appearance::Dark, 1.0)), vec![(27, 31, 38)]);
+    // ...a dot grid on the editor canvas, which disappears when the dots would crowd.
+    assert!(colors(&render(Appearance::CanvasLight, 1.0)).len() > 1);
+    assert_eq!(
+        colors(&render(Appearance::CanvasLight, 0.5)),
+        vec![(250, 251, 252)]
+    );
+}

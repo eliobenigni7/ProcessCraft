@@ -564,7 +564,32 @@ pub enum Appearance {
     #[default]
     Light,
     Dark,
+    /// The interactive editor canvas: a dotted background, white activities and tinted pool and
+    /// lane headers. Never used for export, so exported files keep the Light and Dark looks.
+    CanvasLight,
+    CanvasDark,
 }
+
+impl Appearance {
+    pub fn is_dark(self) -> bool {
+        matches!(self, Self::Dark | Self::CanvasDark)
+    }
+    pub fn is_canvas(self) -> bool {
+        matches!(self, Self::CanvasLight | Self::CanvasDark)
+    }
+    /// The background, also used to knock out markers drawn over lines.
+    fn paper(self) -> [u8; 3] {
+        match self {
+            Self::Light => [255, 255, 255],
+            Self::Dark => [27, 31, 38],
+            Self::CanvasLight => [250, 251, 252],
+            Self::CanvasDark => [18, 20, 23],
+        }
+    }
+}
+
+/// Canvas dot grid: one dot every `DOT_SPACING` model units, hidden when they would crowd.
+const DOT_SPACING: f64 = 16.0;
 #[derive(Clone, Debug)]
 pub enum HitGeometry {
     Shape(Bounds),
@@ -1083,12 +1108,7 @@ impl BpmnScene {
     ) -> Result<Self, RenderError> {
         if matches!(document.capability, Capability::PreservedSource { .. }) {
             let mut scene = DiagramScene::new(33.0, 33.0)?;
-            let bg = if matches!(appearance, Appearance::Dark) {
-                [27, 31, 38]
-            } else {
-                [255, 255, 255]
-            };
-            scene.add_background_rect(0.0, 0.0, 33.0, 33.0, bg)?;
+            scene.add_background_rect(0.0, 0.0, 33.0, 33.0, appearance.paper())?;
             return Ok(Self {
                 scene,
                 origin: (0.0, 0.0),
@@ -1208,9 +1228,12 @@ impl BpmnScene {
             ((maxx - minx) + 32.0) as f32,
             ((maxy - miny) + 32.0) as f32,
         )?;
-        let (bg, fg, fill) = match appearance {
-            Appearance::Light => ([255, 255, 255], [26, 37, 52], [255, 255, 255]),
-            Appearance::Dark => ([27, 31, 38], [230, 234, 240], [47, 53, 63]),
+        let bg = appearance.paper();
+        let (fg, fill) = match appearance {
+            Appearance::Light => ([26, 37, 52], [255, 255, 255]),
+            Appearance::Dark => ([230, 234, 240], [47, 53, 63]),
+            Appearance::CanvasLight => ([42, 46, 54], [255, 255, 255]),
+            Appearance::CanvasDark => ([201, 206, 214], [32, 36, 42]),
         };
         scene.add_background_rect(0.0, 0.0, scene.width(), scene.height(), bg)?;
         let mut hits = Vec::new();
@@ -1717,10 +1740,18 @@ impl BpmnScene {
             let h = b.height as f32;
             let stroke = color(shape.style.as_ref().and_then(|s| s.stroke.as_deref()), fg);
             let default_fill = match (appearance, kind) {
-                (Appearance::Light, Some(NodeKind::StartEvent)) => [240, 249, 242],
-                (Appearance::Dark, Some(NodeKind::StartEvent)) => [40, 68, 53],
-                (Appearance::Light, Some(NodeKind::EndEvent)) => [255, 243, 240],
-                (Appearance::Dark, Some(NodeKind::EndEvent)) => [74, 48, 45],
+                (Appearance::Light | Appearance::CanvasLight, Some(NodeKind::StartEvent)) => {
+                    [240, 249, 242]
+                }
+                (Appearance::Dark | Appearance::CanvasDark, Some(NodeKind::StartEvent)) => {
+                    [40, 68, 53]
+                }
+                (Appearance::Light | Appearance::CanvasLight, Some(NodeKind::EndEvent)) => {
+                    [255, 243, 240]
+                }
+                (Appearance::Dark | Appearance::CanvasDark, Some(NodeKind::EndEvent)) => {
+                    [74, 48, 45]
+                }
                 (
                     Appearance::Light,
                     Some(
@@ -1823,7 +1854,7 @@ impl BpmnScene {
                 && diagram.plane_order.is_none()
             {
                 let band_h = (h * 0.22).clamp(12.0, 24.0).min((h - 2.0).max(0.0));
-                let band_color = if appearance == Appearance::Dark {
+                let band_color = if appearance.is_dark() {
                     [60, 74, 90]
                 } else {
                     [237, 241, 245]
@@ -2132,6 +2163,25 @@ impl BpmnScene {
                     )?;
                 }
                 None if conversation.is_none() && choreography.is_none() => {
+                    if appearance.is_canvas() {
+                        // Tinted header band, inside the outline.
+                        let header = HEADER as f32;
+                        let band = if shape.is_horizontal == Some(false) {
+                            tiny_skia::Rect::from_xywh(x + 1.0, y + 1.0, w - 2.0, header - 1.0)
+                        } else {
+                            tiny_skia::Rect::from_xywh(x + 1.0, y + 1.0, header - 1.0, h - 2.0)
+                        };
+                        if let Some(band) = band.filter(|_| w > header && h > header) {
+                            scene.add_path(
+                                PathBuilder::from_rect(band),
+                                if appearance.is_dark() {
+                                    [35, 39, 45]
+                                } else {
+                                    [242, 244, 247]
+                                },
+                            )?;
+                        }
+                    }
                     if shape.is_horizontal == Some(false) {
                         let header = HEADER as f32;
                         lines(
@@ -4063,13 +4113,13 @@ impl BpmnViewport {
         }
         if matches!(document.capability, Capability::PreservedSource { .. }) {
             let mut empty = DiagramScene::new(view.width as f32, view.height as f32)?;
-            if matches!(appearance, Appearance::Dark) {
+            if appearance != Appearance::Light {
                 empty.add_background_rect(
                     0.0,
                     0.0,
                     view.width as f32,
                     view.height as f32,
-                    [27, 31, 38],
+                    appearance.paper(),
                 )?;
             }
             let pixels = empty.rasterize(view.zoom)?;
@@ -4180,10 +4230,11 @@ impl BpmnViewport {
                 .map(|(i, id)| (id.clone(), i + 1))
                 .collect::<std::collections::BTreeMap<_, _>>()
         });
-        let fg = if matches!(appearance, Appearance::Dark) {
-            [230, 234, 240]
-        } else {
-            [26, 37, 52]
+        let fg = match appearance {
+            Appearance::Light => [26, 37, 52],
+            Appearance::Dark => [230, 234, 240],
+            Appearance::CanvasLight => [42, 46, 54],
+            Appearance::CanvasDark => [201, 206, 214],
         };
         let semantics = SemanticIndex::new(document)?;
         // Labels are culled independently of their owning shape.
@@ -4672,11 +4723,7 @@ impl BpmnViewport {
                     && cx <= view.width as f32 + 64.0
                     && cy <= view.height as f32 + 64.0
                 {
-                    let background = if matches!(appearance, Appearance::Dark) {
-                        [27, 31, 38]
-                    } else {
-                        [255, 255, 255]
-                    };
+                    let background = appearance.paper();
                     let filled = matches!(
                         visible,
                         processcraft_core::model::MessageVisibleKind::NonInitiating
@@ -4762,11 +4809,7 @@ impl BpmnViewport {
                         &mut built.scene,
                         &points,
                         stroke,
-                        if matches!(appearance, Appearance::Dark) {
-                            [27, 31, 38]
-                        } else {
-                            [255, 255, 255]
-                        },
+                        appearance.paper(),
                         matches!(flow.kind, FlowKind::Message),
                     )?;
                 }
@@ -4902,11 +4945,43 @@ impl BpmnViewport {
                 geometry: HitGeometry::Edge(edge.waypoints.clone()),
             });
         }
-        let bg = if matches!(appearance, Appearance::Dark) {
-            [27, 31, 38]
-        } else {
-            [255, 255, 255]
-        };
+        let bg = appearance.paper();
+        if appearance.is_canvas() {
+            // Dots stay 1.5 px on screen and vanish when closer than 10 px.
+            let zoom = f64::from(view.zoom);
+            if DOT_SPACING * zoom >= 10.0 {
+                let mut dots = PathBuilder::new();
+                let size = (1.5 / zoom) as f32;
+                let first_x = (view.x / DOT_SPACING).ceil() * DOT_SPACING;
+                let first_y = (view.y / DOT_SPACING).ceil() * DOT_SPACING;
+                let mut gy = first_y;
+                while gy < view.y + view.height {
+                    let mut gx = first_x;
+                    while gx < view.x + view.width {
+                        if let Some(dot) = tiny_skia::Rect::from_xywh(
+                            (gx - view.x - built.origin.0) as f32 - size / 2.0,
+                            (gy - view.y - built.origin.1) as f32 - size / 2.0,
+                            size,
+                            size,
+                        ) {
+                            dots.push_rect(dot);
+                        }
+                        gx += DOT_SPACING;
+                    }
+                    gy += DOT_SPACING;
+                }
+                if let Some(dots) = dots.finish() {
+                    built.scene.prepend_background_path(
+                        dots,
+                        if appearance.is_dark() {
+                            [46, 51, 58]
+                        } else {
+                            [211, 216, 223]
+                        },
+                    );
+                }
+            }
+        }
         built.scene.prepend_background_rect(
             (-built.origin.0) as f32,
             (-built.origin.1) as f32,

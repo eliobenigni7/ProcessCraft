@@ -140,6 +140,11 @@ impl DiagramScene {
         self.background_order.insert(0, (0, 0));
         Ok(())
     }
+    /// Under everything already in the scene, like [`Self::prepend_background_rect`].
+    pub(crate) fn prepend_background_path(&mut self, path: tiny_skia::Path, color: [u8; 3]) {
+        self.backgrounds.insert(0, (path, color));
+        self.background_order.insert(0, (0, 0));
+    }
     pub fn add_colored_label(
         &mut self,
         layout: TextLayout,

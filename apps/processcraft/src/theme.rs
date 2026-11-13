@@ -37,9 +37,7 @@ pub struct Palette {
     pub on_accent: Color32,
     pub accent_soft: Color32,
     /// Canvas selection and snap guides.
-    #[expect(dead_code, reason = "used by later steps of docs/plans/ux-shell.md")]
     pub selection: Color32,
-    #[expect(dead_code, reason = "used by later steps of docs/plans/ux-shell.md")]
     pub selection_soft: Color32,
     pub warning: Color32,
     pub warning_soft: Color32,

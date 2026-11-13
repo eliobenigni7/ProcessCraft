@@ -54,3 +54,26 @@ tests. Native screenshots of the release build (1560×960, sample project from
   in `assets/ui-icons` were rendered with VectorCraft's CLI.
 - **Symbols:** egui's Hack and emoji faces back up Inter for symbols such as ▾ ✓ ⋯.
 - **Screenshots:** `step2-shell-light.png` and `step2-focus.png`.
+
+## 3. Canvas appearance
+
+- **New appearances:** `processcraft_render::Appearance` gains `CanvasLight` and `CanvasDark`. The
+  interactive editor is the only user; previews, the frozen checkpoint viewer and every export still
+  use `Light` and `Dark`. The renderer's export tests passed unchanged.
+- **Canvas look:**
+  - Paper is `#FAFBFC` in light mode and `#121417` in dark mode.
+  - A dot grid every 16 model units stays 1.5 px on screen and is hidden when dots would be closer
+    than 10 px. All the dots form one path under the scene.
+  - Activities are white (`#20242A` in dark mode) with `#2A2E36` strokes.
+  - Pool and lane header bands are tinted (`#F2F4F7` / `#23272D`).
+- **GUI overlays:**
+  - Canvas selection uses the blue selection token: a 2 px rounded outline with an 8% wash.
+  - Resize handles are 8 px white squares with selection strokes; bendpoints use the same colour.
+  - Snap guides are selection blue at 60%.
+  - Context-pad buttons have radius 6, a hairline border and a selection-soft hover.
+- **Test:** `bpmn_scene::canvas_appearance_adds_dots_and_keeps_export_appearances_plain` checks the
+  dots, their hiding when zoomed out, and that the Light and Dark paper is unchanged.
+- **Screenshots:** `step3-canvas-light.png` and `step3-canvas-dark-selected.png`. From this step on,
+  screenshots capture only the app window (PrintWindow).
+- **Limit:** the synthetic click in the screenshot harness does not reach winit, so selection is
+  covered by code and the existing GUI tests, not by a screenshot.
