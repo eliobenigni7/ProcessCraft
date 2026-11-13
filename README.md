@@ -37,9 +37,10 @@
 </p>
 
 > [!NOTE]
-> **Pre-alpha (0.1).** ProcessCraft models and exchanges BPMN today, but it has no public release
-> yet, the project format may still change, and saving is so far qualified only on Windows (local
-> NTFS). [What works today](#what-works-today) says exactly what is and is not verified.
+> **Pre-alpha (0.2).** ProcessCraft models and exchanges BPMN today. Version 0.2.0 is on the
+> [Releases](https://github.com/eliobenigni7/ProcessCraft/releases) page as an **unsigned** Windows
+> installer and portable ZIP; the project format may still change, and saving is so far qualified
+> only on Windows (local NTFS). [What works today](#what-works-today) says exactly what is and is not verified.
 
 ## A look around
 
@@ -95,10 +96,11 @@ from processes built through the CLI or imported from Camunda Modeler.
 | **Structure** | Boundary events that follow their activity, attach/detach by dropping on an activity border, drop an element on a flow to insert it, lanes (add, split, resize, delete), auto-growing pools and sub-processes, collapse/expand, space tool (`S`) |
 | **Productivity** | Copy, cut, paste and duplicate with fresh IDs, select all, align and distribute, canvas search (`Ctrl+F`), auto-layout of a whole diagram with preview, undo/redo for everything |
 | **Analyst workbench** | Model library with folders and search, project dictionary with usages, activity table, problems panel, comments, checkpoints, reference comparison and restore |
+| **Analyst foundations (0.2)** | Typed custom attributes (duration, cost, risk, dates, roles…) edited in the inspector and the table, modeling conventions with configurable rules, a RACI matrix with CSV export, and an attribute heatmap or badges on the canvas and in exports |
 | **Interchange** | BPMN 2.0 XML import/export with DI; typical Camunda Modeler and bpmn.io files open editable; SVG, PNG and PDF export |
-| **Automation** | `processcraft-cli` (batches, queries, validation, import/export, images, layout) and a local MCP server, standalone or attached to the open desktop session |
+| **Automation** | `processcraft-cli` (batches, queries, validation with `--profile`/`--fail-on`, import/export, images, RACI, layout) and a local MCP server, standalone or attached to the open desktop session, with a [prompt pack](docs/prompts/README.md) for agents |
 
-Verified by about 1,100 automated tests and three quality gates (format, Clippy with warnings as
+Verified by about 1,250 automated tests and three quality gates (format, Clippy with warnings as
 errors, the full test suite). Not yet qualified: macOS and Linux, screen-reader support for the
 canvas, and formal performance targets on large models — see the [roadmap](#roadmap).
 
@@ -223,6 +225,9 @@ entry. `unsafe` code is forbidden except in three reviewed Windows adapters. The
 
 ## Roadmap
 
+- **M5 — analyst foundations:** shipped in 0.2.0 (attributes, conventions, RACI, overlay, MCP prompt
+  pack); still to be checked by hand: the desktop and attached-MCP workflows and a round trip
+  through an external BPMN tool.
 - **M4 — desktop alpha:** Windows installer and file association, keyboard and screen-reader
   (Narrator) qualification of every view, measured performance on medium and large models, a
   documented capability matrix.

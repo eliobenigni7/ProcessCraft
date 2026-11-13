@@ -32,6 +32,12 @@ First run, 2026-11-13, tag `v0.1.0-rc.1` (run 43434865783): the reused CI gates 
 job passed, and the draft prerelease holds `processcraft-0.1.0-windows-x64.msi` (55.9 MB) and the
 portable ZIP (65.6 MB), both unsigned. `v0.1.0` is kept for the first signed build.
 
+Second run, 2026-11-13, tag `v0.2.0` (run 43493991318, CI on `main` run 43493964667): gates and the
+Windows job passed; `processcraft-0.2.0-windows-x64.msi` (56.5 MB) and
+`processcraft-0.2.0-windows-x64-portable.zip` (66.5 MB). By the maintainer's decision this release
+was published (not a prerelease) while still **unsigned**; the release notes say so. Signing remains
+open (roadmap, M4).
+
 ## Install policy checker
 
 `packaging/windows/check-install-policy.ps1` runs the policy cases with real `msiexec` calls on

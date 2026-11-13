@@ -919,5 +919,14 @@ Notes and dispositions:
   no claim is made.
 - Independent prompt-pack runs were recorded after this qualification run and are described in the
   M5.5 section (transcripts, provenance, harness note, and the gaps they exposed); the README link
-  was added with them, and the GitHub Pages site (`site/index.html`) links the pack's README. The documents changed after those runs and have not been re-run by a fresh
-  agent since.
+  was added with them, and the GitHub Pages site (`site/index.html`) links the pack's README. A
+  second round of independent runs followed; the documents were adjusted once more after it and
+  have not been re-run by a fresh agent since (see M5.5).
+
+### Release
+
+M5 shipped in ProcessCraft 0.2.0 on 2026-11-13: tag `v0.2.0` (commit `a069838`), Windows release run
+43493991318 and CI run 43493964667 passed, published unsigned at
+https://github.com/eliobenigni7/ProcessCraft/releases/tag/v0.2.0 with the MSI (56.5 MB) and the
+portable ZIP (66.5 MB). The release notes repeat the open manual checks above; M5 is not closed by
+the release.

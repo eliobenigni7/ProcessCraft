@@ -53,7 +53,7 @@ limits.
 
 The base every later milestone builds on.
 
-**Status:** in progress. M5.1 to M5.5 are implemented and M5.6 has recorded its automatable qualification (gates, CLI workflow, measurements; `docs/implementation/m5-evidence.md`). Open before M5 can close: the GUI and attached-MCP procurement workflows, one external BPMN tool check, and independent prompt-pack runs.
+**Status:** released in 0.2.0 (2026-11-13), not yet closed. M5.1 to M5.5 are implemented, the prompt pack has two rounds of independent agent runs, and M5.6 has recorded its automatable qualification (gates, CLI workflow, measurements; `docs/implementation/m5-evidence.md`). Open before M5 can close: the GUI and attached-MCP procurement workflows and one external BPMN tool check, all by hand.
 
 ### M5.1 Custom attributes
 
