@@ -25,7 +25,7 @@ comparison of two project states.
 Out of scope, and not to be scaffolded:
 
 - A hosted portal, comments or approvals on the published handbook, incremental publishing.
-- Free-form drawing on the process map (see Task M6.2 and Open decision 3).
+- Free-form drawing on the process map (see Task M6.2 and Decision 3).
 - Three-way merge, or applying a diff as a patch.
 - Diff of content that is not in a qualified profile: for `Capability::PreservedSource` documents the
   diff reports only whether the source bytes differ.
@@ -38,21 +38,20 @@ Out of scope, and not to be scaffolded:
    `OUTLINE_NOTICE` ("text is not searchable, selectable or tagged"), and the M3 evidence records "no
    extractable text". The roadmap acceptance "its PDF text is extractable" cannot be met by "the
    existing PDF pipeline" as it is. `pdf.rs` also places exactly one `DiagramScene` on tiled A4
-   landscape pages; it has no notion of text pages. Task M6.1 therefore contains two pieces of new
-   renderer work (an invisible text layer and a minimal block layout), or the PDF is cut; see Open
-   decision 2.
+   landscape pages; it has no notion of text pages. M6.1 therefore takes the PDF from a print
+   stylesheet in the handbook (Decision 2); the native text layer and block layout stay a fallback.
 2. **SVG already has a searchable layer.** `DiagramScene::to_svg` draws outlines and adds a
    transparent `<text>` layer (`SVG_TEXT_NOTICE`). Inline SVG in the handbook is searchable in the
    browser without further work.
 3. **Double-click on a shape starts label editing** (`apps/processcraft/src/app/canvas.rs`, the
    `response.double_clicked()` branch that opens `label_edit`), matching bpmn-js. The roadmap's
-   "double-click drills down" conflicts with it; see Open decision 4.
+   "double-click drills down" conflicts with it; Decision 4.
 4. **`ProjectData.links` (`NavigationLink { source, target: DocumentId, label }`) is modelled,
    validated, pruned on delete and compared, but no `Mutation` creates one.** Only tests push links
    directly. Drill-down can use it once a mutation exists. Such a link can never be broken today:
    `ProjectData::validate()` rejects a link whose target document is missing, and
    `Mutation::DeleteDocument` silently removes every link that points at the deleted document. The
-   roadmap's "broken links show in the problems panel" therefore needs a decision (Open decision 8).
+   roadmap's "broken links show in the problems panel" therefore needs a decision (Decision 8).
 5. **A collapsed sub-process already owns a diagram.** `toggleCollapse` moves the content's DI into a
    diagram whose plane is the sub-process. Drilling into a collapsed sub-process is a diagram switch
    inside the same document, not a cross-document link.
@@ -125,7 +124,7 @@ new `apps/processcraft/src/app/process_map.rs`; `apps/processcraft-cli/src/{args
   namespace stays opaque, as `activity_reference_issues` treats it today), and `brokenMapTarget`.
   The existing `incompleteCallActivity` is unchanged.
 - [ ] Desktop: a drill-down action on elements with a `DrillTarget` — the marker on the shape, the
-  context pad, Enter on the selected element, and Ctrl+double-click (see Open decision 4). It goes
+  context pad, Enter on the selected element, and Ctrl+double-click (Decision 4). It goes
   through `prepare_navigation()` so drafts are committed or kept, then switches `self.doc` /
   `self.diagram_id`. A breadcrumb in the document header (`shell.rs`) records the path of
   (document, diagram) pairs and returns on click or Alt+Left; the existing choreography scope
@@ -152,7 +151,7 @@ element; `query drill-targets` returns the same targets.
 
 ## Task M6.1: Process handbook
 
-**Own:** new `crates/processcraft-render/src/handbook.rs`; `crates/processcraft-render/src/{pdf,scene,
+**Own:** new `crates/processcraft-render/src/handbook.rs`; `crates/processcraft-render/src/{scene,
 lib}.rs`; `apps/processcraft/src/{effects.rs,app/shell.rs}`; `apps/processcraft-cli/src/{args,
 run}.rs`; new `scripts/check_handbook.py`.
 
@@ -162,7 +161,7 @@ run}.rs`; new `scripts/check_handbook.py`.
   TextEngine) -> Result<Handbook, RenderError>` returning bytes plus diagnostics. Input is a snapshot;
   nothing is written here. Only `Capability::Editable` documents get diagrams and element pages;
   other documents are listed with their capability and a note, never rendered from guessed content.
-- [ ] Output form: **one self-contained `.html` file** (see Open decision 1). Sections with stable
+- [ ] Output form: **one self-contained `.html` file** (Decision 1). Sections with stable
   `id`s are the "pages"; a short inline script shows one section at a time from the URL fragment, and
   without scripting all sections are visible in document order. Inline CSS, inline SVG, inline search
   index; no `src`, `href` or `url()` pointing outside the file except user-authored links.
@@ -187,22 +186,23 @@ run}.rs`; new `scripts/check_handbook.py`.
 
 ### PDF
 
-- [ ] Text layer: `pdf.rs` adds an invisible text run per visible line of each `Label` (text
-  rendering mode 3) using one small embedded glyphless font with a `ToUnicode` map, mirroring the
-  SVG transparent layer. This makes existing diagram PDFs extractable too; `OUTLINE_NOTICE` is
-  reworded to what then holds (searchable and extractable, not tagged for accessibility).
-- [ ] Pages: generalise `pdf::export` from one tiled scene to a list of page scenes. A minimal block
-  layout in `handbook.rs` — heading, paragraph, key/value table, grid table, diagram scaled to the
-  page — fills A4 portrait `DiagramScene` pages using `TextEngine` for wrapping. No floats, no
-  columns, no hyphenation. Page limit 2,000 with a refusal above it.
-- [ ] `handbook::export_pdf` produces the same sections in the same order as the HTML, with a
-  contents page and page numbers.
+- [ ] Print stylesheet (Decision 2): `@media print` rules in the handbook's inline CSS show every
+  section in document order whatever the URL fragment, start each document and activity section on
+  a new page, scale diagrams to the page width and hide the search box and navigation. The PDF comes
+  from the browser's print dialog ("Save as PDF"); the browser writes real text, so it is
+  extractable. No PDF code is added to `render`.
+- [ ] Fallback, started only if the print route falls short in the M6.4 checks (diagrams unreadable
+  once scaled, or a user needs a PDF from the CLI alone): an invisible text layer in `pdf.rs` (text
+  rendering mode 3, one glyphless font with a `ToUnicode` map, which also makes diagram PDFs
+  extractable) and a minimal block layout for A4 portrait pages (heading, paragraph, key/value table,
+  grid table, scaled diagram; no floats, columns or hyphenation; 2,000-page limit), exposed as
+  `export-handbook --pdf`. The evidence that triggered it is recorded first.
 
 ### Callers
 
-- [ ] CLI: `export-handbook <INPUT> --out <FILE.html> [--pdf <FILE.pdf>] [--document-id <ID>]…
-  [--overwrite] [--acknowledge-diagnostics]`, written through `write_export`.
-- [ ] Desktop: "Process handbook (HTML)…" and "Process handbook (PDF)…" in `interchange_ui`
+- [ ] CLI: `export-handbook <INPUT> --out <FILE.html> [--document-id <ID>]… [--overwrite]
+  [--acknowledge-diagnostics]`, written through `write_export`.
+- [ ] Desktop: "Process handbook…" in `interchange_ui`
   (`shell.rs`); generation runs in `Effects::export` off the UI thread with a new GUI `ExportKind`
   variant; indeterminate write outcomes use the existing reconcile path.
 
@@ -210,17 +210,17 @@ run}.rs`; new `scripts/check_handbook.py`.
 
 - [ ] `scripts/check_handbook.py` (independent of the Rust code): strict HTML5 parse, every `#id`
   link resolves, no remote resource reference, no `fetch`/`XMLHttpRequest`/`import` in the script,
-  and — for the PDF — text extraction with pypdf contains every activity name of the fixture.
+  and — for a PDF printed from the handbook with headless Edge (`msedge --headless
+  --print-to-pdf`) — text extraction with pypdf contains every activity name of the fixture.
 - [ ] `crates/processcraft-render/tests/` new `handbook.rs`: structure and anchors for a fixture
   project, escaping of hostile names (`<script>`, quotes, `</script>` in documentation), determinism,
-  size refusal, non-editable documents listed without diagrams. `tests/export.rs`: text layer present
-  and existing PDF geometry unchanged. `apps/processcraft-cli/tests/cli.rs`: `export-handbook`
-  writes both files and refuses to overwrite.
+  size refusal, non-editable documents listed without diagrams, print stylesheet present.
+  `apps/processcraft-cli/tests/cli.rs`: `export-handbook` writes the file and refuses to overwrite.
 
 **Acceptance:** for the procurement fixture extended with attributes, RACI and a process map:
 `check_handbook.py` passes; the file opened from `file://` in two browsers navigates, searches and
-prints (recorded manually in the evidence, with versions); the PDF's extracted text contains every
-activity name. Opening from a file share is checked the same way. SharePoint behaviour is recorded as
+prints (recorded manually in the evidence, with versions); the PDF printed from it contains every
+activity name in its extracted text. Opening from a file share is checked the same way. SharePoint behaviour is recorded as
 observed, not promised (see Risks).
 
 ## Task M6.3: Semantic diff
@@ -274,37 +274,40 @@ between them (one per change class); the same edits are highlighted on the two d
 
 | Risk | Mitigation |
 |---|---|
-| Handbook file too large for big projects (outlined glyph paths in every SVG) | Measure on the medium fixture first; size refusal; Open decision 1 offers the multi-file form |
+| Handbook file too large for big projects (outlined glyph paths in every SVG) | Measure on the medium fixture first; size refusal; the multi-file form (Decision 1 alternative) is the upgrade |
 | SharePoint Online may download `.html` files instead of rendering them, depending on tenant settings | Promise `file://` and file shares only; record SharePoint as observed |
-| Block layout for the PDF grows into a typesetting engine | Fixed block set; no floats or columns; Open decision 2 offers the print-stylesheet cut |
-| Glyphless text layer misorders right-to-left or mixed-direction text on extraction | Emit logical-order text per line; check Arabic and CJK fixtures with `check_pdf.py`; state the result |
+| Browser printing splits or shrinks large diagrams badly | One diagram per page, scaled to width; the native fallback starts only on recorded evidence, with a fixed block set |
+| Browsers differ in print output | Edge and one other browser recorded in the evidence, with versions |
 | Hostile text in imported models reaches the HTML | Escaping at one function, CSP meta, tests with hostile names |
 | Positional pairing of BPMN files hides a renamed process | Refuse when either side has more than one document; report unmatched element IDs as added/removed |
 | Map-to-document links go stale silently | Dangling targets are diagnostics, never auto-cleared |
 
-## Open decisions
+## Decisions (adopted 2026-11-13)
 
-1. **Handbook form.** Recommended: one self-contained `.html` file — one atomic write through the
+The recommended option of each former open decision was adopted (roadmap, "Decisions taken")
+unless stated otherwise below. The alternatives are kept for the record.
+
+1. **Handbook form.** Adopted: one self-contained `.html` file — one atomic write through the
    existing `WriterSession`, trivially copied or mailed, no broken relative links. Alternative: a
    folder with one file per page, as the roadmap's "site … one page per activity" reads literally; it
    needs directory creation, many writes through `RootGrant`, and a defined partial-failure outcome.
 2. **Native PDF handbook.** The roadmap asks for it with extractable text; the current pipeline has
-   neither text pages nor extractable text. Recommended: build the text layer (useful for every PDF
-   export) and the minimal block layout. Simpler cut: ship HTML with a print stylesheet and let the
-   browser print to PDF — no layout code, extractable text, but not scriptable from the CLI.
-3. **Process map editing.** Recommended: structured bands and items with automatic layout, edited in
+   neither text pages nor extractable text. Adopted (roadmap, against this plan's first
+   recommendation): HTML with a print stylesheet first — no layout code, extractable text, but no
+   PDF from the CLI alone. The text layer and minimal block layout follow only if that falls short.
+3. **Process map editing.** Adopted: structured bands and items with automatic layout, edited in
    an outline. Alternative: a free-form canvas with stored geometry, which repeats much of the BPMN
    canvas work for little analyst value.
-4. **Drill-down gesture.** Double-click is label editing today. Recommended: keep it; drill down by
+4. **Drill-down gesture.** Double-click is label editing today. Adopted: keep it; drill down by
    marker click, context pad, Enter and Ctrl+double-click. Alternative: double-click drills down on
    call activities and collapsed sub-processes only, and F2 edits their label.
-5. **HTML validator.** Recommended: `html5lib` strict parsing in `scripts/check_handbook.py` (pip
+5. **HTML validator.** Adopted: `html5lib` strict parsing in `scripts/check_handbook.py` (pip
    only, consistent with the other scripts). Alternative: the Nu Html Checker, which needs a JVM.
-6. **Diff exit status.** Recommended: 0 unless `--exit-code`, then 3 on differences (1 stays
+6. **Diff exit status.** Adopted: 0 unless `--exit-code`, then 3 on differences (1 stays
    "runtime failure" as in solution design §16.1). Alternative: follow `diff(1)` and return 1.
-7. **Handbook appearance.** Recommended: Light only, matching exports. Alternative: a dark variant
+7. **Handbook appearance.** Adopted: Light only, matching exports. Alternative: a dark variant
    through `prefers-color-scheme`, which doubles the inline SVG.
-8. **Broken navigation links.** Today a `NavigationLink` cannot dangle (finding 4). Recommended:
+8. **Broken navigation links.** Today a `NavigationLink` cannot dangle (finding 4). Adopted:
    keep that invariant, warn and list inbound links when a document is deleted, and report only
    unresolved `calledElement` references and map targets as problems. Alternative: let links dangle
    and report them, which changes `validate()`, `DeleteDocument` and their existing tests.

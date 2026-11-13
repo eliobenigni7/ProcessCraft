@@ -4,8 +4,9 @@
 linked from business rule tasks, evaluated locally against example inputs with a bounded S-FEEL
 subset, and exchanged as DMN XML under the same preservation rule as BPMN.
 
-**Status:** Planned; **blocked on the scope amendment below.** No task in this plan starts before the
-amendment is accepted.
+**Status:** Planned; not started. The amendment text below was accepted on 2026-11-13 (roadmap,
+"Decisions taken"); writing it into `solution-design.md` is the first step when M8 starts, together
+with confirming the DMN version against OMG.
 
 ## Scope amendment required
 
@@ -24,7 +25,7 @@ M8 touches two of the listed exclusions: "full DMN editor", and — because a de
 evaluated — "scripting language". The roadmap names only the first; the second needs the same
 explicit treatment.
 
-**Amendment text to propose** (this plan does not edit `solution-design.md`):
+**Amendment text** (accepted; written into `solution-design.md` when M8 starts):
 
 1. In the sentence at line 67, replace "or full DMN editor" with "or DMN beyond the decision-table
    scope of §1.2.1".
@@ -78,7 +79,7 @@ process maps and DMN — each kind stays a concrete type.
 3. **`tests/fixtures/bpmn20-schema/` is the precedent for pinned OMG schemas**, with
    `scripts/check_bpmn20_xsd.py` as the independent validator.
 4. **The roadmap names DMN 1.6.** This plan could not confirm offline that 1.6 is a formal OMG
-   release rather than a beta. See Open decision 1.
+   release rather than a beta. See Decision 1.
 
 ## Slices
 
@@ -208,19 +209,22 @@ process maps and DMN — each kind stays a concrete type.
 | Namespace differences between DMN versions | One fixture per accepted version; export in the source version |
 | Whole-table replace is costly on large tables | Bounded at 64 × 1,000 cells; measure before optimising |
 
-## Open decisions
+## Decisions (adopted 2026-11-13)
 
-1. **DMN version to pin.** The roadmap says 1.6. Recommended: pin the latest *formal* OMG DMN
+The recommended option of each former open decision was adopted (roadmap, "Decisions taken")
+unless stated otherwise below. The alternatives are kept for the record.
+
+1. **DMN version to pin.** The roadmap says 1.6. Adopted: pin the latest *formal* OMG DMN
    release at the time M8 starts and accept the earlier model namespaces on import; confirm whether
    1.6 is formal before pinning its XSD.
-2. **Accept the amendment text above**, including the sentence on S-FEEL versus "scripting
-   language". Without it M8 does not start.
-3. **Output entries.** Recommended: literals only in M8; arithmetic and names in output entries are
+2. **Amendment text above**, including the sentence on S-FEEL versus "scripting language":
+   accepted.
+3. **Output entries.** Adopted: literals only in M8; arithmetic and names in output entries are
    reported as outside the subset. Alternative: add S-FEEL arithmetic, which brings decimal
    arithmetic and rounding rules into core.
-4. **Decisions that depend on other decisions.** Recommended: keep `required_decisions` for round
+4. **Decisions that depend on other decisions.** Adopted: keep `required_decisions` for round
    trip and navigation, evaluate one table at a time. Alternative: chained evaluation.
-5. **Decision link in exported BPMN.** Recommended: only `pc:decisionRef`. Alternative: also write a
+5. **Decision link in exported BPMN.** Adopted: only `pc:decisionRef`. Alternative: also write a
    vendor attribute such as Camunda's, which means choosing and tracking a vendor format.
-6. **TCK use.** Recommended: vendor a small, attributed subset of decision-table cases as fixtures.
+6. **TCK use.** Adopted: vendor a small, attributed subset of decision-table cases as fixtures.
    Alternative: synthetic fixtures only.

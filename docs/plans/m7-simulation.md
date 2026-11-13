@@ -39,7 +39,7 @@ Out of scope, and not to be scaffolded:
    holds one value per element, so two scenarios of the same model cannot both live in attributes;
    arrival rate, calendar and resource pools are not properties of a model element at all; and the
    M5.1 type list has no distribution type. This plan stores scenarios as project content and reads
-   M5.1 attributes as their defaults. See Open decision 1.
+   M5.1 attributes as their defaults. See Decision 1.
 2. **No random number or statistics crate is a direct dependency of `processcraft-core`** (`rand`
    appears in `Cargo.lock` only transitively). The engine carries its own small generator, which
    also pins results across dependency updates.
@@ -176,7 +176,7 @@ is claimed for one build on one platform, not across platforms (see Risks).
 - [ ] Fixtures first. Collect `.vsdx` files drawn with the Visio BPMN stencil, each with a sibling
   manifest (provenance, licence, SHA-256, Visio version, expected element counts). Every mapping
   rule below is confirmed against these files before it is implemented; the property and master
-  names in this plan are expectations to verify, not facts. See Open decision 5 for who supplies
+  names in this plan are expectations to verify, not facts. See Decision 5 for who supplies
   the files.
 - [ ] Extract the archive checks of `native::load_with_limits` into one crate-private function
   (entry path safety, Stored/Deflated only, no duplicates, per-entry and expanded caps, entry
@@ -205,7 +205,7 @@ is claimed for one build on one platform, not across platforms (see Risks).
   the three groups with its page and shape ID. Committing the import requires acknowledging a
   non-empty `dropped` list (GUI prompt; CLI `--acknowledge-dropped`), as exports require
   acknowledgement of omissions today. The original `.vsdx` bytes are kept as a project `Resource`
-  when they fit `RESOURCE_LIMIT`, so nothing is lost by importing (see Open decision 6).
+  when they fit `RESOURCE_LIMIT`, so nothing is lost by importing (Decision 6).
 - [ ] Callers: CLI `import-visio <INPUT.vsdx> --out <FILE.processcraft> [--overwrite]
   [--acknowledge-dropped]`, and `info` recognises `.vsdx`; desktop "Import Visio…" in
   `interchange_ui` through `Effects::import` with the same generation and draft checks as BPMN
@@ -242,28 +242,32 @@ no shape is absent from the report; hostile archives are refused before any mode
 | Visio containers do not give reliable lane membership | Geometric fallback, reported as approximated |
 | A malicious `.vsdx` (zip bomb, path traversal) | Shared bounded ZIP helper with caps checked before parsing |
 
-## Open decisions
+## Decisions (adopted 2026-11-13)
 
-1. **Where scenario inputs live.** The roadmap says attributes. Recommended: scenarios are
+The recommended option of each former open decision was adopted (roadmap, "Decisions taken")
+unless stated otherwise below. The alternatives are kept for the record.
+
+1. **Where scenario inputs live.** The roadmap says attributes. Adopted: scenarios are
    project-level objects (several per process, compared side by side) whose activity duration and
    cost default to the M5.1 `Duration` and `Cost` attributes. Alternative: a single scenario per
    model stored only in attributes, with what-if limited to comparing checkpoints.
-2. **Core module or new crate.** The roadmap leaves it open. Recommended: a module in
+2. **Core module or new crate.** The roadmap leaves it open. Adopted: a module in
    `processcraft-core`; split only if build time or size shows a need.
-3. **Inclusive gateways.** Recommended: refuse in M7. Alternative: support inclusive splits with
+3. **Inclusive gateways.** Adopted: refuse in M7. Alternative: support inclusive splits with
    independent branch probabilities and a join that waits for the activated branches; it roughly
    doubles the engine's state handling and test matrix.
-4. **Calendars.** Recommended: one weekly calendar per scenario for arrivals and all pools.
+4. **Calendars.** Adopted: one weekly calendar per scenario for arrivals and all pools.
    Alternative: per-pool calendars and holidays.
-5. **Visio fixtures.** Authoring them needs a Visio licence with the BPMN stencil. Recommended: the
-   user supplies three to five drawings they are entitled to publish under CC0 or CC BY. Without
-   real fixtures M7.2 should not start; hand-built archives would not prove compatibility.
-6. **Keep the original `.vsdx` in the project.** Recommended: yes, as a `Resource`, so the import is
+5. **Visio fixtures — still open.** Authoring them needs a Visio licence with the BPMN stencil.
+   Proposed: the user supplies three to five drawings they are entitled to publish under CC0 or
+   CC BY. Who supplies them is not decided, and M7.2 does not start without real fixtures;
+   hand-built archives would not prove compatibility. M7.1 does not depend on this.
+6. **Keep the original `.vsdx` in the project.** Adopted: yes, as a `Resource`, so the import is
    loss-free at project level; it increases file size by the drawing's size. Alternative: keep only
    the name and hash in `Provenance`.
 7. **Clarify the non-goal.** `solution-design.md` §1.2 excludes a "process execution engine".
-   Simulation as bounded here does not execute anything, so no amendment is required; recommended:
+   Simulation as bounded here does not execute anything, so no amendment is required; adopted:
    add one clarifying sentence to §1.2 when M7 is accepted, to prevent later drift toward expression
    evaluation.
-8. **Persist results.** Recommended: no; results are recomputed from scenario, model and seed.
+8. **Persist results.** Adopted: no; results are recomputed from scenario, model and seed.
    Alternative: store the last result per scenario for the handbook, at the cost of stale data.

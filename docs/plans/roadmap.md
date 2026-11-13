@@ -114,8 +114,9 @@ the GUI already shows).
 - Export one project to a static, self-contained HTML site: process map, clickable diagrams (SVG from
   the shared scene), one page per activity with description, attributes, RACI and comments, dictionary
   and glossary, search without a server.
-- The same content as a paginated PDF. The existing PDF export outlines text and draws one scene, so
-  this needs a text layer and page layout, or the cheaper cut of a print stylesheet (see the M6 plan).
+- The same content as a PDF, printed by the browser through a print stylesheet. The existing PDF
+  export outlines text and draws one scene; a native text layer and page layout come only if the
+  print route falls short (see the M6 plan).
 - No scripts from remote origins; the site opens from `file://` and a file share.
 
 Acceptance: the generated site passes an HTML validator and a link check and works from `file://`; if
@@ -182,7 +183,8 @@ Everything stays on the machine; no connectors.
 
 ## Decisions taken (2026-11-13)
 
-The recommended defaults in the milestone plans' "Open decisions" are adopted:
+The recommended defaults in the milestone plans' "Open decisions" are adopted, except the M6 PDF,
+where the plan's simpler alternative was taken. The plans now list them under "Decisions":
 
 - M5: attributes ship behind a required native capability, not a schema bump; starter set Duration,
   Cost, SLA, Risk, Control, Process owner, leaving node owner/contact and dictionary `System` links

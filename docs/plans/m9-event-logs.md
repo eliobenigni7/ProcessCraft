@@ -5,8 +5,8 @@ file, check it against a BPMN model, show frequencies and durations on the diagr
 discover a model from a log. Everything stays on the machine.
 
 **Status:** Optional and secondary. Planned at slice level only; a task-level plan is written when
-the milestone is scheduled, which the roadmap ties to M5–M7 having users. **Blocked on the scope
-amendment below.**
+the milestone is scheduled, which the roadmap ties to M5–M7 having users. The amendment text below
+was accepted on 2026-11-13 and is written into `solution-design.md` when M9 starts.
 
 ## Scope amendment required
 
@@ -19,7 +19,7 @@ amendment below.**
 M9 is process mining in the plain sense of the term, so the exclusion has to be narrowed, not
 reinterpreted.
 
-**Amendment text to propose** (this plan does not edit `solution-design.md`):
+**Amendment text** (accepted; written into `solution-design.md` when M9 starts):
 
 1. In the sentence at line 67, replace "process mining" with "process mining beyond the local
    event-log scope of §1.2.2".
@@ -110,7 +110,7 @@ reinterpreted.
 
 ## Key decisions
 
-| Decision | Recommended default | Why |
+| Decision | Adopted | Why |
 |---|---|---|
 | Where raw log data lives | Outside the project; the project keeps mappings only, results are recomputed from a file the user re-selects | Logs are large and often contain personal data; `.processcraft` files are shared and checkpointed |
 | CSV parser | Small in-crate reader | Avoids a new pinned dependency for a bounded, well-specified format |
@@ -138,15 +138,18 @@ One `docs/implementation/m9-evidence.md`, updated per slice, with fixture tables
 licence, hash), measured limits and the acceptance results above. No comparison with mining products
 is claimed.
 
-## Open decisions
+## Decisions (adopted 2026-11-13)
 
-1. **Accept the amendment text above.** Without it M9 does not start.
-2. **Persisting log data.** Recommended: mappings only. Alternative: optionally embed the
+The recommended option of each former open decision was adopted (roadmap, "Decisions taken")
+unless stated otherwise below. The alternatives are kept for the record.
+
+1. **Amendment text above:** accepted.
+2. **Persisting log data.** Adopted: mappings only. Alternative: optionally embed the
    variant-compressed log as a project `Resource` (bounded by the 32 MiB resource limit) so results
    can be reproduced from the project file alone — with the privacy cost stated in the UI.
-3. **Whether slice 4 is wanted at all.** Recommended: decide after slices 1–3 have been used;
+3. **Whether slice 4 is wanted at all.** Adopted: decide after slices 1–3 have been used;
    discovery is the largest part and the furthest from the analyst workbench.
-4. **Public fixture log.** Recommended: one small public log with a clear licence for realism, plus
+4. **Public fixture log.** Adopted: one small public log with a clear licence for realism, plus
    synthetic logs for exact expectations; the user confirms the licence before it is committed.
-5. **Limits.** The figures in slice 1 are proposals; recommended: fix them from measurements on the
+5. **Limits.** The figures in slice 1 are proposals; adopted: fix them from measurements on the
    qualification machine.
