@@ -619,6 +619,21 @@ pub enum Mutation {
         kind: DictionaryKind,
         targets: Vec<DictionaryTarget>,
     },
+    CreateAttributeDefinition {
+        definition: crate::attributes::AttributeDefinition,
+    },
+    UpdateAttributeDefinition {
+        definition: crate::attributes::AttributeDefinition,
+        resolution: crate::attributes::AttributeUpdateResolution,
+    },
+    DeleteAttributeDefinition {
+        definition_id: crate::ids::AttributeDefinitionId,
+        resolution: crate::attributes::AttributeDeleteResolution,
+    },
+    SetAttributeValues {
+        source: ElementKey,
+        values: Vec<crate::attributes::AttributeValueInput>,
+    },
 
     CreateDocument {
         document: BpmnDocument,
@@ -1642,6 +1657,23 @@ fn reject_new_activity_reference_issues(
     *scans = kept;
     Ok(())
 }
+/// Drops every project-level reference to removed elements of one document:
+/// navigation links, dictionary links and attribute values. The single helper
+/// for all delete paths; `removed: None` removes every reference to the
+/// document (`deleteDocument`).
+fn prune_removed_element_refs(
+    project: &mut ProjectData,
+    document_id: DocumentId,
+    removed: Option<&std::collections::HashSet<ElementSelector>>,
+) {
+    let keep = |source: &ElementKey| match removed {
+        None => source.document_id != document_id,
+        Some(set) => source.document_id != document_id || !set.contains(&source.xml_id),
+    };
+    project.links.retain(|link| keep(&link.source));
+    project.dictionary_links.retain(|link| keep(&link.source));
+    project.attribute_values.retain(|value| keep(&value.source));
+}
 fn prune_removed_activity_navigation(
     old: &ProjectData,
     candidate: &mut ProjectData,
@@ -1678,12 +1710,7 @@ fn prune_removed_activity_navigation(
                 .edges
                 .retain(|edge| !removed.contains(&edge.element));
         }
-        candidate.links.retain(|link| {
-            link.source.document_id != before.id || !removed.contains(&link.source.xml_id)
-        });
-        candidate.dictionary_links.retain(|link| {
-            link.source.document_id != before.id || !removed.contains(&link.source.xml_id)
-        });
+        prune_removed_element_refs(candidate, before.id, Some(&removed));
     }
 }
 fn reconcile_root_orders(
@@ -2999,12 +3026,7 @@ fn delete_choreography_flow_element(
             .edges
             .retain(|edge| !removed.contains(&edge.element));
     }
-    p.links.retain(|link| {
-        link.source.document_id != document_id || !removed.contains(&link.source.xml_id)
-    });
-    p.dictionary_links.retain(|link| {
-        link.source.document_id != document_id || !removed.contains(&link.source.xml_id)
-    });
+    prune_removed_element_refs(p, document_id, Some(&removed));
     Ok(())
 }
 fn collaboration_mut(document: &mut BpmnDocument) -> Result<&mut Collaboration, CommandError> {
@@ -4557,12 +4579,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                     .edges
                     .retain(|edge| !removed.contains(&edge.element));
             }
-            p.links.retain(|link| {
-                link.source.document_id != document_id || !removed.contains(&link.source.xml_id)
-            });
-            p.dictionary_links.retain(|link| {
-                link.source.document_id != document_id || !removed.contains(&link.source.xml_id)
-            });
+            prune_removed_element_refs(p, document_id, Some(&removed));
         }
         Mutation::ReorderChoreographyArtifact {
             document_id,
@@ -4703,12 +4720,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                     .edges
                     .retain(|edge| !removed.contains(&edge.element));
             }
-            p.links.retain(|link| {
-                link.source.document_id != document_id || !removed.contains(&link.source.xml_id)
-            });
-            p.dictionary_links.retain(|link| {
-                link.source.document_id != document_id || !removed.contains(&link.source.xml_id)
-            });
+            prune_removed_element_refs(p, document_id, Some(&removed));
         }
         Mutation::ReorderChoreographyDataAssociation {
             document_id,
@@ -5153,10 +5165,20 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                 .find(|e| e.id == entry_id)
                 .ok_or_else(|| invalid("entry not found"))?
                 .clone();
+            let attribute_used = |project: &ProjectData| {
+                project.attribute_values.iter().any(|assignment| {
+                    matches!(
+                        &assignment.value,
+                        crate::attributes::AttributeValue::DictionaryRefs(refs)
+                            if refs.iter().any(|r| r == &DictionaryTarget::Entry(entry_id))
+                    )
+                })
+            };
             let used = p
                 .dictionary_links
                 .iter()
-                .any(|l| l.target == DictionaryTarget::Entry(entry_id));
+                .any(|l| l.target == DictionaryTarget::Entry(entry_id))
+                || attribute_used(p);
             if used {
                 let replacement = match resolution {
                     DictionaryDeleteResolution::Reject => return Err(invalid("entry is in use")),
@@ -5181,6 +5203,18 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                 let mut seen = std::collections::HashSet::new();
                 p.dictionary_links
                     .retain(|l| seen.insert((l.source.clone(), l.kind, l.target.clone())));
+                for assignment in &mut p.attribute_values {
+                    if let crate::attributes::AttributeValue::DictionaryRefs(refs) =
+                        &mut assignment.value
+                    {
+                        for reference in refs.iter_mut() {
+                            if *reference == DictionaryTarget::Entry(entry_id) {
+                                *reference = replacement.clone();
+                            }
+                        }
+                        refs.dedup();
+                    }
+                }
             }
             p.dictionary_entries.retain(|e| e.id != entry_id);
         }
@@ -5198,6 +5232,25 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                     kind,
                     target,
                 }));
+        }
+        Mutation::CreateAttributeDefinition { definition } => {
+            crate::attributes::apply_create(p, definition)?;
+        }
+        Mutation::UpdateAttributeDefinition {
+            definition,
+            resolution,
+        } => {
+            crate::attributes::apply_update(p, definition, resolution)?;
+        }
+        Mutation::DeleteAttributeDefinition {
+            definition_id,
+            resolution,
+        } => {
+            crate::attributes::apply_delete(p, definition_id, resolution)?;
+        }
+        Mutation::SetAttributeValues { source, values } => {
+            doc(p, source.document_id, true)?;
+            crate::attributes::apply_set_values(p, source, values)?;
         }
         Mutation::CreateDocument { document } => p.documents.push(Arc::new(document)),
         Mutation::SetFlowCondition {
@@ -5267,10 +5320,8 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
         Mutation::DeleteDocument { document_id } => {
             doc(p, document_id, true)?;
             p.documents.retain(|d| d.id != document_id);
-            p.dictionary_links
-                .retain(|l| l.source.document_id != document_id);
-            p.links
-                .retain(|l| l.source.document_id != document_id && l.target != document_id);
+            prune_removed_element_refs(p, document_id, None);
+            p.links.retain(|l| l.target != document_id);
         }
         Mutation::CreateShape {
             document_id,
@@ -6208,12 +6259,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                     crate::containers::sync_lanes(old, d, diagram_id);
                 }
             }
-            p.dictionary_links.retain(|l| {
-                !(l.source.document_id == document_id && removed.contains(&l.source.xml_id))
-            });
-            p.links.retain(|l| {
-                !(l.source.document_id == document_id && removed.contains(&l.source.xml_id))
-            });
+            prune_removed_element_refs(p, document_id, Some(&removed));
         }
     }
     Ok(())
@@ -6356,6 +6402,10 @@ static COMMAND_DESCRIPTORS: &[CommandDescriptor] = &[
     descriptor!("updateDictionaryEntry","Update entry","entry":"DictionaryEntry"),
     descriptor!("deleteDictionaryEntry","Delete entry","entry_id":"DictionaryEntryId","resolution":"DictionaryDeleteResolution"),
     descriptor!("setDictionaryLinks","Set links","source":"ElementKey","kind":"DictionaryKind","targets":"DictionaryTarget[]"),
+    descriptor!("createAttributeDefinition","Create attribute definition","definition":"AttributeDefinition"),
+    descriptor!("updateAttributeDefinition","Update attribute definition","definition":"AttributeDefinition","resolution":"AttributeUpdateResolution"),
+    descriptor!("deleteAttributeDefinition","Delete attribute definition","definition_id":"AttributeDefinitionId","resolution":"AttributeDeleteResolution"),
+    descriptor!("setAttributeValues","Set attribute values","source":"ElementKey","values":"AttributeValueInput[]"),
     descriptor!("batch","Apply batch","mutations":"Mutation[]"),
     descriptor!("undo", "Undo"),
     descriptor!("redo", "Redo"),

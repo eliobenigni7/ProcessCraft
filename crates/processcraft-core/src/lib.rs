@@ -11,6 +11,7 @@ pub mod reference_resolution;
 pub use ids::{DictionaryEntryId, DocumentId, InvalidId, ProjectId};
 
 pub mod arrange;
+pub mod attributes;
 pub mod clipboard;
 pub mod commands;
 pub mod containers;

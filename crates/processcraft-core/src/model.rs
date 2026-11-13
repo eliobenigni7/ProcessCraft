@@ -31,6 +31,10 @@ pub struct ProjectData {
     pub checkpoints: Vec<Checkpoint>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reference_checkpoint: Option<CheckpointId>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attribute_definitions: Vec<crate::attributes::AttributeDefinition>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attribute_values: Vec<crate::attributes::AttributeAssignment>,
 }
 impl ProjectData {
     pub fn new(name: String) -> Self {
@@ -47,6 +51,8 @@ impl ProjectData {
             comments: vec![],
             checkpoints: vec![],
             reference_checkpoint: None,
+            attribute_definitions: vec![],
+            attribute_values: vec![],
         }
     }
 }
@@ -64,6 +70,10 @@ pub struct FrozenProject {
     pub dictionary_entries: Vec<DictionaryEntry>,
     pub dictionary_links: Vec<DictionaryLink>,
     pub comments: Vec<Comment>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attribute_definitions: Vec<crate::attributes::AttributeDefinition>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attribute_values: Vec<crate::attributes::AttributeAssignment>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -86,6 +96,8 @@ impl FrozenProject {
             dictionary_entries: p.dictionary_entries.clone(),
             dictionary_links: p.dictionary_links.clone(),
             comments: p.comments.clone(),
+            attribute_definitions: p.attribute_definitions.clone(),
+            attribute_values: p.attribute_values.clone(),
         }
     }
     pub fn project(&self) -> ProjectData {
@@ -100,6 +112,8 @@ impl FrozenProject {
             dictionary_entries: self.dictionary_entries.clone(),
             dictionary_links: self.dictionary_links.clone(),
             comments: self.comments.clone(),
+            attribute_definitions: self.attribute_definitions.clone(),
+            attribute_values: self.attribute_values.clone(),
             checkpoints: vec![],
             reference_checkpoint: None,
         }

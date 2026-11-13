@@ -295,6 +295,10 @@ pub enum Query {
         document_id: String,
         process_id: String,
     },
+    /// Read custom attribute definitions and per-element values of one document.
+    Attributes {
+        document_id: String,
+    },
     /// List the BPMN types an element or sequence flow can be replaced with (replaceElement targets).
     ReplaceOptions {
         document_id: String,

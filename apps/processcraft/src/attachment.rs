@@ -181,6 +181,11 @@ enum Query {
         offset: usize,
         limit: usize,
     },
+    Attributes {
+        document_id: processcraft_core::ids::DocumentId,
+        offset: usize,
+        limit: usize,
+    },
 }
 impl Attachment {
     pub fn start(session_id: String, wake: Arc<dyn Fn() + Send + Sync>) -> io::Result<Self> {
@@ -635,7 +640,29 @@ impl Attachment {
                         ) else {
                             return json!({"ok":false,"error":"process not found"});
                         };
-                        (rows.into_iter().map(|row| json!({"key":row.key,"name":row.name,"lane":row.lane,"role":row.role,"systems":row.systems,"documents":row.documents,"outgoing":row.outgoing.into_iter().map(|f| json!({"id":f.id,"target":f.target,"condition":f.condition})).collect::<Vec<_>>() })).collect(),offset,limit)
+                        (rows.into_iter().map(|row| json!({"key":row.key,"name":row.name,"lane":row.lane,"role":row.role,"systems":row.systems,"documents":row.documents,"attributes":row.attributes,"outgoing":row.outgoing.into_iter().map(|f| json!({"id":f.id,"target":f.target,"condition":f.condition})).collect::<Vec<_>>() })).collect(),offset,limit)
+                    }
+                    Query::Attributes { document_id, offset, limit } => {
+                        let Some(rows) = processcraft_core::queries::element_attributes(&snapshot.project, document_id) else {
+                            return json!({"ok":false,"error":"document not found"});
+                        };
+                        let definitions = processcraft_core::queries::attribute_definitions(&snapshot.project);
+                        let total = rows.len();
+                        let mut page = Vec::new();
+                        let mut bytes = 0usize;
+                        for item in rows.into_iter().skip(offset).take(limit).map(|row| json!(row)) {
+                            let size = serde_json::to_vec(&item).map_or(3 * 1024 * 1024 + 1, |v| v.len());
+                            if bytes.saturating_add(size) > 3 * 1024 * 1024 {
+                                if page.is_empty() {
+                                    return json!({"ok":false,"error":"item exceeds response limit"});
+                                }
+                                break;
+                            }
+                            bytes += size;
+                            page.push(item);
+                        }
+                        let next = offset.saturating_add(page.len());
+                        return json!({"definitions":definitions,"total":total,"items":page,"nextOffset":if next < total { Some(next) } else { None }});
                     }
                 };
                 if !(1..=100).contains(&limit) {

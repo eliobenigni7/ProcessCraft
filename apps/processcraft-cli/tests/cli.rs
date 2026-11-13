@@ -1035,3 +1035,220 @@ fn cli_discovery_matches_all_typed_mutations() {
     descriptor_tags.sort();
     assert_eq!(descriptor_tags, schema_tags);
 }
+
+fn attributes_fixture() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("tests/fixtures/commands/attributes.json")
+}
+
+#[test]
+fn attributes_batch_saves_queries_and_round_trips() {
+    let t = Temp::new();
+    let out = t.path("attributes.processcraft");
+    let result = cli(
+        &[
+            "run".as_ref(),
+            "--new".as_ref(),
+            "Procurement".as_ref(),
+            "--batch".as_ref(),
+            attributes_fixture().as_os_str(),
+            "--out".as_ref(),
+            out.as_os_str(),
+        ],
+        &t.0,
+    );
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let document_id = "22222222-2222-4222-8222-222222222222";
+    let process_id = "attributes-process";
+    let attributes = cli(
+        &[
+            "query".as_ref(),
+            out.as_os_str(),
+            "attributes".as_ref(),
+            document_id.as_ref(),
+        ],
+        &t.0,
+    );
+    assert!(
+        attributes.status.success(),
+        "{}",
+        String::from_utf8_lossy(&attributes.stderr)
+    );
+    let value: serde_json::Value = serde_json::from_slice(&attributes.stdout).unwrap();
+    let definitions = value["definitions"].as_array().unwrap();
+    assert_eq!(definitions.len(), 8);
+    for value_type in [
+        "Text",
+        "Number",
+        "Duration",
+        "Currency",
+        "Enum",
+        "Date",
+        "DictionaryRef",
+        "Url",
+    ] {
+        assert!(
+            definitions
+                .iter()
+                .any(|d| d["definition"]["value_type"] == value_type),
+            "missing {value_type}"
+        );
+    }
+    let rows = value["rows"].as_array().unwrap();
+    let review = rows
+        .iter()
+        .find(|row| row["name"] == "Review request")
+        .unwrap();
+    let values: Vec<_> = review["values"].as_array().unwrap().to_vec();
+    assert_eq!(values.len(), 8);
+    let loaded = native::load_bytes(&fs::read(&out).unwrap()).unwrap();
+    assert_eq!(
+        loaded.project.content_identity().unwrap(),
+        loaded.source_content_identity
+    );
+    let review_value = values
+        .iter()
+        .find(|v| v["name"] == "Cost")
+        .and_then(|v| v["value"]["Currency"].as_str())
+        .unwrap();
+    assert_eq!(review_value, "12.5");
+
+    // The table view carries the same values as additive cells.
+    let table = cli(
+        &[
+            "query".as_ref(),
+            out.as_os_str(),
+            "table".as_ref(),
+            document_id.as_ref(),
+            process_id.as_ref(),
+        ],
+        &t.0,
+    );
+    assert!(table.status.success());
+    let value: serde_json::Value = serde_json::from_slice(&table.stdout).unwrap();
+    let row = value["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["name"] == "Review request")
+        .unwrap();
+    assert_eq!(row["attributes"].as_array().unwrap().len(), 8);
+}
+
+#[test]
+fn mcp_attributes_query_matches_cli_values() {
+    use std::io::{BufRead, BufReader, Write};
+    use std::process::Stdio;
+    let t = Temp::new();
+    let saved = t.path("attributes.processcraft");
+    let mut child = Command::new(env!("CARGO_BIN_EXE_processcraft-cli"))
+        .args(["mcp", "--new", "MCP attributes"])
+        .arg("--write-root")
+        .arg(&t.0)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut input = child.stdin.take().unwrap();
+    let mut output = BufReader::new(child.stdout.take().unwrap());
+    let mut call = |value: serde_json::Value| {
+        writeln!(input, "{value}").unwrap();
+        input.flush().unwrap();
+        let mut line = String::new();
+        output.read_line(&mut line).unwrap();
+        serde_json::from_str::<serde_json::Value>(&line).unwrap()
+    };
+    call(
+        serde_json::json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}),
+    );
+    let inspected = call(
+        serde_json::json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"inspect","arguments":{}}}),
+    );
+    let session = inspected["result"]["structuredContent"]["sessionId"]
+        .as_str()
+        .unwrap();
+    let request: serde_json::Value =
+        serde_json::from_slice(&fs::read(attributes_fixture()).unwrap()).unwrap();
+    let applied = call(
+        serde_json::json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"apply","arguments":{"sessionId":session,"requestId":"attributes-1","expectedGeneration":0,"request":request}}}),
+    );
+    assert_eq!(
+        applied["result"]["structuredContent"]["ok"], true,
+        "{}",
+        applied
+    );
+    let document_id = "22222222-2222-4222-8222-222222222222";
+    let queried = call(
+        serde_json::json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"query","arguments":{"kind":"attributes","document_id":document_id,"offset":0,"limit":50}}}),
+    );
+    let content = &queried["result"]["structuredContent"];
+    let definitions = content["definitions"].as_array().unwrap();
+    assert_eq!(definitions.len(), 8);
+    let rows = content["items"].as_array().unwrap();
+    let review = rows
+        .iter()
+        .find(|row| row["name"] == "Review request")
+        .unwrap();
+    let cost = review["values"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|v| v["name"] == "Cost")
+        .and_then(|v| v["value"]["Currency"].as_str())
+        .unwrap();
+    assert_eq!(cost, "12.5");
+    // Save through MCP and compare the values with a CLI query of the file.
+    let saved_call = call(
+        serde_json::json!({"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"save","arguments":{"sessionId":session,"requestId":"attributes-save","expectedGeneration":1,"path":saved,"overwrite":false}}}),
+    );
+    assert_eq!(
+        saved_call["result"]["structuredContent"]["ok"], true,
+        "{}",
+        saved_call
+    );
+    child.kill().unwrap();
+    child.wait().unwrap();
+    let cli_query = cli(
+        &[
+            "query".as_ref(),
+            saved.as_os_str(),
+            "attributes".as_ref(),
+            document_id.as_ref(),
+        ],
+        &t.0,
+    );
+    assert!(
+        cli_query.status.success(),
+        "{}",
+        String::from_utf8_lossy(&cli_query.stderr)
+    );
+    let cli_value: serde_json::Value = serde_json::from_slice(&cli_query.stdout).unwrap();
+    let cli_review = cli_value["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["name"] == "Review request")
+        .unwrap()["values"]
+        .clone();
+    assert_eq!(cli_review, review["values"].clone());
+    let cli_definitions: Vec<serde_json::Value> = cli_value["definitions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|d| d["definition"].clone())
+        .collect();
+    let mcp_definitions: Vec<serde_json::Value> = definitions
+        .iter()
+        .map(|d| d["definition"].clone())
+        .collect();
+    assert_eq!(cli_definitions, mcp_definitions);
+}

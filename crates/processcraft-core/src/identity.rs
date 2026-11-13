@@ -290,6 +290,8 @@ fn same_checkpoint(a: &Checkpoint, b: &Checkpoint) -> bool {
             &p.dictionary_entries,
             &p.dictionary_links,
             &p.comments,
+            &p.attribute_definitions,
+            &p.attribute_values,
         ))
         .ok()
     };
@@ -599,6 +601,7 @@ impl ProjectData {
                 return fail("invalid dictionary source");
             }
         }
+        crate::attributes::validate_project(self)?;
         cache.checkpoints = validated;
         cache.resources = self.resources.clone();
         // Keep the current documents plus a few earlier versions, so undo and redo

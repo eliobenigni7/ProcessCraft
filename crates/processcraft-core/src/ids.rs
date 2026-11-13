@@ -71,6 +71,10 @@ macro_rules! identity {
 identity!(CommentId, "Stable identity of a comment.");
 identity!(CheckpointId, "Stable identity of a checkpoint.");
 identity!(DictionaryEntryId, "Stable identity of a dictionary entry.");
+identity!(
+    AttributeDefinitionId,
+    "Stable identity of a custom attribute definition."
+);
 identity!(ProjectId, "Stable identity of a project.");
 identity!(
     NativeElementId,
@@ -204,6 +208,7 @@ macro_rules! serde_identity {
 serde_identity!(CommentId);
 serde_identity!(CheckpointId);
 serde_identity!(NativeElementId);
+serde_identity!(AttributeDefinitionId);
 impl Serialize for DictionaryEntryId {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         s.serialize_str(&self.to_string())

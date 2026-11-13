@@ -114,6 +114,8 @@ impl History {
                 + vec_cost(&p.links)
                 + vec_cost(&p.dictionary_entries)
                 + vec_cost(&p.dictionary_links)
+                + vec_cost(&p.attribute_definitions)
+                + vec_cost(&p.attribute_values)
                 + vec_cost(&p.comments)
                 + vec_cost(&p.checkpoints);
             for c in &p.comments {
@@ -130,6 +132,8 @@ impl History {
                     + vec_cost(&c.links)
                     + vec_cost(&c.dictionary_entries)
                     + vec_cost(&c.dictionary_links)
+                    + vec_cost(&c.attribute_definitions)
+                    + vec_cost(&c.attribute_values)
                     + vec_cost(&c.comments);
                 for e in &c.dictionary_entries {
                     total += string(&e.name) + string(&e.description);
@@ -138,6 +142,24 @@ impl History {
                     total += xml(&l.source.xml_id);
                     if let DictionaryTarget::Literal(s) = &l.target {
                         total += string(s);
+                    }
+                }
+                for definition in &c.attribute_definitions {
+                    total += string(&definition.name)
+                        + string(&definition.description)
+                        + definition
+                            .options
+                            .capacity()
+                            .saturating_mul(size_of::<String>());
+                }
+                for value in &c.attribute_values {
+                    total += xml(&value.source.xml_id);
+                    if let crate::attributes::AttributeValue::DictionaryRefs(refs) = &value.value {
+                        for target in refs {
+                            if let DictionaryTarget::Literal(s) = target {
+                                total += string(s);
+                            }
+                        }
                     }
                 }
                 for f in &c.folders {
@@ -175,6 +197,24 @@ impl History {
                 total += xml(&l.source.xml_id);
                 if let DictionaryTarget::Literal(s) = &l.target {
                     total += string(s);
+                }
+            }
+            for definition in &p.attribute_definitions {
+                total += string(&definition.name)
+                    + string(&definition.description)
+                    + definition
+                        .options
+                        .capacity()
+                        .saturating_mul(size_of::<String>());
+            }
+            for value in &p.attribute_values {
+                total += xml(&value.source.xml_id);
+                if let crate::attributes::AttributeValue::DictionaryRefs(refs) = &value.value {
+                    for target in refs {
+                        if let DictionaryTarget::Literal(s) = target {
+                            total += string(s);
+                        }
+                    }
                 }
             }
             for f in &p.folders {

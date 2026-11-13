@@ -110,8 +110,8 @@ values, query them and save them. The GUI shows nothing new yet.
 
 #### Model
 
-- [ ] Add `AttributeDefinitionId` (UUID newtype) to `ids.rs`, following `DictionaryEntryId`.
-- [ ] In `attributes.rs` define, all `deny_unknown_fields` with `schemars::JsonSchema`:
+- [x] Add `AttributeDefinitionId` (UUID newtype) to `ids.rs`, following `DictionaryEntryId`.
+- [x] In `attributes.rs` define, all `deny_unknown_fields` with `schemars::JsonSchema`:
   - `AttributeType`: `Text`, `Number`, `Duration`, `Currency`, `Enum`, `Date`, `DictionaryRef`, `Url`.
   - `AttributeTarget`: `Activity`, `Event`, `Gateway`, `SequenceFlow`, `Lane`, `Participant`,
     `Process`, `DataObject`. One function maps an element of a `BpmnDocument` to its target
@@ -130,29 +130,29 @@ values, query them and save them. The GUI shows nothing new yet.
     `DictionaryRefs` reuses the existing `DictionaryTarget::{Entry, Literal}` so an imported label can
     stay an unlinked literal (§10.1); it is a list because RACI (M5.3) assigns several roles.
   - `AttributeAssignment { source: ElementKey, definition: AttributeDefinitionId, value }`.
-- [ ] Add `attribute_definitions: Vec<AttributeDefinition>` and `attribute_values:
+- [x] Add `attribute_definitions: Vec<AttributeDefinition>` and `attribute_values:
   Vec<AttributeAssignment>` to `ProjectData` and `FrozenProject` with `#[serde(default,
   skip_serializing_if = "Vec::is_empty")]`; extend `ProjectData::new`, `FrozenProject::capture` and
   `FrozenProject::project`. Values live at project level keyed by `ElementKey`, like
   `dictionary_links`; `Node`, `Flow` and `Lane` are not changed (their struct literals appear in
   dozens of files).
-- [ ] One pure `attributes::parse_decimal` / `parse_duration` / `parse_date` set of validators with
+- [x] One pure `attributes::parse_decimal` / `parse_duration` / `parse_date` set of validators with
   canonical output, used by mutations, validation and import. Limits as constants: 200 definitions per
   project, 64 enum options, 16 dictionary references per value, text and URL values within the
   existing 16 KiB `short()` limit, at most one value per (source, definition). URLs are stored as
   text; the application never fetches them.
-- [ ] Extend `ProjectData::validate()` (`identity.rs`), next to the dictionary link checks: unique
+- [x] Extend `ProjectData::validate()` (`identity.rs`), next to the dictionary link checks: unique
   definition IDs and names, type-specific definition fields, every value's definition exists and its
   variant matches the definition type, enum value is one of the options, dictionary entries exist with
   the right kind, the source document and element exist (`semantic_ids`), no duplicate (source,
   definition). `applies_to` is **not** a structural invariant: it is enforced when a value is set and
   reported as a diagnostic otherwise, so `replaceElement` can never make a project unloadable.
-- [ ] Add the two vectors to `same_checkpoint` in `identity.rs` and to the retained-memory estimates
+- [x] Add the two vectors to `same_checkpoint` in `identity.rs` and to the retained-memory estimates
   in `history.rs` (the blocks that count `dictionary_entries` and `dictionary_links`).
 
 #### Commands
 
-- [ ] Add to `Mutation` in `commands.rs`, with their application in `mutate` and entries in
+- [x] Add to `Mutation` in `commands.rs`, with their application in `mutate` and entries in
   `COMMAND_DESCRIPTORS`:
   - `CreateAttributeDefinition { definition }`.
   - `UpdateAttributeDefinition { definition, resolution: AttributeUpdateResolution }`. Renaming,
@@ -169,47 +169,47 @@ values, query them and save them. The GUI shows nothing new yet.
     capability check as `SetDictionaryLinks`, and rejects a definition whose `applies_to` excludes the
     element. Editing many elements is several of these in one `Request::Batch` (existing 1,000 limit),
     which is one undo step.
-- [ ] Extend `Mutation::DeleteDictionaryEntry`: `Reject` also counts usages in attribute values;
+- [x] Extend `Mutation::DeleteDictionaryEntry`: `Reject` also counts usages in attribute values;
   `Replace` retargets them; `Unlink` turns them into `DictionaryTarget::Literal` with the entry name.
   Extend `queries::dictionary_usages` to include elements that reference the entry through an
   attribute.
-- [ ] Keep values consistent with element lifetime. `commands.rs` prunes `links` and
+- [x] Keep values consistent with element lifetime. `commands.rs` prunes `links` and
   `dictionary_links` in six places (`prune_removed_activity_navigation`,
   `delete_choreography_flow_element`, the choreography artifact and data-association deletes,
   `Mutation::Delete`, `Mutation::DeleteDocument`). First fold those into one helper that prunes all
   project-level element references, then add `attribute_values` to it; do not add a seventh copy.
   Add `attribute_values` sources to the selector remap at the end of
   `element_identity_edit::set_xml_id`.
-- [ ] Add `attributes::starter_definitions()` returning the starter set with fresh IDs (see Open
+- [x] Add `attributes::starter_definitions()` returning the starter set with fresh IDs (see Open
   decision 2 for the exact list). It is data for the GUI button and the prompt pack; nothing creates
   definitions implicitly.
 
 #### Queries
 
-- [ ] `queries::attribute_definitions(project)` with a usage count per definition, and
+- [x] `queries::attribute_definitions(project)` with a usage count per definition, and
   `queries::element_attributes(project, document_id)` returning, per element, its target, name and
   values. Add `attributes: Vec<AttributeAssignment>`-style cells to `ActivityRow` (additive JSON).
-- [ ] Add the per-element values to `compare_checkpoint`: an `attributes_changed: bool` on
+- [x] Add the per-element values to `compare_checkpoint`: an `attributes_changed: bool` on
   `CheckpointComparison` and a `PropertyDifference` per changed value on the element's
   `ElementChange.properties`, with `property` = `attribute:<definition name>`.
 
 #### Native format
 
-- [ ] In `native.rs` add the two fields to `ProjectDto` and `FrozenDto`, a constant
+- [x] In `native.rs` add the two fields to `ProjectDto` and `FrozenDto`, a constant
   `ANALYST_ATTRIBUTES_CAPABILITY = "analyst-attributes-v1"` pushed by `write_bytes` when the project
   or any checkpoint has a definition or a value, the same string in the reader allow-list in
   `load_with_limits`, and the "requires capability" refusal when the data is present without it.
   `Manifest.schema` stays 3.
-- [ ] Prove that existing files are untouched: `tests/fixtures/native/identity-baseline-2f0f770
+- [x] Prove that existing files are untouched: `tests/fixtures/native/identity-baseline-2f0f770
   .processcraft` loads with the same content identity and re-saves without the new capability.
 
 #### CLI and MCP
 
-- [ ] CLI `query attributes <document_id>` and definition listing in `Query` (`args.rs`,
+- [x] CLI `query attributes <document_id>` and definition listing in `Query` (`args.rs`,
   `query_project` in `run.rs`); MCP `Query::Attributes { document_id, offset, limit }` in `mcp.rs`
   **and** `attachment.rs`. Mutations need no transport work: `commands --json` and the MCP `apply`
   schema are generated from `Mutation`.
-- [ ] Add `tests/fixtures/commands/attributes.json`: a batch that creates definitions and sets values
+- [x] Add `tests/fixtures/commands/attributes.json`: a batch that creates definitions and sets values
   on the procurement process, with a manifest entry.
 
 #### Tests

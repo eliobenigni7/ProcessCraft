@@ -659,8 +659,15 @@ fn query_project(path: &Path, query: Query) -> Result<(), Error> {
             let process: ElementSelector = process_id.parse().map_err(|e| error(2, e))?;
             let rows = queries::activity_table(project, document, &process)
                 .ok_or_else(|| error(3, "process not found"))?;
-            let rows: Vec<_> = rows.into_iter().map(|row| json!({"key":row.key,"name":row.name,"lane":row.lane,"role":row.role,"systems":row.systems,"documents":row.documents,"outgoing":row.outgoing.into_iter().map(|flow| json!({"id":flow.id,"target":flow.target,"condition":flow.condition})).collect::<Vec<_>>() })).collect();
+            let rows: Vec<_> = rows.into_iter().map(|row| json!({"key":row.key,"name":row.name,"lane":row.lane,"role":row.role,"systems":row.systems,"documents":row.documents,"attributes":row.attributes,"outgoing":row.outgoing.into_iter().map(|flow| json!({"id":flow.id,"target":flow.target,"condition":flow.condition})).collect::<Vec<_>>() })).collect();
             json!({"rows":rows})
+        }
+        Query::Attributes { document_id } => {
+            let document: DocumentId = document_id.parse().map_err(|e| error(2, e))?;
+            let definitions = queries::attribute_definitions(project);
+            let rows = queries::element_attributes(project, document)
+                .ok_or_else(|| error(3, "document not found"))?;
+            json!({"definitions": definitions, "rows": rows})
         }
         Query::ReplaceOptions {
             document_id,

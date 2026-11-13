@@ -1,0 +1,420 @@
+{
+  "type": "batch",
+  "mutations": [
+    {
+      "type": "createDocument",
+      "document": {
+        "id": "22222222-2222-4222-8222-222222222222",
+        "name": "Procurement attributes",
+        "folder": null,
+        "definitions_id": "defs",
+        "processes": [],
+        "collaboration": null,
+        "diagrams": [],
+        "provenance": null,
+        "capability": "Editable"
+      }
+    },
+    {
+      "type": "createProcess",
+      "document_id": "22222222-2222-4222-8222-222222222222",
+      "process": {
+        "id": "attributes-process",
+        "name": "Procurement",
+        "documentation": "",
+        "nodes": [],
+        "lanes": [],
+        "flows": []
+      }
+    },
+    {
+      "type": "createElement",
+      "document_id": "22222222-2222-4222-8222-222222222222",
+      "process_id": "attributes-process",
+      "element": {
+        "id": "start",
+        "name": "Request received",
+        "documentation": "",
+        "kind": "StartEvent",
+        "owner": "",
+        "contact": ""
+      }
+    },
+    {
+      "type": "createElement",
+      "document_id": "22222222-2222-4222-8222-222222222222",
+      "process_id": "attributes-process",
+      "element": {
+        "id": "review",
+        "name": "Review request",
+        "documentation": "",
+        "kind": "UserTask",
+        "owner": "",
+        "contact": ""
+      }
+    },
+    {
+      "type": "createElement",
+      "document_id": "22222222-2222-4222-8222-222222222222",
+      "process_id": "attributes-process",
+      "element": {
+        "id": "order",
+        "name": "Place order",
+        "documentation": "",
+        "kind": "Task",
+        "owner": "",
+        "contact": ""
+      }
+    },
+    {
+      "type": "createElement",
+      "document_id": "22222222-2222-4222-8222-222222222222",
+      "process_id": "attributes-process",
+      "element": {
+        "id": "end",
+        "name": "Complete",
+        "documentation": "",
+        "kind": "EndEvent",
+        "owner": "",
+        "contact": ""
+      }
+    },
+    {
+      "type": "createFlow",
+      "document_id": "22222222-2222-4222-8222-222222222222",
+      "process_id": "attributes-process",
+      "flow": {
+        "id": "flow_start_review",
+        "kind": "Sequence",
+        "source": "start",
+        "target": "review",
+        "name": "",
+        "documentation": "",
+        "condition": null
+      }
+    },
+    {
+      "type": "createFlow",
+      "document_id": "22222222-2222-4222-8222-222222222222",
+      "process_id": "attributes-process",
+      "flow": {
+        "id": "flow_review_order",
+        "kind": "Sequence",
+        "source": "review",
+        "target": "order",
+        "name": "",
+        "documentation": "",
+        "condition": null
+      }
+    },
+    {
+      "type": "createFlow",
+      "document_id": "22222222-2222-4222-8222-222222222222",
+      "process_id": "attributes-process",
+      "flow": {
+        "id": "flow_order_end",
+        "kind": "Sequence",
+        "source": "order",
+        "target": "end",
+        "name": "",
+        "documentation": "",
+        "condition": null
+      }
+    },
+    {
+      "type": "createDictionaryEntry",
+      "entry": {
+        "id": "33333333-3333-4333-8333-000000000009",
+        "kind": "Role",
+        "name": "Finance lead",
+        "description": ""
+      }
+    },
+    {
+      "type": "createAttributeDefinition",
+      "definition": {
+        "id": "33333333-3333-4333-8333-000000000001",
+        "name": "Control",
+        "description": "Internal control applied to the activity.",
+        "value_type": "Text",
+        "unit": null,
+        "options": [],
+        "dictionary_kind": null,
+        "applies_to": [
+          "Activity"
+        ],
+        "required": false
+      }
+    },
+    {
+      "type": "createAttributeDefinition",
+      "definition": {
+        "id": "33333333-3333-4333-8333-000000000002",
+        "name": "Amount",
+        "description": "",
+        "value_type": "Number",
+        "unit": "EUR",
+        "options": [],
+        "dictionary_kind": null,
+        "applies_to": [
+          "Activity"
+        ],
+        "required": false
+      }
+    },
+    {
+      "type": "createAttributeDefinition",
+      "definition": {
+        "id": "33333333-3333-4333-8333-000000000003",
+        "name": "Duration",
+        "description": "Elapsed time; P1D is 24 elapsed hours.",
+        "value_type": "Duration",
+        "unit": null,
+        "options": [],
+        "dictionary_kind": null,
+        "applies_to": [
+          "Activity"
+        ],
+        "required": false
+      }
+    },
+    {
+      "type": "createAttributeDefinition",
+      "definition": {
+        "id": "33333333-3333-4333-8333-000000000004",
+        "name": "Cost",
+        "description": "",
+        "value_type": "Currency",
+        "unit": "EUR",
+        "options": [],
+        "dictionary_kind": null,
+        "applies_to": [
+          "Activity"
+        ],
+        "required": false
+      }
+    },
+    {
+      "type": "createAttributeDefinition",
+      "definition": {
+        "id": "33333333-3333-4333-8333-000000000005",
+        "name": "Risk",
+        "description": "",
+        "value_type": "Enum",
+        "unit": null,
+        "options": [
+          "Low",
+          "Medium",
+          "High"
+        ],
+        "dictionary_kind": null,
+        "applies_to": [
+          "Activity"
+        ],
+        "required": false
+      }
+    },
+    {
+      "type": "createAttributeDefinition",
+      "definition": {
+        "id": "33333333-3333-4333-8333-000000000006",
+        "name": "Deadline",
+        "description": "",
+        "value_type": "Date",
+        "unit": null,
+        "options": [],
+        "dictionary_kind": null,
+        "applies_to": [
+          "Activity"
+        ],
+        "required": false
+      }
+    },
+    {
+      "type": "createAttributeDefinition",
+      "definition": {
+        "id": "33333333-3333-4333-8333-000000000007",
+        "name": "Roles",
+        "description": "",
+        "value_type": "DictionaryRef",
+        "unit": null,
+        "options": [],
+        "dictionary_kind": "Role",
+        "applies_to": [
+          "Activity"
+        ],
+        "required": false
+      }
+    },
+    {
+      "type": "createAttributeDefinition",
+      "definition": {
+        "id": "33333333-3333-4333-8333-000000000008",
+        "name": "Policy",
+        "description": "",
+        "value_type": "Url",
+        "unit": null,
+        "options": [],
+        "dictionary_kind": null,
+        "applies_to": [
+          "Activity"
+        ],
+        "required": false
+      }
+    },
+    {
+      "type": "setAttributeValues",
+      "source": {
+        "document_id": "22222222-2222-4222-8222-222222222222",
+        "xml_id": "review"
+      },
+      "values": [
+        {
+          "definition_id": "33333333-3333-4333-8333-000000000001",
+          "value": {
+            "Text": "Two-person review"
+          }
+        }
+      ]
+    },
+    {
+      "type": "setAttributeValues",
+      "source": {
+        "document_id": "22222222-2222-4222-8222-222222222222",
+        "xml_id": "review"
+      },
+      "values": [
+        {
+          "definition_id": "33333333-3333-4333-8333-000000000002",
+          "value": {
+            "Number": "0.5"
+          }
+        }
+      ]
+    },
+    {
+      "type": "setAttributeValues",
+      "source": {
+        "document_id": "22222222-2222-4222-8222-222222222222",
+        "xml_id": "review"
+      },
+      "values": [
+        {
+          "definition_id": "33333333-3333-4333-8333-000000000003",
+          "value": {
+            "Duration": "PT2H30M"
+          }
+        }
+      ]
+    },
+    {
+      "type": "setAttributeValues",
+      "source": {
+        "document_id": "22222222-2222-4222-8222-222222222222",
+        "xml_id": "review"
+      },
+      "values": [
+        {
+          "definition_id": "33333333-3333-4333-8333-000000000004",
+          "value": {
+            "Currency": "12.50"
+          }
+        }
+      ]
+    },
+    {
+      "type": "setAttributeValues",
+      "source": {
+        "document_id": "22222222-2222-4222-8222-222222222222",
+        "xml_id": "review"
+      },
+      "values": [
+        {
+          "definition_id": "33333333-3333-4333-8333-000000000005",
+          "value": {
+            "Enum": "Medium"
+          }
+        }
+      ]
+    },
+    {
+      "type": "setAttributeValues",
+      "source": {
+        "document_id": "22222222-2222-4222-8222-222222222222",
+        "xml_id": "review"
+      },
+      "values": [
+        {
+          "definition_id": "33333333-3333-4333-8333-000000000006",
+          "value": {
+            "Date": "2026-11-13"
+          }
+        }
+      ]
+    },
+    {
+      "type": "setAttributeValues",
+      "source": {
+        "document_id": "22222222-2222-4222-8222-222222222222",
+        "xml_id": "review"
+      },
+      "values": [
+        {
+          "definition_id": "33333333-3333-4333-8333-000000000007",
+          "value": {
+            "DictionaryRefs": [
+              {
+                "Entry": "33333333-3333-4333-8333-000000000009"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "type": "setAttributeValues",
+      "source": {
+        "document_id": "22222222-2222-4222-8222-222222222222",
+        "xml_id": "review"
+      },
+      "values": [
+        {
+          "definition_id": "33333333-3333-4333-8333-000000000008",
+          "value": {
+            "Url": "https://example.com/policy"
+          }
+        }
+      ]
+    },
+    {
+      "type": "setAttributeValues",
+      "source": {
+        "document_id": "22222222-2222-4222-8222-222222222222",
+        "xml_id": "order"
+      },
+      "values": [
+        {
+          "definition_id": "33333333-3333-4333-8333-000000000001",
+          "value": {
+            "Text": "PO required"
+          }
+        }
+      ]
+    },
+    {
+      "type": "setAttributeValues",
+      "source": {
+        "document_id": "22222222-2222-4222-8222-222222222222",
+        "xml_id": "order"
+      },
+      "values": [
+        {
+          "definition_id": "33333333-3333-4333-8333-000000000004",
+          "value": {
+            "Currency": "1199.00"
+          }
+        }
+      ]
+    }
+  ]
+}

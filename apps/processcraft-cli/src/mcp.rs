@@ -230,6 +230,11 @@ enum Query {
         offset: usize,
         limit: usize,
     },
+    Attributes {
+        document_id: processcraft_core::ids::DocumentId,
+        offset: usize,
+        limit: usize,
+    },
     ReplaceOptions {
         document_id: processcraft_core::ids::DocumentId,
         element_id: processcraft_core::ids::ElementSelector,
@@ -440,7 +445,23 @@ impl ServerHandler for Server {
                     Query::Table { document_id, process_id, offset, limit } => (
                         processcraft_core::queries::activity_table(&snapshot.project, document_id, &process_id)
                             .ok_or_else(|| ErrorData::invalid_params("process not found", None))?
-                            .into_iter().map(|row| json!({"key":row.key,"name":row.name,"lane":row.lane,"role":row.role,"systems":row.systems,"documents":row.documents,"outgoing":row.outgoing.into_iter().map(|f| json!({"id":f.id,"target":f.target,"condition":f.condition})).collect::<Vec<_>>() })).collect(), offset, limit),
+                            .into_iter().map(|row| json!({"key":row.key,"name":row.name,"lane":row.lane,"role":row.role,"systems":row.systems,"documents":row.documents,"attributes":row.attributes,"outgoing":row.outgoing.into_iter().map(|f| json!({"id":f.id,"target":f.target,"condition":f.condition})).collect::<Vec<_>>() })).collect(), offset, limit),
+                    Query::Attributes { document_id, offset, limit } => {
+                        let definitions =
+                            processcraft_core::queries::attribute_definitions(&snapshot.project);
+                        let rows = processcraft_core::queries::element_attributes(&snapshot.project, document_id)
+                            .ok_or_else(|| ErrorData::invalid_params("document not found", None))?;
+                        let total = rows.len();
+                        let mut result = crate::run::bounded_page(
+                            rows.into_iter().skip(offset).map(|row| json!(row)),
+                            total,
+                            offset,
+                            limit,
+                        )
+                        .map_err(|error| ErrorData::invalid_params(error.message, None))?;
+                        result["definitions"] = json!(definitions);
+                        return Ok(CallToolResult::structured(result).into());
+                    }
                     Query::ReplaceOptions { document_id, element_id, offset, limit } => (
                         crate::run::replace_options(&snapshot.project, document_id, &element_id)
                             .ok_or_else(|| ErrorData::invalid_params("document not found", None))?,

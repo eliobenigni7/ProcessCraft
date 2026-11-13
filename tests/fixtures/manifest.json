@@ -106,6 +106,14 @@
       "license": "CC0-1.0",
       "expected_mode": "native editable project",
       "semantic_di_checks": "Stable document and entry IDs; two role mappings; system/document usages; folder and graph unchanged by entry rename"
+    },
+    {
+      "path": "commands/attributes.json",
+      "sha256": "062ec13e2f6924410c514bac228e268ce0698cbacb07f399a9ebf6711ea01a18",
+      "provenance": "Synthetic ProcessCraft M5.1a analyst-attributes batch authored 2026-11-13; one activity carries all eight attribute types",
+      "license": "CC0-1.0",
+      "expected_mode": "native editable project",
+      "semantic_di_checks": "Stable document, definition and entry IDs; all eight attribute types set on one activity; decimal, duration and date values stored canonically"
     }
   ],
   "fonts": [

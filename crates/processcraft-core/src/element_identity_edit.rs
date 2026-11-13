@@ -2578,6 +2578,7 @@ pub(crate) fn set_xml_id(
         .iter_mut()
         .map(|v| &mut v.source)
         .chain(project.dictionary_links.iter_mut().map(|v| &mut v.source))
+        .chain(project.attribute_values.iter_mut().map(|v| &mut v.source))
         .chain(project.comments.iter_mut().map(|v| &mut v.target))
     {
         if key.document_id == document_id && key.xml_id == *selected {

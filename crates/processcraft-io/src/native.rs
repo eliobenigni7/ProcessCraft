@@ -1,5 +1,6 @@
 //! Strict, bounded ZIP/JSON native project format.
 //! Schema 0 is a synthetic migration exercise: it lacks `description`.
+use processcraft_core::attributes::{AttributeAssignment, AttributeDefinition};
 use processcraft_core::{
     ProjectId,
     ids::{CheckpointId, XmlId},
@@ -41,6 +42,14 @@ const DI_CHOREOGRAPHY_CAPABILITY: &str = "bpmn-di-choreography-v1";
 const EXPANDED_COLLABORATION_CAPABILITY: &str = "bpmn-expanded-collaboration-v1";
 const CHOREOGRAPHY_GRAPH_CAPABILITY: &str = "bpmn-choreography-graph-v1";
 const QUALIFIED_BOUNDARY_CAPABILITY: &str = "bpmn-qualified-boundary-reference-v1";
+const ANALYST_ATTRIBUTES_CAPABILITY: &str = "analyst-attributes-v1";
+
+fn has_analyst_attributes(
+    definitions: &[AttributeDefinition],
+    values: &[AttributeAssignment],
+) -> bool {
+    !definitions.is_empty() || !values.is_empty()
+}
 
 fn has_qualified_boundary_reference(document: &BpmnDocument) -> bool {
     use processcraft_core::bpmn_model::{EventReference, NodeDetails};
@@ -201,6 +210,10 @@ struct ProjectDto {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     comments: Vec<Comment>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    attribute_definitions: Vec<AttributeDefinition>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    attribute_values: Vec<AttributeAssignment>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     checkpoints: Vec<CheckpointMeta>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     reference_checkpoint: Option<CheckpointId>,
@@ -225,6 +238,10 @@ struct FrozenDto {
     dictionary_entries: Vec<DictionaryEntry>,
     dictionary_links: Vec<DictionaryLink>,
     comments: Vec<Comment>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    attribute_definitions: Vec<AttributeDefinition>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    attribute_values: Vec<AttributeAssignment>,
 }
 fn resource_dto(r: &Resource) -> ResourceDto {
     ResourceDto {
@@ -291,6 +308,8 @@ pub fn write_bytes(project: &ProjectData) -> Result<Vec<u8>, NativeError> {
         dictionary_entries: project.dictionary_entries.clone(),
         dictionary_links: project.dictionary_links.clone(),
         comments: project.comments.clone(),
+        attribute_definitions: project.attribute_definitions.clone(),
+        attribute_values: project.attribute_values.clone(),
         checkpoints: project
             .checkpoints
             .iter()
@@ -482,6 +501,16 @@ pub fn write_bytes(project: &ProjectData) -> Result<Vec<u8>, NativeError> {
     {
         required_capabilities.push(QUALIFIED_BOUNDARY_CAPABILITY.into());
     }
+    if has_analyst_attributes(&project.attribute_definitions, &project.attribute_values)
+        || project.checkpoints.iter().any(|c| {
+            has_analyst_attributes(
+                &c.content.attribute_definitions,
+                &c.content.attribute_values,
+            )
+        })
+    {
+        required_capabilities.push(ANALYST_ATTRIBUTES_CAPABILITY.into());
+    }
     let manifest = Manifest {
         format: "processcraft".into(),
         schema: 3,
@@ -514,6 +543,8 @@ pub fn write_bytes(project: &ProjectData) -> Result<Vec<u8>, NativeError> {
             dictionary_entries: c.dictionary_entries.clone(),
             dictionary_links: c.dictionary_links.clone(),
             comments: c.comments.clone(),
+            attribute_definitions: c.attribute_definitions.clone(),
+            attribute_values: c.attribute_values.clone(),
         };
         let bytes = serde_json::to_vec(&dto).map_err(err)?;
         if bytes.len() > JSON_LIMIT {
@@ -689,6 +720,7 @@ fn load_with_limits(
                 && cap != EXPANDED_COLLABORATION_CAPABILITY
                 && cap != CHOREOGRAPHY_GRAPH_CAPABILITY
                 && cap != QUALIFIED_BOUNDARY_CAPABILITY
+                && cap != ANALYST_ATTRIBUTES_CAPABILITY
         })
         || (manifest.schema < 3 && !manifest.required_capabilities.is_empty())
         || (manifest.schema == 3
@@ -723,6 +755,8 @@ fn load_with_limits(
             dictionary_entries: vec![],
             dictionary_links: vec![],
             comments: vec![],
+            attribute_definitions: vec![],
+            attribute_values: vec![],
             checkpoints: vec![],
             reference_checkpoint: None,
         }
@@ -739,6 +773,8 @@ fn load_with_limits(
             dictionary_entries: vec![],
             dictionary_links: vec![],
             comments: vec![],
+            attribute_definitions: vec![],
+            attribute_values: vec![],
             checkpoints: vec![],
             reference_checkpoint: None,
         }
@@ -948,6 +984,17 @@ fn load_with_limits(
     {
         return Err(err("qualified boundary reference requires capability"));
     }
+    if (has_analyst_attributes(&dto.attribute_definitions, &dto.attribute_values)
+        || frozen
+            .iter()
+            .any(|(_, c)| has_analyst_attributes(&c.attribute_definitions, &c.attribute_values)))
+        && !manifest
+            .required_capabilities
+            .iter()
+            .any(|cap| cap == ANALYST_ATTRIBUTES_CAPABILITY)
+    {
+        return Err(err("analyst attributes require capability"));
+    }
     for resources in std::iter::once(&dto.resources).chain(frozen.iter().map(|(_, c)| &c.resources))
     {
         let mut declared_size = 0u64;
@@ -1009,6 +1056,8 @@ fn load_with_limits(
                 dictionary_entries: c.dictionary_entries,
                 dictionary_links: c.dictionary_links,
                 comments: c.comments,
+                attribute_definitions: c.attribute_definitions,
+                attribute_values: c.attribute_values,
             },
         });
     }
@@ -1028,6 +1077,8 @@ fn load_with_limits(
         comments: dto.comments,
         checkpoints,
         reference_checkpoint: dto.reference_checkpoint,
+        attribute_definitions: dto.attribute_definitions,
+        attribute_values: dto.attribute_values,
     };
     if project.id != manifest.project_id
         || (if manifest.schema < 2 {

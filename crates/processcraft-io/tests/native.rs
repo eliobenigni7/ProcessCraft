@@ -2604,3 +2604,126 @@ fn common_capability_covers_independent_nested_and_script_payloads() {
         );
     }
 }
+
+#[test]
+fn analyst_attributes_round_trip_and_capability_gate() {
+    use processcraft_core::{
+        attributes::{AttributeDefinition, AttributeTarget, AttributeType, AttributeValue},
+        ids::{AttributeDefinitionId, CheckpointId},
+        model::{Checkpoint, DictionaryEntry, FrozenProject},
+    };
+    let baseline =
+        include_bytes!("../../../tests/fixtures/native/identity-baseline-2f0f770.processcraft");
+    // Existing files are untouched: same content identity, re-saved without the capability.
+    let loaded = load_bytes(baseline).unwrap();
+    assert_eq!(
+        loaded.project.content_identity().unwrap(),
+        loaded.source_content_identity
+    );
+    let bytes = write_bytes(&loaded.project).unwrap();
+    let manifest: serde_json::Value = serde_json::from_slice(
+        &entries(&bytes)
+            .iter()
+            .find(|(name, _)| name == "manifest.json")
+            .unwrap()
+            .1,
+    )
+    .unwrap();
+    assert!(
+        !manifest["required_capabilities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|capability| capability == "analyst-attributes-v1")
+    );
+    assert_eq!(
+        load_bytes(&bytes).unwrap().source_content_identity,
+        loaded.source_content_identity
+    );
+
+    let mut project = load_bytes(baseline).unwrap().project;
+    project.dictionary_entries.push(DictionaryEntry {
+        id: "99999999-9999-4999-8999-999999999999".parse().unwrap(),
+        kind: processcraft_core::model::DictionaryKind::Role,
+        name: "Finance lead".into(),
+        description: String::new(),
+    });
+    let definition = AttributeDefinition {
+        id: AttributeDefinitionId::new(),
+        name: "Cost".into(),
+        description: String::new(),
+        value_type: AttributeType::Currency,
+        unit: Some("EUR".into()),
+        options: vec![],
+        dictionary_kind: None,
+        applies_to: vec![AttributeTarget::Activity],
+        required: false,
+    };
+    let definition_id = definition.id;
+    project.attribute_definitions.push(definition);
+    let document_id = project.documents[0].id;
+    let selector = project.documents[0].processes[0].nodes[0].id.selector();
+    project
+        .attribute_values
+        .push(processcraft_core::attributes::AttributeAssignment {
+            source: processcraft_core::ids::ElementKey {
+                document_id,
+                xml_id: selector,
+            },
+            definition: definition_id,
+            value: AttributeValue::Currency("12.5".into()),
+        });
+    let saved_identity = project.content_identity().unwrap();
+    let bytes = write_bytes(&project).unwrap();
+    let manifest: serde_json::Value = serde_json::from_slice(
+        &entries(&bytes)
+            .iter()
+            .find(|(name, _)| name == "manifest.json")
+            .unwrap()
+            .1,
+    )
+    .unwrap();
+    assert!(
+        manifest["required_capabilities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|capability| capability == "analyst-attributes-v1")
+    );
+    let reloaded = load_bytes(&bytes).unwrap();
+    assert!(!reloaded.requires_save_as_or_backup);
+    assert_eq!(reloaded.project.content_identity().unwrap(), saved_identity);
+    assert_eq!(
+        reloaded.project.attribute_values[0].value,
+        AttributeValue::Currency("12.5".into())
+    );
+    assert_eq!(reloaded.project.attribute_definitions[0].name, "Cost");
+
+    // A checkpoint with attributes alone also requires the capability.
+    let mut checkpointed = load_bytes(baseline).unwrap().project;
+    checkpointed.checkpoints.push(Checkpoint {
+        id: CheckpointId::new(),
+        name: "snapshot".into(),
+        created_unix_ms: 0,
+        content: FrozenProject {
+            attribute_definitions: project.attribute_definitions.clone(),
+            attribute_values: project.attribute_values.clone(),
+            ..FrozenProject::capture(&checkpointed)
+        },
+    });
+    let bytes = write_bytes(&checkpointed).unwrap();
+    assert!(load_bytes(&bytes).is_ok());
+    let mut contents = entries(&bytes);
+    edit_json(&mut contents, "manifest.json", |manifest| {
+        manifest["required_capabilities"]
+            .as_array_mut()
+            .unwrap()
+            .retain(|capability| capability != "analyst-attributes-v1")
+    });
+    let error = load_bytes(&archive(&contents)).err().unwrap().to_string();
+    assert!(error.contains("analyst attributes require capability"));
+
+    // The archived payload refuses to load without the capability as well.
+    let error = load_bytes(&archive(&contents)).err().unwrap().to_string();
+    assert!(error.contains("analyst attributes require capability"));
+}
