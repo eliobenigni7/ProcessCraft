@@ -5253,7 +5253,9 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             crate::attributes::apply_delete(p, definition_id, resolution)?;
         }
         Mutation::SetAttributeValues { source, values } => {
-            doc(p, source.document_id, true)?;
+            // Values live at project level and leave the document untouched, so
+            // opaque (foreign) XML in it does not block setting them.
+            doc(p, source.document_id, false)?;
             crate::attributes::apply_set_values(p, source, values)?;
         }
         Mutation::CreateDocument { document } => p.documents.push(Arc::new(document)),

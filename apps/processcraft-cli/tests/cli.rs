@@ -1144,6 +1144,101 @@ fn attributes_batch_saves_queries_and_round_trips() {
 }
 
 #[test]
+fn import_bpmn_lifts_attributes_and_export_writes_them_back() {
+    let t = Temp::new();
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("tests/fixtures/bpmn/attributes/foreign-and-processcraft.bpmn");
+    let project = t.path("imported.processcraft");
+    let imported = cli(
+        &[
+            "import-bpmn".as_ref(),
+            fixture.as_os_str(),
+            "--out".as_ref(),
+            project.as_os_str(),
+        ],
+        &t.0,
+    );
+    assert!(
+        imported.status.success(),
+        "{}",
+        String::from_utf8_lossy(&imported.stderr)
+    );
+    let result: serde_json::Value = serde_json::from_slice(&imported.stdout).unwrap();
+    assert_eq!(result["editable"], true);
+    assert!(
+        result["limitations"].as_array().unwrap().iter().any(|l| l
+            .as_str()
+            .unwrap()
+            .starts_with("Imported 4 attribute value(s)")),
+        "{result}"
+    );
+    let id = result["documentId"].as_str().unwrap();
+    let queried = cli(
+        &[
+            "query".as_ref(),
+            project.as_os_str(),
+            "attributes".as_ref(),
+            id.as_ref(),
+        ],
+        &t.0,
+    );
+    assert!(
+        queried.status.success(),
+        "{}",
+        String::from_utf8_lossy(&queried.stderr)
+    );
+    let value: serde_json::Value = serde_json::from_slice(&queried.stdout).unwrap();
+    assert_eq!(value["definitions"].as_array().unwrap().len(), 4);
+    let row = value["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["name"] == "Review invoice")
+        .unwrap();
+    let values = row["values"].as_array().unwrap();
+    assert_eq!(values.len(), 4);
+    let cell = |name: &str| values.iter().find(|v| v["name"] == name).unwrap()["value"].clone();
+    assert_eq!(cell("Cost")["Currency"], "12.5");
+    assert_eq!(cell("Effort")["Duration"], "PT1H30M");
+    assert_eq!(cell("Risk")["Enum"], "High");
+    // The unknown dictionary entry became literals, not merged by spelling.
+    assert_eq!(
+        cell("Consulted")["DictionaryRefs"],
+        serde_json::json!([{"Literal": "Finance lead"}, {"Literal": "External auditor"}])
+    );
+    let loaded = native::load_bytes(&fs::read(&project).unwrap()).unwrap();
+    assert_eq!(
+        loaded.project.content_identity().unwrap(),
+        loaded.source_content_identity
+    );
+
+    let exported = t.path("out.bpmn");
+    let export = cli(
+        &[
+            "export-bpmn".as_ref(),
+            project.as_os_str(),
+            "--document-id".as_ref(),
+            id.as_ref(),
+            "--out".as_ref(),
+            exported.as_os_str(),
+        ],
+        &t.0,
+    );
+    assert!(
+        export.status.success(),
+        "{}",
+        String::from_utf8_lossy(&export.stderr)
+    );
+    let xml = fs::read_to_string(&exported).unwrap();
+    assert_eq!(xml.matches("<pc:attribute ").count(), 4);
+    assert!(xml.find("camunda:taskListener").unwrap() < xml.find("<pc:attributes").unwrap());
+}
+
+#[test]
 fn mcp_attributes_query_matches_cli_values() {
     use std::io::{BufRead, BufReader, Write};
     use std::process::Stdio;

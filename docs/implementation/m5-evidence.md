@@ -72,9 +72,8 @@ Recorded 2026-11-13 on Windows 11 Pro (x64), Rust 1.98.1, `--locked --offline`.
   GUI's `attachment.rs`, both enforcing `limit` 1..100 and counting the
   definitions in the 3 MiB response budget; `query table` rows carry the values
   as additive cells.
-- BPMN export treats attribute values as native-only until M5.1b writes
-  `pc:attributes`: a document with values needs `acknowledge_native_fields`
-  and the report lists the omission.
+- BPMN export treated attribute values as native-only in this phase; M5.1b
+  (below) replaced that with `pc:attributes`.
 
 ### What is verified
 
@@ -148,3 +147,142 @@ use"), as asserted in the core tests.
   step measures the 10,000-value save and the table view with ten columns.
 - MCP file effects, grants and reconciliation behave as in M4; no new
   capability was added to the attachment protocol beyond the query.
+
+## M5.1b — custom attributes in BPMN interchange
+
+### What exists
+
+- `PC_ATTRIBUTES_NS = "urn:processcraft:attributes:1"` in `interchange.rs`; the
+  reader, writer and commit planner live in the submodule
+  `crates/processcraft-io/src/interchange/attributes.rs`.
+- Export: `export_bpmn` passes the document's values to `export_document`, which
+  appends one `pc:attributes` as the last child of each owner's
+  `extensionElements` (through `visit_base_metadata_mut` /
+  `visit_legacy_metadata_mut`, creating the extension when absent). Every
+  `pc:attribute` carries the definition ID, name, type, unit and, for
+  references, `dictionaryKind`; a `pc:ref` carries the entry ID and name, or
+  the name alone for a literal. Values are no longer part of the native-only
+  gate (navigation and dictionary links still are). The report lists "Custom
+  attribute values written to the ProcessCraft extension namespace" under
+  `transformed` and, when the project has definitions, one `omitted` line for
+  definition metadata the values do not carry (description, `required`,
+  `applies_to`, unused enum options) and for definitions without values; that
+  line is informational and does not require the acknowledgement. The export
+  re-parses its own output, lifts the `pc:attributes` back out and blocks the
+  export unless the values read equal the values written and the rest of the
+  typed model is unchanged. A value whose owner has no metadata writer blocks
+  the export ("have no qualified metadata writer"); the same
+  guard exists for a preserved-source document with values, but it is defensive
+  and untested: `ProjectData::validate()` rejects values on a document without
+  the element first, so `export_bpmn` cannot reach it.
+- Import: `prepare_import` lifts well-formed `pc:attributes` of an editable
+  document into `PreparedImport.attributes` (definitions and values) and removes
+  them from the stored extension content; an extension left with only
+  whitespace is dropped. An element that fails validation (unknown type or
+  attribute, bad UUID, any `check_value` failure such as an invalid decimal or
+  date, unexpected child, a definition set twice on one element, a definition
+  redeclared with another name, type, unit or kind, more than 200 attributes, an
+  owner without XML ID or attribute target) stays in the extension content and
+  is named in `ImportReport.limitations`. Numbers, durations and currency
+  amounts are normalized by the core validators (`12.50` becomes `12.5`,
+  `PT90M` becomes `PT1H30M`) rather than rejected. The file carries no
+  `applies_to`, `required`, description or option list, so an imported
+  definition gets `applies_to` = the targets of the elements that carry its
+  values and enum options = the options seen in values. Preserved-source
+  documents are not read for `pc:attributes`.
+- Commit: `plan_attribute_import(project, document, attributes)` returns the
+  mutations (definitions first, then one `SetAttributeValues` per element) and
+  the notes shown with the import status. The desktop import handler appends
+  them to the `CreateDocument` batch; `import_bpmn_cli` applies them through the
+  session. Rules: a definition ID the project lacks is created as read; an ID
+  that exists with another type, unit or dictionary kind is created again under
+  a fresh ID and "<name> (imported)"; a new name that collides with an existing
+  name gets the same suffix ("(imported N)" if that collides too); values for an
+  existing definition that does not apply to the element target, or do not fit
+  it (for example an enum option it lacks), or whose definition could not be
+  created (limit or invalid name), are not imported: `plan_attribute_import`
+  takes the document mutably and puts the original `pc:attribute` back into the
+  owner extension content (in a new trailing `pc:attributes`), so re-export
+  writes it unchanged, and each one is named in the notes (definition, owner,
+  reason). An existing definition is never widened; a `pc:ref` whose entry is
+  not in the project (or has another kind) becomes
+  `DictionaryTarget::Literal(name)`, never matched by spelling.
+- One core change: `SetAttributeValues` now checks its document with
+  `doc(.., false)` instead of `true`. Values live in project-level vectors and
+  leave the document untouched, and with `true` a document carrying foreign
+  extension XML (the fixture) refused the values with "opaque XML prevents safe
+  structural edits". `AttributeDefinition::validate_shape` became `pub` so the
+  importer applies the same shape rules.
+- Fixtures `tests/fixtures/bpmn/attributes/foreign-and-processcraft.bpmn` and
+  `foreign-and-processcraft-malformed.bpmn` (synthetic, CC0) with
+  `foreign-and-processcraft.manifest.md` (provenance, licence, SHA-256, import
+  mode).
+
+### What is verified
+
+- New `crates/processcraft-io/tests/attributes_interchange.rs` (11 tests):
+  `native_to_bpmn_to_native_keeps_every_value_and_all_eight_types` (all eight
+  types on one task plus a text value on a process, participant, lane, event,
+  gateway, sequence flow, data object, data object reference, subprocess and a
+  task nested in a subprocess; re-import into the same project binds
+  definitions and the dictionary entry by ID with no duplicate definition, into
+  an empty project creates the definitions under their file IDs and turns the
+  entry into a literal; a second export writes all 18 values again);
+  `pc_attributes_are_the_last_child_after_foreign_extensions_and_survive_in_order`
+  (the fixture; foreign elements equal in the model before and after, written
+  before `pc:attributes`);
+  `malformed_pc_attributes_stay_extension_content_and_are_named`;
+  `invalid_attribute_elements_are_never_lifted` (nine malformed variants, each
+  kept and named); `import_bounds_definitions_and_whitespace` (201 attributes);
+  `colliding_ids_and_names_and_inapplicable_targets_never_fail_the_import`;
+  `dictionary_entry_of_another_kind_becomes_a_literal`;
+  `a_value_on_a_missing_owner_blocks_the_export_instead_of_being_dropped`;
+  `export_report_says_what_is_written_and_what_is_not`;
+  `values_the_project_cannot_take_stay_in_the_document_and_are_written_back`
+  (same-ID definition whose `applies_to` excludes the element: value stays as
+  extension content, note names it, re-export contains it);
+  `set_attribute_values_is_refused_on_preserved_source_documents`.
+- `native.rs::analyst_attributes_round_trip_and_capability_gate` now asserts the
+  export carries the namespace and the definition-metadata omission line; its
+  baseline project still has links, so it passes the acknowledgement for those.
+- `apps/processcraft-cli/tests/cli.rs::import_bpmn_lifts_attributes_and_export_writes_them_back`:
+  `import-bpmn` of the fixture, `query attributes` returns four definitions and
+  four canonical values with the unknown entry as literals, the saved file keeps
+  its content identity, `export-bpmn` writes four `pc:attribute` after the
+  foreign elements.
+- `python scripts/check_bpmn20_xsd.py` (lxml 6.0.3) passed on two exports made
+  with the CLI: the fixture round trip and the eight-type
+  `tests/fixtures/commands/attributes.json` project. This checks XML schema
+  validity only.
+- Gates on the final source: `cargo fmt --all -- --check`, `cargo clippy
+  --workspace --all-targets --all-features --locked --offline -- -D warnings`,
+  `cargo test --workspace --all-targets --all-features --locked --offline`
+  (118 test binaries, 0 failures, rerun after the review fixes) and `python scripts/check_text_hygiene.py`.
+
+### Limits and what is not established
+
+- A kept (unplaced) `pc:attribute` that conflicts with a definition the project
+  writes for the same ID (for example another name) makes the export self-check
+  fail, so that export is blocked with "Attribute values do not survive the BPMN
+  round trip"; the export-side check accepts kept values only when they are
+  consistent with the written ones.
+- `SetAttributeValues` is allowed on documents with foreign XML or retained
+  extensions, while `SetDictionaryLinks` is not: deliberate, values are
+  project-level and leave the document untouched. It is still refused on a
+  preserved-source document (tested).
+- Exported XML repeats in-scope namespace declarations on foreign elements (the
+  existing canonical serializer); foreign nodes are equal in the typed model,
+  not byte-identical text.
+- A definition description, `required`, `applies_to` and unused enum options do
+  not travel; enum options are rebuilt from the values.
+- The commit rules are tested through the shared planner and the CLI; the
+  desktop import handler only calls the planner and was not exercised by a GUI
+  test.
+- Owner kinds with no metadata writer cannot be reached from a valid project in
+  the tests: every attribute target tested (listed above) has a writer. The
+  block is exercised only for a value whose owner is missing.
+- Import reads only the extension content of owners the importer already
+  qualifies; `pc:attributes` elsewhere (preserved-source documents, unsupported
+  owners) stays untouched source or extension content.
+- No performance measurement; the bounds tested are the 200-attribute limit and
+  the existing XML limits. No BPMN conformance claim follows from this phase.

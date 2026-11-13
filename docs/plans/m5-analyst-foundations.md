@@ -237,7 +237,7 @@ resolution.
 app.rs` (`ResultValue::Import`) and `import_bpmn_cli` in `apps/processcraft-cli/src/run.rs`; new
 fixtures under `tests/fixtures/bpmn/attributes/`.
 
-- [ ] Namespace constant `PC_ATTRIBUTES_NS = "urn:processcraft:attributes:1"` in `interchange.rs`
+- [x] Namespace constant `PC_ATTRIBUTES_NS = "urn:processcraft:attributes:1"` in `interchange.rs`
   (Decision 3). Shape, written as the last child of the owner's `extensionElements`:
 
   ```xml
@@ -252,7 +252,7 @@ fixtures under `tests/fixtures/bpmn/attributes/`.
 
   Each value carries its definition ID, name, type and unit, so a file is readable without a
   definitions block (finding 6).
-- [ ] Export: in `export_document`, on the cloned document the writer already prepares, append the
+- [x] Export: in `export_document`, on the cloned document the writer already prepares, append the
   `pc:attributes` element to each owner's `BaseExtras.extension_elements` /
   `BaseMetadata.extension_elements` (creating it when absent) through
   `metadata_visit::visit_legacy_metadata_mut` and `visit_base_metadata_mut`; the existing
@@ -264,19 +264,19 @@ fixtures under `tests/fixtures/bpmn/attributes/`.
   owner kind for which no qualified metadata writer exists blocks the export instead of dropping the
   value (existing rule at "documentation or extension metadata on an owner without a qualified
   writer").
-- [ ] Import: `prepare_import` lifts well-formed `pc:attributes` elements out of the parsed
+- [x] Import: `prepare_import` lifts well-formed `pc:attributes` elements out of the parsed
   `extension_elements` into a new `PreparedImport.attributes { definitions, values }` and removes them
   from the XML content so they are not stored twice. A `pc:attributes` element that fails validation
   (unknown type, malformed decimal, unexpected child) is left in place as ordinary extension content
   and named in `ImportReport.limitations`: preserved, not reinterpreted. Foreign extension nodes keep
   their order and bytes as today.
-- [ ] Commit: the GUI import handler (`app.rs`, `ResultValue::Import`) adds
+- [x] Commit: the GUI import handler (`app.rs`, `ResultValue::Import`) adds
   `CreateAttributeDefinition` for definitions the project lacks and `SetAttributeValues` to the same
   batch as `CreateDocument`. A definition ID that exists with a different type gets a fresh ID and a
   " (imported)" name suffix, reported in the status message. A `pc:ref` whose entry ID is not in the
   project becomes a `Literal` (§10.1: no identity merging by spelling). `import_bpmn_cli` fills the
   new `ProjectData` the same way before `Session::new`.
-- [ ] Add fixture `tests/fixtures/bpmn/attributes/foreign-and-processcraft.bpmn` (synthetic, CC0):
+- [x] Add fixture `tests/fixtures/bpmn/attributes/foreign-and-processcraft.bpmn` (synthetic, CC0):
   Camunda-style foreign extension elements and `pc:attributes` on the same task; plus a malformed
   variant. Sibling `*.manifest.md` with provenance, licence, SHA-256 and expected import mode.
 

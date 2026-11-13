@@ -2634,7 +2634,7 @@ impl eframe::App for ProcessCraft {
                     generation,
                     prepared,
                 } => {
-                    let prepared = *prepared;
+                    let mut prepared = *prepared;
                     if session != self.ctl.session.id()
                         || generation != self.ctl.session.snapshot().generation
                         || self.has_drafts()
@@ -2645,6 +2645,11 @@ impl eframe::App for ProcessCraft {
                             .into();
                     } else {
                         let id = prepared.document.id;
+                        let plan = processcraft_io::interchange::plan_attribute_import(
+                            &self.ctl.session.snapshot().project,
+                            &mut prepared.document,
+                            &prepared.attributes,
+                        );
                         let mut mutations: Vec<_> = prepared
                             .resources
                             .into_iter()
@@ -2653,6 +2658,7 @@ impl eframe::App for ProcessCraft {
                         mutations.push(Mutation::CreateDocument {
                             document: prepared.document,
                         });
+                        mutations.extend(plan.mutations);
                         if self.ctl.mutate(mutations) {
                             let snapshot = self.ctl.session.snapshot();
                             if let Some(index) =
@@ -2663,7 +2669,13 @@ impl eframe::App for ProcessCraft {
                                 self.diagram_id = None;
                                 self.select(None);
                             }
-                            self.ctl.error = prepared.report.limitations.join("; ");
+                            self.ctl.error = prepared
+                                .report
+                                .limitations
+                                .into_iter()
+                                .chain(plan.notes)
+                                .collect::<Vec<_>>()
+                                .join("; ");
                         }
                     }
                 }

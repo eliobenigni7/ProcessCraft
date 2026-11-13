@@ -148,7 +148,7 @@ fn invalid(message: impl Into<String>) -> CommandError {
 }
 
 impl AttributeDefinition {
-    pub(crate) fn validate_shape(&self) -> Result<(), CommandError> {
+    pub fn validate_shape(&self) -> Result<(), CommandError> {
         if self.name.trim().is_empty() || self.name.len() > MAX_TEXT {
             return Err(invalid("attribute definition name must be 1..16384 bytes"));
         }

@@ -24,6 +24,12 @@ const BD: &str = "http://www.omg.org/spec/BPMN/20100524/DI";
 const DC: &str = "http://www.omg.org/spec/DD/20100524/DC";
 const DI: &str = "http://www.omg.org/spec/DD/20100524/DI";
 const ANONYMOUS_CONTEXT_MARKER: &str = "data-processcraft-internal-context";
+/// Namespace of the custom attribute values written to `extensionElements` (M5.1b).
+pub const PC_ATTRIBUTES_NS: &str = "urn:processcraft:attributes:1";
+mod attributes;
+pub use attributes::{
+    AttributeImportPlan, ImportedAttributeValue, ImportedAttributes, plan_attribute_import,
+};
 #[derive(Debug)]
 pub struct ImportReport {
     pub editable: bool,
@@ -34,6 +40,8 @@ pub struct PreparedImport {
     pub document: BpmnDocument,
     pub resources: Vec<Resource>,
     pub report: ImportReport,
+    /// Well-formed `pc:attributes` lifted out of the document's extension content.
+    pub attributes: ImportedAttributes,
 }
 /// No mutation or filesystem access occurs until the caller commits this bundle.
 pub fn prepare_import(bytes: &[u8], source_name: &str) -> Result<PreparedImport, ImportError> {
@@ -60,7 +68,7 @@ pub fn prepare_import(bytes: &[u8], source_name: &str) -> Result<PreparedImport,
                         .iter()
                         .any(|a| a.loop_type.is_some() || a.details.is_some())
             }))
-        .then(|| export_document(&document, std::slice::from_ref(&resource), true));
+        .then(|| export_document(&document, std::slice::from_ref(&resource), true, None));
         if let Some(Err(failure)) = check {
             // The export check re-parses its own output; its breadcrumbs are not the reason.
             REFUSAL.with(|r| r.take());
@@ -89,13 +97,23 @@ pub fn prepare_import(bytes: &[u8], source_name: &str) -> Result<PreparedImport,
         source_name: source_name.into(),
     });
     let editable = matches!(doc.capability, Capability::Editable);
+    let mut attribute_limitations = Vec::new();
+    let attributes = if editable {
+        attributes::lift(&mut doc, &mut attribute_limitations)
+    } else {
+        ImportedAttributes::default()
+    };
     Ok(PreparedImport {
         document: doc,
         resources: vec![resource],
+        attributes,
         report: ImportReport {
             editable,
             limitations: if editable {
-                vec!["Qualified BPMN subset; original source retained".into()]
+                let mut limitations =
+                    vec!["Qualified BPMN subset; original source retained".into()];
+                limitations.extend(attribute_limitations);
+                limitations
             } else {
                 let reason = REFUSAL
                     .with(|r| r.take())
@@ -8843,16 +8861,13 @@ pub fn export_bpmn(
         || project
             .dictionary_links
             .iter()
-            .any(|l| l.source.document_id == document_id)
-        // Until `pc:attributes` is written (M5.1b), attribute values are native-only too.
-        || project
-            .attribute_values
-            .iter()
-            .any(|v| v.source.document_id == document_id);
+            .any(|l| l.source.document_id == document_id);
     if has_links && !acknowledge_native_fields {
         return Err(ExportFailure {
             report: ExportReport {
-                omitted: vec!["Project navigation links, dictionary links and attribute values are native-only".into()],
+                omitted: vec![
+                    "Project navigation links and dictionary links are native-only".into(),
+                ],
                 blocked: vec!["Native-only link omission requires acknowledgement".into()],
                 ..ExportReport::default()
             },
@@ -8866,10 +8881,33 @@ pub fn export_bpmn(
             },
         });
     }
-    let mut result = export_document(document, &project.resources, acknowledge_native_fields)?;
+    let values: Vec<_> = project
+        .attribute_values
+        .iter()
+        .filter(|v| v.source.document_id == document_id)
+        .collect();
+    let attributes = attributes::ExportAttributes {
+        definitions: &project.attribute_definitions,
+        entries: &project.dictionary_entries,
+        values,
+    };
+    let mut result = export_document(
+        document,
+        &project.resources,
+        acknowledge_native_fields,
+        Some(&attributes),
+    )?;
     if has_links {
+        result
+            .report
+            .omitted
+            .push("Project navigation links and dictionary links are native-only".into());
+    }
+    if !project.attribute_definitions.is_empty() {
+        // Informational, like the document folder: values carry no `required`,
+        // `applies_to`, description or unused enum options.
         result.report.omitted.push(
-            "Project navigation links, dictionary links and attribute values are native-only"
+            "Attribute definition metadata (description, required, applies_to, unused enum options) and definitions without values are native-only"
                 .into(),
         );
     }
@@ -9285,14 +9323,22 @@ fn export_document(
     document: &BpmnDocument,
     resources: &[Resource],
     acknowledge_native_fields: bool,
+    attributes: Option<&attributes::ExportAttributes>,
 ) -> Result<ExportedBpmn, ExportFailure> {
     let mut report = ExportReport::default();
+    let attributes = attributes.filter(|a| !a.values.is_empty());
     if document.folder.is_some() {
         report
             .omitted
             .push("Document folder is a native-only field".into());
     }
     if let Capability::PreservedSource { source_resource_id } = &document.capability {
+        if attributes.is_some() {
+            report
+                .blocked
+                .push("Attribute values cannot be written into preserved source".into());
+            return Err(ExportFailure { report });
+        }
         if document.folder.is_some() && !acknowledge_native_fields {
             report
                 .blocked
@@ -9374,6 +9420,24 @@ fn export_document(
         );
         return Err(ExportFailure { report });
     }
+    // `original` is what the typed round trip is compared against; `document`
+    // additionally carries the `pc:attributes` elements that are written.
+    let original = document;
+    let injected;
+    let document = if let Some(written) = attributes {
+        let mut copy = document.clone();
+        if let Err(reason) = attributes::inject(&mut copy, written) {
+            report.blocked.push(reason);
+            return Err(ExportFailure { report });
+        }
+        report
+            .transformed
+            .push("Custom attribute values written to the ProcessCraft extension namespace".into());
+        injected = copy;
+        &injected
+    } else {
+        document
+    };
     let Ok(owner_metadata) = collect_owner_metadata(document) else {
         report
             .blocked
@@ -10533,9 +10597,39 @@ fn export_document(
     };
     let reparsed = parse_profile(xml.as_bytes());
     if let Some(parsed) = &reparsed {
+        // With attribute values, both sides are compared without `pc:attributes`
+        // and the values read back must equal the values written.
+        // The same applies when the document keeps `pc:attributes` it could not place.
+        let none = attributes::ExportAttributes {
+            definitions: &[],
+            entries: &[],
+            values: Vec::new(),
+        };
+        let normalized = (attributes.is_some() || xml.contains(PC_ATTRIBUTES_NS)).then(|| {
+            let written = attributes.unwrap_or(&none);
+            let mut expected = original.clone();
+            let kept = attributes::lift(&mut expected, &mut Vec::new());
+            let mut actual = parsed.clone();
+            let read = attributes::lift(&mut actual, &mut Vec::new());
+            (
+                expected,
+                actual,
+                attributes::matches_written(&read, &kept, written),
+            )
+        });
+        if normalized.as_ref().is_some_and(|(_, _, same)| !same) {
+            report.blocked.push(
+                "Attribute values do not survive the BPMN round trip; they are not written".into(),
+            );
+            return Err(ExportFailure { report });
+        }
+        let (expected_document, actual_document) = match &normalized {
+            Some((expected, actual, _)) => (expected, actual),
+            None => (document, parsed),
+        };
         match (
-            crate::interchange_compare::xml_model_value_for_export(document, &namespace),
-            crate::interchange_compare::xml_model_value_for_export(parsed, &namespace),
+            crate::interchange_compare::xml_model_value_for_export(expected_document, &namespace),
+            crate::interchange_compare::xml_model_value_for_export(actual_document, &namespace),
         ) {
             (Ok(expected), Ok(actual)) if expected == actual => {}
             (Ok(expected), Ok(actual)) => {

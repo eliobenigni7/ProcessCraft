@@ -885,17 +885,40 @@ fn import_bpmn_cli(input: &Path, out: &Path, overwrite: bool) -> Result<(), Erro
         .file_stem()
         .and_then(|n| n.to_str())
         .unwrap_or("Imported BPMN");
-    let prepared =
+    let mut prepared =
         processcraft_io::interchange::prepare_import(&bytes, name).map_err(|e| error(3, e))?;
     let editable = prepared.report.editable;
-    let limitations = prepared.report.limitations;
+    let mut limitations = prepared.report.limitations;
     let document_id = prepared.document.id;
     let mut project = ProjectData::new(name.to_owned());
+    // The plan sees the fresh project, so every imported definition is created;
+    // its mutations run through the session like any other change.
+    let plan = processcraft_io::interchange::plan_attribute_import(
+        &project,
+        &mut prepared.document,
+        &prepared.attributes,
+    );
     project
         .documents
         .push(std::sync::Arc::new(prepared.document));
     project.resources = prepared.resources;
     let mut session = Session::new(project).map_err(|e| error(3, format!("{e:?}")))?;
+    if !plan.mutations.is_empty() {
+        let envelope = processcraft_core::commands::Envelope {
+            request_id: "import-attributes".into(),
+            session_id: session.id(),
+            expected_generation: None,
+        };
+        session
+            .apply(
+                envelope,
+                processcraft_core::commands::Request::Batch {
+                    mutations: plan.mutations,
+                },
+            )
+            .map_err(|e| error(3, format!("attribute import failed: {e:?}")))?;
+    }
+    limitations.extend(plan.notes);
     session.mark_unsaved();
     let id = session.id();
     let mut file =

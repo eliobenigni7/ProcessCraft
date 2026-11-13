@@ -2723,27 +2723,21 @@ fn analyst_attributes_round_trip_and_capability_gate() {
     let error = load_bytes(&archive(&contents)).err().unwrap().to_string();
     assert!(error.contains("analyst attributes require capability"));
 
-    // BPMN export does not carry the values yet (M5.1b), so it needs the
-    // native-field acknowledgement and reports the omission.
-    let Err(blocked) = processcraft_io::interchange::export_bpmn(&project, document_id, false)
-    else {
-        panic!("export without acknowledgement is refused");
-    };
-    assert!(
-        blocked
-            .report
-            .omitted
-            .iter()
-            .any(|line| line.contains("attribute values"))
-    );
+    // BPMN export writes the values as `pc:attributes`; only the baseline's
+    // navigation/dictionary links still need the native-field acknowledgement.
+    // Definition metadata the values do not carry is reported as omitted.
     let exported = processcraft_io::interchange::export_bpmn(&project, document_id, true)
         .unwrap_or_else(|failure| panic!("{:?}", failure.report));
+    assert!(
+        String::from_utf8_lossy(&exported.bytes).contains("urn:processcraft:attributes:1"),
+        "values are written"
+    );
     assert!(
         exported
             .report
             .omitted
             .iter()
-            .any(|line| line.contains("attribute values"))
+            .any(|line| line.contains("Attribute definition metadata"))
     );
 
     // The current project's payload is refused without the capability as well.
