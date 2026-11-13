@@ -142,7 +142,14 @@ impl ProcessCraft {
         match self.view {
             1 => {
                 let library = queries::library_search(project, &self.library_filter);
-                ui.heading("Library");
+                ui.horizontal(|ui| {
+                    ui.heading("Library");
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if crate::widgets::primary_button(ui, "New model").clicked() {
+                            self.new_model();
+                        }
+                    });
+                });
                 let folder_label = self
                     .folder_selected
                     .as_ref()
@@ -460,8 +467,25 @@ impl ProcessCraft {
         let mut contents = |ui: &mut egui::Ui| {
             ui.heading("Model details");
             if let Some(doc) = project.documents.get(self.doc) {
-                ui.add_space(12.0);
-                ui.strong(&doc.name);
+                ui.add_space(8.0);
+                let p = self.theme.palette();
+                egui::Frame::new()
+                    .fill(p.canvas)
+                    .stroke(egui::Stroke::new(1.0, p.border))
+                    .corner_radius(crate::theme::RADIUS_CARD)
+                    .show(ui, |ui| {
+                        ui.set_width(ui.available_width());
+                        if doc.diagrams.is_empty() {
+                            ui.add_sized(
+                                [ui.available_width(), 150.0],
+                                egui::Label::new(egui::RichText::new("No diagram").weak()),
+                            );
+                        } else {
+                            self.diagram_preview(ui, 150.0);
+                        }
+                    });
+                ui.add_space(8.0);
+                ui.label(egui::RichText::new(&doc.name).font(crate::theme::semibold(15.0)));
                 ui.label(format!("Capability: {}", capability_label(&doc.capability)));
                 let processes = doc.processes.len();
                 let diagrams = doc.diagrams.len();
@@ -685,11 +709,31 @@ impl ProcessCraft {
     }
 
     fn activity_table_ui(&mut self, ui: &mut egui::Ui, project: &ProjectData) {
-        ui.heading("Activity table");
         let Some(d) = project.documents.get(self.doc) else {
+            ui.heading("Activity table");
             return;
         };
-        ui.label(egui::RichText::new(format!("{} / Activities", d.name)).weak());
+        ui.label(egui::RichText::new(format!("{}  ›  Activities", project.name)).weak());
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new(&d.name).font(crate::theme::semibold(18.0)));
+            ui.add_space(8.0);
+            let p = self.theme.palette();
+            egui::Frame::new()
+                .fill(p.secondary)
+                .corner_radius(crate::theme::RADIUS)
+                .inner_margin(2)
+                .show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.x = 2.0;
+                    ui.horizontal(|ui| {
+                        if super::shell::segment(ui, false, "Model").clicked()
+                            && self.prepare_navigation()
+                        {
+                            self.view = 0;
+                        }
+                        let _ = super::shell::segment(ui, true, "Table");
+                    });
+                });
+        });
         let Some(p) = queries::scopes(d)
             .into_iter()
             .find(|p| self.process_id.as_ref().is_none_or(|id| p.id == id))

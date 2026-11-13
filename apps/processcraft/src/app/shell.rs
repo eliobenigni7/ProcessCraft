@@ -983,7 +983,7 @@ impl ProcessCraft {
             self.commit_all_drafts()
         }
     }
-    fn new_model(&mut self) {
+    pub(super) fn new_model(&mut self) {
         if self.prepare_navigation()
             && self.ctl.mutate(vec![Mutation::CreateDocument {
                 document: controller::blank_document(),
@@ -1010,9 +1010,10 @@ impl ProcessCraft {
                 (1, Icon::Folder, "Library"),
                 (0, Icon::Workflow, "Model"),
                 (2, Icon::Book, "Dictionary"),
-                (3, Icon::Table, "Table"),
             ] {
-                if widgets::icon_button(ui, icon, label, self.view == index).clicked()
+                // Table is a way of looking at the open model, so it lights the Model place.
+                let here = self.view == index || (index == 0 && self.view == 3);
+                if widgets::icon_button(ui, icon, label, here).clicked()
                     && self.prepare_navigation()
                 {
                     self.view = index;
@@ -1940,7 +1941,7 @@ pub(super) fn more_palette_entries() -> Vec<(&'static str, super::canvas::Palett
     ]
 }
 /// One option of a segmented control.
-fn segment(ui: &mut egui::Ui, selected: bool, label: &str) -> egui::Response {
+pub(super) fn segment(ui: &mut egui::Ui, selected: bool, label: &str) -> egui::Response {
     let p = crate::theme::current(ui);
     let text = egui::RichText::new(label).font(crate::theme::medium(12.0));
     ui.add(
@@ -2147,6 +2148,46 @@ mod tests {
             "{settings:?}"
         );
         assert!(settings.iter().any(|l| l == "Appearance"));
+    }
+    #[test]
+    fn rail_has_three_places_and_library_shows_model_details() {
+        let mut app = ProcessCraft::default();
+        let context = egui::Context::default();
+        context.enable_accesskit();
+        app.apply_theme(&context);
+        let labels = |app: &mut ProcessCraft| {
+            let mut output = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1440.0, 900.0))),
+                    ..Default::default()
+                },
+                |ui| app.workbench_ui(ui),
+            );
+            output.textures_delta.clear();
+            let tree = output
+                .platform_output
+                .accesskit_update
+                .expect("accessibility");
+            tree.nodes
+                .iter()
+                .filter_map(|(_, node)| node.label().map(str::to_owned))
+                .collect::<Vec<_>>()
+        };
+        let model = labels(&mut app);
+        for place in ["Library", "Model", "Dictionary"] {
+            assert!(model.iter().any(|l| l == place), "{place}");
+        }
+        // "Table" remains only as the document header's segment, not a rail place.
+        assert_eq!(
+            model.iter().filter(|l| *l == "Table").count(),
+            1,
+            "{model:?}"
+        );
+        app.view = 1;
+        let library = labels(&mut app);
+        for text in ["New model", "Open in modeler", "Move model to…"] {
+            assert!(library.iter().any(|l| l == text), "{text}: {library:?}");
+        }
     }
     #[test]
     fn short_viewport_keeps_canvas_usable_in_both_themes() {

@@ -124,3 +124,22 @@ tests. Native screenshots of the release build (1560×960, sample project from
   section is closed by default, that the menu command opens it in place with no floating window, and
   the Settings dialog sections.
 - **Screenshot:** `step5-inspector.png`.
+
+## 6. Rail and Library
+
+- **Rail:** it now has three places: Library, Model and Dictionary. Table is a way of looking at the
+  open model, so it is only the Model/Table segment of the document header, and the Model place
+  stays lit while Table is shown.
+- **Table view header:** it uses the same breadcrumb, title and segmented control as the model
+  header, so you can return to Model with one click.
+- **Library:**
+  - A primary "New model" button sits in the header.
+  - The Model details pane opens with a framed preview of the model's diagram (the existing
+    non-interactive `diagram_preview`), then the name in SemiBold, its counts, its source,
+    "Open in modeler" and "Move model to…".
+  - The columns stay Name, Folder, Notation and Capability. The model stores no owner or
+    modification date, so those prototype columns were left out rather than filled with invented
+    data.
+- **Test:** `shell::tests::rail_has_three_places_and_library_shows_model_details`.
+- **Screenshot:** `step6-start.png` (empty project, three-place rail and empty canvas state). Library
+  needs a click to reach and is covered by the test.
