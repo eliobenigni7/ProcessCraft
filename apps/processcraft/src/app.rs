@@ -218,6 +218,7 @@ pub struct ProcessCraft {
     dictionary_description: String,
     dictionary_kind: DictionaryKind,
     attributes: attributes::State,
+    conventions: conventions::State,
     selected: Option<ElementSelector>,
     graph_selection: Option<(ElementSelector, ElementSelector, u64)>,
     multi: Vec<ElementSelector>,
@@ -366,6 +367,7 @@ impl Default for ProcessCraft {
             dictionary_description: String::new(),
             dictionary_kind: DictionaryKind::Role,
             attributes: attributes::State::default(),
+            conventions: conventions::State::default(),
             selected: None,
             graph_selection: None,
             multi: vec![],
@@ -4678,6 +4680,7 @@ mod collaboration_associations;
 mod collaboration_connection;
 mod collaboration_participant;
 mod collaboration_root;
+mod conventions;
 mod conversation_details;
 mod correlation;
 mod correlation_keys;

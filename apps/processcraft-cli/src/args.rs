@@ -169,6 +169,12 @@ pub enum Command {
         /// Emit JSON (always the output format).
         #[arg(long)]
         json: bool,
+        /// Evaluate this conventions profile (JSON, same schema as setConventionsProfile) instead of the stored one.
+        #[arg(long, value_name = "FILE")]
+        profile: Option<PathBuf>,
+        /// Severity that makes validate exit 3; errors always do.
+        #[arg(long, value_enum, default_value = "error")]
+        fail_on: FailOn,
     },
     /// Apply a command batch to a new or existing project and save it to --out.
     ///
@@ -295,6 +301,8 @@ pub enum Query {
         document_id: String,
         process_id: String,
     },
+    /// Diagnostics of the stored conventions profile (built-in checks when none is stored).
+    Diagnostics,
     /// Read custom attribute definitions and per-element values of one document.
     Attributes {
         document_id: String,
@@ -304,4 +312,11 @@ pub enum Query {
         document_id: String,
         element_id: String,
     },
+}
+
+/// Lowest diagnostic severity that makes `validate` exit 3.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
+pub enum FailOn {
+    Error,
+    Warning,
 }

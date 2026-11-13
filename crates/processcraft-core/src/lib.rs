@@ -15,6 +15,7 @@ pub mod attributes;
 pub mod clipboard;
 pub mod commands;
 pub mod containers;
+pub mod conventions;
 pub mod geometry;
 mod history;
 

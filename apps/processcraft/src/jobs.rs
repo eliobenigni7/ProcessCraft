@@ -228,6 +228,34 @@ impl DiagnosticsWorker {
     }
 }
 
+#[cfg(test)]
+mod diagnostics_worker_tests {
+    #[test]
+    fn worker_returns_the_diagnostics_of_the_snapshot_including_conventions() {
+        use processcraft_core::conventions::ConventionsProfile;
+        let mut project = crate::controller::blank_project();
+        project.conventions = Some(ConventionsProfile::recommended());
+        let expected = project.diagnostics();
+        assert!(expected.iter().any(|d| d.code.starts_with("convention")));
+        let worker = super::DiagnosticsWorker::new();
+        worker.submit(
+            ("s".into(), 1),
+            std::sync::Arc::new(project),
+            egui::Context::default(),
+        );
+        let started = std::time::Instant::now();
+        let (key, found) = loop {
+            if let Some(result) = worker.poll() {
+                break result;
+            }
+            assert!(started.elapsed().as_secs() < 10, "no worker result");
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        };
+        assert_eq!(key, ("s".to_owned(), 1));
+        assert_eq!(found, expected);
+    }
+}
+
 /// Unit-test UI frames use a private recovery folder, never the desktop user's recovery store.
 pub(crate) fn recovery_location() -> std::path::PathBuf {
     #[cfg(test)]

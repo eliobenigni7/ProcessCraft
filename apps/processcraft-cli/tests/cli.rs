@@ -1338,3 +1338,238 @@ fn mcp_attributes_query_matches_cli_values() {
         serde_json::to_vec(&content["definitions"]).unwrap()
     );
 }
+
+fn conventions_fixture(name: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join(format!("tests/fixtures/conventions/{name}.json"))
+}
+fn conventions_project(t: &Temp, name: &str) -> PathBuf {
+    let out = t.path(&format!("{name}.processcraft"));
+    let result = cli(
+        &[
+            "run".as_ref(),
+            "--new".as_ref(),
+            "Conventions".as_ref(),
+            "--batch".as_ref(),
+            conventions_fixture(name).as_os_str(),
+            "--out".as_ref(),
+            out.as_os_str(),
+        ],
+        &t.0,
+    );
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    out
+}
+fn validate(t: &Temp, project: &Path, extra: &[&std::ffi::OsStr]) -> (i32, serde_json::Value) {
+    let mut args: Vec<&std::ffi::OsStr> =
+        vec!["validate".as_ref(), project.as_os_str(), "--json".as_ref()];
+    args.extend_from_slice(extra);
+    let output = cli(&args, &t.0);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let value = stdout
+        .lines()
+        .next()
+        .map(|line| serde_json::from_str(line).unwrap_or(serde_json::Value::Null))
+        .unwrap_or(serde_json::Value::Null);
+    (output.status.code().unwrap(), value)
+}
+
+const CONVENTION_FAILURES: [&str; 8] = [
+    "fail-label-required",
+    "fail-activity-verb-object",
+    "fail-gateway-flow-label",
+    "fail-no-implicit-split-join",
+    "fail-single-start-end",
+    "fail-max-elements",
+    "fail-required-attributes",
+    "fail-dictionary-terms",
+];
+
+#[test]
+fn validate_reports_diagnostics_and_follows_exit_code_policy() {
+    let t = Temp::new();
+    // A clean project: exit 0, empty diagnostics.
+    let pass = conventions_project(&t, "pass");
+    let (code, value) = validate(&t, &pass, &[]);
+    assert_eq!(code, 0);
+    assert_eq!(value["diagnostics"], serde_json::json!([]));
+    assert_eq!(
+        (value["errorCount"].as_u64(), value["warningCount"].as_u64()),
+        (Some(0), Some(0))
+    );
+    // Error severity: exit 3 and the JSON is still printed.
+    let error = conventions_project(&t, "fail-label-required");
+    let (code, value) = validate(&t, &error, &[]);
+    assert_eq!(code, 3);
+    assert_eq!(
+        (value["errorCount"].as_u64(), value["warningCount"].as_u64()),
+        (Some(1), Some(0))
+    );
+    assert_eq!(value["diagnostics"][0]["code"], "conventionLabelRequired");
+    assert_eq!(value["diagnostics"][0]["severity"], "error");
+    // Warnings alone do not fail, unless --fail-on warning is given.
+    let warning = conventions_project(&t, "fail-gateway-flow-label");
+    let (code, value) = validate(&t, &warning, &[]);
+    assert_eq!(code, 0);
+    assert_eq!(
+        (value["errorCount"].as_u64(), value["warningCount"].as_u64()),
+        (Some(0), Some(1))
+    );
+    let (code, _) = validate(&t, &warning, &["--fail-on".as_ref(), "warning".as_ref()]);
+    assert_eq!(code, 3);
+    let (code, _) = validate(&t, &warning, &["--fail-on".as_ref(), "error".as_ref()]);
+    assert_eq!(code, 0);
+}
+
+#[test]
+fn validate_profile_file_overrides_the_stored_profile() {
+    let t = Temp::new();
+    let pass = conventions_project(&t, "pass");
+    let profile = t.path("profile.json");
+    fs::write(
+        &profile,
+        r#"{"rules":[{"type":"maxElements","severity":"error","limit":5}]}"#,
+    )
+    .unwrap();
+    let (code, value) = validate(&t, &pass, &["--profile".as_ref(), profile.as_os_str()]);
+    assert_eq!(code, 3);
+    assert_eq!(value["diagnostics"][0]["code"], "conventionMaxElements");
+    assert_eq!(value["errorCount"], 1);
+    // The stored profile is not changed by the override.
+    assert_eq!(validate(&t, &pass, &[]).0, 0);
+    // Strict parsing: unknown fields, duplicate keys, bound violations and oversize all exit 2.
+    let refuse = |name: &str, body: Vec<u8>| {
+        let file = t.path(name);
+        fs::write(&file, body).unwrap();
+        let output = cli(
+            &[
+                "validate".as_ref(),
+                pass.as_os_str(),
+                "--profile".as_ref(),
+                file.as_os_str(),
+            ],
+            &t.0,
+        );
+        assert_eq!(output.status.code(), Some(2), "{name}");
+    };
+    refuse("unknown.json", br#"{"rules":[],"extra":1}"#.to_vec());
+    refuse("duplicate.json", br#"{"rules":[],"rules":[]}"#.to_vec());
+    refuse(
+        "bounds.json",
+        br#"{"rules":[{"type":"maxElements","severity":"warning","limit":0}]}"#.to_vec(),
+    );
+    refuse("huge.json", vec![b' '; 4 * 1024 * 1024 + 1]);
+}
+
+fn mcp_diagnostics(t: &Temp, name: &str) -> (serde_json::Value, serde_json::Value) {
+    use std::io::{BufRead, BufReader, Write};
+    use std::process::Stdio;
+    let mut child = Command::new(env!("CARGO_BIN_EXE_processcraft-cli"))
+        .args(["mcp", "--new", "MCP conventions"])
+        .arg("--write-root")
+        .arg(&t.0)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut input = child.stdin.take().unwrap();
+    let mut output = BufReader::new(child.stdout.take().unwrap());
+    let mut call = |value: serde_json::Value| {
+        writeln!(input, "{value}").unwrap();
+        input.flush().unwrap();
+        let mut line = String::new();
+        output.read_line(&mut line).unwrap();
+        serde_json::from_str::<serde_json::Value>(&line).unwrap()
+    };
+    call(
+        serde_json::json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}),
+    );
+    let inspected = call(
+        serde_json::json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"inspect","arguments":{}}}),
+    );
+    let session = inspected["result"]["structuredContent"]["sessionId"]
+        .as_str()
+        .unwrap();
+    let request: serde_json::Value =
+        serde_json::from_slice(&fs::read(conventions_fixture(name)).unwrap()).unwrap();
+    let applied = call(
+        serde_json::json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"apply","arguments":{"sessionId":session,"requestId":"conventions-1","expectedGeneration":0,"request":request}}}),
+    );
+    assert_eq!(
+        applied["result"]["structuredContent"]["ok"], true,
+        "{applied}"
+    );
+    let queried = call(
+        serde_json::json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"query","arguments":{"kind":"diagnostics","offset":0,"limit":100}}}),
+    );
+    let validated = call(
+        serde_json::json!({"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"validate","arguments":{}}}),
+    );
+    drop(input);
+    let _ = child.wait();
+    (
+        queried["result"]["structuredContent"].clone(),
+        validated["result"]["structuredContent"].clone(),
+    )
+}
+
+#[test]
+fn diagnostics_are_identical_across_validate_query_and_mcp() {
+    let t = Temp::new();
+    for name in CONVENTION_FAILURES {
+        let project = conventions_project(&t, name);
+        let (_, validated) = validate(&t, &project, &[]);
+        let from_validate = serde_json::to_string(&validated["diagnostics"]).unwrap();
+        assert!(
+            validated["diagnostics"]
+                .as_array()
+                .is_some_and(|a| !a.is_empty()),
+            "{name} has diagnostics"
+        );
+        let queried = cli(
+            &[
+                "query".as_ref(),
+                project.as_os_str(),
+                "diagnostics".as_ref(),
+            ],
+            &t.0,
+        );
+        assert!(queried.status.success(), "{name}");
+        let queried: serde_json::Value =
+            serde_json::from_slice(queried.stdout.split(|b| *b == b'\n').next().unwrap()).unwrap();
+        assert_eq!(
+            serde_json::to_string(&queried["diagnostics"]).unwrap(),
+            from_validate,
+            "{name}"
+        );
+        assert_eq!(queried["errorCount"], validated["errorCount"], "{name}");
+        let (page, validate_tool) = mcp_diagnostics(&t, name);
+        assert_eq!(
+            serde_json::to_string(&page["items"]).unwrap(),
+            from_validate,
+            "{name} (MCP query)"
+        );
+        assert_eq!(
+            page["total"],
+            validated["diagnostics"].as_array().unwrap().len()
+        );
+        assert_eq!(validate_tool["valid"], true);
+        assert_eq!(
+            validate_tool["errorCount"], validated["errorCount"],
+            "{name}"
+        );
+        assert_eq!(
+            validate_tool["warningCount"], validated["warningCount"],
+            "{name}"
+        );
+    }
+}

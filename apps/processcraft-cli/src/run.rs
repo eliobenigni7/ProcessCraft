@@ -1,4 +1,4 @@
-use crate::args::{Command, Query};
+use crate::args::{Command, FailOn, Query};
 use processcraft_core::{
     commands::{CommandError, Envelope, Request, Session, command_descriptors},
     model::ProjectData,
@@ -85,9 +85,40 @@ fn diagram_ids(document: &processcraft_core::model::BpmnDocument) -> Vec<Value> 
         .map(|d| json!(d.id.selector()))
         .collect()
 }
+/// `diagnostics` array, error and warning counts of one evaluation.
+fn diagnostics_fields(
+    diagnostics: &[processcraft_core::validation::Diagnostic],
+) -> (Value, usize, usize) {
+    use processcraft_core::validation::DiagnosticSeverity::Error;
+    let errors = diagnostics.iter().filter(|d| d.severity == Error).count();
+    (json!(diagnostics), errors, diagnostics.len() - errors)
+}
+fn parse_profile(
+    bytes: &[u8],
+) -> Result<processcraft_core::conventions::ConventionsProfile, Error> {
+    if bytes.len() > 4 * 1024 * 1024 {
+        return Err(error(2, "profile exceeds 4 MiB"));
+    }
+    let mut d = serde_json::Deserializer::from_slice(bytes);
+    Check.deserialize(&mut d).map_err(|e| error(2, e))?;
+    d.end().map_err(|e| error(2, e))?;
+    let profile: processcraft_core::conventions::ConventionsProfile =
+        serde_json::from_slice(bytes).map_err(|e| error(2, e))?;
+    profile.validate().map_err(|e| error(2, format!("{e:?}")))?;
+    Ok(profile)
+}
+/// Result of `validate`: diagnostics fields to merge into the output and the exit decision.
+struct Checks {
+    profile: Option<processcraft_core::conventions::ConventionsProfile>,
+    fail_on: FailOn,
+}
 fn inspect(p: &Path, validate: bool) -> Result<(), Error> {
+    inspect_with(p, validate, None)
+}
+fn inspect_with(p: &Path, validate: bool, checks: Option<Checks>) -> Result<(), Error> {
     let bytes = read(p)?;
-    if is_xml(&bytes) {
+    let mut diagnostics = None;
+    let mut output = if is_xml(&bytes) {
         let imported = bpmn::import_bpmn(&bytes).map_err(|e| error(3, e))?;
         let r = imported.report();
         let name = p
@@ -107,10 +138,14 @@ fn inspect(p: &Path, validate: bool) -> Result<(), Error> {
                 .push(std::sync::Arc::new(prepared.document));
             project.resources = prepared.resources;
             project.validate().map_err(|e| error(3, e))?;
+            if let Some(checks) = &checks {
+                diagnostics = Some(match &checks.profile {
+                    Some(profile) => project.diagnostics_with(profile),
+                    None => project.diagnostics(),
+                });
+            }
         }
-        emit(
-            &json!({"format":"bpmn", "valid":true, "validation":if validate {"structural import checks and core invariants of the prepared import"} else {"not requested"}, "capability":if editable {"editable"} else {"preservedSource"}, "semanticEditsAllowed":editable, "elementCount":r.element_count, "diagramCount":r.diagram_count, "diagrams":diagrams, "limitations":limitations}),
-        );
+        json!({"format":"bpmn", "valid":true, "validation":if validate {"structural import checks and core invariants of the prepared import"} else {"not requested"}, "capability":if editable {"editable"} else {"preservedSource"}, "semanticEditsAllowed":editable, "elementCount":r.element_count, "diagramCount":r.diagram_count, "diagrams":diagrams, "limitations":limitations})
     } else {
         let loaded = native::load_bytes(&bytes)
             .map_err(|e| error(3, format!("invalid native project: {e}")))?;
@@ -124,9 +159,28 @@ fn inspect(p: &Path, validate: bool) -> Result<(), Error> {
             .iter()
             .map(|d| json!({"id":d.id, "name":d.name, "diagrams":diagram_ids(d)}))
             .collect();
-        emit(
-            &json!({"format":"processcraft", "valid":true, "validation":if validate {"native codec and core structural invariants"} else {"not requested"}, "projectId":s.project.id, "name":s.project.name, "documentCount":s.project.documents.len(), "documents":documents, "contentId":hex(&s.content_id), "requiresSaveAsOrBackup":loaded.requires_save_as_or_backup, "warnings":[]}),
-        );
+        if let Some(checks) = &checks {
+            diagnostics = Some(match &checks.profile {
+                Some(profile) => s.project.diagnostics_with(profile),
+                None => s.project.diagnostics(),
+            });
+        }
+        json!({"format":"processcraft", "valid":true, "validation":if validate {"native codec and core structural invariants"} else {"not requested"}, "projectId":s.project.id, "name":s.project.name, "documentCount":s.project.documents.len(), "documents":documents, "contentId":hex(&s.content_id), "requiresSaveAsOrBackup":loaded.requires_save_as_or_backup, "warnings":[]})
+    };
+    let (Some(diagnostics), Some(checks)) = (diagnostics, checks) else {
+        emit(&output);
+        return Ok(());
+    };
+    let (list, errors, warnings) = diagnostics_fields(&diagnostics);
+    output["diagnostics"] = list;
+    output["errorCount"] = json!(errors);
+    output["warningCount"] = json!(warnings);
+    emit(&output);
+    if errors > 0 || (checks.fail_on == FailOn::Warning && warnings > 0) {
+        return Err(error(
+            3,
+            format!("{errors} error and {warnings} warning diagnostics"),
+        ));
     }
     Ok(())
 }
@@ -465,7 +519,17 @@ pub fn execute(command: Command) -> Result<(), Error> {
         ),
         Command::Query { path, query } => query_project(&path, query),
         Command::Info { path, json: _ } => inspect(&path, false),
-        Command::Validate { path, json: _ } => inspect(&path, true),
+        Command::Validate {
+            path,
+            json: _,
+            profile,
+            fail_on,
+        } => {
+            let profile = profile
+                .map(|file| read(&file).and_then(|bytes| parse_profile(&bytes)))
+                .transpose()?;
+            inspect_with(&path, true, Some(Checks { profile, fail_on }))
+        }
         Command::Commands { json: _ } => {
             emit(
                 &json!({"commands":command_descriptors(), "requestSchema":processcraft_core::commands::request_schema()}),
@@ -675,6 +739,10 @@ fn query_project(path: &Path, query: Query) -> Result<(), Error> {
                 .ok_or_else(|| error(3, "process not found"))?;
             let rows: Vec<_> = rows.into_iter().map(|row| json!({"key":row.key,"name":row.name,"lane":row.lane,"role":row.role,"systems":row.systems,"documents":row.documents,"attributes":row.attributes,"outgoing":row.outgoing.into_iter().map(|flow| json!({"id":flow.id,"target":flow.target,"condition":flow.condition})).collect::<Vec<_>>() })).collect();
             json!({"rows":rows})
+        }
+        Query::Diagnostics => {
+            let (list, errors, warnings) = diagnostics_fields(&project.diagnostics());
+            json!({"diagnostics": list, "errorCount": errors, "warningCount": warnings})
         }
         Query::Attributes { document_id } => {
             let document: DocumentId = document_id.parse().map_err(|e| error(2, e))?;

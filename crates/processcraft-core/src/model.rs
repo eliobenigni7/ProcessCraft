@@ -35,6 +35,8 @@ pub struct ProjectData {
     pub attribute_definitions: Vec<crate::attributes::AttributeDefinition>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub attribute_values: Vec<crate::attributes::AttributeAssignment>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub conventions: Option<crate::conventions::ConventionsProfile>,
 }
 impl ProjectData {
     pub fn new(name: String) -> Self {
@@ -53,6 +55,7 @@ impl ProjectData {
             reference_checkpoint: None,
             attribute_definitions: vec![],
             attribute_values: vec![],
+            conventions: None,
         }
     }
 }
@@ -74,6 +77,8 @@ pub struct FrozenProject {
     pub attribute_definitions: Vec<crate::attributes::AttributeDefinition>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub attribute_values: Vec<crate::attributes::AttributeAssignment>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub conventions: Option<crate::conventions::ConventionsProfile>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -98,6 +103,7 @@ impl FrozenProject {
             comments: p.comments.clone(),
             attribute_definitions: p.attribute_definitions.clone(),
             attribute_values: p.attribute_values.clone(),
+            conventions: p.conventions.clone(),
         }
     }
     pub fn project(&self) -> ProjectData {
@@ -114,6 +120,7 @@ impl FrozenProject {
             comments: self.comments.clone(),
             attribute_definitions: self.attribute_definitions.clone(),
             attribute_values: self.attribute_values.clone(),
+            conventions: self.conventions.clone(),
             checkpoints: vec![],
             reference_checkpoint: None,
         }

@@ -787,6 +787,7 @@ impl ProcessCraft {
         }
         self.review_windows(&ctx);
         self.collaboration_windows(&ctx);
+        self.conventions_window(&ctx);
         let window_height = (ctx.content_rect().height() - 64.0).max(100.0);
         let window_width = (ctx.content_rect().width() - 32.0).max(150.0);
         if self.shell.project {
@@ -1675,6 +1676,11 @@ impl ProcessCraft {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if widgets::icon_button_sized(ui, Icon::X, "Close panel", false, 26.0).clicked() {
                     self.shell.bottom = None;
+                }
+                if self.shell.bottom == Some(BottomTab::Problems)
+                    && ui.button("Conventions…").clicked()
+                {
+                    self.open_conventions();
                 }
             });
         });

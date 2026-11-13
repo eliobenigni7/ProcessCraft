@@ -170,6 +170,10 @@ enum Query {
         offset: usize,
         limit: usize,
     },
+    Diagnostics {
+        offset: usize,
+        limit: usize,
+    },
     Usages {
         entry_id: processcraft_core::ids::DictionaryEntryId,
         offset: usize,
@@ -516,7 +520,14 @@ impl Attachment {
             "validate" if req.params == json!({}) => {
                 let s = controller.session.snapshot();
                 match s.project.validate() {
-                    Ok(()) => json!({"valid":true}),
+                    Ok(()) => {
+                        let diagnostics = s.project.diagnostics();
+                        let errors = diagnostics
+                            .iter()
+                            .filter(|d| d.severity == processcraft_core::DiagnosticSeverity::Error)
+                            .count();
+                        json!({"valid":true,"errorCount":errors,"warningCount":diagnostics.len() - errors})
+                    }
                     Err(e) => json!({"valid":false,"error":e.to_string()}),
                 }
             }
@@ -602,6 +613,11 @@ impl Attachment {
                             .into_iter()
                             .map(|v| json!(v))
                             .collect(),
+                        offset,
+                        limit,
+                    ),
+                    Query::Diagnostics { offset, limit } => (
+                        snapshot.project.diagnostics().iter().map(|d| json!(d)).collect(),
                         offset,
                         limit,
                     ),

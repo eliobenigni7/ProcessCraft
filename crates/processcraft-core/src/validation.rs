@@ -598,7 +598,9 @@ fn resource_role_incomplete(role: &crate::bpmn_activity::ResourceRole) -> bool {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 #[serde(rename_all = "camelCase")]
 pub enum DiagnosticSeverity {
     Warning,
@@ -616,6 +618,23 @@ pub struct Diagnostic {
 impl ProjectData {
     /// Reports bounded profile checks and advisory incomplete-model conditions; this is not BPMN certification.
     pub fn diagnostics(&self) -> Vec<Diagnostic> {
+        match &self.conventions {
+            Some(profile) => self.diagnostics_with(profile),
+            None => self.builtin_diagnostics(),
+        }
+    }
+    /// Built-in diagnostics plus the rules of `profile` (the CLI override), with
+    /// the built-ins a rule supersedes removed.
+    pub fn diagnostics_with(
+        &self,
+        profile: &crate::conventions::ConventionsProfile,
+    ) -> Vec<Diagnostic> {
+        let mut results = self.builtin_diagnostics();
+        crate::conventions::drop_superseded(self, profile, &mut results);
+        results.extend(crate::conventions::diagnostics(self, profile));
+        results
+    }
+    fn builtin_diagnostics(&self) -> Vec<Diagnostic> {
         let mut results = Vec::new();
         for doc in &self.documents {
             let mut emit = |id: ElementSelector, code, message: &str| {
