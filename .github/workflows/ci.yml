@@ -1,0 +1,41 @@
+name: CI
+
+# The quality gates from CLAUDE.md, on every push to main and every pull request.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  gates:
+    runs-on: windows-latest
+    env:
+      CARGO_INCREMENTAL: 0
+    steps:
+      - uses: actions/checkout@v4
+      - name: Text hygiene
+        run: python -I scripts/check_text_hygiene.py
+      - name: BPMN inventory
+        run: python -I scripts/generate_bpmn20_inventory.py --check
+      # rust-toolchain.toml pins the toolchain; rustup installs it on first use.
+      - name: Rust toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+      - name: Fetch dependencies
+        run: cargo fetch --locked
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --all-features --locked --offline -- -D warnings
+      - name: Test
+        run: cargo test --workspace --all-targets --all-features --locked --offline

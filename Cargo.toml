@@ -32,3 +32,10 @@ winit = { git = "https://github.com/storytold/winit.git", rev = "a517b3846ee8457
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
+
+# Full debug info made `target` grow past 25 GB; line tables keep backtraces and save the disk.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.test]
+debug = "line-tables-only"

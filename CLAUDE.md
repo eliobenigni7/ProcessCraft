@@ -9,7 +9,7 @@ ProcessCraft is an offline, native Rust desktop workbench for BPMN process model
 Toolchain is pinned to Rust 1.98.1 (`rust-toolchain.toml`, edition 2024). Dependencies include pinned git forks (`storytold/egui`, `storytold/winit`, `craft-libs`); after the first fetch, everything runs with `--locked --offline`.
 
 ```powershell
-# Quality gates (all three are expected to pass before a change is called done)
+# Quality gates (all three are expected to pass before a change is called done; .github/workflows/ci.yml runs them plus scripts/check_text_hygiene.py)
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features --locked --offline -- -D warnings
 cargo test --workspace --all-targets --all-features --locked --offline

@@ -13,7 +13,11 @@ permissions:
   contents: write
 
 jobs:
+  gates:
+    uses: ./.github/workflows/ci.yml
+
   windows:
+    needs: gates
     runs-on: windows-latest
     env:
       WIX_VERSION: 5.0.2
