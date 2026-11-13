@@ -504,7 +504,9 @@ the PNG and PDF agree; without the option exports are unchanged.
 ## Task M5.5: MCP prompt pack
 
 **Own:** new `docs/prompts/` and `tests/fixtures/prompts/`; new
-`apps/processcraft-cli/tests/prompt_pack.rs`. No change under `src/`.
+`apps/processcraft-cli/tests/prompt_pack.rs`. No change under `src/` in the first pass; the
+independent runs then exposed two missing read-only queries (`documents`, `conventions`), added to
+`mcp.rs` and `attachment.rs`.
 
 - [x] Four documents, each usable as plain prompt text and as an agent skill (`SKILL.md` front matter
   with name and description, then the instructions):
@@ -522,11 +524,12 @@ the PNG and PDF agree; without the option exports are unchanged.
   manifest with provenance) replays through a real `processcraft-cli mcp --new` stdio session and
   ends with a project that passes `validate`, has no `error` diagnostics under
   `ConventionsProfile::recommended()` and matches the expected element and attribute counts.
-- [ ] Check (1) lands with the documents. Check (2) needs one real agent run per prompt, the only
-  external dependency in M5. Partly met: the transcripts were recorded by the same subagent that
-  wrote the documents (not independent runs). Independent runs, a fresh agent given only the
-  `SKILL.md` and MCP access, are left to M5.6, and M5 is not closed without them.
-- [ ] Link the pack from `README.md` and the site only after both checks pass. (README only: this repository has no site.) Deferred: check (2) is only partly met until the independent runs of M5.6 exist.
+- [x] Check (1) lands with the documents. Check (2) needs one real agent run per prompt, the only
+  external dependency in M5. Met with independent runs: a fresh Claude Sonnet subagent per prompt,
+  given only its `SKILL.md` and the README, drove a real session through a verbatim relay; the four
+  transcripts are those runs (see `docs/implementation/m5-evidence.md`, M5.5). Not every run
+  achieved its task fully; each transcript records what it did not achieve.
+- [x] Link the pack from `README.md` and the site only after both checks pass. (README only: this repository has no site.)
 
 **Acceptance:** `cargo test -p processcraft-cli --test prompt_pack` passes; the evidence file records
 which agent and date produced each transcript. No statement about model quality is made.

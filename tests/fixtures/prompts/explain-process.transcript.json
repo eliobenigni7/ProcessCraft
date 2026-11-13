@@ -1,112 +1,151 @@
 {
- "prompt": "explain-process",
- "recordedBy": "Claude Sonnet subagent, the same agent that wrote the documents; calls sent through a local driver script (not in the repository); not an independent agent run",
- "recordedOn": "2026-11-13",
- "task": "Explain process 'procurement' of document 11111111-1111-4111-8111-111111111111 to a new colleague: steps, decisions, who is responsible, and what is not recorded. Read only.",
- "setup": {
-  "fixture": "commands/raci.json",
-  "requestId": "setup",
-  "note": "Applied at generation 0 before the agent's first call; it is the input project, not an agent action."
- },
- "calls": [
-  {
-   "tool": "inspect",
-   "arguments": {},
-   "expect": {
+  "prompt": "explain-process",
+  "recordedBy": "independent run 2026-11-13 by a fresh Claude Sonnet subagent given only docs/prompts/explain-process/SKILL.md and docs/prompts/README.md at commit 194475a, task text chosen by the coordinator, calls composed by the agent and forwarded verbatim by a local relay (not in repo)",
+  "recordedOn": "2026-11-13",
+  "task": "Explain the project (built from tests/fixtures/commands/raci.json) without changing it.",
+  "harnessNote": "No shared request directory was used; no call was dropped for ambiguous origin.",
+  "setup": {
+    "fixture": "commands/raci.json",
+    "requestId": "setup",
+    "note": "The agent opened this project from a saved file, so its first call saw generation 0. The replay builds it with one setup batch (generation 1) and shifts every recorded generation by one."
+  },
+  "notAchieved": "Nothing the task asked for was missed: the run is read only, the generation did not change, and it wrote the explanation recorded here. It paged query model four times (one page request was repeated) to reach the structure, because no query listed document and process IDs.",
+  "droppedCalls": [],
+  "calls": [
+    {
+      "tool": "inspect",
+      "arguments": {},
+      "expect": {
+        "documents": 1,
+        "generation": 0
+      }
+    },
+    {
+      "tool": "query",
+      "arguments": {
+        "kind": "diagnostics",
+        "offset": 0,
+        "limit": 100
+      },
+      "expect": {
+        "total": 0
+      }
+    },
+    {
+      "tool": "validate",
+      "arguments": {},
+      "expect": {
+        "valid": true,
+        "errorCount": 0,
+        "warningCount": 0
+      }
+    },
+    {
+      "tool": "query",
+      "arguments": {
+        "kind": "model",
+        "document_id": "11111111-1111-4111-8111-111111111111",
+        "offset": 0,
+        "limit": 100
+      },
+      "expect": {
+        "total": 201
+      }
+    },
+    {
+      "tool": "query",
+      "arguments": {
+        "kind": "table",
+        "document_id": "11111111-1111-4111-8111-111111111111",
+        "process_id": "procurement",
+        "offset": 0,
+        "limit": 50
+      },
+      "expect": {
+        "total": 2
+      }
+    },
+    {
+      "tool": "query",
+      "arguments": {
+        "kind": "raci",
+        "document_id": "11111111-1111-4111-8111-111111111111",
+        "process_id": "procurement",
+        "offset": 0,
+        "limit": 50
+      },
+      "expect": {
+        "total": 2
+      }
+    },
+    {
+      "tool": "query",
+      "arguments": {
+        "kind": "dictionary",
+        "offset": 0,
+        "limit": 50
+      },
+      "expect": {
+        "total": 3
+      }
+    },
+    {
+      "tool": "query",
+      "arguments": {
+        "kind": "attributes",
+        "document_id": "11111111-1111-4111-8111-111111111111",
+        "offset": 0,
+        "limit": 50
+      },
+      "expect": {
+        "total": 2
+      }
+    },
+    {
+      "tool": "query",
+      "arguments": {
+        "kind": "model",
+        "document_id": "11111111-1111-4111-8111-111111111111",
+        "offset": 100,
+        "limit": 100
+      },
+      "expect": {
+        "total": 201
+      }
+    },
+    {
+      "tool": "query",
+      "arguments": {
+        "kind": "model",
+        "document_id": "11111111-1111-4111-8111-111111111111",
+        "offset": 100,
+        "limit": 100
+      },
+      "expect": {
+        "total": 201
+      }
+    },
+    {
+      "tool": "query",
+      "arguments": {
+        "kind": "model",
+        "document_id": "11111111-1111-4111-8111-111111111111",
+        "offset": 200,
+        "limit": 100
+      },
+      "expect": {
+        "total": 201
+      }
+    }
+  ],
+  "answer": "# Procurement process: walkthrough for a new team member\n\nSource: project \"Procurement\", document 11111111-1111-4111-8111-111111111111, process `procurement`, generation 0 (unchanged during this review). Everything below comes from query results; nothing was modified.\n\n## What happens\n1. **Request received** (start event) in the lane \"Request and review\".\n2. **Review request** (user task, same lane). A person reviews the request.\n3. **Approved?** (exclusive gateway, same lane) decides on two branches:\n   - \"Approved\", condition `approved`: go to **Place order**.\n   - \"Rejected\", condition `not approved`: go straight to **Complete**.\n4. **Place order** (plain task, lane \"Procurement\"), then **Complete** (end event, lane \"Procurement\").\n\nBoth branches end in the same end event, \"Complete\".\n\n## Who is responsible (as recorded in the model)\nThe lane \"Request and review\" has the role Requester. The lane \"Procurement\" has the role Procurement.\n\n| Activity | Responsible | Accountable | Consulted | Informed |\n|---|---|---|---|---|\n| Review request | Requester | Procurement | Finance manager | Legal (free-text label, not a dictionary entry) |\n| Place order | Procurement | Procurement | Requester | Finance manager |\n\nThe dictionary holds three roles: Requester, Procurement and Finance manager. No systems or documents are linked to either activity. Owner and contact fields are empty on every element. Durations, costs and system names are not recorded.\n\n## Anything that looks off\n- Legal is Informed on Review request but is only a typed label, not a dictionary role, so it cannot be reused or checked.\n- Review request: Procurement is Accountable while the Requester does the work. That may be intended, but it is unusual that the requester reviews their own request. Who actually approves is not recorded.\n- Rejected requests end in \"Complete\", the same end event as completed orders. Nothing tells the requester about a rejection, and the end event does not distinguish the outcomes.\n- The gateway conditions are free text (\"approved\" / \"not approved\"), and there is no default flow. This is a modeling choice, not a diagnostic.\n- Place order has Procurement as both Responsible and Accountable. The Finance manager is only Informed, so no one is recorded as checking budget before ordering.\n\n## Checks\n`diagnostics` returned 0 findings and `validate` returned valid with 0 errors and 0 warnings. These are advisory checks of this application under the stored profile, not a statement of BPMN conformance or correctness.",
+  "expected": {
     "documents": 1,
-    "generation": 1
-   }
-  },
-  {
-   "tool": "query",
-   "arguments": {
-    "kind": "model",
-    "document_id": "11111111-1111-4111-8111-111111111111",
-    "offset": 0,
-    "limit": 100
-   },
-   "expect": {
-    "total": 201
-   }
-  },
-  {
-   "tool": "query",
-   "arguments": {
-    "kind": "table",
-    "document_id": "11111111-1111-4111-8111-111111111111",
-    "process_id": "procurement",
-    "offset": 0,
-    "limit": 50
-   },
-   "expect": {
-    "total": 2
-   }
-  },
-  {
-   "tool": "query",
-   "arguments": {
-    "kind": "raci",
-    "document_id": "11111111-1111-4111-8111-111111111111",
-    "process_id": "procurement",
-    "offset": 0,
-    "limit": 50
-   },
-   "expect": {
-    "total": 2
-   }
-  },
-  {
-   "tool": "query",
-   "arguments": {
-    "kind": "dictionary",
-    "offset": 0,
-    "limit": 50
-   },
-   "expect": {
-    "total": 3
-   }
-  },
-  {
-   "tool": "query",
-   "arguments": {
-    "kind": "attributes",
-    "document_id": "11111111-1111-4111-8111-111111111111",
-    "offset": 0,
-    "limit": 50
-   },
-   "expect": {
-    "total": 2
-   }
-  },
-  {
-   "tool": "query",
-   "arguments": {
-    "kind": "diagnostics",
-    "offset": 0,
-    "limit": 50
-   },
-   "expect": {
-    "total": 0
-   }
-  },
-  {
-   "tool": "validate",
-   "arguments": {},
-   "expect": {
-    "valid": true,
-    "errorCount": 0,
-    "warningCount": 0
-   }
+    "nodes": 5,
+    "flows": 5,
+    "lanes": 2,
+    "attributeValues": 6,
+    "attributeDefinitions": 3,
+    "recommendedWarnings": 2
   }
- ],
- "answer": "Procurement starts when a request is received (start event 'Request received'). The step 'Review request' (a user task in the lane 'Request and review', whose role is Requester) leads to the exclusive gateway 'Approved?'. Its flow 'Approved' (condition 'approved') goes to 'Place order' (a task in the lane 'Procurement'); its flow 'Rejected' (condition 'not approved') goes straight to the end event 'Complete'. 'Place order' also ends in 'Complete'. Responsibilities as recorded in the RACI attributes. Review request: Requester Responsible, Procurement Accountable, Finance manager Consulted, Legal Informed (Legal is an unlinked literal, not in the dictionary). Place order: Procurement is both Responsible and Accountable, Requester Consulted, Finance manager Informed. Not recorded: durations, costs, systems and documents (the table shows none), and any attribute other than the three RACI ones. The stored profile gives no findings, and validate reports 0 errors and 0 warnings; that is a statement about those checks, not about BPMN conformance.",
- "expected": {
-  "documents": 1,
-  "nodes": 5,
-  "flows": 5,
-  "lanes": 2,
-  "attributeValues": 6,
-  "attributeDefinitions": 3,
-  "recommendedWarnings": 2
- }
 }

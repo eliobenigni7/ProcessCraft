@@ -250,6 +250,42 @@ pub fn scopes(document: &BpmnDocument) -> Vec<ScopeRef<'_>> {
     }
     result
 }
+/// One row per document for the `documents` query: the ids a client needs before it can ask
+/// per-document or per-process questions. Subprocess scopes are listed beside the processes
+/// because they are valid `processId`s for table/RACI queries.
+pub fn document_overview(project: &ProjectData) -> Vec<serde_json::Value> {
+    use crate::model::Capability;
+    project
+        .documents
+        .iter()
+        .map(|d| {
+            let capability = match &d.capability {
+                Capability::Editable => "editable",
+                Capability::RetainedExtensions { .. } => "retainedExtensions",
+                Capability::PreservedSource { .. } => "preservedSource",
+            };
+            let processes: Vec<_> = scopes(d)
+                .into_iter()
+                .map(|s| {
+                    let top = d.processes.iter().any(|p| p.id == *s.id);
+                    serde_json::json!({
+                        "id": s.id.selector(),
+                        "name": s.name,
+                        "kind": if top { "process" } else { "subProcess" },
+                        "lanes": s.lanes.iter().map(|l| serde_json::json!({"id": l.id.selector(), "name": l.name})).collect::<Vec<_>>(),
+                    })
+                })
+                .collect();
+            serde_json::json!({
+                "id": d.id,
+                "name": d.name,
+                "capability": capability,
+                "editable": d.capability.allows_structural_editing(),
+                "processes": processes,
+            })
+        })
+        .collect()
+}
 pub fn find_node<'a>(document: &'a BpmnDocument, id: &ElementSelector) -> Option<&'a Node> {
     scopes(document)
         .into_iter()

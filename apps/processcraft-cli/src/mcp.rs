@@ -220,6 +220,13 @@ enum Query {
         offset: usize,
         limit: usize,
     },
+    /// Documents with their ids, capability and processes (id, name, lanes).
+    Documents {
+        offset: usize,
+        limit: usize,
+    },
+    /// The stored conventions profile, or null.
+    Conventions {},
     Dictionary {
         offset: usize,
         limit: usize,
@@ -443,6 +450,14 @@ impl ServerHandler for Server {
                         offset,
                         limit,
                     ),
+                    Query::Documents { offset, limit } => (
+                        processcraft_core::queries::document_overview(&snapshot.project),
+                        offset,
+                        limit,
+                    ),
+                    Query::Conventions {} => {
+                        return Ok(CallToolResult::structured(json!({"conventions":snapshot.project.conventions})).into());
+                    }
                     Query::Diagnostics { offset, limit } => (
                         snapshot.project.diagnostics().iter().map(|d| json!(d)).collect(),
                         offset,

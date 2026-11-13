@@ -13,7 +13,9 @@ live schemas.
 
 - A session on the project to review (`--in <file>`, or attached to the desktop app).
 - Which profile to review against: the profile stored in the project, or "the recommended profile"
-  (the user must say so; setting a profile changes project content).
+  (the user must say so; setting a profile changes project content). If the user said neither,
+  review under the stored profile and, if the project has none, report that and ask; in an
+  autonomous run use the recommended profile only when the task text says to.
 - Permission to edit. If the user only asked for a review, stop after step 4 and report.
 
 The eight rules: `labelRequired`, `activityVerbObject` (word-list heuristic, see below),
@@ -24,34 +26,47 @@ and `conventionRequiredAttribute`, a `severity`, the `documentId` and the `eleme
 ## Tool sequence
 
 1. `inspect`: note `sessionId` and `generation`.
-2. `query` `diagnostics`: the findings under the stored profile. Page until `nextOffset` is `null`.
+2. `query` `conventions` shows the stored profile (`null` when there is none) and `query`
+   `diagnostics` the findings under it. Page diagnostics until `nextOffset` is `null`. `query`
+   `documents` gives the document and process IDs if you need them for `table` or `model`.
 3. If the user asked for the recommended profile, `apply` `setConventionsProfile` with it (see the
    example), then `query` `diagnostics` again. If the project has no stored profile, only the
    built-in advisory findings appear until a profile is set.
 4. Group the findings by code and element. For each, decide: fix, or report.
    - Fix when the correction follows from the model itself: an activity label that is a noun
      phrase of a step that is clearly "Notify requester" and not "Requester notification"; a
-     gateway flow whose sibling already carries "Approved" and whose target is a rejection.
+     gateway flow whose sibling already carries "Approved" and whose target is a rejection. A
+     rename for the verb-object rule is allowed when it keeps the meaning and only reorders or
+     replaces the verb; it is not allowed when the label is the user's own wording.
    - Report, do not fix: a missing attribute value, a role that is not in the dictionary, a model
      over `maxElements`, a missing end event, anything where the correction is a business decision.
 5. `apply` the fixes as one batch (`rename` for labels and flow names), with `expectedGeneration`
    from the last result.
 6. `query` `diagnostics` and `validate` again. The answer is the before and after counts, what you
-   changed (old and new text), and what remains with the reason.
+   changed (old and new text), and what remains with the reason. If the stored profile was not
+   readable or there was none, say which profile the numbers refer to.
 
-`activityVerbObject` checks the first word against a built-in verb list. It can flag a correct
-label whose verb is not in the list and miss a bad label that happens to start with a listed
-word. Say so in the report, and do not rename a label the user wrote deliberately just to satisfy it.
+`activityVerbObject` checks the first word against a built-in English verb list (used when the
+rule's `verbs` is empty). It can flag a correct label whose verb is not in the list (including
+any label in another language) and miss a bad label that happens to start with a listed word.
+Say so in the report, and do not rename a label the user wrote deliberately just to satisfy it;
+extending the list is a profile change, which needs permission.
+
+Findings you can act on are in the model's own words. A parallel gateway never needs flow labels
+(only exclusive and inclusive splits are checked). `conventionEndCount` asks for exactly one end
+event; merging end events changes the process, so report it. A finding row with
+`elementId` equal to the process ID is about the whole process.
 
 ## Worked example
 
-Review against the recommended profile (the stored profile checks only `activityVerbObject`):
+The project was opened from a file, so the first `inspect` shows generation 0. Review against the
+recommended profile (the stored profile checks only `activityVerbObject`):
 
 ```json tool=apply
 {
   "sessionId": "00000000-0000-4000-8000-000000000000",
   "requestId": "review-profile",
-  "expectedGeneration": 1,
+  "expectedGeneration": 0,
   "request": {
     "type": "batch",
     "mutations": [
@@ -82,14 +97,15 @@ A finding row (use `documentId` and `elementId` exactly as returned):
 {"code": "conventionActivityVerbObject", "documentId": "44444444-4444-4444-8444-444444444444", "elementId": "notify", "severity": "warning", "message": "Activity label should be a verb followed by an object. This is a word-list heuristic; the first word is checked against the verb list."}
 ```
 
-Fix it. The activity currently reads "Requester notification"; its lane and neighbours show it is
-the step that tells the requester the outcome:
+Each successful `apply` returns the new generation; the fix uses it (here 1, after the profile
+batch). Fix the finding. The activity currently reads "Requester notification"; its lane and
+neighbours show it is the step that tells the requester the outcome:
 
 ```json tool=apply
 {
   "sessionId": "00000000-0000-4000-8000-000000000000",
   "requestId": "review-fix-notify",
-  "expectedGeneration": 2,
+  "expectedGeneration": 1,
   "request": {
     "type": "batch",
     "mutations": [

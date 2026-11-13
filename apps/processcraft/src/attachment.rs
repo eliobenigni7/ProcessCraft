@@ -171,6 +171,11 @@ enum Query {
         offset: usize,
         limit: usize,
     },
+    Documents {
+        offset: usize,
+        limit: usize,
+    },
+    Conventions {},
     Dictionary {
         offset: usize,
         limit: usize,
@@ -627,6 +632,14 @@ impl Attachment {
                         offset,
                         limit,
                     ),
+                    Query::Documents { offset, limit } => (
+                        processcraft_core::queries::document_overview(&snapshot.project),
+                        offset,
+                        limit,
+                    ),
+                    Query::Conventions {} => {
+                        return json!({"conventions":snapshot.project.conventions});
+                    }
                     Query::Diagnostics { offset, limit } => (
                         snapshot.project.diagnostics().iter().map(|d| json!(d)).collect(),
                         offset,

@@ -1,290 +1,394 @@
 {
- "prompt": "text-to-model",
- "recordedBy": "Claude Sonnet subagent, the same agent that wrote the documents; calls sent through a local driver script (not in the repository); not an independent agent run",
- "recordedOn": "2026-11-13",
- "task": "Process description given to the agent: 'An invoice arrives and is checked. If the amount is above 1000 it needs approval; otherwise it goes straight on. Then it is paid and the process ends.' Build it as a new model and check it against the recommended conventions.",
- "setup": null,
- "calls": [
-  {
-   "tool": "inspect",
-   "arguments": {},
-   "expect": {
-    "documents": 0,
-    "generation": 0
-   }
-  },
-  {
-   "tool": "query",
-   "arguments": {
-    "kind": "dictionary",
-    "offset": 0,
-    "limit": 50
-   },
-   "expect": {
-    "total": 0
-   }
-  },
-  {
-   "tool": "apply",
-   "arguments": {
-    "sessionId": "${sessionId}",
-    "requestId": "invoice-model-1",
-    "expectedGeneration": 0,
-    "request": {
-     "type": "batch",
-     "mutations": [
-      {
-       "type": "createDocument",
-       "document": {
-        "id": "aaaaaaaa-0000-4000-8000-000000000001",
-        "name": "Invoice approval",
-        "folder": null,
-        "definitions_id": "defs",
-        "processes": [],
-        "collaboration": null,
-        "diagrams": [],
-        "provenance": null,
-        "capability": "Editable"
-       }
-      },
-      {
-       "type": "createProcess",
-       "document_id": "aaaaaaaa-0000-4000-8000-000000000001",
-       "process": {
-        "id": "invoice",
-        "name": "Invoice approval",
-        "documentation": "",
-        "nodes": [],
-        "lanes": [],
-        "flows": []
-       }
-      },
-      {
-       "type": "createDiagram",
-       "document_id": "aaaaaaaa-0000-4000-8000-000000000001",
-       "diagram": {
-        "id": "invoice_diagram",
-        "plane_id": "invoice_plane",
-        "plane": "invoice",
-        "shapes": [],
-        "edges": []
-       }
-      },
-      {
-       "type": "createAt",
-       "document_id": "aaaaaaaa-0000-4000-8000-000000000001",
-       "diagram_id": "invoice_diagram",
-       "kind": "StartEvent",
-       "name": "Invoice received",
-       "center": {
-        "x": 100,
-        "y": 120
-       },
-       "node_id": "start",
-       "shape_id": "start_shape"
-      },
-      {
-       "type": "append",
-       "document_id": "aaaaaaaa-0000-4000-8000-000000000001",
-       "diagram_id": "invoice_diagram",
-       "source_id": "start",
-       "kind": "UserTask",
-       "name": "Check invoice",
-       "node_id": "check",
-       "shape_id": "check_shape",
-       "flow_id": "f_start_check",
-       "edge_id": "f_start_check_edge"
-      },
-      {
-       "type": "append",
-       "document_id": "aaaaaaaa-0000-4000-8000-000000000001",
-       "diagram_id": "invoice_diagram",
-       "source_id": "check",
-       "kind": "ExclusiveGateway",
-       "name": "Amount above 1000?",
-       "node_id": "big",
-       "shape_id": "big_shape",
-       "flow_id": "f_check_big",
-       "edge_id": "f_check_big_edge"
-      },
-      {
-       "type": "append",
-       "document_id": "aaaaaaaa-0000-4000-8000-000000000001",
-       "diagram_id": "invoice_diagram",
-       "source_id": "big",
-       "kind": "UserTask",
-       "name": "Approve invoice",
-       "node_id": "approve",
-       "shape_id": "approve_shape",
-       "flow_id": "f_big_approve",
-       "edge_id": "f_big_approve_edge"
-      },
-      {
-       "type": "append",
-       "document_id": "aaaaaaaa-0000-4000-8000-000000000001",
-       "diagram_id": "invoice_diagram",
-       "source_id": "approve",
-       "kind": "ExclusiveGateway",
-       "name": "Routes joined",
-       "node_id": "join",
-       "shape_id": "join_shape",
-       "flow_id": "f_approve_join",
-       "edge_id": "f_approve_join_edge"
-      },
-      {
-       "type": "connect",
-       "document_id": "aaaaaaaa-0000-4000-8000-000000000001",
-       "diagram_id": "invoice_diagram",
-       "source_id": "big",
-       "target_id": "join",
-       "flow_id": "f_big_join",
-       "edge_id": "f_big_join_edge"
-      },
-      {
-       "type": "append",
-       "document_id": "aaaaaaaa-0000-4000-8000-000000000001",
-       "diagram_id": "invoice_diagram",
-       "source_id": "join",
-       "kind": "ServiceTask",
-       "name": "Pay invoice",
-       "node_id": "pay",
-       "shape_id": "pay_shape",
-       "flow_id": "f_join_pay",
-       "edge_id": "f_join_pay_edge"
-      },
-      {
-       "type": "append",
-       "document_id": "aaaaaaaa-0000-4000-8000-000000000001",
-       "diagram_id": "invoice_diagram",
-       "source_id": "pay",
-       "kind": "EndEvent",
-       "name": "Invoice paid",
-       "node_id": "end",
-       "shape_id": "end_shape",
-       "flow_id": "f_pay_end",
-       "edge_id": "f_pay_end_edge"
-      },
-      {
-       "type": "rename",
-       "document_id": "aaaaaaaa-0000-4000-8000-000000000001",
-       "element_id": "f_big_approve",
-       "name": "Yes"
-      },
-      {
-       "type": "rename",
-       "document_id": "aaaaaaaa-0000-4000-8000-000000000001",
-       "element_id": "f_big_join",
-       "name": "No"
-      }
-     ]
+  "prompt": "text-to-model",
+  "recordedBy": "independent run 2026-11-13 by a fresh Claude Sonnet subagent given only docs/prompts/text-to-model/SKILL.md and docs/prompts/README.md at commit 194475a, task text chosen by the coordinator, calls composed by the agent and forwarded verbatim by a local relay (not in repo)",
+  "recordedOn": "2026-11-13",
+  "task": "Model this as a new process in a new document: When a new hire's contract is signed, HR creates the employee record. In parallel, IT prepares a laptop and accounts while the manager plans the first week. When both are ready, the employee has an onboarding day; if the onboarding checklist is incomplete, HR follows up, otherwise onboarding is closed.",
+  "harnessNote": "Harness flaw: the text-to-model and review-conventions agents wrote request files into a shared directory, so a few read calls (query dictionary and query diagnostics, JSON-RPC ids 4 and 10) may have been forwarded to the other session. Every apply and save carried its own run's sessionId and requestId, so state changes are not affected. Those reads are kept and marked originAmbiguous; their replies match the state of the session they are recorded in.",
+  "setup": null,
+  "notAchieved": "Recorded no actors or lanes (the description names HR, IT and the manager); invented a second end event ('Follow-up started') so the process ends with two end events and the stored recommended profile still reports conventionEndCount; renamed 'Follow up with employee' to 'Contact employee about open checklist items' to satisfy the verb-object heuristic.",
+  "droppedCalls": [
+    {
+      "jsonRpcId": 16,
+      "tool": "save",
+      "reason": "file effect, not replayed; reply status committed, ok true, expectedGeneration 3"
     }
-   },
-   "expect": {
-    "ok": true
-   }
-  },
-  {
-   "tool": "query",
-   "arguments": {
-    "kind": "diagnostics",
-    "offset": 0,
-    "limit": 50
-   },
-   "expect": {
-    "total": 0
-   }
-  },
-  {
-   "tool": "apply",
-   "arguments": {
-    "sessionId": "${sessionId}",
-    "requestId": "invoice-profile",
-    "expectedGeneration": 1,
-    "request": {
-     "type": "batch",
-     "mutations": [
-      {
-       "type": "setConventionsProfile",
-       "profile": {
-        "rules": [
-         {
-          "type": "labelRequired",
-          "severity": "warning",
-          "kinds": [
-           "Activity",
-           "Event",
-           "Lane",
-           "Participant"
+  ],
+  "calls": [
+    {
+      "tool": "inspect",
+      "arguments": {},
+      "expect": {
+        "documents": 0,
+        "generation": 0
+      }
+    },
+    {
+      "tool": "query",
+      "arguments": {
+        "kind": "diagnostics",
+        "offset": 0,
+        "limit": 50
+      },
+      "expect": {
+        "total": 0
+      },
+      "originAmbiguous": true
+    },
+    {
+      "tool": "query",
+      "arguments": {
+        "kind": "dictionary",
+        "offset": 0,
+        "limit": 50
+      },
+      "expect": {
+        "total": 0
+      },
+      "originAmbiguous": true
+    },
+    {
+      "tool": "apply",
+      "arguments": {
+        "sessionId": "${sessionId}",
+        "requestId": "onboarding-model-1",
+        "expectedGeneration": 0,
+        "request": {
+          "type": "batch",
+          "mutations": [
+            {
+              "type": "createDocument",
+              "document": {
+                "id": "3f1c2a10-7b5d-4c1e-9a2b-5d6e7f809a01",
+                "name": "Employee onboarding",
+                "folder": null,
+                "definitions_id": "defs",
+                "processes": [],
+                "collaboration": null,
+                "diagrams": [],
+                "provenance": null,
+                "capability": "Editable"
+              }
+            },
+            {
+              "type": "createProcess",
+              "document_id": "3f1c2a10-7b5d-4c1e-9a2b-5d6e7f809a01",
+              "process": {
+                "id": "onboarding",
+                "name": "Employee onboarding",
+                "documentation": "",
+                "nodes": [],
+                "lanes": [],
+                "flows": []
+              }
+            },
+            {
+              "type": "createDiagram",
+              "document_id": "3f1c2a10-7b5d-4c1e-9a2b-5d6e7f809a01",
+              "diagram": {
+                "id": "onboarding_diagram",
+                "plane_id": "onboarding_plane",
+                "plane": "onboarding",
+                "shapes": [],
+                "edges": []
+              }
+            },
+            {
+              "type": "createAt",
+              "document_id": "3f1c2a10-7b5d-4c1e-9a2b-5d6e7f809a01",
+              "diagram_id": "onboarding_diagram",
+              "kind": "StartEvent",
+              "name": "Contract signed",
+              "center": {
+                "x": 100,
+                "y": 200
+              },
+              "node_id": "start",
+              "shape_id": "start_shape"
+            },
+            {
+              "type": "append",
+              "document_id": "3f1c2a10-7b5d-4c1e-9a2b-5d6e7f809a01",
+              "diagram_id": "onboarding_diagram",
+              "source_id": "start",
+              "kind": "UserTask",
+              "name": "Create employee record",
+              "node_id": "record",
+              "shape_id": "record_shape",
+              "flow_id": "f_start_record",
+              "edge_id": "f_start_record_edge"
+            },
+            {
+              "type": "append",
+              "document_id": "3f1c2a10-7b5d-4c1e-9a2b-5d6e7f809a01",
+              "diagram_id": "onboarding_diagram",
+              "source_id": "record",
+              "kind": "ParallelGateway",
+              "name": "Start preparation",
+              "node_id": "split",
+              "shape_id": "split_shape",
+              "flow_id": "f_record_split",
+              "edge_id": "f_record_split_edge"
+            },
+            {
+              "type": "append",
+              "document_id": "3f1c2a10-7b5d-4c1e-9a2b-5d6e7f809a01",
+              "diagram_id": "onboarding_diagram",
+              "source_id": "split",
+              "kind": "UserTask",
+              "name": "Prepare laptop and accounts",
+              "node_id": "it_prep",
+              "shape_id": "it_prep_shape",
+              "flow_id": "f_split_it",
+              "edge_id": "f_split_it_edge"
+            },
+            {
+              "type": "append",
+              "document_id": "3f1c2a10-7b5d-4c1e-9a2b-5d6e7f809a01",
+              "diagram_id": "onboarding_diagram",
+              "source_id": "split",
+              "kind": "UserTask",
+              "name": "Plan first week",
+              "node_id": "week_plan",
+              "shape_id": "week_plan_shape",
+              "flow_id": "f_split_week",
+              "edge_id": "f_split_week_edge"
+            },
+            {
+              "type": "append",
+              "document_id": "3f1c2a10-7b5d-4c1e-9a2b-5d6e7f809a01",
+              "diagram_id": "onboarding_diagram",
+              "source_id": "it_prep",
+              "kind": "ParallelGateway",
+              "name": "Both ready",
+              "node_id": "join",
+              "shape_id": "join_shape",
+              "flow_id": "f_it_join",
+              "edge_id": "f_it_join_edge"
+            },
+            {
+              "type": "connect",
+              "document_id": "3f1c2a10-7b5d-4c1e-9a2b-5d6e7f809a01",
+              "diagram_id": "onboarding_diagram",
+              "source_id": "week_plan",
+              "target_id": "join",
+              "flow_id": "f_week_join",
+              "edge_id": "f_week_join_edge"
+            },
+            {
+              "type": "append",
+              "document_id": "3f1c2a10-7b5d-4c1e-9a2b-5d6e7f809a01",
+              "diagram_id": "onboarding_diagram",
+              "source_id": "join",
+              "kind": "UserTask",
+              "name": "Hold onboarding day",
+              "node_id": "day",
+              "shape_id": "day_shape",
+              "flow_id": "f_join_day",
+              "edge_id": "f_join_day_edge"
+            },
+            {
+              "type": "append",
+              "document_id": "3f1c2a10-7b5d-4c1e-9a2b-5d6e7f809a01",
+              "diagram_id": "onboarding_diagram",
+              "source_id": "day",
+              "kind": "ExclusiveGateway",
+              "name": "Checklist complete?",
+              "node_id": "check",
+              "shape_id": "check_shape",
+              "flow_id": "f_day_check",
+              "edge_id": "f_day_check_edge"
+            },
+            {
+              "type": "append",
+              "document_id": "3f1c2a10-7b5d-4c1e-9a2b-5d6e7f809a01",
+              "diagram_id": "onboarding_diagram",
+              "source_id": "check",
+              "kind": "UserTask",
+              "name": "Follow up with employee",
+              "node_id": "followup",
+              "shape_id": "followup_shape",
+              "flow_id": "f_check_followup",
+              "edge_id": "f_check_followup_edge"
+            },
+            {
+              "type": "append",
+              "document_id": "3f1c2a10-7b5d-4c1e-9a2b-5d6e7f809a01",
+              "diagram_id": "onboarding_diagram",
+              "source_id": "followup",
+              "kind": "EndEvent",
+              "name": "Follow-up started",
+              "node_id": "end_followup",
+              "shape_id": "end_followup_shape",
+              "flow_id": "f_followup_end",
+              "edge_id": "f_followup_end_edge"
+            },
+            {
+              "type": "append",
+              "document_id": "3f1c2a10-7b5d-4c1e-9a2b-5d6e7f809a01",
+              "diagram_id": "onboarding_diagram",
+              "source_id": "check",
+              "kind": "EndEvent",
+              "name": "Onboarding closed",
+              "node_id": "end_closed",
+              "shape_id": "end_closed_shape",
+              "flow_id": "f_check_closed",
+              "edge_id": "f_check_closed_edge"
+            },
+            {
+              "type": "rename",
+              "document_id": "3f1c2a10-7b5d-4c1e-9a2b-5d6e7f809a01",
+              "element_id": "f_check_followup",
+              "name": "No"
+            },
+            {
+              "type": "rename",
+              "document_id": "3f1c2a10-7b5d-4c1e-9a2b-5d6e7f809a01",
+              "element_id": "f_check_closed",
+              "name": "Yes"
+            }
           ]
-         },
-         {
-          "type": "activityVerbObject",
-          "severity": "warning",
-          "verbs": []
-         },
-         {
-          "type": "gatewayFlowsLabelled",
-          "severity": "warning"
-         },
-         {
-          "type": "noImplicitSplitJoin",
-          "severity": "warning"
-         },
-         {
-          "type": "singleStartEnd",
-          "severity": "warning"
-         },
-         {
-          "type": "maxElements",
-          "severity": "warning",
-          "limit": 50
-         },
-         {
-          "type": "requiredAttributes",
-          "severity": "warning"
-         },
-         {
-          "type": "dictionaryTerms",
-          "severity": "warning"
-         }
-        ]
-       }
+        }
+      },
+      "expect": {
+        "ok": true,
+        "generation": 1
       }
-     ]
+    },
+    {
+      "tool": "apply",
+      "arguments": {
+        "sessionId": "${sessionId}",
+        "requestId": "onboarding-profile-1",
+        "expectedGeneration": 1,
+        "request": {
+          "type": "batch",
+          "mutations": [
+            {
+              "type": "setConventionsProfile",
+              "profile": {
+                "rules": [
+                  {
+                    "type": "labelRequired",
+                    "severity": "warning",
+                    "kinds": [
+                      "Activity",
+                      "Event",
+                      "Lane",
+                      "Participant"
+                    ]
+                  },
+                  {
+                    "type": "activityVerbObject",
+                    "severity": "warning",
+                    "verbs": []
+                  },
+                  {
+                    "type": "gatewayFlowsLabelled",
+                    "severity": "warning"
+                  },
+                  {
+                    "type": "noImplicitSplitJoin",
+                    "severity": "warning"
+                  },
+                  {
+                    "type": "singleStartEnd",
+                    "severity": "warning"
+                  },
+                  {
+                    "type": "maxElements",
+                    "severity": "warning",
+                    "limit": 50
+                  },
+                  {
+                    "type": "requiredAttributes",
+                    "severity": "warning"
+                  },
+                  {
+                    "type": "dictionaryTerms",
+                    "severity": "warning"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "expect": {
+        "ok": true,
+        "generation": 2
+      }
+    },
+    {
+      "tool": "query",
+      "arguments": {
+        "kind": "diagnostics",
+        "offset": 0,
+        "limit": 50
+      },
+      "expect": {
+        "total": 2
+      }
+    },
+    {
+      "tool": "validate",
+      "arguments": {},
+      "expect": {
+        "valid": true,
+        "errorCount": 0,
+        "warningCount": 2
+      }
+    },
+    {
+      "tool": "apply",
+      "arguments": {
+        "sessionId": "${sessionId}",
+        "requestId": "onboarding-fix-1",
+        "expectedGeneration": 2,
+        "request": {
+          "type": "batch",
+          "mutations": [
+            {
+              "type": "rename",
+              "document_id": "3f1c2a10-7b5d-4c1e-9a2b-5d6e7f809a01",
+              "element_id": "followup",
+              "name": "Contact employee about open checklist items"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "ok": true,
+        "generation": 3
+      }
+    },
+    {
+      "tool": "query",
+      "arguments": {
+        "kind": "diagnostics",
+        "offset": 0,
+        "limit": 50
+      },
+      "expect": {
+        "total": 1
+      }
+    },
+    {
+      "tool": "validate",
+      "arguments": {},
+      "expect": {
+        "valid": true,
+        "errorCount": 0,
+        "warningCount": 1
+      }
     }
-   },
-   "expect": {
-    "ok": true
-   }
-  },
-  {
-   "tool": "query",
-   "arguments": {
-    "kind": "diagnostics",
-    "offset": 0,
-    "limit": 50
-   },
-   "expect": {
-    "total": 0
-   }
-  },
-  {
-   "tool": "validate",
-   "arguments": {},
-   "expect": {
-    "valid": true,
-    "errorCount": 0,
-    "warningCount": 0
-   }
+  ],
+  "expected": {
+    "documents": 1,
+    "nodes": 11,
+    "flows": 11,
+    "lanes": 0,
+    "attributeValues": 0,
+    "attributeDefinitions": 0,
+    "recommendedWarnings": 1
   }
- ],
- "expected": {
-  "documents": 1,
-  "nodes": 7,
-  "flows": 7,
-  "lanes": 0,
-  "attributeValues": 0,
-  "attributeDefinitions": 0,
-  "recommendedWarnings": 0
- }
 }

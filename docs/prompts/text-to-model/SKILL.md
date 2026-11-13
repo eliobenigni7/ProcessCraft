@@ -12,7 +12,8 @@ validates each one against the live schemas.
 ## Inputs
 
 - The process description (prose). If it leaves a branch condition, an actor or an end state open,
-  ask; do not invent it.
+  ask. If nobody can answer (an autonomous run), build only what the text decides and list each
+  open point in the reply, see the README; do not invent it.
 - A running `processcraft-cli mcp` session, usually `--new "<name>"` with a `--write-root` when the
   result must be saved. A project that already contains documents is not the target of this prompt:
   use [review-conventions](../review-conventions/SKILL.md) or add the new document beside them only
@@ -20,9 +21,9 @@ validates each one against the live schemas.
 
 ## Tool sequence
 
-1. `inspect`: note `sessionId`, `generation` and `documents`.
-2. `query` `dictionary`: see which roles and systems exist. Reuse them; creating new dictionary
-   entries is outside this prompt unless the description names them.
+1. `inspect`: note `sessionId`, `generation` and `documents` (0 for a new project).
+2. `query` `dictionary`: see which roles and systems exist. Reuse them; create a new dictionary
+   entry only for an actor the description names (see "Actors and lanes").
 3. `apply` one batch that builds the whole model, with `expectedGeneration` = the generation from
    step 1. Order inside the batch: `createDocument`, `createProcess`, `createDiagram` (empty
    `shapes` and `edges`), `createAt` for the start event, then `append` for each element after its
@@ -35,9 +36,47 @@ validates each one against the live schemas.
    report it.
 6. `save` when the user named a path inside the write root.
 
-Build elements in reading order, one `append` per element. A gateway that splits needs a
-labelled flow per outgoing branch and a gateway (or an explicit end) where branches meet: a task
-with two incoming flows is an implicit join and is reported by the conventions.
+Build elements in reading order, one `append` per element. Kinds you will use: `StartEvent`,
+`EndEvent`, `UserTask`, `ServiceTask`, `ManualTask`, `Task`, `ExclusiveGateway` (a decision),
+`ParallelGateway` (steps that happen at the same time, and the point where they must all be done).
+
+- An exclusive (or inclusive) gateway that splits needs a label on every outgoing flow, except a
+  declared default flow. A parallel gateway needs no flow labels: the convention checks only
+  exclusive and inclusive splits. Branches that came from a parallel split meet again at a parallel
+  gateway ("both ready"); branches of a decision meet at an exclusive gateway or at the end. A task
+  with two incoming flows is an implicit join and is reported by the conventions.
+- Write each activity label as a verb followed by an object ("Create employee record"). The
+  conventions check the first word against a built-in English verb list: a label the description
+  forces into another shape, or a verb the list lacks, is reported by the check; keep the
+  description's meaning and report the finding rather than bend the label.
+- One end event. When a branch ends in the description, route it to the end event; several
+  outcomes may share one end event (`connect` to it). If the description does not say what
+  happens after a step on a branch, connect that step to the existing end event and list the open
+  point in the reply. Do not add a second end event or a loop the text does not state.
+
+## Actors and lanes
+
+When the description names who does a step ("HR", "the manager", "IT"), put each actor in a lane,
+linked to a dictionary `Role` entry, so that the table and RACI queries can show it. Create the
+entries and lanes in a batch after the elements exist, because a lane lists its members by node
+ID (one `createDictionaryEntry` with a fresh UUID per actor, one `createLane` per actor, one
+`setDictionaryLinks` of kind `Role` per lane). A node belongs to one lane. An actor the
+description does not name is not invented: leave the step out of every lane and report it. Reuse
+an entry from `query dictionary` instead of creating a second one with the same name.
+
+```json tool=request
+{
+  "type": "batch",
+  "mutations": [
+    {"type": "createDictionaryEntry", "entry": {"id": "aaaaaaaa-0000-4000-8000-0000000000a1", "kind": "Role", "name": "Accounts payable", "description": ""}},
+    {"type": "createLane", "document_id": "aaaaaaaa-0000-4000-8000-000000000001", "process_id": "invoice", "lane": {"id": "lane_ap", "name": "Accounts payable", "parent": null, "members": ["check", "big", "approve", "join", "pay"]}},
+    {"type": "setDictionaryLinks", "source": {"document_id": "aaaaaaaa-0000-4000-8000-000000000001", "xml_id": "lane_ap"}, "kind": "Role", "targets": [{"Entry": "aaaaaaaa-0000-4000-8000-0000000000a1"}]}
+  ]
+}
+```
+
+This batch is the second one after the worked example below (generation 1 to 2, or put its three
+mutations at the end of the first batch). Start and end events may stay outside lanes.
 
 ## Worked example
 
@@ -105,7 +144,8 @@ Then read the findings:
 ```
 
 An empty `items` list with `total` 0 means no finding under the stored profile. It does not mean the
-model is complete or conformant.
+model is complete or conformant. If no profile is stored, only the built-in advisory findings can
+appear, so an empty list there is weaker evidence still.
 
 ## On GenerationConflict
 
@@ -116,7 +156,8 @@ same content, do not create a second one.
 
 ## Must not
 
-- Invent actors, conditions or steps the description does not contain; ask instead.
+- Invent actors, conditions, steps or end events the description does not contain; ask, or in an
+  autonomous run list the open point in the reply.
 - Place shapes with coordinates beyond the first `createAt`; use `append` and `connect`.
 - Reuse an element ID inside the document, or guess that an ID is free in a project that already has
   content: `query` first.

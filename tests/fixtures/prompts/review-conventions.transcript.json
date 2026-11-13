@@ -1,157 +1,151 @@
 {
- "prompt": "review-conventions",
- "recordedBy": "Claude Sonnet subagent, the same agent that wrote the documents; calls sent through a local driver script (not in the repository); not an independent agent run",
- "recordedOn": "2026-11-13",
- "task": "Review the project against the recommended profile and fix findings that follow from the model itself; report the rest.",
- "setup": {
-  "fixture": "conventions/fail-activity-verb-object.json",
-  "requestId": "setup",
-  "note": "Applied at generation 0 before the agent's first call; it is the input project, not an agent action."
- },
- "calls": [
-  {
-   "tool": "inspect",
-   "arguments": {},
-   "expect": {
-    "documents": 1,
-    "generation": 1
-   }
+  "prompt": "review-conventions",
+  "recordedBy": "independent run 2026-11-13 by a fresh Claude Sonnet subagent given only docs/prompts/review-conventions/SKILL.md and docs/prompts/README.md at commit 194475a, task text chosen by the coordinator, calls composed by the agent and forwarded verbatim by a local relay (not in repo)",
+  "recordedOn": "2026-11-13",
+  "task": "Open the project (built from tests/fixtures/conventions/fail-activity-verb-object.json), review it against the conventions (the recommended profile if the project has none), fix what the model decides, and save the result.",
+  "harnessNote": "Harness flaw: the text-to-model and review-conventions agents wrote request files into a shared directory, so a few read calls (query dictionary and query diagnostics, JSON-RPC ids 4 and 10) may have been forwarded to the other session. Every apply and save carried its own run's sessionId and requestId, so state changes are not affected. Those reads are kept and marked originAmbiguous; their replies match the state of the session they are recorded in.",
+  "setup": {
+    "fixture": "conventions/fail-activity-verb-object.json",
+    "requestId": "setup",
+    "note": "The agent opened this project from a saved file, so its first call saw generation 0. The replay builds it with one setup batch (generation 1) and shifts every recorded generation by one."
   },
-  {
-   "tool": "query",
-   "arguments": {
-    "kind": "diagnostics",
-    "offset": 0,
-    "limit": 50
-   },
-   "expect": {
-    "total": 1
-   }
-  },
-  {
-   "tool": "apply",
-   "arguments": {
-    "sessionId": "${sessionId}",
-    "requestId": "review-profile",
-    "expectedGeneration": 1,
-    "request": {
-     "type": "batch",
-     "mutations": [
-      {
-       "type": "setConventionsProfile",
-       "profile": {
-        "rules": [
-         {
-          "type": "labelRequired",
-          "severity": "warning",
-          "kinds": [
-           "Activity",
-           "Event",
-           "Lane",
-           "Participant"
+  "notAchieved": "Could not read the stored conventions profile (no query for it existed at commit 194475a); reviewed against the findings only and did not set the recommended profile, so the end state is clean only under the profile the project already stored.",
+  "droppedCalls": [
+    {
+      "jsonRpcId": 6,
+      "tool": "query",
+      "arguments": {
+        "kind": "table",
+        "document_id": "44444444-4444-4444-8444-444444444444",
+        "offset": 0,
+        "limit": 50
+      },
+      "reason": "rejected with JSON-RPC error -32602: missing field `process_id` (no state change)"
+    },
+    {
+      "jsonRpcId": 101,
+      "tool": "query",
+      "arguments": {
+        "kind": "model",
+        "offset": 0,
+        "limit": 50
+      },
+      "reason": "rejected with JSON-RPC error -32602: missing field `document_id` (no state change)"
+    },
+    {
+      "jsonRpcId": 107,
+      "tool": "save",
+      "reason": "file effect, not replayed; reply status committed, ok true, expectedGeneration 1"
+    }
+  ],
+  "calls": [
+    {
+      "tool": "inspect",
+      "arguments": {},
+      "expect": {
+        "documents": 1,
+        "generation": 0
+      }
+    },
+    {
+      "tool": "query",
+      "arguments": {
+        "kind": "diagnostics",
+        "offset": 0,
+        "limit": 50
+      },
+      "expect": {
+        "total": 1
+      },
+      "originAmbiguous": true
+    },
+    {
+      "tool": "query",
+      "arguments": {
+        "kind": "dictionary",
+        "offset": 0,
+        "limit": 50
+      },
+      "expect": {
+        "total": 2
+      },
+      "originAmbiguous": true
+    },
+    {
+      "tool": "query",
+      "arguments": {
+        "kind": "model",
+        "document_id": "44444444-4444-4444-8444-444444444444",
+        "offset": 0,
+        "limit": 50
+      },
+      "expect": {
+        "total": 190
+      }
+    },
+    {
+      "tool": "query",
+      "arguments": {
+        "kind": "model",
+        "document_id": "44444444-4444-4444-8444-444444444444",
+        "offset": 50,
+        "limit": 60
+      },
+      "expect": {
+        "total": 190
+      }
+    },
+    {
+      "tool": "apply",
+      "arguments": {
+        "sessionId": "${sessionId}",
+        "requestId": "rc-fix-notify",
+        "expectedGeneration": 0,
+        "request": {
+          "type": "batch",
+          "mutations": [
+            {
+              "type": "rename",
+              "document_id": "44444444-4444-4444-8444-444444444444",
+              "element_id": "notify",
+              "name": "Notify requester"
+            }
           ]
-         },
-         {
-          "type": "activityVerbObject",
-          "severity": "warning",
-          "verbs": []
-         },
-         {
-          "type": "gatewayFlowsLabelled",
-          "severity": "warning"
-         },
-         {
-          "type": "noImplicitSplitJoin",
-          "severity": "warning"
-         },
-         {
-          "type": "singleStartEnd",
-          "severity": "warning"
-         },
-         {
-          "type": "maxElements",
-          "severity": "warning",
-          "limit": 50
-         },
-         {
-          "type": "requiredAttributes",
-          "severity": "warning"
-         },
-         {
-          "type": "dictionaryTerms",
-          "severity": "warning"
-         }
-        ]
-       }
+        }
+      },
+      "expect": {
+        "ok": true,
+        "generation": 1
       }
-     ]
-    }
-   },
-   "expect": {
-    "ok": true
-   }
-  },
-  {
-   "tool": "query",
-   "arguments": {
-    "kind": "diagnostics",
-    "offset": 0,
-    "limit": 50
-   },
-   "expect": {
-    "total": 1
-   }
-  },
-  {
-   "tool": "apply",
-   "arguments": {
-    "sessionId": "${sessionId}",
-    "requestId": "review-fix-notify",
-    "expectedGeneration": 2,
-    "request": {
-     "type": "batch",
-     "mutations": [
-      {
-       "type": "rename",
-       "document_id": "44444444-4444-4444-8444-444444444444",
-       "element_id": "notify",
-       "name": "Notify requester"
+    },
+    {
+      "tool": "query",
+      "arguments": {
+        "kind": "diagnostics",
+        "offset": 0,
+        "limit": 50
+      },
+      "expect": {
+        "total": 0
       }
-     ]
+    },
+    {
+      "tool": "validate",
+      "arguments": {},
+      "expect": {
+        "valid": true,
+        "errorCount": 0,
+        "warningCount": 0
+      }
     }
-   },
-   "expect": {
-    "ok": true
-   }
-  },
-  {
-   "tool": "query",
-   "arguments": {
-    "kind": "diagnostics",
-    "offset": 0,
-    "limit": 50
-   },
-   "expect": {
-    "total": 0
-   }
-  },
-  {
-   "tool": "validate",
-   "arguments": {},
-   "expect": {
-    "valid": true,
-    "errorCount": 0,
-    "warningCount": 0
-   }
+  ],
+  "expected": {
+    "documents": 1,
+    "nodes": 7,
+    "flows": 7,
+    "lanes": 2,
+    "attributeValues": 3,
+    "attributeDefinitions": 1,
+    "recommendedWarnings": 0
   }
- ],
- "expected": {
-  "documents": 1,
-  "nodes": 7,
-  "flows": 7,
-  "lanes": 2,
-  "attributeValues": 3,
-  "attributeDefinitions": 1,
-  "recommendedWarnings": 0
- }
 }

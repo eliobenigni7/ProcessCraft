@@ -12,28 +12,37 @@ carry an info string; the pack's test validates each one against the live schema
 ## Inputs
 
 - A session on the project (`--in <file>`, or attached to the desktop app).
-- The document ID and the process ID. `inspect` returns only a count of documents, so take them
-  from the user, from `processcraft-cli info <file>`, or from the `documentId` of a diagnostics row.
-  If the project has several processes and the user did not say which, ask.
+- The document ID and the process ID. Take them from the user or from `query documents` (below).
+  If the project has several processes and the user did not say which, ask; in an autonomous run,
+  explain every listed process in turn, or the one the task names, and say which.
 - Optionally the audience (a manager, an auditor, a new colleague) and a length.
 
 ## Tool sequence
 
 1. `inspect`: confirm the session and that `documents` is not 0. Note `generation`; if it changes
    while you work (someone is editing), say that the explanation describes an earlier state.
-2. `query` `model` for the document: JSON-Pointer field pages (`limit` at most 100). Read the
+   `query` `documents` lists the documents with their IDs, process IDs, lane IDs and whether each
+   is editable; it is the source of `document_id` and `process_id` for the queries below.
+2. `query` `model` for the document (needs `document_id`): JSON-Pointer field pages (`limit` at most 100). Read the
    structure from `/processes/N/nodes/M/{name,kind}`, `/processes/N/lanes/M/name` and
    `/processes/N/flows/M/{source,target,name,condition}`; the gateways and their branch
-   conditions are only visible here. The first page usually holds a small process; follow
-   `nextOffset` when the process you explain is not yet in it.
-3. `query` `table` for the process: one row per activity with its lane, the role of the lane, the
-   systems and documents linked to it, its attribute values, and its outgoing flows with conditions.
-   This is the backbone of the explanation.
-4. `query` `raci` for the process: who is Responsible, Accountable, Consulted and Informed per
-   activity, as `cells` of the roles that hold a letter.
+   conditions are only visible here. The rows are `{"path", "value"}` pairs of the whole document
+   including the diagram shapes (about 200 rows for a five-element process), so the structure comes
+   first and the shapes last. Follow `nextOffset` when the process you explain is not yet in the
+   page. `table` is the shorter way to the activities; use `model` for gateways and flows.
+3. `query` `table` for the process (needs `document_id` and `process_id`): one row per activity
+   with its lane, the role of the lane, the systems and documents linked to it, its attribute
+   values, and its outgoing flows with conditions. This is the backbone of the explanation.
+4. `query` `raci` for the process (same two IDs): who is Responsible, Accountable, Consulted and
+   Informed per activity, as one `cell` per role holding at least one letter (booleans
+   `responsible`, `accountable`, `consulted`, `informed`). R comes from the lane's Role link,
+   A, C and I from the activity's attribute values (README, "RACI"). A `Literal` target is a
+   free-text name that is not a dictionary role: say so.
 5. `query` `dictionary`: the names behind role and system entries.
 6. `query` `attributes` for the document: definitions with `usage_count`, and the values per element.
-7. `query` `diagnostics` and `validate`: findings the reader should know about.
+7. `query` `diagnostics` and `validate`: findings the reader should know about. No findings
+   means none under the stored profile (or only the built-in checks when no profile is stored);
+   say that, not "the process is correct". `query` `conventions` shows which profile that is.
 8. Write the explanation from those results only.
 
 Page each query until `nextOffset` is `null`. If a query is refused for size, lower `limit`.

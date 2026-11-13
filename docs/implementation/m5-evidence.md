@@ -649,9 +649,11 @@ screenshot was taken.
 ## M5.5 MCP prompt pack
 
 Four agent instructions in `docs/prompts/` (`text-to-model`, `review-conventions`,
-`explain-process`, `fill-attributes`, each a `SKILL.md`) and `docs/prompts/README.md` (starting the
-server standalone or attached, the seven tools, the generation and request-ID rules, file roots).
-The server has no `prompts` capability; nothing under `src/` changed.
+`explain-process`, `fill-attributes`, each a `SKILL.md`) and `docs/prompts/README.md` (the MCP
+handshake and reply shapes, the tools and query kinds, the generation and request-ID rules, file
+roots, save and reconcile). The server has no `prompts` capability. The first pass changed nothing
+under `src/`; the independent runs below exposed two missing read-only queries, now `query
+documents` and `query conventions` (see "What the independent runs exposed").
 
 ### What the test checks
 
@@ -662,61 +664,100 @@ The server has no `prompts` capability; nothing under `src/` changed.
   sample). `apply` examples are checked against the `apply` input schema of a live MCP `tools/list`
   (unknown and missing top-level fields) and their `request` is deserialized as
   `processcraft_core::commands::Request` (`deny_unknown_fields`, so every mutation field is
-  checked). `query` examples are checked against the matching variant of the `query` input schema.
-  `commands --json` and `tools/list` are asserted to embed the same request schema. A block with no
-  claim fails.
-- `documented_apply_examples_equal_recorded_requests`: an `apply` example whose `requestId` also
-  occurs in a transcript must carry exactly the recorded request.
+  checked). `query` examples are checked against the matching variant of the `query` input schema
+  (`offset` and `limit` are required only for the paged kinds). `commands --json` and `tools/list`
+  are asserted to embed the same request schema. A block with no claim fails.
 - `transcript_*_replays` (four): each transcript replays through a fresh `processcraft-cli mcp
   --new` stdio session. The tool replies must match the recorded `expect` fields; the session is
   then saved, reloaded with `native::load_bytes`, and must pass `ProjectData::validate` and match
   the recorded counts, including the number of findings under
-  `ConventionsProfile::recommended()` (0 for three transcripts, which the test requires, and the
-  recorded 2 for the read-only `explain-process` input). The "no `error` diagnostic" check is
-  structural only: every recommended rule is a warning, so it cannot fail; the exact warning count
-  is the real check.
+  `ConventionsProfile::recommended()` (1, 0, 2 and 1; the independent runs do not all end clean,
+  and the transcripts say so). The "no `error` diagnostic" check is structural only: every
+  recommended rule is a warning, so it cannot fail; the exact warning count is the real check.
+  A run that starts from a fixture saw generation 0 (it opened a saved file); the replay builds
+  the same project with one setup batch and shifts every recorded generation by one.
 - `transcripts_are_registered_in_the_manifest`: path, SHA-256, CC0-1.0 and the provenance text.
+
+The earlier check that a documented `apply` example equals a recorded call was removed: the
+documents and the runs are now independent, so the runs send their own requests.
+
+`cargo test -p processcraft-cli --test cli mcp_documents_and_conventions_queries_expose_ids_and_profile`
+covers the two new queries through a real stdio session (document, capability, process and lane
+rows; the listed process ID is accepted by `query table`; `conventions` is `null` for a new project).
 
 ### Transcript provenance
 
-Recorded on 2026-11-13 by the same Claude Sonnet subagent that wrote the four documents, which
-then followed each one against a real `processcraft-cli mcp --new` stdio session. It chose the task
-inputs, composed each call from the document and the previous replies, and sent the calls through a
-local driver script that is not in the repository; the script wrote the call list and the reply
-fields the replay checks. These are **not independent agent runs**: the author of a document also
-followed it, so they are evidence that each document can be followed to a valid end state with the
-real tools, not evidence of how a cold agent behaves. Where the task starts from an existing
-project, that project is a pinned fixture applied at generation 0 before the first recorded call
-(`setup` in the transcript); it is the input, not an agent action.
+The four transcripts are independent runs, recorded on 2026-11-13: one fresh Claude Sonnet
+subagent per prompt, given only that prompt's `SKILL.md` and `docs/prompts/README.md` (documents as
+of commit 194475a), a task chosen by the coordinator, and MCP access through a local relay (not in
+the repository) that forwards each request file unchanged as one JSON-RPC line and logs every
+request and reply. The agents composed every call themselves. The transcripts are the relay logs
+converted mechanically: the session ID replaced by `${sessionId}`, calls the server rejected with
+a JSON-RPC error (no state change) and `save` calls (file effects) moved to `droppedCalls`,
+`expect` fields taken from the replies, `answer` taken from the agent's output. Where the task
+starts from a project, that project is a pinned fixture (`setup`); the agent opened it from a
+saved file.
 
-| Prompt | Task input | Calls | End state (nodes / flows / lanes / attribute values / definitions) | Warnings under the recommended profile |
-|---|---|---|---|---|
-| `text-to-model` | one-paragraph invoice description | 7 | 7 / 7 / 0 / 0 / 0 | 0 |
-| `review-conventions` | `conventions/fail-activity-verb-object.json`; review against the recommended profile | 7 | 7 / 7 / 2 / 3 / 1 | 0 |
-| `explain-process` | `commands/raci.json`; read-only | 8 | 5 / 5 / 2 / 6 / 3 | 2 |
-| `fill-attributes` | `conventions/fail-required-attributes.json`; cost and risk values from a pasted note | 7 | 7 / 7 / 2 / 6 / 2 | 0 |
+Harness flaw, disclosed: the text-to-model and review-conventions agents wrote request files into
+a shared directory, so a few read calls (`query dictionary` and `query diagnostics`, JSON-RPC ids
+4 and 10) may have been forwarded to the other session. Every `apply` and `save` carried its own
+run's `sessionId` and `requestId`, so state changes are not affected, and the replies of those
+reads match the state of the session they are recorded in; they stay in the transcripts marked
+`originAmbiguous`.
 
-The `explain-process` end state is the unchanged input; its two warnings are existing findings of
-the fixture under the recommended profile, which the agent did not query (the stored profile of
-that fixture is empty). The replay asserts its recorded count of 2.
+| Prompt | Task | Calls replayed / dropped | End state (nodes / flows / lanes / attribute values / definitions) | Warnings under the recommended profile | What the run did not achieve |
+|---|---|---|---|---|---|
+| `text-to-model` | the onboarding paragraph (parallel preparation, a checklist decision) | 10 / 1 | 11 / 11 / 0 / 0 / 0 | 1 | recorded no actors or lanes; invented a second end event, so `conventionEndCount` remains; renamed a label to satisfy the verb-object heuristic |
+| `review-conventions` | `conventions/fail-activity-verb-object.json`; recommended profile if none | 8 / 3 | 7 / 7 / 2 / 3 / 1 | 0 | could not read the stored profile; reviewed against the findings only |
+| `explain-process` | `commands/raci.json`; read only | 11 / 0 | 5 / 5 / 2 / 6 / 3 | 2 | nothing missed in the task; paged `query model` four times for the structure and had no query listing IDs |
+| `fill-attributes` | `conventions/fail-required-attributes.json` plus a note whose names do not match the model | 6 / 5 | 7 / 7 / 2 / 2 / 1 | 1 | set no value: the note's names did not match, no `Risk` or duration definition existed; reported why |
+
+The end counts were read from the saved `result.processcraft` / `start.processcraft` of each run
+and agree with the replay. `explain-process` ends in the unchanged input; its two warnings are
+existing findings of the fixture under the recommended profile, which the agent did not query
+(the stored profile of that fixture is empty). These runs show where the documents failed a
+cold agent; they do not show that every prompt reaches its goal.
+
+### What the independent runs exposed, and how the documents and tools changed
+
+The documents changed after the runs, so the transcripts do not follow the current text exactly.
+
+- No way to get document and process IDs (`inspect` gives a count; every agent fell back to
+  `processcraft-cli info` or paging `query model`). Added read-only `query documents`: per document
+  `id`, `name`, `capability`, `editable` and its processes (`id`, `name`, `kind` process or
+  subProcess, `lanes`), paged, in the MCP server and the attached session.
+- No way to read the stored conventions profile. Added `query conventions`: `{"conventions":
+  <profile or null>}`, not paged.
+- README: which kinds need `document_id` or `process_id`; the `query model` row shape; the MCP
+  handshake and `tools/call` reply (`structuredContent` and text); the `validate` and `save`
+  replies and `committed`; when `reconcile` is needed; `contentId` is a byte array; closing stdin
+  ends a stdio session.
+- RACI: the real reply (one cell per role with booleans); R from the lane's Role link, A, C and I
+  from attribute values; `DictionaryRefs` `Entry` against `Literal`.
+- Empty diagnostics; parallel gateway flows need no labels (checked in the conventions rule: only
+  exclusive and inclusive splits); how to create roles and lanes in `text-to-model` (an example
+  batch, validated); what to do when the document says "ask" and nobody can answer (list the open
+  point, do not invent); verb-object renames and the built-in English verb list; the single end
+  event; fill-attributes matching rule for near-matching names, conflicting existing values
+  ("different" against "changed"), nothing applicable, and definitions only with permission.
+- `review-conventions` and `fill-attributes` worked examples started from generation 1 (an artifact
+  of the replay setup); a project opened from a file starts at generation 0, and the examples now
+  say so.
 
 ### Limits and what is not established
 
-- The plan's "one real agent run per prompt" is only partly met. Independent runs (a fresh agent
-  given only the `SKILL.md` and MCP access) are left to M5.6, and M5 is not closed without them.
-- One run per prompt. The transcripts show that each document can be followed to a valid end state
-  with the real tools; they say nothing about how often an agent does so, or about any model.
+- One run per prompt, by one model. The transcripts show what each agent did with the documents of
+  that day; they say nothing about how often an agent does so, or about any other model. The
+  documents were changed afterwards and have not been run again by an agent.
 - The replay is deterministic: it replays recorded calls, it does not re-run an agent. If a
-  mutation field is renamed, the examples and transcripts must be re-recorded by an agent following
-  the updated document.
+  mutation field is renamed, the examples are caught by the schema check, but the transcripts must
+  be re-recorded by an agent following the updated documents.
+- Not every run met its task (table above); `text-to-model` ends with a warning and without
+  lanes, `fill-attributes` sets no value. They are kept as recorded rather than edited.
 - `explain-process` has a recorded answer text in its transcript, but the test does not check the
   prose, only that the session stayed read only and ended valid.
 - The schema check of `query` examples covers field names and required fields of the variant and
   that document, entry and checkpoint IDs are UUIDs, not other value types; wrong types are caught only when the call is made (the transcripts do make theirs).
-- `inspect` does not return document IDs; the documents tell the agent to take them from the task
-  input, `processcraft-cli info` or a diagnostics row. A `query` listing documents would remove
-  that step; it is not in M5.
+- The `lanes` list of `query documents` gives id and name only, not membership.
 - The `activityVerbObject` heuristic's known misses (see M5.2) apply to `review-conventions`; the
   document tells the agent to report instead of rewording when the label is deliberate.
-- The pack is not linked from `README.md` yet: the plan links it only after both checks pass, and
-  check (2) waits for the independent runs of M5.6. The repository has no site.

@@ -1340,6 +1340,78 @@ fn mcp_attributes_query_matches_cli_values() {
 }
 
 #[test]
+fn mcp_documents_and_conventions_queries_expose_ids_and_profile() {
+    use std::io::{BufRead, BufReader, Write};
+    use std::process::Stdio;
+    let mut child = Command::new(env!("CARGO_BIN_EXE_processcraft-cli"))
+        .args(["mcp", "--new", "MCP documents"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut input = child.stdin.take().unwrap();
+    let mut output = BufReader::new(child.stdout.take().unwrap());
+    let mut call = |value: serde_json::Value| {
+        writeln!(input, "{value}").unwrap();
+        input.flush().unwrap();
+        let mut line = String::new();
+        output.read_line(&mut line).unwrap();
+        serde_json::from_str::<serde_json::Value>(&line).unwrap()
+    };
+    call(
+        serde_json::json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}),
+    );
+    let session = call(
+        serde_json::json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"inspect","arguments":{}}}),
+    )["result"]["structuredContent"]["sessionId"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let request: serde_json::Value =
+        serde_json::from_slice(&fs::read(attributes_fixture()).unwrap()).unwrap();
+    let applied = call(
+        serde_json::json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"apply","arguments":{"sessionId":session,"requestId":"docs-1","expectedGeneration":0,"request":request}}}),
+    );
+    assert_eq!(
+        applied["result"]["structuredContent"]["ok"], true,
+        "{applied}"
+    );
+    let docs = call(
+        serde_json::json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"query","arguments":{"kind":"documents","offset":0,"limit":10}}}),
+    );
+    let content = &docs["result"]["structuredContent"];
+    assert_eq!(content["total"], 1, "{docs}");
+    let doc = &content["items"][0];
+    assert_eq!(doc["id"], "22222222-2222-4222-8222-222222222222");
+    assert_eq!(doc["capability"], "editable");
+    assert_eq!(doc["editable"], true);
+    let process = &doc["processes"][0];
+    assert_eq!(process["kind"], "process");
+    assert!(process["id"].is_string() || process["id"].is_object());
+    // The listed process id is accepted by the table query.
+    let table = call(
+        serde_json::json!({"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"query","arguments":{"kind":"table","document_id":doc["id"],"process_id":process["id"],"offset":0,"limit":10}}}),
+    );
+    assert!(
+        table["result"]["structuredContent"]["total"]
+            .as_u64()
+            .unwrap()
+            > 0,
+        "{table}"
+    );
+    let conventions = call(
+        serde_json::json!({"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"query","arguments":{"kind":"conventions"}}}),
+    );
+    assert!(
+        conventions["result"]["structuredContent"]["conventions"].is_null(),
+        "{conventions}"
+    );
+    child.kill().unwrap();
+    child.wait().unwrap();
+}
+
+#[test]
 fn export_raci_writes_the_pinned_csv_and_refuses_to_overwrite() {
     let commands = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
