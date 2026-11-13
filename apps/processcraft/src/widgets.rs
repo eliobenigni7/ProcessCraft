@@ -192,6 +192,93 @@ pub fn section_label(ui: &mut Ui, text: &str) -> Response {
             .color(crate::theme::current(ui).faint),
     )
 }
+fn section_id(title: &str) -> Id {
+    Id::unique(("processcraft-section", title))
+}
+
+/// Opens the named section the next time it is shown (e.g. from a menu command).
+pub fn open_section(ctx: &egui::Context, title: &str) {
+    let mut state = egui::collapsing_header::CollapsingState::load_with_default_open(
+        ctx,
+        section_id(title),
+        true,
+    );
+    state.set_open(true);
+    state.store(ctx);
+}
+
+/// A collapsible inspector section: a full-width header row (chevron, SemiBold title, optional
+/// count) above a hairline, with its open state remembered for the session.
+pub fn section<R>(
+    ui: &mut Ui,
+    title: &str,
+    count: Option<usize>,
+    default_open: bool,
+    add: impl FnOnce(&mut Ui) -> R,
+) -> Option<R> {
+    let p = crate::theme::current(ui);
+    let mut state = egui::collapsing_header::CollapsingState::load_with_default_open(
+        ui.ctx(),
+        section_id(title),
+        default_open,
+    );
+    ui.add_space(2.0);
+    let top = ui.available_rect_before_wrap().top();
+    ui.painter().hline(
+        ui.max_rect().x_range(),
+        top,
+        egui::Stroke::new(1.0, p.border),
+    );
+    let (row, response) = ui.allocate_exact_size(vec2(ui.available_width(), 34.0), Sense::click());
+    response.widget_info(|| {
+        egui::WidgetInfo::selected(egui::Role::Button, true, state.is_open(), title)
+    });
+    if response.clicked() {
+        state.toggle(ui);
+    }
+    let openness = state.openness(ui.ctx());
+    let chevron = row.left_center() + vec2(6.0, 0.0);
+    let rotation = egui::emath::Rot2::from_angle(openness * std::f32::consts::FRAC_PI_2);
+    let points =
+        [vec2(-2.5, -4.0), vec2(2.5, 0.0), vec2(-2.5, 4.0)].map(|v| chevron + rotation * v);
+    ui.painter().add(egui::Shape::line(
+        points.to_vec(),
+        egui::Stroke::new(1.4, if response.hovered() { p.text } else { p.faint }),
+    ));
+    ui.painter().text(
+        row.left_center() + vec2(18.0, 0.0),
+        egui::Align2::LEFT_CENTER,
+        title,
+        crate::theme::semibold(13.0),
+        p.text,
+    );
+    if let Some(count) = count.filter(|n| *n > 0) {
+        let text = count.to_string();
+        let pill = egui::Rect::from_min_size(
+            egui::pos2(
+                row.right() - 8.0 - 7.0 * text.len() as f32 - 8.0,
+                row.center().y - 8.0,
+            ),
+            vec2(7.0 * text.len() as f32 + 8.0, 16.0),
+        );
+        ui.painter().rect_filled(pill, 8.0, p.secondary);
+        ui.painter().text(
+            pill.center(),
+            egui::Align2::CENTER_CENTER,
+            text,
+            crate::theme::medium(10.5),
+            p.muted,
+        );
+    }
+    state
+        .show_body_unindented(ui, |ui| {
+            let r = add(ui);
+            ui.add_space(8.0);
+            r
+        })
+        .map(|body| body.inner)
+}
+
 pub fn badge(ui: &mut Ui, text: &str, foreground: Color32, background: Color32) -> Response {
     egui::Frame::new()
         .fill(background)

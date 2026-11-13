@@ -368,8 +368,18 @@ impl State {
     }
 }
 impl ProcessCraft {
+    /// Shows the document's Data & collaboration section in the inspector.
     pub(super) fn open_collaboration(&mut self) {
         self.collaboration.open = true;
+        if self.prepare_navigation() {
+            self.select(None);
+        }
+        self.show_right = true;
+        self.view = 0;
+    }
+    /// Whether a menu command asked to open the section since the last frame.
+    pub(super) fn take_collaboration_request(&mut self) -> bool {
+        std::mem::take(&mut self.collaboration.open)
     }
     pub(super) fn collaboration_windows(&mut self, ctx: &egui::Context) {
         let session = self.ctl.session.id();
@@ -382,21 +392,10 @@ impl ProcessCraft {
                 ..Default::default()
             };
         }
-        if !self.collaboration.open {
-            return;
-        }
-        let mut open = self.collaboration.open;
-        egui::Window::new("Collaboration and data")
-            .open(&mut open)
-            .default_width(680.0)
-            .max_width((ctx.content_rect().width() - 32.0).max(150.0))
-            .default_height(520.0)
-            .max_height((ctx.content_rect().height() - 64.0).max(100.0))
-            .vscroll(true)
-            .show(ctx, |ui| self.collaboration_contents(ui));
-        self.collaboration.open = open;
+        // The contents live in the inspector's Data & collaboration section.
+        let _ = ctx;
     }
-    fn collaboration_contents(&mut self, ui: &mut egui::Ui) {
+    pub(super) fn collaboration_contents(&mut self, ui: &mut egui::Ui) {
         let snap = self.ctl.session.snapshot();
         let Some(doc) = snap.project.documents.get(self.doc) else {
             ui.label("Open a model to manage collaboration.");

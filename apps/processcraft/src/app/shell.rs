@@ -467,7 +467,7 @@ impl ProcessCraft {
                     }
                 });
                 ui.menu_button("Model", |ui| {
-                    if ui.button("Collaboration and data…").clicked() {
+                    if ui.button("Data & collaboration…").clicked() {
                         self.open_collaboration();
                         ui.close();
                     }
@@ -503,7 +503,7 @@ impl ProcessCraft {
                     }
                 });
                 ui.menu_button("Tools", |ui| {
-                    if ui.button("Local automation…").clicked() {
+                    if ui.button("Settings…").clicked() {
                         self.shell.automation = true;
                         ui.close();
                     }
@@ -534,7 +534,7 @@ impl ProcessCraft {
             0.0
         };
         let inspector_width = if self.view == 0 && self.show_right && wide && !focus {
-            self.right_width.clamp(260.0, 380.0)
+            self.right_width.clamp(280.0, 420.0)
         } else {
             0.0
         };
@@ -652,7 +652,7 @@ impl ProcessCraft {
                 .dragged()
             {
                 self.right_width =
-                    (self.right_width - ctx.input(|i| i.pointer.delta().x)).clamp(260.0, 380.0);
+                    (self.right_width - ctx.input(|i| i.pointer.delta().x)).clamp(280.0, 420.0);
             }
         }
         let footer = Rect::from_min_max(egui::pos2(body.left(), content.bottom()), body.max);
@@ -807,14 +807,29 @@ impl ProcessCraft {
         }
         if self.shell.automation {
             let mut open = true;
-            egui::Window::new("Local automation")
+            egui::Window::new("Settings")
                 .open(&mut open)
+                .collapsible(false)
                 .default_width(530.0)
                 .max_width(window_width)
                 .default_height(window_height.min(560.0))
                 .max_height(window_height)
                 .vscroll(true)
-                .show(&ctx, |ui| self.automation_ui(ui));
+                .show(&ctx, |ui| {
+                    widgets::section(ui, "Appearance", None, true, |ui| {
+                        ui.horizontal(|ui| {
+                            let before = self.theme;
+                            ui.selectable_value(&mut self.theme, Theme::Light, "Light");
+                            ui.selectable_value(&mut self.theme, Theme::Dark, "Dark");
+                            if before != self.theme {
+                                self.apply_theme(ui.ctx());
+                            }
+                        });
+                    });
+                    widgets::section(ui, "Local automation", None, true, |ui| {
+                        self.automation_ui(ui)
+                    });
+                });
             self.shell.automation = open;
         }
     }
@@ -1005,7 +1020,8 @@ impl ProcessCraft {
             }
         });
         ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
-            if widgets::icon_button(ui, Icon::Settings, "Local automation", false).clicked() {
+            if widgets::icon_button(ui, Icon::Settings, "Settings", self.shell.automation).clicked()
+            {
                 self.shell.automation = true;
             }
             let (left, right) = if self.shell.wide {
@@ -2084,6 +2100,53 @@ mod tests {
                 .any(|(_, node)| node.label() == Some("Close panel")),
             "focus mode hides the bottom panel"
         );
+    }
+    #[test]
+    fn inspector_sections_host_collaboration_and_settings() {
+        let mut app = ProcessCraft::default();
+        let context = egui::Context::default();
+        context.enable_accesskit();
+        app.apply_theme(&context);
+        let labels = |app: &mut ProcessCraft| {
+            let mut output = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1440.0, 900.0))),
+                    ..Default::default()
+                },
+                |ui| app.workbench_ui(ui),
+            );
+            output.textures_delta.clear();
+            let tree = output
+                .platform_output
+                .accesskit_update
+                .expect("accessibility");
+            tree.nodes
+                .iter()
+                .filter_map(|(_, node)| node.label().map(str::to_owned))
+                .collect::<Vec<_>>()
+        };
+        let closed = labels(&mut app);
+        for section in ["General", "Data & collaboration", "Advanced BPMN"] {
+            assert!(closed.iter().any(|l| l == section), "{section}: {closed:?}");
+        }
+        assert!(!closed.iter().any(|l| l == "Partners and endpoints"));
+        // The Model menu command opens the section in place of the old floating window.
+        app.open_collaboration();
+        let _ = labels(&mut app);
+        let open = labels(&mut app);
+        assert!(
+            open.iter().any(|l| l == "Partners and endpoints"),
+            "{open:?}"
+        );
+        assert!(!open.iter().any(|l| l == "Collaboration and data"));
+        app.shell.automation = true;
+        let _ = labels(&mut app);
+        let settings = labels(&mut app);
+        assert!(
+            settings.iter().any(|l| l == "Local automation"),
+            "{settings:?}"
+        );
+        assert!(settings.iter().any(|l| l == "Appearance"));
     }
     #[test]
     fn short_viewport_keeps_canvas_usable_in_both_themes() {

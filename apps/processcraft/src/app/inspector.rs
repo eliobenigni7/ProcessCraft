@@ -955,11 +955,7 @@ impl ProcessCraft {
             .get(self.doc)
             .map(|document| processcraft_core::queries::choreography_scopes(document))
             .unwrap_or_default();
-        if show_heading {
-            ui.label(egui::RichText::new("Properties").size(17.0).strong());
-            ui.add_space(4.0);
-            ui.separator();
-        }
+        let _ = show_heading;
         let mut refresh_selection = false;
         let mut selector_mappings = Vec::new();
         egui::ScrollArea::vertical()
@@ -984,24 +980,23 @@ impl ProcessCraft {
                             },
                             |n| node_kind_label(n.kind),
                         );
-                    widgets::section_label(side, kind);
-                    if editable
+                    let node_kind = snap
+                        .project
+                        .documents
+                        .get(self.doc)
+                        .and_then(|d| processcraft_core::queries::find_node(d, selected).or_else(|| graph_node(d, selected)))
+                        .map(|n| n.kind);
+                    let replaceable = editable
                         && snap.project.documents.get(self.doc).is_some_and(|d| {
                             !processcraft_core::replace::replace_options(d, selected).is_empty()
-                        })
-                        && side.small_button("Change type…").clicked()
-                    {
-                        self.open_replace(selected.clone());
+                        });
+                    let comment_count = snap.project.comments.iter().filter(|c| c.target.xml_id == *selected).count();
+                    let title = if self.draft.is_empty() { "Untitled".to_owned() } else { self.draft.clone() };
+                    match header_card(side, kind, &title, node_kind, self.is_flow, replaceable, comment_count) {
+                        Some(HeaderAction::Replace) => self.open_replace(selected.clone()),
+                        Some(HeaderAction::Comments) => self.open_comments(),
+                        None => {}
                     }
-                    side.label(
-                        egui::RichText::new(if self.draft.is_empty() {
-                            "Untitled"
-                        } else {
-                            &self.draft
-                        })
-                        .size(20.0),
-                    );
-                    side.add_space(8.0);
                     let annotation = snap
                         .project
                         .documents
@@ -1010,6 +1005,20 @@ impl ProcessCraft {
                         .is_some_and(|n| {
                             n.kind == processcraft_core::model::NodeKind::TextAnnotation
                         });
+                    let documentation = if self.is_node || self.is_flow {
+                        snap.project.documents.get(self.doc).and_then(|document| {
+                            processcraft_core::queries::find_node(document, selected).or_else(|| graph_node(document, selected)).map(|node| &node.documentation)
+                                .or_else(|| processcraft_core::queries::find_flow(document, selected).or_else(|| graph_flow(document, selected)).map(|flow| &flow.documentation))
+                        }).cloned()
+                    } else {
+                        None
+                    };
+                    let selected_flow = snap
+                        .project
+                        .documents
+                        .get(self.doc)
+                        .and_then(|d| processcraft_core::queries::find_flow(d, selected).or_else(|| graph_flow(d, selected)));
+                    widgets::section(side, "General", None, true, |side| {
                     let association = snap.project.documents.get(self.doc).and_then(|d| processcraft_core::queries::find_flow(d, selected)).is_some_and(|flow| flow.kind == processcraft_core::model::FlowKind::Association);
                     let data_object_reference = snap.project.documents.get(self.doc)
                         .and_then(|d| processcraft_core::queries::find_node(d, selected))
@@ -1032,14 +1041,6 @@ impl ProcessCraft {
                     if data_object_reference {
                         side.label(egui::RichText::new("The diagram label uses the referenced data object's name and this reference's state.").small().color(palette.muted));
                     }
-                    let documentation = if self.is_node || self.is_flow {
-                        snap.project.documents.get(self.doc).and_then(|document| {
-                            processcraft_core::queries::find_node(document, selected).or_else(|| graph_node(document, selected)).map(|node| &node.documentation)
-                                .or_else(|| processcraft_core::queries::find_flow(document, selected).or_else(|| graph_flow(document, selected)).map(|flow| &flow.documentation))
-                        }).cloned()
-                    } else {
-                        None
-                    };
                     if let Some(documentation) = &documentation {
                         if documentation.plain_text().is_some() {
                             let label = side.label(egui::RichText::new("Documentation").small().color(palette.muted));
@@ -1048,41 +1049,11 @@ impl ProcessCraft {
                             side.label(format!("Documentation · {} entries (edit under Advanced)", entries.len()));
                         }
                     }
-                    let selected_flow = snap
-                        .project
-                        .documents
-                        .get(self.doc)
-                        .and_then(|d| processcraft_core::queries::find_flow(d, selected).or_else(|| graph_flow(d, selected)));
                     if self.is_flow
                         && selected_flow
                             .is_some_and(|f| f.kind == processcraft_core::model::FlowKind::Sequence)
                     {
                         self.draft_dirty |= side.add_enabled_ui(ordinary_enabled, |side| optional_expression_ui_with_default(side, "Condition", &mut self.condition, true, &mut self.expression_draft, ExpressionDefault::SequenceFlow)).inner;
-                    } else if self.is_node && self.graph_selection.is_none() {
-                        let label =
-                            side.label(egui::RichText::new("Owner").small().color(palette.muted));
-                        if side
-                            .add_enabled(ordinary_enabled,
-                                egui::TextEdit::singleline(&mut self.owner)
-                                    .hint_text("Optional owner"),
-                            )
-                            .labelled_by(label.id)
-                            .changed()
-                        {
-                            self.draft_dirty = true;
-                        }
-                        let label =
-                            side.label(egui::RichText::new("Contact").small().color(palette.muted));
-                        if side
-                            .add_enabled(ordinary_enabled,
-                                egui::TextEdit::singleline(&mut self.contact)
-                                    .hint_text("Optional contact details"),
-                            )
-                            .labelled_by(label.id)
-                            .changed()
-                        {
-                            self.draft_dirty = true;
-                        }
                     }
                     if selected_flow
                         .is_some_and(|f| f.kind == processcraft_core::model::FlowKind::Association)
@@ -1112,14 +1083,40 @@ impl ProcessCraft {
                     }
                     if self.is_node {
                         self.bpmn_properties_ui(side, editable);
-                        self.dictionary_links_ui(side);
                     }
-                    side.add_space(8.0);
-                    if side.button("Element comments…").clicked() {
-                        self.open_comments();
+                    });
+                    if self.is_node {
+                    widgets::section(side, "Responsibility & systems", None, true, |side| {
+                    if self.graph_selection.is_none() {
+                        let label =
+                            side.label(egui::RichText::new("Owner").small().color(palette.muted));
+                        if side
+                            .add_enabled(ordinary_enabled,
+                                egui::TextEdit::singleline(&mut self.owner)
+                                    .hint_text("Optional owner"),
+                            )
+                            .labelled_by(label.id)
+                            .changed()
+                        {
+                            self.draft_dirty = true;
+                        }
+                        let label =
+                            side.label(egui::RichText::new("Contact").small().color(palette.muted));
+                        if side
+                            .add_enabled(ordinary_enabled,
+                                egui::TextEdit::singleline(&mut self.contact)
+                                    .hint_text("Optional contact details"),
+                            )
+                            .labelled_by(label.id)
+                            .changed()
+                        {
+                            self.draft_dirty = true;
+                        }
                     }
-                    side.add_space(8.0);
-                    egui::CollapsingHeader::new("Advanced").show(side, |side| {
+                    self.dictionary_links_ui(side);
+                    });
+                    }
+                    widgets::section(side, "Advanced BPMN", None, false, |side| {
                         let xml_id = snap.project.documents.get(self.doc)
                             .and_then(|document| processcraft_core::queries::element_identity(document, selected))
                             .and_then(|identity| identity.xml_id());
@@ -1198,7 +1195,8 @@ impl ProcessCraft {
                         }
                     });
                 } else {
-                    widgets::section_label(side, "Project and document");
+                    let title = snap.project.documents.get(self.doc).map_or_else(|| snap.project.name.clone(), |d| d.name.clone());
+                    let _ = header_card(side, "Project and document", &title, None, false, false, 0);
                     side.label(
                         egui::RichText::new(
                             "Select an element on the canvas to edit its properties.",
@@ -1206,7 +1204,8 @@ impl ProcessCraft {
                         .small()
                         .color(palette.muted),
                     );
-                    side.add_space(8.0);
+                    side.add_space(4.0);
+                    widgets::section(side, "General", None, true, |side| {
                     let name = side.label(
                         egui::RichText::new("Project name")
                             .small()
@@ -1251,10 +1250,16 @@ impl ProcessCraft {
                             }
                         }
                     }
+                    });
+                    if self.take_collaboration_request() {
+                        widgets::open_section(side.ctx(), "Data & collaboration");
+                    }
+                    widgets::section(side, "Data & collaboration", None, false, |side| {
+                        self.collaboration_contents(side)
+                    });
                 }
-                side.add_space(8.0);
                 // Everything below is interchange detail: XML IDs, namespaces, raw XML and catalogs.
-                egui::CollapsingHeader::new(if self.selected.is_some() { "Catalogs" } else { "Advanced" }).id_salt("inspector_advanced_document").show(side, |side| {
+                widgets::section(side, if self.selected.is_some() { "Catalogs" } else { "Advanced BPMN" }, None, false, |side| {
                 if self.selected.is_none() && let Some(document) = snap.project.documents.get(self.doc) {
                     side.add_enabled(editable, egui::Checkbox::new(&mut self.create_anonymous, "New canvas elements without XML ID"))
                         .on_hover_text("Assign an XML ID before exporting referenced elements to BPMN.");
@@ -1390,8 +1395,7 @@ impl ProcessCraft {
                 self.callable_catalog_ui(side, editable);
                 });
                 if let Some(p) = process {
-                    side.separator();
-                    egui::CollapsingHeader::new("Connections and lanes").show(side, |side| {
+                    widgets::section(side, "Connections and lanes", None, false, |side| {
                         let lane_names: Vec<_> = p.lanes.iter().map(|l| l.name.as_deref().unwrap_or("Unnamed lane")).collect();
                         egui::ComboBox::from_label("Assign selected node to lane")
                             .selected_text(if self.lane == 0 {
@@ -1859,6 +1863,99 @@ impl ProcessCraft {
             );
         }
     }
+}
+
+enum HeaderAction {
+    Replace,
+    Comments,
+}
+
+/// The inspector's header card: the element's icon, type and name, with Change type and
+/// Comments actions.
+fn header_card(
+    ui: &mut egui::Ui,
+    kind: &str,
+    title: &str,
+    node_kind: Option<processcraft_core::model::NodeKind>,
+    flow: bool,
+    replaceable: bool,
+    comments: usize,
+) -> Option<HeaderAction> {
+    let p = crate::theme::current(ui);
+    let mut action = None;
+    egui::Frame::new()
+        .fill(p.secondary)
+        .corner_radius(crate::theme::RADIUS_CARD)
+        .inner_margin(egui::Margin::same(10))
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.horizontal(|ui| {
+                let (icon, _) =
+                    ui.allocate_exact_size(egui::Vec2::splat(36.0), egui::Sense::hover());
+                ui.painter().rect_filled(icon, crate::theme::RADIUS, p.base);
+                let glyph = egui::Rect::from_center_size(icon.center(), egui::Vec2::splat(22.0));
+                if let Some(kind) = node_kind {
+                    super::overlays::paint_entry_icon(ui.painter(), kind.into(), glyph, p.text);
+                } else if flow {
+                    ui.painter().arrow(
+                        glyph.left_bottom() + egui::vec2(3.0, -3.0),
+                        egui::vec2(15.0, -15.0),
+                        egui::Stroke::new(1.4, p.text),
+                    );
+                } else {
+                    widgets::paint_icon(ui, widgets::Icon::Workflow, glyph.shrink(2.0), p.text);
+                }
+                ui.vertical(|ui| {
+                    ui.spacing_mut().item_spacing.y = 0.0;
+                    ui.label(
+                        egui::RichText::new(kind.to_uppercase())
+                            .font(crate::theme::semibold(10.5))
+                            .color(p.faint),
+                    );
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(title).font(crate::theme::semibold(16.0)),
+                        )
+                        .truncate(),
+                    )
+                    .on_hover_text(title);
+                });
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if node_kind.is_some() || flow {
+                        let label = if comments > 0 {
+                            format!("Comments ({comments})")
+                        } else {
+                            "Comments".to_owned()
+                        };
+                        if widgets::icon_button_sized(
+                            ui,
+                            widgets::Icon::Comment,
+                            &label,
+                            comments > 0,
+                            28.0,
+                        )
+                        .clicked()
+                        {
+                            action = Some(HeaderAction::Comments);
+                        }
+                    }
+                    if replaceable
+                        && widgets::icon_button_sized(
+                            ui,
+                            widgets::Icon::Redo,
+                            "Change type… (R)",
+                            false,
+                            28.0,
+                        )
+                        .clicked()
+                    {
+                        action = Some(HeaderAction::Replace);
+                    }
+                });
+            });
+        });
+    ui.add_space(6.0);
+    action
 }
 
 #[cfg(test)]

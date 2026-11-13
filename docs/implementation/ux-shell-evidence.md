@@ -100,3 +100,27 @@ tests. Native screenshots of the release build (1560×960, sample project from
   the panel.
 - **Limit:** inputs sent to a background window do not produce a new frame, so this step has no
   screenshot. The test above is the evidence.
+
+## 5. Inspector and settings
+
+- **Header card:** the inspector opens with a card showing the element's palette icon, its type in
+  small caps and its name, with Change type (R) and Comments actions. The Comments action shows the
+  element's comment count and opens the Comments tab. With nothing selected, the card reads
+  "Project and document".
+- **Sections:** the rest of the inspector is one column of `widgets::section` groups. Each is
+  collapsible with an animated chevron, a SemiBold title and an optional count, and keeps its open
+  state for the session.
+  - Element: General (names, documentation, condition, association direction, choreography flow,
+    BPMN properties); Responsibility & systems (owner, contact and dictionary links); Advanced BPMN
+    (closed by default); Catalogs; Connections and lanes.
+  - Document: General; Data & collaboration (closed by default); Advanced BPMN; Connections and lanes.
+- **Data & collaboration:** the former "Collaboration and data" floating window now renders inside
+  this inspector section. Model › Data & collaboration… deselects, shows the inspector and opens the
+  section. The draft and session rules of `collaboration.rs` are unchanged.
+- **Settings:** a Settings dialog (Tools › Settings… or the rail) replaces the "Local automation"
+  window. It has an Appearance section (Light/Dark) and the Local automation section.
+- **Width:** the inspector is now 280–420 px wide.
+- **Test:** `shell::tests::inspector_sections_host_collaboration_and_settings` checks that the
+  section is closed by default, that the menu command opens it in place with no floating window, and
+  the Settings dialog sections.
+- **Screenshot:** `step5-inspector.png`.
