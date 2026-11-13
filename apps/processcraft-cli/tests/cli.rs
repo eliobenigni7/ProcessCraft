@@ -1338,3 +1338,108 @@ fn mcp_attributes_query_matches_cli_values() {
         serde_json::to_vec(&content["definitions"]).unwrap()
     );
 }
+
+#[test]
+fn export_image_overlay_flags_draw_legend_and_leave_the_default_untouched() {
+    let t = Temp::new();
+    let document = "11111111-1111-4111-8111-111111111111";
+    let definition = "33333333-3333-4333-8333-0000000000aa";
+    // The procurement fixture plus a Cost attribute on its two activities.
+    let mut batch: serde_json::Value =
+        serde_json::from_slice(&fs::read(fixture()).unwrap()).unwrap();
+    let mutations = batch["mutations"].as_array_mut().unwrap();
+    mutations.push(serde_json::json!({
+        "type": "createAttributeDefinition",
+        "definition": {
+            "id": definition, "name": "Cost", "description": "", "value_type": "Currency",
+            "unit": "EUR", "options": [], "dictionary_kind": null,
+            "applies_to": ["Activity"], "required": false
+        }
+    }));
+    for (element, amount) in [("review", "100"), ("order", "900")] {
+        mutations.push(serde_json::json!({
+            "type": "setAttributeValues",
+            "source": {"document_id": document, "xml_id": element},
+            "values": [{"definition_id": definition, "value": {"Currency": amount}}]
+        }));
+    }
+    let batch_path = t.path("batch.json");
+    fs::write(&batch_path, serde_json::to_vec(&batch).unwrap()).unwrap();
+    let project = t.path("cost.processcraft");
+    let created = cli(
+        &[
+            "run".as_ref(),
+            "--new".as_ref(),
+            "Procurement".as_ref(),
+            "--batch".as_ref(),
+            batch_path.as_os_str(),
+            "--out".as_ref(),
+            project.as_os_str(),
+        ],
+        &t.0,
+    );
+    assert!(
+        created.status.success(),
+        "{}",
+        String::from_utf8_lossy(&created.stderr)
+    );
+    let export = |name: &str, extra: &[&str]| {
+        let out = t.path(name);
+        let mut args: Vec<&std::ffi::OsStr> = vec![
+            "export-image".as_ref(),
+            project.as_os_str(),
+            "--document-id".as_ref(),
+            document.as_ref(),
+            "--diagram-id".as_ref(),
+            "procurement_diagram".as_ref(),
+            "--format".as_ref(),
+            "svg".as_ref(),
+            "--out".as_ref(),
+            out.as_os_str(),
+            "--acknowledge-diagnostics".as_ref(),
+        ];
+        args.extend(extra.iter().map(|a| std::ffi::OsStr::new(*a)));
+        let result = cli(&args, &t.0);
+        (result, fs::read_to_string(&out).unwrap_or_default())
+    };
+    let (plain, plain_svg) = export("plain.svg", &[]);
+    assert!(
+        plain.status.success(),
+        "{}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+    assert!(!plain_svg.contains("Cost (EUR)"));
+    let (heat, heat_svg) = export("heat.svg", &["--overlay-attribute", definition]);
+    assert!(
+        heat.status.success(),
+        "{}",
+        String::from_utf8_lossy(&heat.stderr)
+    );
+    assert!(heat_svg.contains("Cost (EUR)"));
+    assert!(heat_svg.contains("100 \u{2013} 260") && heat_svg.contains("740 \u{2013} 900"));
+    assert_ne!(plain_svg, heat_svg);
+    let (badge, badge_svg) = export(
+        "badge.svg",
+        &["--overlay-attribute", definition, "--overlay-mode", "badge"],
+    );
+    assert!(
+        badge.status.success(),
+        "{}",
+        String::from_utf8_lossy(&badge.stderr)
+    );
+    assert!(badge_svg.contains("100 EUR") && badge_svg.contains("900 EUR"));
+    assert!(!badge_svg.contains("100 \u{2013} 260"));
+    // An unknown definition is refused instead of exporting without colours.
+    let (unknown, _) = export(
+        "unknown.svg",
+        &[
+            "--overlay-attribute",
+            "33333333-3333-4333-8333-0000000000bb",
+        ],
+    );
+    assert_eq!(unknown.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&unknown.stderr).contains("not found"));
+    // The mode flag without an attribute is a usage error.
+    let (mode_only, _) = export("mode.svg", &["--overlay-mode", "badge"]);
+    assert!(!mode_only.status.success());
+}

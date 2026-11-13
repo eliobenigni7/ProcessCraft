@@ -10,6 +10,7 @@ use processcraft_core::{
     },
     ids::{ElementKey, ElementSelector},
     model::{Bounds, BpmnDocument, Capability, Flow, FlowKind, Lane, Node, NodeKind, Point, Style},
+    overlay::{Overlay, OverlayEntry, OverlayScale},
 };
 use tiny_skia::PathBuilder;
 
@@ -586,6 +587,252 @@ impl Appearance {
             Self::CanvasDark => [18, 20, 23],
         }
     }
+    /// Default text and outline colour of the appearance.
+    fn ink(self) -> [u8; 3] {
+        match self {
+            Self::Light => [26, 37, 52],
+            Self::Dark => [230, 234, 240],
+            Self::CanvasLight => [42, 46, 54],
+            Self::CanvasDark => [201, 206, 214],
+        }
+    }
+}
+
+// Overlay colour sets (M5.4). Light fills pair with dark ink and dark fills with
+// light ink; `render_regressions` checks every entry against `Appearance::ink`
+// for at least 4.5:1, so label text stays readable on every bucket colour.
+const OVERLAY_SEQUENTIAL_LIGHT: [[u8; 3]; 5] = [
+    [222, 235, 250],
+    [190, 216, 244],
+    [158, 195, 236],
+    [128, 174, 226],
+    [106, 156, 216],
+];
+const OVERLAY_SEQUENTIAL_DARK: [[u8; 3]; 5] = [
+    [27, 42, 64],
+    [28, 52, 88],
+    [29, 62, 110],
+    [30, 72, 128],
+    [32, 82, 146],
+];
+const OVERLAY_CATEGORICAL_LIGHT: [[u8; 3]; 8] = [
+    [142, 186, 232],
+    [240, 176, 110],
+    [140, 200, 140],
+    [238, 160, 190],
+    [186, 160, 225],
+    [226, 208, 110],
+    [110, 200, 196],
+    [200, 180, 160],
+];
+const OVERLAY_CATEGORICAL_DARK: [[u8; 3]; 8] = [
+    [28, 60, 110],
+    [110, 60, 20],
+    [28, 84, 44],
+    [110, 40, 70],
+    [66, 44, 110],
+    [88, 80, 20],
+    [20, 84, 84],
+    [70, 70, 76],
+];
+
+/// Fill for an overlay bucket; out-of-range buckets clamp to the last colour.
+pub fn overlay_fill(appearance: Appearance, scale: OverlayScale, bucket: u8) -> [u8; 3] {
+    let i = usize::from(bucket);
+    match (scale, appearance.is_dark()) {
+        (OverlayScale::Sequential, false) => OVERLAY_SEQUENTIAL_LIGHT[i.min(4)],
+        (OverlayScale::Sequential, true) => OVERLAY_SEQUENTIAL_DARK[i.min(4)],
+        (OverlayScale::Categorical, false) => OVERLAY_CATEGORICAL_LIGHT[i.min(7)],
+        (OverlayScale::Categorical, true) => OVERLAY_CATEGORICAL_DARK[i.min(7)],
+    }
+}
+/// The label ink drawn on overlay fills.
+pub fn overlay_ink(appearance: Appearance) -> [u8; 3] {
+    appearance.ink()
+}
+/// WCAG 2.x contrast ratio of two sRGB colours.
+pub fn contrast_ratio(a: [u8; 3], b: [u8; 3]) -> f64 {
+    fn luminance(c: [u8; 3]) -> f64 {
+        let channel = |v: u8| {
+            let x = f64::from(v) / 255.0;
+            if x <= 0.04045 {
+                x / 12.92
+            } else {
+                ((x + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        channel(c[0]) * 0.2126 + channel(c[1]) * 0.7152 + channel(c[2]) * 0.0722
+    }
+    let (a, b) = (luminance(a), luminance(b));
+    (a.max(b) + 0.05) / (a.min(b) + 0.05)
+}
+
+/// Overlay entries by element, built once per scene.
+struct OverlayView<'a> {
+    overlay: &'a Overlay,
+    entries: std::collections::HashMap<&'a ElementSelector, &'a OverlayEntry>,
+}
+impl<'a> OverlayView<'a> {
+    fn new(overlay: &'a Overlay) -> Self {
+        Self {
+            overlay,
+            entries: overlay.entries.iter().map(|e| (&e.element, e)).collect(),
+        }
+    }
+    /// The heatmap fill of an activity, which also replaces its label ink.
+    fn fill(
+        &self,
+        appearance: Appearance,
+        element: &ElementSelector,
+        kind: Option<NodeKind>,
+    ) -> Option<[u8; 3]> {
+        if !kind.is_some_and(NodeKind::is_activity) {
+            return None;
+        }
+        let bucket = self.entries.get(element)?.bucket?;
+        Some(overlay_fill(appearance, self.overlay.scale, bucket))
+    }
+}
+
+const LEGEND_ROW: f32 = 18.0;
+const LEGEND_SWATCH: f32 = 12.0;
+/// `label` lays text out at 12 px unless a DI font says otherwise.
+const LEGEND_FONT: f32 = 12.0;
+const BADGE_FONT: f32 = 12.0;
+
+fn text_width(
+    fonts: &mut TextEngine,
+    family: &str,
+    text: &str,
+    size: f32,
+) -> Result<f32, RenderError> {
+    let mut request = TextRequest::new(text, size, 2000.0);
+    request.family = family;
+    let layout = fonts.layout(request)?;
+    Ok(layout
+        .glyphs()
+        .iter()
+        .map(|g| g.x + g.advance)
+        .fold(0.0, f32::max))
+}
+/// Width and height of the legend block drawn below the diagram.
+fn legend_size(
+    fonts: &mut TextEngine,
+    family: &str,
+    overlay: &Overlay,
+) -> Result<(f32, f32), RenderError> {
+    if overlay.legend.is_empty() {
+        return Ok((0.0, 0.0));
+    }
+    let mut width = text_width(fonts, family, &overlay.title, LEGEND_FONT)?;
+    for item in &overlay.legend {
+        width =
+            width.max(LEGEND_SWATCH + 8.0 + text_width(fonts, family, &item.label, LEGEND_FONT)?);
+    }
+    Ok((
+        width + 32.0,
+        LEGEND_ROW * (1 + overlay.legend.len()) as f32 + 16.0,
+    ))
+}
+/// Title row and one swatch row per bucket, starting at `top` in scene space.
+fn draw_legend(
+    scene: &mut DiagramScene,
+    fonts: &mut TextEngine,
+    family: &str,
+    appearance: Appearance,
+    overlay: &Overlay,
+    top: f32,
+    diagnostics: &mut Vec<String>,
+) -> Result<(), RenderError> {
+    let ink = appearance.ink();
+    let mut text =
+        |scene: &mut DiagramScene, text: &str, x: f32, y: f32| -> Result<(), RenderError> {
+            let bounds = Bounds {
+                x: f64::from(x),
+                y: f64::from(y),
+                width: f64::from(text_width(fonts, family, text, LEGEND_FONT)? + 12.0),
+                // Taller than a row: `label` clips text that nearly fills its box.
+                height: f64::from(LEGEND_ROW) + 6.0,
+            };
+            label(
+                scene,
+                fonts,
+                family,
+                text,
+                &bounds,
+                (0.0, 0.0),
+                None,
+                None,
+                ink,
+                LabelAlign::TopLeft,
+                diagnostics,
+            )
+        };
+    text(scene, &overlay.title, 12.0, top + 8.0)?;
+    for (i, item) in overlay.legend.iter().enumerate() {
+        let y = top + 8.0 + LEGEND_ROW * (1 + i) as f32;
+        if let Some(rect) = tiny_skia::Rect::from_xywh(16.0, y + 2.0, LEGEND_SWATCH, LEGEND_SWATCH)
+        {
+            let path = PathBuilder::from_rect(rect);
+            scene.add_path(
+                path.clone(),
+                overlay_fill(appearance, overlay.scale, item.bucket),
+            )?;
+            outline(scene, &path, ink, 1.0)?;
+        }
+        text(scene, &item.label, 16.0 + LEGEND_SWATCH + 4.0, y)?;
+    }
+    Ok(())
+}
+/// A pill centred on the shape's top-right corner: ink-coloured with paper-coloured text.
+#[allow(clippy::too_many_arguments)]
+fn draw_badge(
+    scene: &mut DiagramScene,
+    fonts: &mut TextEngine,
+    family: &str,
+    appearance: Appearance,
+    shape: &Bounds,
+    text: &str,
+    origin: (f64, f64),
+    diagnostics: &mut Vec<String>,
+) -> Result<(), RenderError> {
+    let width = f64::from(text_width(fonts, family, text, BADGE_FONT)?.ceil()) + 12.0;
+    let pill = Bounds {
+        x: shape.x + shape.width + 6.0 - width,
+        y: shape.y - 9.0,
+        width,
+        height: 18.0,
+    };
+    let mut path = PathBuilder::new();
+    rounded_corners(
+        &mut path,
+        (pill.x - origin.0) as f32,
+        (pill.y - origin.1) as f32,
+        pill.width as f32,
+        pill.height as f32,
+        9.0,
+        [true; 4],
+    );
+    if let Some(path) = path.finish() {
+        scene.add_path(path, appearance.ink())?;
+    }
+    label(
+        scene,
+        fonts,
+        family,
+        text,
+        &Bounds {
+            y: pill.y - 3.0,
+            height: pill.height + 6.0,
+            ..pill
+        },
+        origin,
+        None,
+        None,
+        appearance.paper(),
+        LabelAlign::Center,
+        diagnostics,
+    )
 }
 
 /// Canvas dot grid: one dot every `DOT_SPACING` model units, hidden when they would crowd.
@@ -1096,8 +1343,23 @@ impl BpmnScene {
         fonts: &mut TextEngine,
         family: &str,
     ) -> Result<Self, RenderError> {
-        Self::build_internal(document, diagram_id, appearance, fonts, family, true)
+        Self::build_with_overlay(document, diagram_id, appearance, fonts, family, None)
     }
+    /// Like [`Self::build`], with an attribute overlay: activity fills, badges and a
+    /// legend block below the diagram. The model and explicit styles are untouched.
+    pub fn build_with_overlay(
+        document: &BpmnDocument,
+        diagram_id: &ElementSelector,
+        appearance: Appearance,
+        fonts: &mut TextEngine,
+        family: &str,
+        overlay: Option<&Overlay>,
+    ) -> Result<Self, RenderError> {
+        Self::build_internal(
+            document, diagram_id, appearance, fonts, family, true, overlay, true,
+        )
+    }
+    #[allow(clippy::too_many_arguments)]
     fn build_internal(
         document: &BpmnDocument,
         diagram_id: &ElementSelector,
@@ -1105,6 +1367,8 @@ impl BpmnScene {
         fonts: &mut TextEngine,
         family: &str,
         shape_labels: bool,
+        overlay: Option<&Overlay>,
+        with_legend: bool,
     ) -> Result<Self, RenderError> {
         if matches!(document.capability, Capability::PreservedSource { .. }) {
             let mut scene = DiagramScene::new(33.0, 33.0)?;
@@ -1224,9 +1488,15 @@ impl BpmnScene {
             }
         }
         let origin = (minx - 16.0, miny - 16.0);
+        let overlay_view = overlay.map(OverlayView::new);
+        let diagram_height = ((maxy - miny) + 32.0) as f32;
+        let (legend_width, legend_height) = match overlay {
+            Some(overlay) if with_legend => legend_size(fonts, family, overlay)?,
+            _ => (0.0, 0.0),
+        };
         let mut scene = DiagramScene::for_diagram(
-            ((maxx - minx) + 32.0) as f32,
-            ((maxy - miny) + 32.0) as f32,
+            (((maxx - minx) + 32.0) as f32).max(legend_width),
+            diagram_height + legend_height,
         )?;
         let bg = appearance.paper();
         let (fg, fill) = match appearance {
@@ -1788,10 +2058,15 @@ impl BpmnScene {
                 ) => [54, 56, 45],
                 _ => fill,
             };
-            let fc = color(
-                shape.style.as_ref().and_then(|s| s.fill.as_deref()),
-                default_fill,
-            );
+            let overlaid = overlay_view
+                .as_ref()
+                .and_then(|view| view.fill(appearance, &shape.element, kind));
+            let fc = overlaid.unwrap_or_else(|| {
+                color(
+                    shape.style.as_ref().and_then(|s| s.fill.as_deref()),
+                    default_fill,
+                )
+            });
             let mut path = PathBuilder::new();
             let fold = w.min(h).min(12.0);
             match kind {
@@ -2535,11 +2810,14 @@ impl BpmnScene {
                 is_lane_or_pool,
             );
             let lb = &label_bounds;
+            // An overlay fill replaces an explicit label colour so the ink always
+            // contrasts with the bucket colour.
             let style = shape
                 .label
                 .as_ref()
                 .and_then(|l| l.style.as_ref())
-                .or(shape.style.as_ref());
+                .or(shape.style.as_ref())
+                .filter(|_| overlaid.is_none());
             if shape_labels && label_visible(shape.label.as_ref(), shape.label_visibility) {
                 let rotate_pool_label = is_lane_or_pool
                     && shape.is_horizontal != Some(false)
@@ -2874,6 +3152,43 @@ impl BpmnScene {
                 geometry: HitGeometry::Edge(edge.waypoints.clone()),
             });
         }
+        if let Some(view) = &overlay_view {
+            // Badges and the legend are painted last, above every shape and edge.
+            if paint_ranks.is_some() {
+                scene.set_paint_rank(usize::MAX);
+            }
+            for shape in &diagram.shapes {
+                let badge = view
+                    .entries
+                    .get(&shape.element)
+                    .and_then(|entry| entry.badge.as_deref());
+                if let Some(text) = badge
+                    && !semantics.shape_visibility(shape, diagram).0
+                {
+                    draw_badge(
+                        &mut scene,
+                        fonts,
+                        family,
+                        appearance,
+                        &shape.bounds,
+                        text,
+                        origin,
+                        &mut diagnostics,
+                    )?;
+                }
+            }
+            if legend_height > 0.0 {
+                draw_legend(
+                    &mut scene,
+                    fonts,
+                    family,
+                    appearance,
+                    view.overlay,
+                    diagram_height,
+                    &mut diagnostics,
+                )?;
+            }
+        }
         if let Some(ranks) = &paint_ranks {
             hits.sort_by_key(|hit| {
                 *ranks
@@ -2934,19 +3249,7 @@ fn color(value: Option<&str>, default: [u8; 3]) -> [u8; 3] {
         .unwrap_or(default)
 }
 fn low_contrast(a: [u8; 3], b: [u8; 3]) -> bool {
-    fn luminance(c: [u8; 3]) -> f64 {
-        let channel = |v: u8| {
-            let x = f64::from(v) / 255.0;
-            if x <= 0.04045 {
-                x / 12.92
-            } else {
-                ((x + 0.055) / 1.055).powf(2.4)
-            }
-        };
-        channel(c[0]) * 0.2126 + channel(c[1]) * 0.7152 + channel(c[2]) * 0.0722
-    }
-    let (a, b) = (luminance(a), luminance(b));
-    (a.max(b) + 0.05) / (a.min(b) + 0.05) < 3.0
+    contrast_ratio(a, b) < 3.0
 }
 #[allow(clippy::too_many_arguments)]
 /// Message name beside an envelope decorator (BPMN 2.0.2 section 12.3.2 BPMNShape,
@@ -4098,6 +4401,19 @@ impl BpmnViewport {
         family: &str,
         view: Viewport,
     ) -> Result<Self, RenderError> {
+        Self::build_with_overlay(document, diagram_id, appearance, fonts, family, view, None)
+    }
+    /// Like [`Self::build`], with activity fills and badges of an attribute overlay.
+    /// The legend is not rasterized here; the desktop shows it beside the canvas.
+    pub fn build_with_overlay(
+        document: &BpmnDocument,
+        diagram_id: &ElementSelector,
+        appearance: Appearance,
+        fonts: &mut TextEngine,
+        family: &str,
+        view: Viewport,
+        overlay: Option<&Overlay>,
+    ) -> Result<Self, RenderError> {
         if !view.x.is_finite()
             || !view.y.is_finite()
             || !view.width.is_finite()
@@ -4207,8 +4523,9 @@ impl BpmnViewport {
             }
         }
         diagram.edges.clear();
-        let mut built =
-            BpmnScene::build_internal(&copy, diagram_id, appearance, fonts, family, false)?;
+        let mut built = BpmnScene::build_internal(
+            &copy, diagram_id, appearance, fonts, family, false, overlay, false,
+        )?;
         built.diagnostics.extend(viewport_diagnostics);
         let original = document
             .diagrams
@@ -4237,6 +4554,7 @@ impl BpmnViewport {
             Appearance::CanvasDark => [201, 206, 214],
         };
         let semantics = SemanticIndex::new(document)?;
+        let overlay_view = overlay.map(OverlayView::new);
         // Labels are culled independently of their owning shape.
         for shape in &original.shapes {
             if let Some(ranks) = &paint_ranks {
@@ -4443,7 +4761,13 @@ impl BpmnViewport {
                     .label
                     .as_ref()
                     .and_then(|l| l.style.as_ref())
-                    .or(shape.style.as_ref()),
+                    .or(shape.style.as_ref())
+                    .filter(|_| {
+                        overlay_view
+                            .as_ref()
+                            .and_then(|view| view.fill(appearance, &shape.element, kind))
+                            .is_none()
+                    }),
                 label_font(
                     document,
                     original,

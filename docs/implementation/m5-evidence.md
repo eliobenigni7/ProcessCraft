@@ -385,3 +385,63 @@ use"), as asserted in the core tests.
 - The Attributes tab shows definitions in one stacked list/editor layout (no
   side-by-side panel as in Entries).
 - Clipboard and duplicate still do not copy attribute values (decision 6).
+
+## M5.4 - attribute overlay
+
+What the tests prove (all run in the workspace gates):
+
+- Core projection (`crates/processcraft-core/tests/overlay.rs`, 10 tests): five
+  equal-width buckets with exact boundaries (0..10 gives 0,0,1,1,2,3,3,4,4,4; the
+  maximum falls in the last bucket), equal values share bucket 0 with a one-item
+  legend, durations rank by elapsed seconds (not text), enums get one bucket per
+  option in option order, more than eight options fall back to badges, values on
+  events and missing values do not enter the range, unknown document or
+  definition gives an empty overlay, output is independent of value order.
+- Render (`crates/processcraft-render/tests/export/overlay.rs`, 7 tests): with no
+  overlay, or an empty one, SVG, PNG and PDF are byte-identical to `export_diagram`
+  in all four appearances; with an overlay only the activity fill colour is removed
+  from the scene and legend paths and labels are appended; an explicit imported
+  fill and label colour are overridden only while the overlay is drawn (the
+  document is untouched); badges are ink-coloured pills with paper-coloured text at
+  contrast of at least 4.5; the legend grows the artboard and SVG, PNG and PDF
+  report the same logical size; raster pixels show the ramp colour on the task and
+  in the first legend swatch; the viewport raster fills activities.
+- Contrast (`render_regressions.rs`): label ink against all 5 sequential and 8
+  categorical fills in all four appearances is at least 4.5:1; the measured worst
+  case is 4.77:1.
+- Identity with pre-M5.4 output rests on the `None` path being unchanged code plus
+  the pre-existing render, export and text-parity tests passing unmodified. No
+  pre-change byte golden was captured, so this is not a byte comparison against the
+  previous commit.
+- CLI (`export_image_overlay_flags_draw_legend_and_leave_the_default_untouched`):
+  `--overlay-attribute` and `--overlay-mode` draw legend labels or value badges in
+  SVG; the default export has neither; an unknown definition exits 2; the mode flag
+  alone is a usage error.
+- GUI (`switching_the_overlay_changes_neither_generation_nor_dirty_state`): choosing
+  an overlay changes neither generation, dirty state, content identity nor undo
+  count; a deleted definition drops the overlay.
+- An independent Pillow and pypdf script (scratchpad, not committed) on a CLI export
+  of the procurement fixture with a Cost attribute found all five light ramp colours
+  in the PNG (legend swatches 10x10 pixels each) and in the PDF diagram XObject, the
+  PNG grown by the legend height. Poppler is not installed here, so no rasterized
+  PDF comparison was made.
+
+Design decisions where the plan was silent:
+
+- `Overlay` has an extra `scale` field (sequential or categorical) so the renderer
+  knows which colour set to use; `OverlayMode` serializes as `heatmap` or `badge`.
+- Only activities are covered (fill and badge); values on events, gateways and other
+  targets are ignored by the projection. Heatmap on a text, date or URL attribute
+  falls back to badges; dictionary references produce no entry.
+- The legend is drawn by `BpmnScene::build_with_overlay` and therefore in exports;
+  the live viewport raster has no legend, the Overlay capsule shows it instead.
+- The overlay is skipped on layout previews. The export checkbox is off by default.
+- MCP `export` gains optional `overlayAttribute` and `overlayMode` (standalone and
+  attached); an unknown definition returns `overlayBlocked`. The fields are ignored
+  for the BPMN format.
+
+Known limits: equal-width buckets put most values in one bucket when an outlier is
+present (quantile buckets are the recorded upgrade). The MCP and attached fields have
+no dedicated test beyond compilation and the shared `export_overlay` function. The
+Overlay capsule, popup menu and export checkbox were not exercised manually and no
+screenshot was taken.

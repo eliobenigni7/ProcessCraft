@@ -4,7 +4,10 @@ mod raster;
 mod scene;
 mod text;
 
-pub use bpmn::{Appearance, BpmnScene, BpmnViewport, HitGeometry, HitRegion, Viewport};
+pub use bpmn::{
+    Appearance, BpmnScene, BpmnViewport, HitGeometry, HitRegion, Viewport, contrast_ratio,
+    overlay_fill, overlay_ink,
+};
 pub use scene::{DiagramScene, Label, ScenePath};
 pub use text::{Glyph, TextEngine, TextLayout, TextRequest, VisibleLine};
 
@@ -20,4 +23,7 @@ impl std::error::Error for RenderError {}
 
 mod export;
 mod pdf;
-pub use export::{ExportFormat, ExportOptions, ExportedDiagram, export_diagram, preflight_diagram};
+pub use export::{
+    ExportFormat, ExportOptions, ExportedDiagram, export_diagram, export_diagram_with_overlay,
+    preflight_diagram,
+};

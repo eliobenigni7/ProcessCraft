@@ -69,6 +69,12 @@ pub enum Command {
         /// Export even when the render preflight reports diagnostics.
         #[arg(long)]
         acknowledge_diagnostics: bool,
+        /// Attribute definition ID to draw as an overlay with a legend (see `query attributes`).
+        #[arg(long)]
+        overlay_attribute: Option<String>,
+        /// Overlay style: a five-step heatmap (default) or value badges.
+        #[arg(long, value_enum, requires = "overlay_attribute")]
+        overlay_mode: Option<OverlayModeArg>,
     },
     /// Import BPMN 2.0 XML into a new .processcraft project (editable when it fits the qualified profile).
     ImportBpmn {
@@ -201,6 +207,12 @@ pub enum Command {
         #[arg(long)]
         overwrite: bool,
     },
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+pub enum OverlayModeArg {
+    Heatmap,
+    Badge,
 }
 
 #[derive(Clone, Copy, clap::ValueEnum)]

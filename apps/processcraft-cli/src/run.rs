@@ -409,6 +409,8 @@ pub fn execute(command: Command) -> Result<(), Error> {
             dark,
             overwrite,
             acknowledge_diagnostics,
+            overlay_attribute,
+            overlay_mode,
         } => export_image_cli(
             &input,
             &document_id,
@@ -419,6 +421,8 @@ pub fn execute(command: Command) -> Result<(), Error> {
             dark,
             overwrite,
             acknowledge_diagnostics,
+            overlay_attribute.as_deref(),
+            overlay_mode,
         ),
         Command::ImportBpmn {
             input,
@@ -1041,6 +1045,8 @@ fn export_image_cli(
     dark: bool,
     overwrite: bool,
     acknowledge_diagnostics: bool,
+    overlay_attribute: Option<&str>,
+    overlay_mode: Option<crate::args::OverlayModeArg>,
 ) -> Result<(), Error> {
     use processcraft_render::{Appearance, ExportFormat, ExportOptions, TextEngine};
     // Mirrors the renderer's limit so a bad scale is reported before diagnostics.
@@ -1060,6 +1066,21 @@ fn export_image_cli(
         .iter()
         .find(|d| d.id == id)
         .ok_or_else(|| error(3, "document not found"))?;
+    let overlay = overlay_attribute
+        .map(|attribute| {
+            let definition = attribute.parse().map_err(|e| error(2, e))?;
+            let mode = overlay_mode.map(|mode| match mode {
+                crate::args::OverlayModeArg::Heatmap => {
+                    processcraft_core::overlay::OverlayMode::Heatmap
+                }
+                crate::args::OverlayModeArg::Badge => {
+                    processcraft_core::overlay::OverlayMode::Badge
+                }
+            });
+            processcraft_core::overlay::export_overlay(&loaded.project, id, definition, mode)
+                .map_err(|e| error(2, e))
+        })
+        .transpose()?;
     let mut fonts = TextEngine::new();
     let appearance = if dark {
         Appearance::Dark
@@ -1077,7 +1098,7 @@ fn export_image_cli(
             ),
         ));
     }
-    let output = processcraft_render::export_diagram(
+    let output = processcraft_render::export_diagram_with_overlay(
         doc,
         &diagram,
         ExportOptions {
@@ -1092,6 +1113,7 @@ fn export_image_cli(
         },
         &mut fonts,
         "Noto Sans",
+        overlay.as_ref(),
     )
     .map_err(|e| error(3, e))?;
     write_export(

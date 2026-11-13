@@ -1786,6 +1786,12 @@ impl ProcessCraft {
                         self.ctl.session.snapshot().generation,
                     );
                 }
+                if self.canvas.overlay.is_some() {
+                    ui.checkbox(
+                        &mut self.canvas.export_overlay,
+                        "Include overlay and legend",
+                    );
+                }
                 for (label, format) in [
                     ("Export BPMN…", ExportKind::Bpmn),
                     ("Export draw.io…", ExportKind::Drawio),
@@ -1818,6 +1824,16 @@ impl ProcessCraft {
                             } else {
                                 Appearance::Light
                             };
+                            let overlay = if self.canvas.export_overlay {
+                                self.canvas.overlay_for(
+                                    &self.ctl.session.id(),
+                                    snap.generation,
+                                    &snap.project,
+                                    doc.id,
+                                )
+                            } else {
+                                None
+                            };
                             self.effects.export(
                                 ctx.clone(),
                                 snap.project.clone(),
@@ -1825,6 +1841,7 @@ impl ProcessCraft {
                                 diagram,
                                 format,
                                 appearance,
+                                overlay,
                             );
                         }
                     }

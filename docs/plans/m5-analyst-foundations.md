@@ -461,7 +461,7 @@ content equals a pinned expected file; the matrix shown in the GUI, `query raci`
 export,lib}.rs`; `apps/processcraft/src/{jobs.rs,app/canvas.rs,app/overlays.rs,effects.rs}`;
 `apps/processcraft-cli/src/{args,run,mcp}.rs`; `apps/processcraft/src/attachment.rs`.
 
-- [ ] Core, pure data and one projection:
+- [x] Core, pure data and one projection:
   - `Overlay { entries: Vec<OverlayEntry>, legend: Vec<LegendItem>, title: String }`,
     `OverlayEntry { element: ElementSelector, bucket: Option<u8>, badge: Option<String> }`,
     `LegendItem { bucket: u8, label: String }`. Buckets are indexes, not colours, so the renderer
@@ -472,21 +472,21 @@ export,lib}.rs`; `apps/processcraft/src/{jobs.rs,app/canvas.rs,app/overlays.rs,e
     maximum present in the document; `Enum` uses one bucket per option, up to eight, and falls back to
     badges beyond that. Parsing a decimal to `f64` happens only here, for ranking.
   M7 and M9 will build an `Overlay` directly from their results; that is the whole shared mechanism.
-- [ ] Render: `BpmnScene::build_with_overlay(…, overlay: Option<&Overlay>)` and the same for
+- [x] Render: `BpmnScene::build_with_overlay(…, overlay: Option<&Overlay>)` and the same for
   `BpmnViewport`; the existing `build` functions delegate with `None`, so current call sites and
   tests do not change. With an overlay, an activity's fill comes from a five-step sequential ramp or
   an eight-colour categorical set defined beside `Appearance::paper` (one set for light, one for
   dark, each checked for label contrast); a badge is a small rounded label at the shape's top-right
   corner laid out with the shared `TextEngine`. An explicit imported `Shape.style` fill is overridden
   only while the overlay is drawn; the model is never touched.
-- [ ] Export: `export_diagram_with_overlay` adds the overlay and draws the legend below the diagram
+- [x] Export: `export_diagram_with_overlay` adds the overlay and draws the legend below the diagram
   inside the scene, so SVG, PNG and PDF carry the same legend. Default export stays overlay-free.
-- [ ] Desktop: `RenderJob` gains `overlay: Option<Arc<Overlay>>`; the render key includes the spec so
+- [x] Desktop: `RenderJob` gains `overlay: Option<Arc<Overlay>>`; the render key includes the spec so
   stale rasters are dropped by the existing `is_current` check. An "Overlay" capsule in
   `overlays.rs` (next to zoom) picks the attribute and mode and shows the legend. The choice is view
   state: it is not saved, not a mutation and does not change dirty state. The image export dialog
   offers "Include overlay and legend" only while an overlay is active.
-- [ ] CLI: `export-image … --overlay-attribute <definition-id> [--overlay-mode heatmap|badge]`. MCP
+- [x] CLI: `export-image … --overlay-attribute <definition-id> [--overlay-mode heatmap|badge]`. MCP
   `Export` gains the same two optional fields (standalone and attached).
 
 **Tests:** new `crates/processcraft-core/tests/overlay.rs` (bucket boundaries, equal values, missing
