@@ -452,14 +452,19 @@ impl ServerHandler for Server {
                         let rows = processcraft_core::queries::element_attributes(&snapshot.project, document_id)
                             .ok_or_else(|| ErrorData::invalid_params("document not found", None))?;
                         let total = rows.len();
-                        let mut result = crate::run::bounded_page(
+                        let definitions = json!(definitions);
+                        let reserved = serde_json::to_vec(&definitions)
+                            .map_err(|e| ErrorData::internal_error(e.to_string(), None))?
+                            .len();
+                        let mut result = crate::run::bounded_page_reserved(
                             rows.into_iter().skip(offset).map(|row| json!(row)),
                             total,
                             offset,
                             limit,
+                            reserved,
                         )
                         .map_err(|error| ErrorData::invalid_params(error.message, None))?;
-                        result["definitions"] = json!(definitions);
+                        result["definitions"] = definitions;
                         return Ok(CallToolResult::structured(result).into());
                     }
                     Query::ReplaceOptions { document_id, element_id, offset, limit } => (

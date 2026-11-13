@@ -144,24 +144,7 @@ impl History {
                         total += string(s);
                     }
                 }
-                for definition in &c.attribute_definitions {
-                    total += string(&definition.name)
-                        + string(&definition.description)
-                        + definition
-                            .options
-                            .capacity()
-                            .saturating_mul(size_of::<String>());
-                }
-                for value in &c.attribute_values {
-                    total += xml(&value.source.xml_id);
-                    if let crate::attributes::AttributeValue::DictionaryRefs(refs) = &value.value {
-                        for target in refs {
-                            if let DictionaryTarget::Literal(s) = target {
-                                total += string(s);
-                            }
-                        }
-                    }
-                }
+                total += attribute_cost(&c.attribute_definitions, &c.attribute_values);
                 for f in &c.folders {
                     total += xml(&f.id) + string(&f.name) + opt_xml(&f.parent);
                 }
@@ -199,24 +182,7 @@ impl History {
                     total += string(s);
                 }
             }
-            for definition in &p.attribute_definitions {
-                total += string(&definition.name)
-                    + string(&definition.description)
-                    + definition
-                        .options
-                        .capacity()
-                        .saturating_mul(size_of::<String>());
-            }
-            for value in &p.attribute_values {
-                total += xml(&value.source.xml_id);
-                if let crate::attributes::AttributeValue::DictionaryRefs(refs) = &value.value {
-                    for target in refs {
-                        if let DictionaryTarget::Literal(s) = target {
-                            total += string(s);
-                        }
-                    }
-                }
-            }
+            total += attribute_cost(&p.attribute_definitions, &p.attribute_values);
             for f in &p.folders {
                 total += xml(&f.id) + string(&f.name) + opt_xml(&f.parent);
             }
@@ -274,6 +240,51 @@ impl StringCost for crate::bpmn_metadata::DocumentationSet {
             Self::Structured(_) => 0,
         }
     }
+}
+/// Definitions and values with every string payload (names, units, options,
+/// value text and literal labels), not only their headers.
+fn attribute_cost(
+    definitions: &[crate::attributes::AttributeDefinition],
+    values: &[crate::attributes::AttributeAssignment],
+) -> usize {
+    use crate::attributes::AttributeValue;
+    let definitions: usize = definitions
+        .iter()
+        .map(|d| {
+            string(&d.name)
+                + string(&d.description)
+                + string(&d.unit)
+                + vec_cost(&d.options)
+                + d.options.iter().map(string).sum::<usize>()
+                + vec_cost(&d.applies_to)
+        })
+        .sum();
+    let values: usize = values
+        .iter()
+        .map(|v| {
+            xml(&v.source.xml_id)
+                + match &v.value {
+                    AttributeValue::DictionaryRefs(refs) => {
+                        vec_cost(refs)
+                            + refs
+                                .iter()
+                                .map(|r| match r {
+                                    DictionaryTarget::Literal(s) => string(s),
+                                    DictionaryTarget::Entry(_) => 0,
+                                })
+                                .sum::<usize>()
+                    }
+                    AttributeValue::Text(s)
+                    | AttributeValue::Number(s)
+                    | AttributeValue::Duration(s)
+                    | AttributeValue::Currency(s)
+                    | AttributeValue::Enum(s)
+                    | AttributeValue::Date(s)
+                    | AttributeValue::Url(s) => string(s),
+                }
+        })
+        .sum();
+    definitions + values
 }
 fn string(s: &impl StringCost) -> usize {
     s.string_cost()

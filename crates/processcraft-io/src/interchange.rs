@@ -8843,11 +8843,16 @@ pub fn export_bpmn(
         || project
             .dictionary_links
             .iter()
-            .any(|l| l.source.document_id == document_id);
+            .any(|l| l.source.document_id == document_id)
+        // Until `pc:attributes` is written (M5.1b), attribute values are native-only too.
+        || project
+            .attribute_values
+            .iter()
+            .any(|v| v.source.document_id == document_id);
     if has_links && !acknowledge_native_fields {
         return Err(ExportFailure {
             report: ExportReport {
-                omitted: vec!["Project navigation or dictionary links are native-only".into()],
+                omitted: vec!["Project navigation links, dictionary links and attribute values are native-only".into()],
                 blocked: vec!["Native-only link omission requires acknowledgement".into()],
                 ..ExportReport::default()
             },
@@ -8863,10 +8868,10 @@ pub fn export_bpmn(
     }
     let mut result = export_document(document, &project.resources, acknowledge_native_fields)?;
     if has_links {
-        result
-            .report
-            .omitted
-            .push("Project navigation or dictionary links are native-only".into());
+        result.report.omitted.push(
+            "Project navigation links, dictionary links and attribute values are native-only"
+                .into(),
+        );
     }
     Ok(result)
 }

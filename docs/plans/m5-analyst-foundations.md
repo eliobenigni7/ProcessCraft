@@ -159,7 +159,8 @@ values, query them and save them. The GUI shows nothing new yet.
     description, `required`, `unit`, adding options and widening `applies_to` always succeed: values
     refer to the definition by ID, as dictionary usages do. `value_type` is immutable. Removing or
     renaming an enum option, or narrowing `applies_to`, while affected values exist is rejected unless
-    the resolution says what to do: `Reject` (default), `Clear` (drop affected values) or
+    the resolution says what to do: `Reject` (required on the wire, like `DictionaryDeleteResolution`),
+    `Clear` (drop affected values) or
     `MapOptions(Vec<{from, to}>)`.
   - `DeleteAttributeDefinition { definition_id, resolution: AttributeDeleteResolution }` with
     `Reject`, `Discard` or `MoveTo(AttributeDefinitionId)` (same type required), mirroring

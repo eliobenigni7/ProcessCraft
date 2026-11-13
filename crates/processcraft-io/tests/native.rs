@@ -2723,7 +2723,37 @@ fn analyst_attributes_round_trip_and_capability_gate() {
     let error = load_bytes(&archive(&contents)).err().unwrap().to_string();
     assert!(error.contains("analyst attributes require capability"));
 
-    // The archived payload refuses to load without the capability as well.
+    // BPMN export does not carry the values yet (M5.1b), so it needs the
+    // native-field acknowledgement and reports the omission.
+    let Err(blocked) = processcraft_io::interchange::export_bpmn(&project, document_id, false)
+    else {
+        panic!("export without acknowledgement is refused");
+    };
+    assert!(
+        blocked
+            .report
+            .omitted
+            .iter()
+            .any(|line| line.contains("attribute values"))
+    );
+    let exported = processcraft_io::interchange::export_bpmn(&project, document_id, true)
+        .unwrap_or_else(|failure| panic!("{:?}", failure.report));
+    assert!(
+        exported
+            .report
+            .omitted
+            .iter()
+            .any(|line| line.contains("attribute values"))
+    );
+
+    // The current project's payload is refused without the capability as well.
+    let mut contents = entries(&write_bytes(&project).unwrap());
+    edit_json(&mut contents, "manifest.json", |manifest| {
+        manifest["required_capabilities"]
+            .as_array_mut()
+            .unwrap()
+            .retain(|capability| capability != "analyst-attributes-v1")
+    });
     let error = load_bytes(&archive(&contents)).err().unwrap().to_string();
     assert!(error.contains("analyst attributes require capability"));
 }

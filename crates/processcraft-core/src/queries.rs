@@ -646,7 +646,10 @@ pub fn attribute_definitions(project: &ProjectData) -> Vec<AttributeDefinitionUs
 pub struct ElementAttributeRow {
     pub key: ElementKey,
     pub name: Option<String>,
-    pub target: crate::attributes::AttributeTarget,
+    /// `None` when the element no longer carries an attribute target (for example
+    /// a sequence flow that became a message flow); its values stay listed so they
+    /// can be seen and cleared.
+    pub target: Option<crate::attributes::AttributeTarget>,
     pub values: Vec<AttributeValueCell>,
 }
 
@@ -663,6 +666,7 @@ pub fn element_attributes(
         .map(|definition| (definition.id, definition))
         .collect();
     let mut rows: Vec<(ElementKey, Vec<AttributeValueCell>)> = Vec::new();
+    let mut index: HashMap<ElementSelector, usize> = HashMap::new();
     for value in &project.attribute_values {
         if value.source.document_id != document_id {
             continue;
@@ -670,20 +674,11 @@ pub fn element_attributes(
         let Some(definition) = definitions.get(&value.definition) else {
             continue;
         };
-        let entry = rows
-            .iter_mut()
-            .find(|(key, _)| key.xml_id == value.source.xml_id);
-        let cells = match entry {
-            Some((_, cells)) => cells,
-            None => {
-                rows.push((value.source.clone(), Vec::new()));
-                let Some((_, cells)) = rows.last_mut() else {
-                    unreachable!()
-                };
-                cells
-            }
-        };
-        cells.push(AttributeValueCell {
+        let row = *index.entry(value.source.xml_id.clone()).or_insert_with(|| {
+            rows.push((value.source.clone(), Vec::new()));
+            rows.len() - 1
+        });
+        rows[row].1.push(AttributeValueCell {
             definition_id: value.definition,
             name: definition.name.clone(),
             value: value.value.clone(),
@@ -692,26 +687,28 @@ pub fn element_attributes(
     rows.sort_by(|a, b| a.0.xml_id.cmp(&b.0.xml_id));
     Some(
         rows.into_iter()
-            .filter_map(|(key, mut values)| {
-                // Values are pruned with their element; a row without a target
-                // can only appear in a project that is about to fail validation.
-                let target = crate::attributes::target_of(document, &key.xml_id)?;
-                values.sort_by(|a, b| {
-                    a.name.cmp(&b.name).then_with(|| {
-                        a.definition_id
-                            .to_string()
-                            .cmp(&b.definition_id.to_string())
-                    })
-                });
-                Some(ElementAttributeRow {
+            .map(|(key, mut values)| {
+                sort_cells(&mut values);
+                ElementAttributeRow {
                     name: element_name(document, &key.xml_id).map(str::to_owned),
-                    target,
+                    target: crate::attributes::target_of(document, &key.xml_id),
                     key,
                     values,
-                })
+                }
             })
             .collect(),
     )
+}
+
+/// Cells by definition name, then ID, so every surface lists them the same way.
+fn sort_cells(cells: &mut [AttributeValueCell]) {
+    cells.sort_by(|a, b| {
+        a.name.cmp(&b.name).then_with(|| {
+            a.definition_id
+                .to_string()
+                .cmp(&b.definition_id.to_string())
+        })
+    });
 }
 pub fn target_name<'a>(project: &'a ProjectData, target: &'a DictionaryTarget) -> Option<&'a str> {
     match target {
@@ -884,6 +881,9 @@ pub fn activity_table(
             }
         }
     }
+    for row in &mut rows {
+        sort_cells(&mut row.attributes);
+    }
     Some(rows)
 }
 
@@ -979,11 +979,20 @@ pub fn compare_checkpoint(project: &ProjectData, id: CheckpointId) -> Option<Che
     let dictionary_changed =
         serde_json::to_value((&project.dictionary_entries, &project.dictionary_links)).ok()
             != serde_json::to_value((&frozen.dictionary_entries, &frozen.dictionary_links)).ok();
-    let definitions_equal = serde_json::to_value(&project.attribute_definitions).ok()
-        == serde_json::to_value(&frozen.attribute_definitions).ok();
-    let values_equal = serde_json::to_value(&project.attribute_values).ok()
-        == serde_json::to_value(&frozen.attribute_values).ok();
-    let attributes_changed = !(definitions_equal && values_equal);
+    // Order-insensitive: both vectors are sets (by definition ID and by
+    // source and definition), so a re-set value never reads as a change.
+    let sorted_rows = |value: serde_json::Result<serde_json::Value>| {
+        let mut rows: Vec<String> = match value {
+            Ok(serde_json::Value::Array(items)) => items.iter().map(ToString::to_string).collect(),
+            _ => Vec::new(),
+        };
+        rows.sort();
+        rows
+    };
+    let attributes_changed = sorted_rows(serde_json::to_value(&project.attribute_definitions))
+        != sorted_rows(serde_json::to_value(&frozen.attribute_definitions))
+        || sorted_rows(serde_json::to_value(&project.attribute_values))
+            != sorted_rows(serde_json::to_value(&frozen.attribute_values));
     let resource_keys = |resources: &[Resource]| {
         resources
             .iter()

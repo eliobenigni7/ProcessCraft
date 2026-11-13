@@ -149,8 +149,30 @@ fn invalid(message: impl Into<String>) -> CommandError {
 
 impl AttributeDefinition {
     pub(crate) fn validate_shape(&self) -> Result<(), CommandError> {
-        if self.name.is_empty() || self.name.len() > MAX_TEXT {
+        if self.name.trim().is_empty() || self.name.len() > MAX_TEXT {
             return Err(invalid("attribute definition name must be 1..16384 bytes"));
+        }
+        if self.name.trim() != self.name {
+            return Err(invalid(
+                "attribute definition name must not start or end with whitespace",
+            ));
+        }
+        if self.unit.as_ref().is_some_and(|unit| unit.len() > MAX_TEXT) {
+            return Err(invalid("attribute unit exceeds the text limit"));
+        }
+        if self.value_type == AttributeType::Currency
+            && !self.unit.as_ref().is_some_and(|unit| {
+                unit.len() == 3 && unit.bytes().all(|byte| byte.is_ascii_uppercase())
+            })
+        {
+            return Err(invalid(
+                "a Currency definition needs an ISO 4217 unit (three uppercase letters)",
+            ));
+        }
+        if self.applies_to.is_empty() {
+            return Err(invalid(
+                "attribute definition must apply to at least one target",
+            ));
         }
         if self.description.len() > MAX_TEXT {
             return Err(invalid("attribute description exceeds the text limit"));
@@ -255,6 +277,11 @@ pub fn target_of(document: &BpmnDocument, selector: &ElementSelector) -> Option<
                 for lane in &content.lanes {
                     if lane.id.selector() == *selector {
                         return Some(AttributeTarget::Lane);
+                    }
+                }
+                for flow in &content.flows {
+                    if flow.kind == FlowKind::Sequence && flow.id.selector() == *selector {
+                        return Some(AttributeTarget::SequenceFlow);
                     }
                 }
                 for data_object in &content.data_objects {
@@ -378,20 +405,23 @@ pub fn parse_duration(text: &str) -> Result<String, String> {
     {
         return Err("duration needs at least one component".into());
     }
+    // Equal elapsed times get one form: carry seconds into minutes, minutes into
+    // hours and hours into days (`PT90M` → `PT1H30M`, `PT24H` → `P1D`).
+    let total = days.unwrap_or(0) * 86_400
+        + hours.unwrap_or(0) * 3_600
+        + minutes.unwrap_or(0) * 60
+        + seconds.unwrap_or(0);
+    let (days, rest) = (total / 86_400, total % 86_400);
+    let (hours, minutes, seconds) = (rest / 3_600, rest % 3_600 / 60, rest % 60);
     let mut canonical = String::from("P");
-    if days.is_some_and(|days| days != 0) {
-        canonical.push_str(&days.unwrap().to_string());
-        canonical.push('D');
+    if days != 0 {
+        canonical.push_str(&format!("{days}D"));
     }
-    if hours.is_some_and(|hours| hours != 0)
-        || minutes.is_some_and(|minutes| minutes != 0)
-        || seconds.is_some_and(|seconds| seconds != 0)
-    {
+    if rest != 0 {
         canonical.push('T');
-        for (component, unit) in [(hours, 'H'), (minutes, 'M'), (seconds, 'S')] {
-            if component.is_some_and(|value| value != 0) {
-                canonical.push_str(&component.unwrap().to_string());
-                canonical.push(unit);
+        for (value, unit) in [(hours, 'H'), (minutes, 'M'), (seconds, 'S')] {
+            if value != 0 {
+                canonical.push_str(&format!("{value}{unit}"));
             }
         }
     }
@@ -510,9 +540,12 @@ pub fn check_value(
             if refs.len() > MAX_DICTIONARY_REFS {
                 return Err("attribute references exceed the dictionary reference limit".into());
             }
-            for reference in refs {
+            for (index, reference) in refs.iter().enumerate() {
                 if let DictionaryTarget::Literal(label) = reference {
                     check_text(label)?;
+                }
+                if refs[..index].contains(reference) {
+                    return Err("duplicate dictionary reference in one value".into());
                 }
             }
             AttributeValue::DictionaryRefs(refs.clone())
@@ -610,19 +643,23 @@ fn update_effect(
         }
         _ => {}
     }
-    if definition.applies_to.is_empty() {
-        return Affected::Drop;
-    }
-    if let Some(document) = project
-        .documents
-        .iter()
-        .find(|document| document.id == assignment.source.document_id)
-        && let Some(target) = target_of(document, &assignment.source.xml_id)
+    // Only a narrowing that this update makes counts; a value that was already
+    // outside `applies_to` (left by an earlier change) is not this update's effect.
+    if let Some(target) = source_target(project, &assignment.source)
+        && current.applies_to.contains(&target)
         && !definition.applies_to.contains(&target)
     {
         return Affected::Drop;
     }
     Affected::Keep
+}
+
+fn source_target(project: &ProjectData, source: &ElementKey) -> Option<AttributeTarget> {
+    project
+        .documents
+        .iter()
+        .find(|document| document.id == source.document_id)
+        .and_then(|document| target_of(document, &source.xml_id))
 }
 
 /// Applies an unrestricted update (rename, description, `required`, `unit`,
@@ -652,6 +689,9 @@ pub fn apply_update(
     let mut mappings: std::collections::HashMap<&str, &str> = std::collections::HashMap::new();
     if let AttributeUpdateResolution::MapOptions(options) = &resolution {
         for mapping in options {
+            if !current.options.iter().any(|option| option == &mapping.from) {
+                return Err(invalid("option mapping source is not a current option"));
+            }
             if !definition
                 .options
                 .iter()
@@ -751,6 +791,34 @@ pub fn apply_delete(
                 {
                     return Err(invalid("invalid replacement"));
                 }
+                if matches!(
+                    current.value_type,
+                    AttributeType::Number | AttributeType::Currency
+                ) && target.unit != current.unit
+                {
+                    return Err(invalid("invalid replacement: units differ"));
+                }
+                let moved = project
+                    .attribute_values
+                    .iter()
+                    .filter(|assignment| assignment.definition == definition_id);
+                for assignment in moved {
+                    if source_target(project, &assignment.source).is_some_and(|element| {
+                        current.applies_to.contains(&element)
+                            && !target.applies_to.contains(&element)
+                    }) {
+                        return Err(invalid(
+                            "invalid replacement: target does not apply to a valued element",
+                        ));
+                    }
+                    if project.attribute_values.iter().any(|other| {
+                        other.definition == target_id && other.source == assignment.source
+                    }) {
+                        return Err(invalid(
+                            "invalid replacement: an element already has a value for the target",
+                        ));
+                    }
+                }
                 if current.value_type == AttributeType::Enum {
                     let movable = project
                         .attribute_values
@@ -766,29 +834,11 @@ pub fn apply_delete(
                         return Err(invalid("invalid replacement"));
                     }
                 }
-                // A source that already has a value on the target keeps that
-                // value; the moved one is dropped instead of duplicating.
-                let taken: std::collections::HashSet<ElementKey> = project
-                    .attribute_values
-                    .iter()
-                    .filter(|assignment| assignment.definition == target_id)
-                    .map(|assignment| assignment.source.clone())
-                    .collect();
-                project.attribute_values = std::mem::take(&mut project.attribute_values)
-                    .into_iter()
-                    .filter_map(|assignment| {
-                        if assignment.definition != definition_id {
-                            return Some(assignment);
-                        }
-                        if taken.contains(&assignment.source) {
-                            return None;
-                        }
-                        Some(AttributeAssignment {
-                            definition: target_id,
-                            ..assignment
-                        })
-                    })
-                    .collect();
+                for assignment in &mut project.attribute_values {
+                    if assignment.definition == definition_id {
+                        assignment.definition = target_id;
+                    }
+                }
             }
         }
     }
@@ -808,11 +858,13 @@ pub fn apply_set_values(
         .iter()
         .find(|document| document.id == source.document_id)
         .ok_or_else(|| invalid("document not found"))?;
-    let target = target_of(document, &source.xml_id)
-        .ok_or_else(|| invalid("element not found or carries no attribute target"))?;
+    // Clearing needs no target: a value left on an element its definition no
+    // longer applies to (or that lost its target) must stay removable.
+    let target = target_of(document, &source.xml_id);
     let mut input_ids = std::collections::HashSet::new();
-    let mut applied: Vec<AttributeValue> = Vec::with_capacity(values.len());
-    for input in &values {
+    let mut applied: Vec<(AttributeDefinitionId, Option<AttributeValue>)> =
+        Vec::with_capacity(values.len());
+    for input in values {
         if !input_ids.insert(input.definition_id) {
             return Err(invalid("duplicate attribute definition in one set"));
         }
@@ -821,32 +873,42 @@ pub fn apply_set_values(
             .iter()
             .find(|definition| definition.id == input.definition_id)
             .ok_or_else(|| invalid("attribute definition not found"))?;
-        if !definition.applies_to.contains(&target) {
-            return Err(invalid(
-                "attribute definition does not apply to this element",
-            ));
-        }
-        applied.push(match &input.value {
+        let value = match &input.value {
             Some(value) => {
+                let target = target
+                    .ok_or_else(|| invalid("element not found or carries no attribute target"))?;
+                if !definition.applies_to.contains(&target) {
+                    return Err(invalid(
+                        "attribute definition does not apply to this element",
+                    ));
+                }
                 let value = check_value(definition, value).map_err(invalid)?;
                 if let AttributeValue::DictionaryRefs(refs) = &value {
                     check_dictionary_refs(project, definition, refs).map_err(invalid)?;
                 }
-                value
+                Some(value)
             }
-            None => AttributeValue::Text(String::new()),
-        });
+            None => None,
+        };
+        applied.push((input.definition_id, value));
     }
-    project.attribute_values.retain(|assignment| {
-        assignment.source != source || !input_ids.contains(&assignment.definition)
-    });
-    for (input, value) in values.into_iter().zip(applied) {
-        if input.value.is_some() {
-            project.attribute_values.push(AttributeAssignment {
+    // Replace in place, so re-setting a value keeps the array order and an
+    // unchanged value leaves the content identity unchanged.
+    for (definition, value) in applied {
+        let existing = project.attribute_values.iter().position(|assignment| {
+            assignment.source == source && assignment.definition == definition
+        });
+        match (existing, value) {
+            (Some(index), Some(value)) => project.attribute_values[index].value = value,
+            (Some(index), None) => {
+                project.attribute_values.remove(index);
+            }
+            (None, Some(value)) => project.attribute_values.push(AttributeAssignment {
                 source: source.clone(),
-                definition: input.definition_id,
+                definition,
                 value,
-            });
+            }),
+            (None, None) => {}
         }
     }
     Ok(())

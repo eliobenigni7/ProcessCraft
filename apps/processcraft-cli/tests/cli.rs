@@ -1232,23 +1232,14 @@ fn mcp_attributes_query_matches_cli_values() {
         String::from_utf8_lossy(&cli_query.stderr)
     );
     let cli_value: serde_json::Value = serde_json::from_slice(&cli_query.stdout).unwrap();
-    let cli_review = cli_value["rows"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|row| row["name"] == "Review request")
-        .unwrap()["values"]
-        .clone();
-    assert_eq!(cli_review, review["values"].clone());
-    let cli_definitions: Vec<serde_json::Value> = cli_value["definitions"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|d| d["definition"].clone())
-        .collect();
-    let mcp_definitions: Vec<serde_json::Value> = definitions
-        .iter()
-        .map(|d| d["definition"].clone())
-        .collect();
-    assert_eq!(cli_definitions, mcp_definitions);
+    // Every row and every definition (with its usage count), serialized to the
+    // same bytes through both transports.
+    assert_eq!(
+        serde_json::to_vec(&cli_value["rows"]).unwrap(),
+        serde_json::to_vec(&content["items"]).unwrap()
+    );
+    assert_eq!(
+        serde_json::to_vec(&cli_value["definitions"]).unwrap(),
+        serde_json::to_vec(&content["definitions"]).unwrap()
+    );
 }

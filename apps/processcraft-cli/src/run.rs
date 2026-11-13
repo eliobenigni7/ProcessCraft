@@ -488,11 +488,25 @@ pub(crate) fn bounded_page(
     offset: usize,
     limit: usize,
 ) -> Result<Value, Error> {
+    bounded_page_reserved(items, total, offset, limit, 0)
+}
+/// `bounded_page` with `reserved` bytes of the 3 MiB response already spent on
+/// fields sent beside the page (the attribute definitions).
+pub(crate) fn bounded_page_reserved(
+    items: impl Iterator<Item = Value>,
+    total: usize,
+    offset: usize,
+    limit: usize,
+    reserved: usize,
+) -> Result<Value, Error> {
     if !(1..=100).contains(&limit) {
         return Err(error(2, "limit must be 1..100"));
     }
+    if reserved > 3 * 1024 * 1024 {
+        return Err(error(3, "query header exceeds response limit"));
+    }
     let mut page = Vec::new();
-    let mut bytes = 0usize;
+    let mut bytes = reserved;
     for item in items.take(limit) {
         let size = serde_json::to_vec(&item).map_err(|e| error(3, e))?.len();
         if bytes.saturating_add(size) > 3 * 1024 * 1024 {

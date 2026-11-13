@@ -1087,6 +1087,8 @@ impl Session {
                             | Mutation::SetNodeLoop { .. }
                             | Mutation::SetNodeDetails { .. }
                             | Mutation::UpdateDataObject { .. }
+                            | Mutation::DeleteDataObject { .. }
+                            | Mutation::SetScopeDataObjects { .. }
                             | Mutation::UpdateConversationNode { .. }
                             | Mutation::UpdateChoreographyActivity { .. }
                     )
@@ -5212,7 +5214,9 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                                 *reference = replacement.clone();
                             }
                         }
-                        refs.dedup();
+                        // Retargeting can merge two references anywhere in the list.
+                        let mut seen = std::collections::HashSet::new();
+                        refs.retain(|reference| seen.insert(reference.clone()));
                     }
                 }
             }

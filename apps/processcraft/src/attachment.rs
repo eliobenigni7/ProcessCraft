@@ -646,10 +646,17 @@ impl Attachment {
                         let Some(rows) = processcraft_core::queries::element_attributes(&snapshot.project, document_id) else {
                             return json!({"ok":false,"error":"document not found"});
                         };
-                        let definitions = processcraft_core::queries::attribute_definitions(&snapshot.project);
+                        if !(1..=100).contains(&limit) {
+                            return json!({"ok":false,"error":"limit must be 1..100"});
+                        }
+                        let definitions = json!(processcraft_core::queries::attribute_definitions(&snapshot.project));
+                        // The definitions share the 3 MiB response budget with the page.
+                        let mut bytes = serde_json::to_vec(&definitions).map_or(3 * 1024 * 1024 + 1, |v| v.len());
+                        if bytes > 3 * 1024 * 1024 {
+                            return json!({"ok":false,"error":"query header exceeds response limit"});
+                        }
                         let total = rows.len();
                         let mut page = Vec::new();
-                        let mut bytes = 0usize;
                         for item in rows.into_iter().skip(offset).take(limit).map(|row| json!(row)) {
                             let size = serde_json::to_vec(&item).map_or(3 * 1024 * 1024 + 1, |v| v.len());
                             if bytes.saturating_add(size) > 3 * 1024 * 1024 {

@@ -136,7 +136,7 @@ fn session() -> Session {
     Session::new(p).unwrap()
 }
 fn definition(name: &str, value_type: AttributeType) -> AttributeDefinition {
-    definition_with(name, value_type, &[])
+    definition_with(name, value_type, &[AttributeTarget::Activity])
 }
 fn definition_with(
     name: &str,
@@ -208,7 +208,10 @@ fn duration_validator_accepts_the_iso_subset_and_canonicalizes() {
         ("P1DT0H", "P1D"),
         ("PT0S", "PT0S"),
         ("P0D", "PT0S"),
-        ("PT90S", "PT90S"),
+        ("PT90S", "PT1M30S"),
+        ("PT90M", "PT1H30M"),
+        ("PT24H", "P1D"),
+        ("P1DT25H", "P2DT1H"),
         ("P1DT1H1M1S", "P1DT1H1M1S"),
     ] {
         assert_eq!(attributes::parse_duration(input).unwrap(), canonical);
@@ -367,9 +370,55 @@ fn applies_to_is_enforced_when_values_are_set_but_not_by_validate() {
     )
     .unwrap();
     // Not an invariant of validate(): a value whose definition no longer
-    // applies stays loadable.
+    // applies (here written directly, as an older or imported file can) stays
+    // loadable, visible, renamable and clearable.
+    let mut stale = s.snapshot().project.as_ref().clone();
+    stale.attribute_definitions[0].applies_to = vec![AttributeTarget::Process];
+    stale.validate().unwrap();
+    assert_eq!(stale.attribute_values.len(), 1);
+    let mut stale_session = Session::new(stale).unwrap();
+    let mut renamed = on_activities.clone();
+    renamed.name = "Renamed".into();
+    renamed.applies_to = vec![AttributeTarget::Process];
+    apply_one(
+        &mut stale_session,
+        Mutation::UpdateAttributeDefinition {
+            definition: renamed,
+            resolution: AttributeUpdateResolution::Reject,
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        queries::element_attributes(&stale_session.snapshot().project, docid())
+            .unwrap()
+            .len(),
+        1
+    );
+    apply_one(
+        &mut stale_session,
+        Mutation::SetAttributeValues {
+            source: key("activity"),
+            values: vec![AttributeValueInput {
+                definition_id,
+                value: None,
+            }],
+        },
+    )
+    .unwrap();
+    assert!(stale_session.snapshot().project.attribute_values.is_empty());
+    // A narrowing update made now is refused, or cleared on request.
     let mut narrowed = on_activities.clone();
     narrowed.applies_to = vec![AttributeTarget::Process];
+    assert!(
+        apply_one(
+            &mut s,
+            Mutation::UpdateAttributeDefinition {
+                definition: narrowed.clone(),
+                resolution: AttributeUpdateResolution::Reject,
+            },
+        )
+        .is_err()
+    );
     apply_one(
         &mut s,
         Mutation::UpdateAttributeDefinition {
@@ -378,7 +427,7 @@ fn applies_to_is_enforced_when_values_are_set_but_not_by_validate() {
         },
     )
     .unwrap();
-    s.snapshot().project.validate().unwrap();
+    assert!(s.snapshot().project.attribute_values.is_empty());
     // Setting a new value on a disallowed element is refused.
     let error = apply_one(
         &mut s,
@@ -604,7 +653,8 @@ fn delete_resolutions_refuse_discard_and_move_values() {
         )
         .is_err()
     );
-    // A source that already has a value on the target keeps that value.
+    // A source that already has a value on the target refuses the move
+    // instead of silently dropping one of the two values.
     let other_source = definition_with(
         "Extra",
         AttributeType::Text,
@@ -622,14 +672,16 @@ fn delete_resolutions_refuse_discard_and_move_values() {
         set("event", target.id, AttributeValue::Text("t".into())),
     )
     .unwrap();
-    apply_one(
-        &mut s,
-        Mutation::DeleteAttributeDefinition {
-            definition_id: other_source_id,
-            resolution: AttributeDeleteResolution::MoveTo(target.id),
-        },
-    )
-    .unwrap();
+    assert!(
+        apply_one(
+            &mut s,
+            Mutation::DeleteAttributeDefinition {
+                definition_id: other_source_id,
+                resolution: AttributeDeleteResolution::MoveTo(target.id),
+            },
+        )
+        .is_err()
+    );
     let on_event = s
         .snapshot()
         .project
@@ -637,7 +689,7 @@ fn delete_resolutions_refuse_discard_and_move_values() {
         .iter()
         .filter(|value| value.source.xml_id == id::<XmlId>("event"))
         .count();
-    assert_eq!(on_event, 1);
+    assert_eq!(on_event, 2);
 }
 
 #[test]
@@ -666,6 +718,16 @@ fn failed_batch_leaves_state_history_and_generation_unchanged() {
         before.project.attribute_values.len(),
         after.project.attribute_values.len()
     );
+    // Nothing was pushed onto the history either.
+    let undo = s.apply(
+        Envelope {
+            request_id: "u".into(),
+            session_id: s.id(),
+            expected_generation: None,
+        },
+        Request::Undo,
+    );
+    assert!(matches!(undo, Err(CommandError::NothingToUndo)));
 }
 
 #[test]
@@ -975,7 +1037,7 @@ fn attribute_queries_return_definitions_rows_and_table_cells() {
     assert_eq!(definitions[0].definition.name, "Cost");
     let rows = queries::element_attributes(&s.snapshot().project, docid()).unwrap();
     assert_eq!(rows.len(), 1);
-    assert_eq!(rows[0].target, AttributeTarget::Activity);
+    assert_eq!(rows[0].target, Some(AttributeTarget::Activity));
     assert_eq!(rows[0].name.as_deref(), Some("Review request"));
     assert_eq!(rows[0].values[0].name, "Cost");
     assert_eq!(
@@ -1217,4 +1279,329 @@ fn assignment_struct_serializes_stably() {
     assert_eq!(value["source"]["xml_id"], "activity");
     assert_eq!(value["definition"], "77777777-7777-4777-8777-777777777777");
     assert_eq!(value["value"], serde_json::json!({"Number": "1.5"}));
+}
+
+fn every_target(name: &str, value_type: AttributeType) -> AttributeDefinition {
+    definition_with(
+        name,
+        value_type,
+        &[
+            AttributeTarget::Activity,
+            AttributeTarget::Event,
+            AttributeTarget::Gateway,
+            AttributeTarget::SequenceFlow,
+            AttributeTarget::Lane,
+            AttributeTarget::Participant,
+            AttributeTarget::Process,
+            AttributeTarget::DataObject,
+        ],
+    )
+}
+fn document_with_subprocess() -> BpmnDocument {
+    let mut d = document();
+    let mut sub = node("sub", "Sub", NodeKind::SubProcess);
+    let mut flow = d.processes[0].flows[0].clone();
+    flow.id = id("inner_flow");
+    flow.source = Some(processcraft_core::bpmn_model::EventReference::Local(id(
+        "inner_a",
+    )));
+    flow.target = Some(processcraft_core::bpmn_model::EventReference::Local(id(
+        "inner_b",
+    )));
+    let content = FlowContainer {
+        nodes: vec![
+            node("inner_a", "Inner A", NodeKind::Task),
+            node("inner_b", "Inner B", NodeKind::Task),
+        ],
+        flows: vec![flow],
+        ..FlowContainer::default()
+    };
+    sub.details = Some(processcraft_core::bpmn_model::NodeDetails::SubProcess {
+        content: Box::new(content),
+    });
+    d.processes[0].nodes.push(sub);
+    d
+}
+
+#[test]
+fn every_element_class_deletes_with_its_values() {
+    // `Delete` covers flow nodes, flows and lanes; data objects have their own
+    // mutations. Each one prunes the value instead of failing validation.
+    for element in ["activity", "event", "gateway", "flow", "lane", "dataref"] {
+        let mut s = session();
+        let definition = every_target("Note", AttributeType::Text);
+        let definition_id = definition.id;
+        apply_one(&mut s, create(definition)).unwrap();
+        apply_one(
+            &mut s,
+            set(element, definition_id, AttributeValue::Text("x".into())),
+        )
+        .unwrap();
+        apply_one(
+            &mut s,
+            Mutation::Delete {
+                document_id: docid(),
+                element_id: id(element),
+            },
+        )
+        .unwrap_or_else(|error| panic!("delete {element}: {error:?}"));
+        assert!(
+            s.snapshot().project.attribute_values.is_empty(),
+            "{element}"
+        );
+    }
+    for mutation in [
+        Mutation::DeleteDataObject {
+            document_id: docid(),
+            scope_id: id("process"),
+            data_object_id: id("dataobj"),
+        },
+        Mutation::SetScopeDataObjects {
+            document_id: docid(),
+            scope_id: id("process"),
+            data_objects: vec![],
+        },
+    ] {
+        let mut s = session();
+        let definition = every_target("Note", AttributeType::Text);
+        let definition_id = definition.id;
+        apply_one(&mut s, create(definition)).unwrap();
+        apply_one(
+            &mut s,
+            set("dataobj", definition_id, AttributeValue::Text("x".into())),
+        )
+        .unwrap();
+        apply_one(&mut s, mutation).unwrap();
+        assert!(s.snapshot().project.attribute_values.is_empty());
+        s.snapshot().project.validate().unwrap();
+    }
+}
+
+#[test]
+fn sequence_flows_inside_subprocesses_are_targets() {
+    let document = document_with_subprocess();
+    assert_eq!(
+        attributes::target_of(&document, &id("inner_flow")),
+        Some(AttributeTarget::SequenceFlow)
+    );
+    let mut project = ProjectData::new("p".into());
+    project.documents.push(Arc::new(document));
+    let mut s = Session::new(project).unwrap();
+    let definition = every_target("Note", AttributeType::Text);
+    let definition_id = definition.id;
+    apply_one(&mut s, create(definition)).unwrap();
+    apply_one(
+        &mut s,
+        set(
+            "inner_flow",
+            definition_id,
+            AttributeValue::Text("x".into()),
+        ),
+    )
+    .unwrap();
+}
+
+#[test]
+fn resetting_a_value_keeps_identity_history_and_order() {
+    let mut s = session();
+    let definition = every_target("Note", AttributeType::Text);
+    let definition_id = definition.id;
+    apply_one(&mut s, create(definition)).unwrap();
+    apply_one(
+        &mut s,
+        set("activity", definition_id, AttributeValue::Text("x".into())),
+    )
+    .unwrap();
+    apply_one(
+        &mut s,
+        set("event", definition_id, AttributeValue::Text("y".into())),
+    )
+    .unwrap();
+    let checkpoint: CheckpointId = id("55555555-5555-4555-8555-555555555555");
+    apply_one(
+        &mut s,
+        Mutation::CreateCheckpoint {
+            id: checkpoint,
+            name: "c".into(),
+            created_unix_ms: 0,
+        },
+    )
+    .unwrap();
+    let before = s.snapshot();
+    apply_one(
+        &mut s,
+        set("activity", definition_id, AttributeValue::Text("x".into())),
+    )
+    .unwrap();
+    let after = s.snapshot();
+    assert_eq!(before.generation, after.generation);
+    assert_eq!(before.content_id, after.content_id);
+    let comparison = queries::compare_checkpoint(&after.project, checkpoint).unwrap();
+    assert!(!comparison.attributes_changed);
+    // A changed value stays in place.
+    apply_one(
+        &mut s,
+        set("activity", definition_id, AttributeValue::Text("z".into())),
+    )
+    .unwrap();
+    assert_eq!(
+        s.snapshot().project.attribute_values[0].source,
+        key("activity")
+    );
+}
+
+#[test]
+fn dictionary_references_stay_unique() {
+    let mut s = session();
+    let ids: Vec<DictionaryEntryId> = (0..3)
+        .map(|i| id(&format!("77777777-7777-4777-8777-{i:012}")))
+        .collect();
+    for (i, entry) in ids.iter().enumerate() {
+        apply_one(
+            &mut s,
+            Mutation::CreateDictionaryEntry {
+                entry: DictionaryEntry {
+                    id: *entry,
+                    kind: DictionaryKind::Role,
+                    name: format!("R{i}"),
+                    description: String::new(),
+                },
+            },
+        )
+        .unwrap();
+    }
+    let definition = definition("Roles", AttributeType::DictionaryRef);
+    let definition_id = definition.id;
+    apply_one(&mut s, create(definition)).unwrap();
+    let entry = |i: usize| DictionaryTarget::Entry(ids[i]);
+    assert!(
+        apply_one(
+            &mut s,
+            set(
+                "activity",
+                definition_id,
+                AttributeValue::DictionaryRefs(vec![entry(0), entry(0)])
+            )
+        )
+        .is_err()
+    );
+    apply_one(
+        &mut s,
+        set(
+            "activity",
+            definition_id,
+            AttributeValue::DictionaryRefs(vec![entry(0), entry(1), entry(2)]),
+        ),
+    )
+    .unwrap();
+    // Retargeting A onto C merges the non-adjacent duplicate.
+    apply_one(
+        &mut s,
+        Mutation::DeleteDictionaryEntry {
+            entry_id: ids[0],
+            resolution: DictionaryDeleteResolution::Replace(ids[2]),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        s.snapshot().project.attribute_values[0].value,
+        AttributeValue::DictionaryRefs(vec![entry(2), entry(1)])
+    );
+}
+
+#[test]
+fn move_to_keeps_applies_to_units_and_existing_values() {
+    let mut s = session();
+    let source = definition("Source", AttributeType::Text);
+    let events_only = definition_with("Events", AttributeType::Text, &[AttributeTarget::Event]);
+    let (source_id, events_id) = (source.id, events_only.id);
+    apply_one(&mut s, create(source)).unwrap();
+    apply_one(&mut s, create(events_only)).unwrap();
+    apply_one(
+        &mut s,
+        set("activity", source_id, AttributeValue::Text("x".into())),
+    )
+    .unwrap();
+    assert!(
+        apply_one(
+            &mut s,
+            Mutation::DeleteAttributeDefinition {
+                definition_id: source_id,
+                resolution: AttributeDeleteResolution::MoveTo(events_id),
+            },
+        )
+        .is_err()
+    );
+    let euro = definition("Cost", AttributeType::Currency);
+    let mut dollar = definition("Cost USD", AttributeType::Currency);
+    dollar.unit = Some("USD".into());
+    let (euro_id, dollar_id) = (euro.id, dollar.id);
+    apply_one(&mut s, create(euro)).unwrap();
+    apply_one(&mut s, create(dollar)).unwrap();
+    apply_one(
+        &mut s,
+        set("activity", euro_id, AttributeValue::Currency("5".into())),
+    )
+    .unwrap();
+    assert!(
+        apply_one(
+            &mut s,
+            Mutation::DeleteAttributeDefinition {
+                definition_id: euro_id,
+                resolution: AttributeDeleteResolution::MoveTo(dollar_id),
+            },
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn definition_text_fields_are_bounded_and_trimmed() {
+    let mut s = session();
+    let mut long_unit = definition("Amount", AttributeType::Number);
+    long_unit.unit = Some("u".repeat(attributes::MAX_TEXT + 1));
+    assert!(apply_one(&mut s, create(long_unit)).is_err());
+    for unit in [None, Some("eur"), Some("EURO"), Some("")] {
+        let mut cost = definition("Cost", AttributeType::Currency);
+        cost.unit = unit.map(str::to_owned);
+        assert!(apply_one(&mut s, create(cost)).is_err(), "{unit:?}");
+    }
+    for name in ["   ", " Cost", "Cost "] {
+        assert!(
+            apply_one(&mut s, create(definition(name, AttributeType::Text))).is_err(),
+            "{name:?}"
+        );
+    }
+    let mut nowhere = definition("Nowhere", AttributeType::Text);
+    nowhere.applies_to = vec![];
+    assert!(apply_one(&mut s, create(nowhere)).is_err());
+    // An option mapping must start from a current option.
+    let risk = definition("Risk", AttributeType::Enum);
+    apply_one(&mut s, create(risk.clone())).unwrap();
+    apply_one(
+        &mut s,
+        set("activity", risk.id, AttributeValue::Enum("Low".into())),
+    )
+    .unwrap();
+    let mut renamed = risk.clone();
+    renamed.options = vec!["Lo".into(), "Medium".into(), "High".into()];
+    assert!(
+        apply_one(
+            &mut s,
+            Mutation::UpdateAttributeDefinition {
+                definition: renamed,
+                resolution: AttributeUpdateResolution::MapOptions(vec![
+                    AttributeOptionMapping {
+                        from: "Low".into(),
+                        to: "Lo".into(),
+                    },
+                    AttributeOptionMapping {
+                        from: "Unknown".into(),
+                        to: "High".into(),
+                    },
+                ]),
+            },
+        )
+        .is_err()
+    );
 }
