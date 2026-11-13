@@ -17,6 +17,9 @@ jobs:
       CARGO_INCREMENTAL: 0
     steps:
       - uses: actions/checkout@v4
+      # Some Rust tests call scripts/check_bpmn20_xsd.py, which needs lxml.
+      - name: Python tools
+        run: python -m pip install --disable-pip-version-check lxml
       - name: Text hygiene
         run: python -I scripts/check_text_hygiene.py
       - name: BPMN inventory
@@ -38,4 +41,4 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets --all-features --locked --offline -- -D warnings
       - name: Test
-        run: cargo test --workspace --all-targets --all-features --locked --offline
+        run: cargo test --workspace --all-targets --all-features --locked --offline --no-fail-fast
