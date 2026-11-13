@@ -529,7 +529,7 @@ independent runs then exposed two missing read-only queries (`documents`, `conve
   given only its `SKILL.md` and the README, drove a real session through a verbatim relay; the four
   transcripts are those runs (see `docs/implementation/m5-evidence.md`, M5.5). Not every run
   achieved its task fully; each transcript records what it did not achieve.
-- [x] Link the pack from `README.md` and the site only after both checks pass. (README only: this repository has no site.)
+- [x] Link the pack from `README.md` and the site only after both checks pass. (Linked from `README.md` and from the "Automate it" section of the GitHub Pages site in `site/`.)
 
 **Acceptance:** `cargo test -p processcraft-cli --test prompt_pack` passes; the evidence file records
 which agent and date produced each transcript. No statement about model quality is made.

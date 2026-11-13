@@ -1343,8 +1343,12 @@ fn mcp_attributes_query_matches_cli_values() {
 fn mcp_documents_and_conventions_queries_expose_ids_and_profile() {
     use std::io::{BufRead, BufReader, Write};
     use std::process::Stdio;
+    let t = Temp::new();
+    let saved = t.path("documents.processcraft");
     let mut child = Command::new(env!("CARGO_BIN_EXE_processcraft-cli"))
         .args(["mcp", "--new", "MCP documents"])
+        .arg("--write-root")
+        .arg(&t.0)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -1407,8 +1411,33 @@ fn mcp_documents_and_conventions_queries_expose_ids_and_profile() {
         conventions["result"]["structuredContent"]["conventions"].is_null(),
         "{conventions}"
     );
+    let saved_call = call(
+        serde_json::json!({"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"save","arguments":{"sessionId":session,"requestId":"docs-save","expectedGeneration":1,"path":saved,"overwrite":false}}}),
+    );
+    assert_eq!(
+        saved_call["result"]["structuredContent"]["ok"], true,
+        "{saved_call}"
+    );
     child.kill().unwrap();
     child.wait().unwrap();
+    // The CLI kinds return the same values, unpaged.
+    let query = |kind: &str| {
+        let out = cli(&["query".as_ref(), saved.as_os_str(), kind.as_ref()], &t.0);
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        serde_json::from_slice::<serde_json::Value>(&out.stdout).unwrap()
+    };
+    assert_eq!(
+        serde_json::to_vec(&query("documents")["documents"]).unwrap(),
+        serde_json::to_vec(&content["items"]).unwrap()
+    );
+    assert_eq!(
+        query("conventions")["conventions"],
+        conventions["result"]["structuredContent"]["conventions"]
+    );
 }
 
 #[test]

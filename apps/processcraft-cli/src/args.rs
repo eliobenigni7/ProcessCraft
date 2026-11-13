@@ -321,6 +321,10 @@ pub enum Query {
         text: String,
     },
     Dictionary,
+    /// Documents with their ids, capability and processes (id, name, lanes).
+    Documents,
+    /// The stored conventions profile, or null.
+    Conventions,
     Usages {
         entry_id: String,
     },

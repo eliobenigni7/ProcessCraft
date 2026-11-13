@@ -736,6 +736,8 @@ fn query_project(path: &Path, query: Query) -> Result<(), Error> {
         }
         Query::Library { text } => json!({"documents": queries::library_search(project, &text)}),
         Query::Dictionary => json!({"entries": project.dictionary_entries}),
+        Query::Documents => json!({"documents": queries::document_overview(project)}),
+        Query::Conventions => json!({"conventions": project.conventions}),
         Query::Usages { entry_id } => {
             let id: DictionaryEntryId = entry_id.parse().map_err(|e| error(2, e))?;
             json!({"usages": queries::dictionary_usages(project, id)})

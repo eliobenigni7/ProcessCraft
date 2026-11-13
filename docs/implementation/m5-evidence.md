@@ -877,5 +877,5 @@ Notes and dispositions:
   no claim is made.
 - Independent prompt-pack runs were recorded after this qualification run and are described in the
   M5.5 section (transcripts, provenance, harness note, and the gaps they exposed); the README link
-  was added with them. The documents changed after those runs and have not been re-run by a fresh
+  was added with them, and the GitHub Pages site (`site/index.html`) links the pack's README. The documents changed after those runs and have not been re-run by a fresh
   agent since.
