@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Install scope and folder policy, adapted from the Crafting Apps' FigCraft installer
+  (storytold/figcraft packaging/windows/install-policy.wxi, MIT License, ArtCraft Team and the
+  FigCraft contributors). x64 only.
+
+  - The first wizard page asks "Only for me" (default, no administrator) or "Everyone".
+  - An update installs into the folder the existing copy recorded (Software\ProcessCraft\InstallDir,
+    HKCU for a user copy, HKLM for a machine copy). An explicit INSTALLFOLDER always wins.
+  - A copy in the other context is refused: change context by uninstalling first.
+  - Silent installs are per-user unless ALLUSERS=1 is passed.
+-->
+<Include xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Property Id="INSTALLFOLDER" Secure="yes" />
+  <Property Id="PC_SCOPE" Value="user" Secure="yes" />
+  <Property Id="PC_USER_DIR" Secure="yes">
+    <RegistrySearch Id="PcUserDirSearch" Root="HKCU" Key="Software\ProcessCraft" Name="InstallDir" Type="raw" />
+  </Property>
+  <Property Id="PC_MACHINE_DIR" Secure="yes">
+    <RegistrySearch Id="PcMachineDirSearch" Root="HKLM" Key="Software\ProcessCraft" Name="InstallDir" Type="raw" Bitness="always64" />
+  </Property>
+
+  <!-- Choose scope before related-product discovery and directory costing. "Only for me" clears
+       ALLUSERS: FigCraft found with real msiexec runs that publishing ALLUSERS=2 from the dialog
+       makes FindRelatedProducts skip an existing per-user copy (two registered products). -->
+  <SetProperty Id="PC_SCOPE" Action="PcPreferMachineScope" Value="machine" After="AppSearch" Sequence="ui" Condition="ALLUSERS = 1 OR (PC_MACHINE_DIR AND NOT PC_USER_DIR)" />
+  <SetProperty Id="INSTALLFOLDER" Action="PcRestoreMachineFolder" Value="[PC_MACHINE_DIR]" Before="CostInitialize" Sequence="both" Condition="NOT INSTALLFOLDER AND ALLUSERS = 1 AND PC_MACHINE_DIR" />
+  <SetProperty Id="INSTALLFOLDER" Action="PcRestoreUserFolder" Value="[PC_USER_DIR]" After="PcRestoreMachineFolder" Sequence="both" Condition="NOT INSTALLFOLDER AND ALLUSERS &lt;&gt; 1 AND PC_USER_DIR" />
+  <!-- The dialog can change context after Windows Installer resolved Program Files for the first
+       one: give the new-install folder explicitly so each context lands in its own location. -->
+  <SetProperty Id="INSTALLFOLDER" Action="PcDefaultMachineFolder" Value="[%ProgramW6432]\ProcessCraft\" After="PcRestoreUserFolder" Sequence="ui" Condition="NOT INSTALLFOLDER AND ALLUSERS = 1" />
+  <SetProperty Id="INSTALLFOLDER" Action="PcDefaultUserFolder" Value="[LocalAppDataFolder]Programs\ProcessCraft\" After="PcDefaultMachineFolder" Sequence="ui" Condition="NOT INSTALLFOLDER AND ALLUSERS &lt;&gt; 1" />
+
+  <Launch Condition="Installed OR ALLUSERS &lt;&gt; 1 OR NOT PC_USER_DIR" Message="ProcessCraft is already installed for your account. Choose Only for me to update it, or uninstall that copy before installing it for everyone." />
+  <Launch Condition="Installed OR ALLUSERS = 1 OR NOT PC_MACHINE_DIR" Message="ProcessCraft is already installed for everyone. Choose Everyone to update it (or pass ALLUSERS=1 to msiexec), or uninstall that copy first." />
+
+  <UI>
+    <TextStyle Id="PcScopeText" FaceName="Segoe UI" Size="9" />
+    <TextStyle Id="PcScopeTitle" FaceName="Segoe UI" Size="12" Bold="yes" />
+    <Dialog Id="PcScopeDlg" Width="370" Height="220" Title="[ProductName] Setup" NoMinimize="yes">
+      <Control Id="Title" Type="Text" X="20" Y="15" Width="330" Height="30" Text="{\PcScopeTitle}Who should use [ProductName]?" />
+      <Control Id="Info" Type="Text" X="20" Y="50" Width="330" Height="30" Text="{\PcScopeText}An update keeps the existing folder." />
+      <Control Id="Scope" Type="RadioButtonGroup" X="20" Y="88" Width="330" Height="60" Property="PC_SCOPE">
+        <RadioButtonGroup Property="PC_SCOPE">
+          <RadioButton Value="user" X="0" Y="0" Width="330" Height="20" Text="Only for me (no administrator permission needed)" />
+          <RadioButton Value="machine" X="0" Y="30" Width="330" Height="20" Text="Everyone on this computer (asks an administrator)" />
+        </RadioButtonGroup>
+      </Control>
+      <Control Id="Next" Type="PushButton" X="214" Y="182" Width="66" Height="20" Default="yes" Text="Next">
+        <Publish Property="ALLUSERS" Value="1" Order="1" Condition="PC_SCOPE = &quot;machine&quot;" />
+        <Publish Property="ALLUSERS" Value="{}" Order="2" Condition="PC_SCOPE = &quot;user&quot;" />
+        <Publish Property="MSIINSTALLPERUSER" Value="{}" Order="3" Condition="PC_SCOPE = &quot;machine&quot;" />
+        <Publish Property="MSIINSTALLPERUSER" Value="1" Order="4" Condition="PC_SCOPE = &quot;user&quot;" />
+        <Publish Event="EndDialog" Value="Return" Order="5" />
+      </Control>
+      <Control Id="Cancel" Type="PushButton" X="290" Y="182" Width="60" Height="20" Cancel="yes" Text="Cancel">
+        <Publish Event="EndDialog" Value="Exit" />
+      </Control>
+    </Dialog>
+  </UI>
+  <InstallUISequence>
+    <Show Dialog="PcScopeDlg" After="PcPreferMachineScope" Condition="NOT Installed AND NOT REMOVE AND UILevel = 5" />
+    <!-- Related-product discovery runs once, so the full UI chooses its context first. -->
+    <FindRelatedProducts After="PcScopeDlg" />
+  </InstallUISequence>
+</Include>

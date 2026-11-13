@@ -31,6 +31,8 @@ Other CLI subcommands: `info`, `import-bpmn`, `export-bpmn`, `export-image`, `ex
 
 Qualification harnesses are Cargo examples (`cargo run -p processcraft-io --example <name>_qualify --locked --offline`, `cargo run --release -p processcraft-cli --example workbench_qualify -- --out target/...`). The Python scripts in `scripts/` are independent cross-checks of their output and need `lxml` (XSD/XML checks), `pypdf` + `Pillow` and Poppler (PDF/render checks). `python scripts/generate_bpmn20_inventory.py --check` verifies `docs/research/bpmn-2-coverage.json` against the pinned OMG schemas.
 
+Windows installer: `powershell -File packaging/windows/package.ps1` (needs WiX 5.0.2 as a dotnet tool) builds `dist/release/processcraft-<version>-windows-x64.msi` and a portable ZIP; see `docs/implementation/m4-evidence.md`.
+
 The `test-fault` feature on `processcraft-cli` is a debug-only fault-injection seam for tests (`--all-features` enables it); it is compiled out of release builds.
 
 ## Architecture

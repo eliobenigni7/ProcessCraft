@@ -1,0 +1,45 @@
+name: Windows release
+
+# Builds the MSI and the portable ZIP with packaging/windows/package.ps1.
+# Manual runs keep the packages as workflow artifacts; a `v*` tag also attaches them to a draft
+# GitHub release. The packages are unsigned until the SignPath Foundation open-source signing
+# request is approved; signing then plugs in through PROCESSCRAFT_SIGN / a SignPath step here.
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    env:
+      WIX_VERSION: 5.0.2
+    steps:
+      - uses: actions/checkout@v4
+
+      # rust-toolchain.toml pins the toolchain; rustup installs it on first use.
+      - name: Rust toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - name: Install WiX
+        run: |
+          dotnet tool install --global wix --version $env:WIX_VERSION
+          wix extension add -g "WixToolset.UI.wixext/$env:WIX_VERSION" "WixToolset.Util.wixext/$env:WIX_VERSION"
+
+      - name: Package
+        run: ./packaging/windows/package.ps1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: processcraft-windows-x64
+          path: dist/release/*
+          if-no-files-found: error
+
+      - name: Draft release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create $env:GITHUB_REF_NAME dist/release/* --draft --title "ProcessCraft $env:GITHUB_REF_NAME" --notes "Unsigned Windows build."

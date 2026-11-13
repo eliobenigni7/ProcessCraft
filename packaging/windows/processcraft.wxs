@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ProcessCraft MSI (WiX v5), modelled on the Crafting Apps' FigCraft installer.
+  Installs for the current user by default (no administrator prompt): perUserOrMachine sets
+  ALLUSERS=2 and MSIINSTALLPERUSER=1, so Windows Installer redirects ProgramFiles6432Folder to
+  %LOCALAPPDATA%\Programs. The wizard's first page offers "Everyone" (install-policy.wxi);
+  silently, `msiexec /i ... ALLUSERS=1` installs for everyone. Built by package.ps1.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+  <!-- UpgradeCode is ProcessCraft's identity across versions: never change it. -->
+  <Package Name="ProcessCraft" Manufacturer="ProcessCraft" Version="$(var.Version)" UpgradeCode="AB10DF39-3009-40A7-A76D-86F4FD8926B0" Scope="perUserOrMachine" Compressed="yes" Language="1033">
+    <SummaryInformation Description="ProcessCraft offline BPMN process modeling workbench" />
+    <?include $(sys.SOURCEFILEDIR)install-policy.wxi?>
+    <!-- Same-version upgrades let pre-releases of one X.Y.Z replace each other (MSI versions are numeric). -->
+    <MajorUpgrade AllowSameVersionUpgrades="yes" DowngradeErrorMessage="A newer version of ProcessCraft is already installed." />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <!-- Advertised shortcuts to an .exe need an .exe icon identifier (ICE50). -->
+    <Icon Id="ProcessCraftIcon.exe" SourceFile="$(var.IconPath)" />
+    <Property Id="ARPPRODUCTICON" Value="ProcessCraftIcon.exe" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/eliobenigni7/ProcessCraft" />
+
+    <StandardDirectory Id="ProgramFiles6432Folder">
+      <Directory Id="INSTALLFOLDER" Name="ProcessCraft">
+        <Directory Id="LicensesFolder" Name="licenses" />
+      </Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder" />
+
+    <Feature Id="Main" Title="ProcessCraft" Level="1">
+      <ComponentGroupRef Id="ProcessCraftFiles" />
+      <ComponentGroupRef Id="Licenses" />
+    </Feature>
+
+    <!-- WixUI_InstallDir without its licence page: MIT, nothing to accept. -->
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+    <UI>
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="InstallDirDlg" Order="2" Condition="NOT Installed" />
+      <Publish Dialog="InstallDirDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" Order="2" />
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchProcessCraft" Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 AND NOT Installed" />
+    </UI>
+    <!-- Wizard art drawn by package.ps1 from the app icon, and the full version (pre-release tag
+         included) for the page titles in processcraft.en-us.wxl. -->
+    <WixVariable Id="WixUIBannerBmp" Value="$(var.BannerBmp)" />
+    <WixVariable Id="WixUIDialogBmp" Value="$(var.DialogBmp)" />
+    <Property Id="PcVersion" Value="$(var.DisplayVersion)" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALTEXT" Value="ProcessCraft $(var.DisplayVersion) is installed. You can start it any time from the Start menu." />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch ProcessCraft" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
+    <Property Id="WixShellExecTarget" Value="[#ProcessCraftExe]" />
+    <CustomAction Id="LaunchProcessCraft" BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)" DllEntry="WixShellExec" Impersonate="yes" Return="ignore" />
+  </Package>
+
+  <Fragment>
+    <ComponentGroup Id="ProcessCraftFiles" Directory="INSTALLFOLDER">
+      <Component Id="ProcessCraftApp" Guid="B9F44953-2299-4448-A3F1-249B36FD0597">
+        <File Id="ProcessCraftExe" Source="$(var.BinDir)\processcraft.exe" KeyPath="yes">
+          <Shortcut Id="StartMenuShortcut" Directory="ProgramMenuFolder" Name="ProcessCraft" Description="Offline BPMN process modeling" WorkingDirectory="INSTALLFOLDER" Advertise="yes" Icon="ProcessCraftIcon.exe" IconIndex="0" />
+        </File>
+        <File Id="ProcessCraftLicense" Source="$(var.RootDir)\LICENSE" Name="LICENSE.txt" />
+
+        <!-- .processcraft: ProcessCraft's own format; ProcessCraft is its default app. -->
+        <ProgId Id="ProcessCraft.Project" Description="ProcessCraft Project" Icon="ProcessCraftExe" IconIndex="0">
+          <Extension Id="processcraft" ContentType="application/x-processcraft">
+            <Verb Id="open" Command="Open" TargetFile="ProcessCraftExe" Argument="&quot;%1&quot;" />
+          </Extension>
+        </ProgId>
+        <!-- BPMN XML is imported: offered under "Open with", never taken over as the default. -->
+        <ProgId Id="ProcessCraft.Bpmn" Description="BPMN Diagram" Icon="ProcessCraftExe" IconIndex="0" />
+        <RegistryValue Root="HKMU" Key="Software\Classes\ProcessCraft.Bpmn\shell\open\command" Value="&quot;[#ProcessCraftExe]&quot; &quot;%1&quot;" Type="string" />
+        <RegistryValue Root="HKMU" Key="Software\Classes\.bpmn\OpenWithProgids" Name="ProcessCraft.Bpmn" Value="" Type="string" />
+
+        <!-- "Open with" app list and the Run dialog (Win+R "processcraft"). -->
+        <RegistryValue Root="HKMU" Key="Software\Classes\Applications\processcraft.exe" Name="FriendlyAppName" Value="ProcessCraft" Type="string" />
+        <RegistryValue Root="HKMU" Key="Software\Classes\Applications\processcraft.exe\shell\open\command" Value="&quot;[#ProcessCraftExe]&quot; &quot;%1&quot;" Type="string" />
+        <RegistryValue Root="HKMU" Key="Software\Classes\Applications\processcraft.exe\SupportedTypes" Name=".processcraft" Value="" Type="string" />
+        <RegistryValue Root="HKMU" Key="Software\Classes\Applications\processcraft.exe\SupportedTypes" Name=".bpmn" Value="" Type="string" />
+        <RegistryValue Root="HKMU" Key="Software\Microsoft\Windows\CurrentVersion\App Paths\processcraft.exe" Value="[#ProcessCraftExe]" Type="string" />
+        <RegistryValue Root="HKMU" Key="Software\ProcessCraft" Name="InstallDir" Value="[INSTALLFOLDER]" Type="string" />
+      </Component>
+      <Component Id="ProcessCraftCli">
+        <File Id="ProcessCraftCliExe" Source="$(var.BinDir)\processcraft-cli.exe" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <!-- The embedded fonts' OFL licences and attribution. -->
+    <ComponentGroup Id="Licenses" Directory="LicensesFolder">
+      <Files Include="$(var.RootDir)\assets\fonts\*.txt" />
+      <Files Include="$(var.RootDir)\assets\fonts\ATTRIBUTION.md" />
+    </ComponentGroup>
+  </Fragment>
+</Wix>
