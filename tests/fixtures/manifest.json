@@ -203,6 +203,38 @@
       "expected_mode": "native editable project",
       "semantic_di_checks": "Stable document, entry and definition IDs; the batch ends with setConventionsProfile"
     }
+    ,{
+      "path": "prompts/text-to-model.transcript.json",
+      "sha256": "e6a75dd77ca1abf6bead8cf21857be7e67878af0cb5c18cb60ed49908dd632ce",
+      "provenance": "M5.5 MCP tool-call transcript recorded by a Claude Sonnet subagent on 2026-11-13 following docs/prompts/text-to-model/SKILL.md against a real processcraft-cli mcp --new stdio session; the same subagent that wrote the document, calls sent through a local driver script that is not in the repository; not an independent agent run, so evidence that the document can be followed with the real tools, not of cold-agent behaviour",
+      "license": "CC0-1.0",
+      "expected_mode": "not a project: JSON list of MCP tool calls replayed by apps/processcraft-cli/tests/prompt_pack.rs",
+      "semantic_di_checks": "Replay ends with validate ok, no error diagnostics under ConventionsProfile::recommended(), and the element and attribute counts stored in the transcript"
+    }
+    ,{
+      "path": "prompts/review-conventions.transcript.json",
+      "sha256": "adacd1ab7199419f75226dc6e79846c0435c98b015ed445313589278a6325774",
+      "provenance": "M5.5 MCP tool-call transcript recorded by a Claude Sonnet subagent on 2026-11-13 following docs/prompts/review-conventions/SKILL.md against a real processcraft-cli mcp --new stdio session; the same subagent that wrote the document, calls sent through a local driver script that is not in the repository; not an independent agent run, so evidence that the document can be followed with the real tools, not of cold-agent behaviour",
+      "license": "CC0-1.0",
+      "expected_mode": "not a project: JSON list of MCP tool calls replayed by apps/processcraft-cli/tests/prompt_pack.rs",
+      "semantic_di_checks": "Replay ends with validate ok, no error diagnostics under ConventionsProfile::recommended(), and the element and attribute counts stored in the transcript"
+    }
+    ,{
+      "path": "prompts/explain-process.transcript.json",
+      "sha256": "5d615ca4a9652528b43c8002ebe6708ab16e2e99ad285ec93cbe39514e461222",
+      "provenance": "M5.5 MCP tool-call transcript recorded by a Claude Sonnet subagent on 2026-11-13 following docs/prompts/explain-process/SKILL.md against a real processcraft-cli mcp --new stdio session; the same subagent that wrote the document, calls sent through a local driver script that is not in the repository; not an independent agent run, so evidence that the document can be followed with the real tools, not of cold-agent behaviour",
+      "license": "CC0-1.0",
+      "expected_mode": "not a project: JSON list of MCP tool calls replayed by apps/processcraft-cli/tests/prompt_pack.rs",
+      "semantic_di_checks": "Replay ends with validate ok, no error diagnostics under ConventionsProfile::recommended(), and the element and attribute counts stored in the transcript"
+    }
+    ,{
+      "path": "prompts/fill-attributes.transcript.json",
+      "sha256": "47c7489134a5f9b82c0e376e0087a377a62ed4c0178a044ce0fa2602eb6dce36",
+      "provenance": "M5.5 MCP tool-call transcript recorded by a Claude Sonnet subagent on 2026-11-13 following docs/prompts/fill-attributes/SKILL.md against a real processcraft-cli mcp --new stdio session; the same subagent that wrote the document, calls sent through a local driver script that is not in the repository; not an independent agent run, so evidence that the document can be followed with the real tools, not of cold-agent behaviour",
+      "license": "CC0-1.0",
+      "expected_mode": "not a project: JSON list of MCP tool calls replayed by apps/processcraft-cli/tests/prompt_pack.rs",
+      "semantic_di_checks": "Replay ends with validate ok, no error diagnostics under ConventionsProfile::recommended(), and the element and attribute counts stored in the transcript"
+    }
   ],
   "fonts": [
     {

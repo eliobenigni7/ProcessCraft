@@ -1,0 +1,112 @@
+{
+ "prompt": "explain-process",
+ "recordedBy": "Claude Sonnet subagent, the same agent that wrote the documents; calls sent through a local driver script (not in the repository); not an independent agent run",
+ "recordedOn": "2026-11-13",
+ "task": "Explain process 'procurement' of document 11111111-1111-4111-8111-111111111111 to a new colleague: steps, decisions, who is responsible, and what is not recorded. Read only.",
+ "setup": {
+  "fixture": "commands/raci.json",
+  "requestId": "setup",
+  "note": "Applied at generation 0 before the agent's first call; it is the input project, not an agent action."
+ },
+ "calls": [
+  {
+   "tool": "inspect",
+   "arguments": {},
+   "expect": {
+    "documents": 1,
+    "generation": 1
+   }
+  },
+  {
+   "tool": "query",
+   "arguments": {
+    "kind": "model",
+    "document_id": "11111111-1111-4111-8111-111111111111",
+    "offset": 0,
+    "limit": 100
+   },
+   "expect": {
+    "total": 201
+   }
+  },
+  {
+   "tool": "query",
+   "arguments": {
+    "kind": "table",
+    "document_id": "11111111-1111-4111-8111-111111111111",
+    "process_id": "procurement",
+    "offset": 0,
+    "limit": 50
+   },
+   "expect": {
+    "total": 2
+   }
+  },
+  {
+   "tool": "query",
+   "arguments": {
+    "kind": "raci",
+    "document_id": "11111111-1111-4111-8111-111111111111",
+    "process_id": "procurement",
+    "offset": 0,
+    "limit": 50
+   },
+   "expect": {
+    "total": 2
+   }
+  },
+  {
+   "tool": "query",
+   "arguments": {
+    "kind": "dictionary",
+    "offset": 0,
+    "limit": 50
+   },
+   "expect": {
+    "total": 3
+   }
+  },
+  {
+   "tool": "query",
+   "arguments": {
+    "kind": "attributes",
+    "document_id": "11111111-1111-4111-8111-111111111111",
+    "offset": 0,
+    "limit": 50
+   },
+   "expect": {
+    "total": 2
+   }
+  },
+  {
+   "tool": "query",
+   "arguments": {
+    "kind": "diagnostics",
+    "offset": 0,
+    "limit": 50
+   },
+   "expect": {
+    "total": 0
+   }
+  },
+  {
+   "tool": "validate",
+   "arguments": {},
+   "expect": {
+    "valid": true,
+    "errorCount": 0,
+    "warningCount": 0
+   }
+  }
+ ],
+ "answer": "Procurement starts when a request is received (start event 'Request received'). The step 'Review request' (a user task in the lane 'Request and review', whose role is Requester) leads to the exclusive gateway 'Approved?'. Its flow 'Approved' (condition 'approved') goes to 'Place order' (a task in the lane 'Procurement'); its flow 'Rejected' (condition 'not approved') goes straight to the end event 'Complete'. 'Place order' also ends in 'Complete'. Responsibilities as recorded in the RACI attributes. Review request: Requester Responsible, Procurement Accountable, Finance manager Consulted, Legal Informed (Legal is an unlinked literal, not in the dictionary). Place order: Procurement is both Responsible and Accountable, Requester Consulted, Finance manager Informed. Not recorded: durations, costs, systems and documents (the table shows none), and any attribute other than the three RACI ones. The stored profile gives no findings, and validate reports 0 errors and 0 warnings; that is a statement about those checks, not about BPMN conformance.",
+ "expected": {
+  "documents": 1,
+  "nodes": 5,
+  "flows": 5,
+  "lanes": 2,
+  "attributeValues": 6,
+  "attributeDefinitions": 3,
+  "recommendedWarnings": 2
+ }
+}

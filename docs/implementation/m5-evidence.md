@@ -645,3 +645,78 @@ present (quantile buckets are the recorded upgrade). The MCP and attached fields
 no dedicated test beyond compilation and the shared `export_overlay` function. The
 Overlay capsule, popup menu and export checkbox were not exercised manually and no
 screenshot was taken.
+
+## M5.5 MCP prompt pack
+
+Four agent instructions in `docs/prompts/` (`text-to-model`, `review-conventions`,
+`explain-process`, `fill-attributes`, each a `SKILL.md`) and `docs/prompts/README.md` (starting the
+server standalone or attached, the seven tools, the generation and request-ID rules, file roots).
+The server has no `prompts` capability; nothing under `src/` changed.
+
+### What the test checks
+
+`cargo test -p processcraft-cli --test prompt_pack` (no model, no network):
+
+- `prompt_examples_match_live_schemas`: every fenced `json` block in the five documents declares
+  its claim in the info string (`tool=apply`, `tool=request`, `tool=query`, or `output` for a reply
+  sample). `apply` examples are checked against the `apply` input schema of a live MCP `tools/list`
+  (unknown and missing top-level fields) and their `request` is deserialized as
+  `processcraft_core::commands::Request` (`deny_unknown_fields`, so every mutation field is
+  checked). `query` examples are checked against the matching variant of the `query` input schema.
+  `commands --json` and `tools/list` are asserted to embed the same request schema. A block with no
+  claim fails.
+- `documented_apply_examples_equal_recorded_requests`: an `apply` example whose `requestId` also
+  occurs in a transcript must carry exactly the recorded request.
+- `transcript_*_replays` (four): each transcript replays through a fresh `processcraft-cli mcp
+  --new` stdio session. The tool replies must match the recorded `expect` fields; the session is
+  then saved, reloaded with `native::load_bytes`, and must pass `ProjectData::validate` and match
+  the recorded counts, including the number of findings under
+  `ConventionsProfile::recommended()` (0 for three transcripts, which the test requires, and the
+  recorded 2 for the read-only `explain-process` input). The "no `error` diagnostic" check is
+  structural only: every recommended rule is a warning, so it cannot fail; the exact warning count
+  is the real check.
+- `transcripts_are_registered_in_the_manifest`: path, SHA-256, CC0-1.0 and the provenance text.
+
+### Transcript provenance
+
+Recorded on 2026-11-13 by the same Claude Sonnet subagent that wrote the four documents, which
+then followed each one against a real `processcraft-cli mcp --new` stdio session. It chose the task
+inputs, composed each call from the document and the previous replies, and sent the calls through a
+local driver script that is not in the repository; the script wrote the call list and the reply
+fields the replay checks. These are **not independent agent runs**: the author of a document also
+followed it, so they are evidence that each document can be followed to a valid end state with the
+real tools, not evidence of how a cold agent behaves. Where the task starts from an existing
+project, that project is a pinned fixture applied at generation 0 before the first recorded call
+(`setup` in the transcript); it is the input, not an agent action.
+
+| Prompt | Task input | Calls | End state (nodes / flows / lanes / attribute values / definitions) | Warnings under the recommended profile |
+|---|---|---|---|---|
+| `text-to-model` | one-paragraph invoice description | 7 | 7 / 7 / 0 / 0 / 0 | 0 |
+| `review-conventions` | `conventions/fail-activity-verb-object.json`; review against the recommended profile | 7 | 7 / 7 / 2 / 3 / 1 | 0 |
+| `explain-process` | `commands/raci.json`; read-only | 8 | 5 / 5 / 2 / 6 / 3 | 2 |
+| `fill-attributes` | `conventions/fail-required-attributes.json`; cost and risk values from a pasted note | 7 | 7 / 7 / 2 / 6 / 2 | 0 |
+
+The `explain-process` end state is the unchanged input; its two warnings are existing findings of
+the fixture under the recommended profile, which the agent did not query (the stored profile of
+that fixture is empty). The replay asserts its recorded count of 2.
+
+### Limits and what is not established
+
+- The plan's "one real agent run per prompt" is only partly met. Independent runs (a fresh agent
+  given only the `SKILL.md` and MCP access) are left to M5.6, and M5 is not closed without them.
+- One run per prompt. The transcripts show that each document can be followed to a valid end state
+  with the real tools; they say nothing about how often an agent does so, or about any model.
+- The replay is deterministic: it replays recorded calls, it does not re-run an agent. If a
+  mutation field is renamed, the examples and transcripts must be re-recorded by an agent following
+  the updated document.
+- `explain-process` has a recorded answer text in its transcript, but the test does not check the
+  prose, only that the session stayed read only and ended valid.
+- The schema check of `query` examples covers field names and required fields of the variant and
+  that document, entry and checkpoint IDs are UUIDs, not other value types; wrong types are caught only when the call is made (the transcripts do make theirs).
+- `inspect` does not return document IDs; the documents tell the agent to take them from the task
+  input, `processcraft-cli info` or a diagnostics row. A `query` listing documents would remove
+  that step; it is not in M5.
+- The `activityVerbObject` heuristic's known misses (see M5.2) apply to `review-conventions`; the
+  document tells the agent to report instead of rewording when the label is deliberate.
+- The pack is not linked from `README.md` yet: the plan links it only after both checks pass, and
+  check (2) waits for the independent runs of M5.6. The repository has no site.

@@ -1,0 +1,172 @@
+{
+ "prompt": "fill-attributes",
+ "recordedBy": "Claude Sonnet subagent, the same agent that wrote the documents; calls sent through a local driver script (not in the repository); not an independent agent run",
+ "recordedOn": "2026-11-13",
+ "task": "Source: 'Review request costs 100 EUR (already entered). Notify requester costs 5 EUR. Rate the risk of all three activities: review Medium, order High, notify Low.' Creating a Risk enum (Low, Medium, High) is allowed.",
+ "setup": {
+  "fixture": "conventions/fail-required-attributes.json",
+  "requestId": "setup",
+  "note": "Applied at generation 0 before the agent's first call; it is the input project, not an agent action."
+ },
+ "calls": [
+  {
+   "tool": "inspect",
+   "arguments": {},
+   "expect": {
+    "documents": 1,
+    "generation": 1
+   }
+  },
+  {
+   "tool": "query",
+   "arguments": {
+    "kind": "attributes",
+    "document_id": "44444444-4444-4444-8444-444444444444",
+    "offset": 0,
+    "limit": 50
+   },
+   "expect": {
+    "total": 2
+   }
+  },
+  {
+   "tool": "query",
+   "arguments": {
+    "kind": "diagnostics",
+    "offset": 0,
+    "limit": 50
+   },
+   "expect": {
+    "total": 1
+   }
+  },
+  {
+   "tool": "apply",
+   "arguments": {
+    "sessionId": "${sessionId}",
+    "requestId": "fill-1",
+    "expectedGeneration": 1,
+    "request": {
+     "type": "batch",
+     "mutations": [
+      {
+       "type": "createAttributeDefinition",
+       "definition": {
+        "id": "6a000000-0000-4000-8000-000000000011",
+        "name": "Risk",
+        "description": "Operational risk of the activity.",
+        "value_type": "Enum",
+        "unit": null,
+        "options": [
+         "Low",
+         "Medium",
+         "High"
+        ],
+        "dictionary_kind": null,
+        "applies_to": [
+         "Activity"
+        ],
+        "required": false
+       }
+      },
+      {
+       "type": "setAttributeValues",
+       "source": {
+        "document_id": "44444444-4444-4444-8444-444444444444",
+        "xml_id": "notify"
+       },
+       "values": [
+        {
+         "definition_id": "44444444-4444-4444-8444-000000000010",
+         "value": {
+          "Currency": "5"
+         }
+        },
+        {
+         "definition_id": "6a000000-0000-4000-8000-000000000011",
+         "value": {
+          "Enum": "Low"
+         }
+        }
+       ]
+      },
+      {
+       "type": "setAttributeValues",
+       "source": {
+        "document_id": "44444444-4444-4444-8444-444444444444",
+        "xml_id": "review"
+       },
+       "values": [
+        {
+         "definition_id": "6a000000-0000-4000-8000-000000000011",
+         "value": {
+          "Enum": "Medium"
+         }
+        }
+       ]
+      },
+      {
+       "type": "setAttributeValues",
+       "source": {
+        "document_id": "44444444-4444-4444-8444-444444444444",
+        "xml_id": "order"
+       },
+       "values": [
+        {
+         "definition_id": "6a000000-0000-4000-8000-000000000011",
+         "value": {
+          "Enum": "High"
+         }
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "expect": {
+    "ok": true
+   }
+  },
+  {
+   "tool": "query",
+   "arguments": {
+    "kind": "attributes",
+    "document_id": "44444444-4444-4444-8444-444444444444",
+    "offset": 0,
+    "limit": 50
+   },
+   "expect": {
+    "total": 3
+   }
+  },
+  {
+   "tool": "query",
+   "arguments": {
+    "kind": "diagnostics",
+    "offset": 0,
+    "limit": 50
+   },
+   "expect": {
+    "total": 0
+   }
+  },
+  {
+   "tool": "validate",
+   "arguments": {},
+   "expect": {
+    "valid": true,
+    "errorCount": 0,
+    "warningCount": 0
+   }
+  }
+ ],
+ "expected": {
+  "documents": 1,
+  "nodes": 7,
+  "flows": 7,
+  "lanes": 2,
+  "attributeValues": 6,
+  "attributeDefinitions": 2,
+  "recommendedWarnings": 0
+ }
+}
