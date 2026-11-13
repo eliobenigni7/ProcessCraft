@@ -457,6 +457,61 @@ pub(super) struct CanvasState {
     /// Choreography scopes of the current document, rebuilt only when the generation or
     /// document changes.
     scope_cache: Option<(u64, processcraft_core::ids::DocumentId, Arc<Vec<ScopeInfo>>)>,
+    /// Attribute overlay (M5.4): view state only, never saved, never a mutation.
+    pub(super) overlay: Option<processcraft_core::overlay::OverlaySpec>,
+    /// Badge instead of heatmap mode for the next overlay choice.
+    pub(super) overlay_badges: bool,
+    /// Image exports include the active overlay and legend.
+    pub(super) export_overlay: bool,
+    overlay_cache: Option<OverlayCache>,
+}
+type OverlayCache = (
+    String,
+    u64,
+    processcraft_core::ids::DocumentId,
+    processcraft_core::overlay::OverlaySpec,
+    Arc<processcraft_core::overlay::Overlay>,
+);
+impl CanvasState {
+    /// The active overlay for this session, generation and document, recomputed only when
+    /// one of them or the spec changes. A spec whose definition was deleted is dropped.
+    pub(super) fn overlay_for(
+        &mut self,
+        session: &str,
+        generation: u64,
+        project: &processcraft_core::model::ProjectData,
+        document: processcraft_core::ids::DocumentId,
+    ) -> Option<Arc<processcraft_core::overlay::Overlay>> {
+        let spec = self.overlay?;
+        if !project
+            .attribute_definitions
+            .iter()
+            .any(|d| d.id == spec.definition)
+        {
+            self.overlay = None;
+            self.export_overlay = false;
+            return None;
+        }
+        if let Some((s, g, d, sp, overlay)) = &self.overlay_cache
+            && s == session
+            && *g == generation
+            && *d == document
+            && *sp == spec
+        {
+            return Some(overlay.clone());
+        }
+        let overlay = Arc::new(processcraft_core::overlay::attribute_overlay(
+            project, document, &spec,
+        ));
+        self.overlay_cache = Some((
+            session.to_owned(),
+            generation,
+            document,
+            spec,
+            overlay.clone(),
+        ));
+        Some(overlay)
+    }
 }
 /// Owned summary of a choreography scope (see `queries::choreography_scopes`).
 pub(super) struct ScopeInfo {
@@ -1906,8 +1961,22 @@ impl ProcessCraft {
                     self.diagram_id,
                     if self.theme == Theme::Dark { "d" } else { "l" }
                 );
+                let overlay = if preview.is_some() {
+                    None
+                } else {
+                    self.canvas.overlay_for(
+                        &self.ctl.session.id(),
+                        snap.generation,
+                        &snap.project,
+                        d.id,
+                    )
+                };
+                let overlay_tag = match (&overlay, self.canvas.overlay) {
+                    (Some(_), Some(spec)) => format!("{}:{:?}", spec.definition, spec.mode),
+                    _ => String::new(),
+                };
                 let key = format!(
-                    "{scene}:{}:{}:{}:{}:{}:{}:{}",
+                    "{scene}:{overlay_tag}:{}:{}:{}:{}:{}:{}:{}",
                     snap.generation,
                     camera.0,
                     camera.1,
@@ -1945,6 +2014,7 @@ impl ProcessCraft {
                             (true, true) => Appearance::CanvasDark,
                         },
                         view,
+                        overlay,
                     });
                     self.render_failed = false;
                     self.render_key = key.clone();

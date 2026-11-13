@@ -272,6 +272,17 @@ impl ProcessCraft {
                     });
                 });
             });
+        if !snap.project.attribute_definitions.is_empty() || self.canvas.overlay.is_some() {
+            egui::Area::new(egui::Id::unique("processcraft-overlay-capsule"))
+                .order(egui::Order::Middle)
+                .pivot(egui::Align2::RIGHT_BOTTOM)
+                .fixed_pos(canvas.right_bottom() - Vec2::new(INSET, INSET + TOOL + 14.0))
+                .show(ctx, |ui| {
+                    capsule_frame(theme).show(ui, |ui| {
+                        self.overlay_capsule(ui, &snap.project, document.id, snap.generation);
+                    });
+                });
+        }
         // Empty diagram: one obvious first step under the "Build your process" message.
         let empty = document
             .diagrams
@@ -307,6 +318,110 @@ impl ProcessCraft {
                 });
         }
         fit
+    }
+
+    /// The Overlay capsule: pick an attribute and mode, see the legend. View state only.
+    fn overlay_capsule(
+        &mut self,
+        ui: &mut egui::Ui,
+        project: &ProjectData,
+        document_id: processcraft_core::ids::DocumentId,
+        generation: u64,
+    ) {
+        use processcraft_core::overlay::{OverlayMode, OverlaySpec};
+        let theme = self.theme;
+        let active = self.canvas.overlay;
+        let mut definitions: Vec<_> = project
+            .attribute_definitions
+            .iter()
+            .map(|d| (d.id, d.name.clone()))
+            .collect();
+        definitions.sort_by(|a, b| a.1.cmp(&b.1));
+        let title = active
+            .and_then(|spec| definitions.iter().find(|d| d.0 == spec.definition))
+            .map_or_else(|| "Overlay".to_owned(), |d| format!("Overlay: {}", d.1));
+        let button = ui.add(
+            egui::Button::new(egui::RichText::new(title).font(crate::theme::medium(12.0)))
+                .selected(active.is_some())
+                .min_size(Vec2::new(0.0, 28.0)),
+        );
+        egui::Popup::menu(&button).show(|ui| {
+            ui.set_min_width(200.0);
+            if ui.selectable_label(active.is_none(), "Off").clicked() {
+                self.canvas.overlay = None;
+                self.canvas.export_overlay = false;
+                ui.close();
+            }
+            ui.separator();
+            let mut badges = self.canvas.overlay_badges;
+            ui.horizontal(|ui| {
+                ui.selectable_value(&mut badges, false, "Heatmap");
+                ui.selectable_value(&mut badges, true, "Badge");
+            });
+            if badges != self.canvas.overlay_badges {
+                self.canvas.overlay_badges = badges;
+                if let Some(spec) = &mut self.canvas.overlay {
+                    spec.mode = overlay_mode(badges);
+                }
+            }
+            ui.separator();
+            if definitions.is_empty() {
+                ui.label(egui::RichText::new("No attributes defined").color(theme.palette().muted));
+            }
+            for (id, name) in &definitions {
+                if ui
+                    .selectable_label(active.is_some_and(|spec| spec.definition == *id), name)
+                    .clicked()
+                {
+                    self.canvas.overlay = Some(OverlaySpec {
+                        definition: *id,
+                        mode: overlay_mode(self.canvas.overlay_badges),
+                    });
+                    ui.close();
+                }
+            }
+        });
+        let session = self.ctl.session.id();
+        let Some(overlay) = self
+            .canvas
+            .overlay_for(&session, generation, project, document_id)
+        else {
+            return;
+        };
+        let heatmap = self
+            .canvas
+            .overlay
+            .is_some_and(|spec| spec.mode == OverlayMode::Heatmap);
+        if overlay.legend.is_empty() {
+            if heatmap && overlay.entries.is_empty() {
+                ui.label(
+                    egui::RichText::new("No values on activities").color(theme.palette().muted),
+                );
+            }
+            return;
+        }
+        let appearance = if theme == Theme::Dark {
+            Appearance::CanvasDark
+        } else {
+            Appearance::CanvasLight
+        };
+        ui.label(egui::RichText::new(&overlay.title).font(crate::theme::medium(12.0)));
+        for item in &overlay.legend {
+            ui.horizontal(|ui| {
+                let (rect, _) = ui.allocate_exact_size(Vec2::splat(12.0), Sense::hover());
+                let [r, g, b] =
+                    processcraft_render::overlay_fill(appearance, overlay.scale, item.bucket);
+                ui.painter()
+                    .rect_filled(rect, 2, Color32::from_rgb(r, g, b));
+                ui.painter().rect_stroke(
+                    rect,
+                    2,
+                    egui::Stroke::new(1.0, theme.palette().border),
+                    egui::StrokeKind::Inside,
+                );
+                ui.label(egui::RichText::new(&item.label).size(12.0));
+            });
+        }
     }
 
     fn palette_tools(&mut self, ui: &mut egui::Ui, document: &BpmnDocument, generation: u64) {
@@ -445,11 +560,132 @@ impl ProcessCraft {
     }
 }
 
+fn overlay_mode(badges: bool) -> processcraft_core::overlay::OverlayMode {
+    if badges {
+        processcraft_core::overlay::OverlayMode::Badge
+    } else {
+        processcraft_core::overlay::OverlayMode::Heatmap
+    }
+}
+
 impl Tool {
     fn entry(self) -> canvas::PaletteEntry {
         match self {
             Tool::Element(entry) => entry,
             _ => NodeKind::Task.into(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use processcraft_core::attributes::{
+        AttributeDefinition, AttributeTarget, AttributeType, AttributeValue, AttributeValueInput,
+    };
+    use processcraft_core::ids::{AttributeDefinitionId, ElementKey};
+    use processcraft_core::overlay::{OverlayMode, OverlaySpec};
+
+    #[test]
+    fn switching_the_overlay_changes_neither_generation_nor_dirty_state() {
+        let mut app = ProcessCraft::default();
+        app.add(NodeKind::Task);
+        let snap = app.ctl.session.snapshot();
+        let document = &snap.project.documents[0];
+        let task = document.processes[0]
+            .nodes
+            .iter()
+            .find(|n| n.kind == NodeKind::Task)
+            .unwrap()
+            .id
+            .selector();
+        let definition = AttributeDefinition {
+            id: AttributeDefinitionId::new(),
+            name: "Cost".into(),
+            description: String::new(),
+            value_type: AttributeType::Number,
+            unit: None,
+            options: vec![],
+            dictionary_kind: None,
+            applies_to: vec![AttributeTarget::Activity],
+            required: false,
+        };
+        let id = definition.id;
+        assert!(app.ctl.mutate(vec![
+            Mutation::CreateAttributeDefinition { definition },
+            Mutation::SetAttributeValues {
+                source: ElementKey {
+                    document_id: document.id,
+                    xml_id: task.clone(),
+                },
+                values: vec![AttributeValueInput {
+                    definition_id: id,
+                    value: Some(AttributeValue::Number("12".into())),
+                }],
+            },
+        ]));
+        let before = app.ctl.session.snapshot();
+        let (generation, dirty, content, undo) = (
+            before.generation,
+            before.dirty,
+            before.content_id,
+            before.undo_count,
+        );
+        let session = app.ctl.session.id();
+        for mode in [OverlayMode::Heatmap, OverlayMode::Badge] {
+            app.canvas.overlay = Some(OverlaySpec {
+                definition: id,
+                mode,
+            });
+            let overlay = app
+                .canvas
+                .overlay_for(&session, generation, &before.project, document.id)
+                .unwrap();
+            assert_eq!(overlay.entries.len(), 1);
+            assert_eq!(overlay.entries[0].element, task);
+            let after = app.ctl.session.snapshot();
+            assert_eq!(after.generation, generation);
+            assert_eq!(after.dirty, dirty);
+            assert_eq!(after.content_id, content);
+            assert_eq!(after.undo_count, undo);
+        }
+        // No overlay selected: nothing is projected.
+        app.canvas.overlay = None;
+        assert!(
+            app.canvas
+                .overlay_for(&session, generation, &before.project, document.id)
+                .is_none()
+        );
+        // A deleted definition drops the overlay instead of drawing stale colours.
+        app.canvas.overlay = Some(OverlaySpec {
+            definition: AttributeDefinitionId::new(),
+            mode: OverlayMode::Heatmap,
+        });
+        assert!(
+            app.canvas
+                .overlay_for(&session, generation, &before.project, document.id)
+                .is_none()
+        );
+        assert!(app.canvas.overlay.is_none());
+    }
+
+    #[test]
+    fn export_option_is_cleared_when_the_overlay_is_dropped() {
+        let mut app = ProcessCraft::default();
+        let snap = app.ctl.session.snapshot();
+        let document = snap.project.documents[0].id;
+        let session = app.ctl.session.id();
+        app.canvas.export_overlay = true;
+        app.canvas.overlay = Some(OverlaySpec {
+            definition: AttributeDefinitionId::new(),
+            mode: OverlayMode::Heatmap,
+        });
+        // The definition does not exist, so the overlay is dropped and the flag with it.
+        assert!(
+            app.canvas
+                .overlay_for(&session, snap.generation, &snap.project, document)
+                .is_none()
+        );
+        assert!(!app.canvas.export_overlay);
     }
 }

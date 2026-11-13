@@ -170,6 +170,7 @@ impl Effects {
             import_result(result, session, generation)
         });
     }
+    #[allow(clippy::too_many_arguments)]
     pub fn export(
         &mut self,
         ctx: egui::Context,
@@ -178,6 +179,7 @@ impl Effects {
         diagram: Option<ElementSelector>,
         format: ExportKind,
         appearance: Appearance,
+        overlay: Option<Arc<processcraft_core::overlay::Overlay>>,
     ) {
         self.start(ctx, "Preparing export…", move || {
             if let ExportKind::Drawio = format {
@@ -208,7 +210,7 @@ impl Effects {
                     return ResultValue::Failed("No diagram selected.".into());
                 };
                 let mut fonts = TextEngine::new();
-                match processcraft_render::export_diagram(
+                match processcraft_render::export_diagram_with_overlay(
                     document,
                     &diagram,
                     ExportOptions {
@@ -223,6 +225,7 @@ impl Effects {
                     },
                     &mut fonts,
                     "Noto Sans",
+                    overlay.as_deref(),
                 ) {
                     Ok(out) => ResultValue::Export {
                         bytes: out.bytes,

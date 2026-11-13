@@ -8,6 +8,8 @@ pub struct RenderJob {
     pub diagram: ElementSelector,
     pub appearance: Appearance,
     pub view: Viewport,
+    /// Attribute overlay (view state, never saved); its spec is part of `key`.
+    pub overlay: Option<Arc<processcraft_core::overlay::Overlay>>,
 }
 pub struct RenderResult {
     pub key: String,
@@ -34,13 +36,14 @@ impl Renderer {
                     }
                     slot.take().unwrap()
                 };
-                let result = BpmnViewport::build(
+                let result = BpmnViewport::build_with_overlay(
                     &job.document,
                     &job.diagram,
                     job.appearance,
                     &mut fonts,
                     "Noto Sans",
                     job.view,
+                    job.overlay.as_deref(),
                 )
                 .map(|v| {
                     (

@@ -345,3 +345,53 @@ fn link_definition_name_labels_unnamed_event_in_both_themes() {
         assert!(svg.contains("Own name") && !svg.contains("GoToCheckout"));
     }
 }
+
+#[test]
+fn overlay_label_ink_contrasts_with_every_ramp_colour_by_at_least_4_5() {
+    use processcraft_core::overlay::OverlayScale;
+    use processcraft_render::{contrast_ratio, overlay_fill, overlay_ink};
+    let mut worst = f64::MAX;
+    for appearance in [
+        Appearance::Light,
+        Appearance::Dark,
+        Appearance::CanvasLight,
+        Appearance::CanvasDark,
+    ] {
+        let ink = overlay_ink(appearance);
+        for (scale, count) in [
+            (OverlayScale::Sequential, 5),
+            (OverlayScale::Categorical, 8),
+        ] {
+            for bucket in 0..count {
+                let ratio = contrast_ratio(ink, overlay_fill(appearance, scale, bucket));
+                worst = worst.min(ratio);
+                assert!(
+                    ratio >= 4.5,
+                    "{appearance:?} {scale:?} bucket {bucket}: {ratio:.2}"
+                );
+            }
+        }
+    }
+    eprintln!("worst overlay label contrast: {worst:.2}");
+}
+
+#[test]
+fn overlay_sequential_ramps_are_monotone_in_luminance() {
+    use processcraft_core::overlay::OverlayScale;
+    use processcraft_render::{contrast_ratio, overlay_fill};
+    // Contrast against black moves one way along the ramp, so steps read as "more".
+    for appearance in [Appearance::Light, Appearance::Dark] {
+        let ratios: Vec<f64> = (0..5)
+            .map(|b| {
+                contrast_ratio(
+                    overlay_fill(appearance, OverlayScale::Sequential, b),
+                    [0, 0, 0],
+                )
+            })
+            .collect();
+        assert!(
+            ratios.windows(2).all(|w| w[0] > w[1]) || ratios.windows(2).all(|w| w[0] < w[1]),
+            "{appearance:?}: {ratios:?}"
+        );
+    }
+}

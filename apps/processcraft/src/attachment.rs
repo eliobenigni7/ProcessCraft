@@ -84,6 +84,11 @@ struct Export {
     dark: bool,
     #[serde(default)]
     acknowledge_diagnostics: bool,
+    /// Image formats only: draw this attribute definition as an overlay with a legend.
+    #[serde(default)]
+    overlay_attribute: Option<processcraft_core::ids::AttributeDefinitionId>,
+    #[serde(default)]
+    overlay_mode: Option<processcraft_core::overlay::OverlayMode>,
 }
 #[derive(Default, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -889,6 +894,18 @@ fn prepare_export(
     } else {
         Appearance::Light
     };
+    let overlay = args
+        .overlay_attribute
+        .map(|definition| {
+            processcraft_core::overlay::export_overlay(
+                project,
+                args.document_id,
+                definition,
+                args.overlay_mode,
+            )
+        })
+        .transpose()
+        .map_err(|e| json!({"ok":false,"status":"overlayBlocked","error":e}))?;
     let mut fonts = TextEngine::new();
     let diagnostics = processcraft_render::preflight_diagram(
         document,
@@ -903,7 +920,7 @@ fn prepare_export(
             json!({"ok":false,"status":"acknowledgementRequired","diagnostics":diagnostics}),
         );
     }
-    let output = processcraft_render::export_diagram(
+    let output = processcraft_render::export_diagram_with_overlay(
         document,
         diagram,
         ExportOptions {
@@ -920,6 +937,7 @@ fn prepare_export(
         },
         &mut fonts,
         "Noto Sans",
+        overlay.as_ref(),
     )
     .map_err(|e| json!({"ok":false,"status":"exportBlocked","error":e.to_string()}))?;
     Ok((

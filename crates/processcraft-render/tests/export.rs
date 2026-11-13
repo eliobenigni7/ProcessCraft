@@ -2,6 +2,8 @@ use processcraft_core::model::{
     Bounds, BpmnDocument, Capability, Diagram, Node, NodeKind, Process, Shape,
 };
 use processcraft_render::{Appearance, ExportFormat, ExportOptions, TextEngine, export_diagram};
+#[path = "export/overlay.rs"]
+mod overlay;
 fn document() -> BpmnDocument {
     let mut d = BpmnDocument::new("test".into(), "defs".parse().unwrap());
     d.processes.push(Process {

@@ -3,6 +3,7 @@ use crate::{Appearance, BpmnScene, RenderError, TextEngine};
 use processcraft_core::{
     ids::ElementSelector,
     model::{BpmnDocument, Capability},
+    overlay::Overlay,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -50,6 +51,18 @@ pub fn export_diagram(
     fonts: &mut TextEngine,
     family: &str,
 ) -> Result<ExportedDiagram, RenderError> {
+    export_diagram_with_overlay(document, diagram_id, options, fonts, family, None)
+}
+/// [`export_diagram`] with an attribute overlay: activity fills, badges and the
+/// legend below the diagram, inside the scene so SVG, PNG and PDF carry the same one.
+pub fn export_diagram_with_overlay(
+    document: &BpmnDocument,
+    diagram_id: &ElementSelector,
+    options: ExportOptions,
+    fonts: &mut TextEngine,
+    family: &str,
+    overlay: Option<&Overlay>,
+) -> Result<ExportedDiagram, RenderError> {
     if !matches!(document.capability, Capability::Editable) {
         return Err(RenderError(
             "Document does not have a qualified editable scene",
@@ -58,7 +71,14 @@ pub fn export_diagram(
     if !options.scale.is_finite() || !(0.125..=8.0).contains(&options.scale) {
         return Err(RenderError("Export scale must be finite within 0.125..8"));
     }
-    let mut built = BpmnScene::build(document, diagram_id, options.appearance, fonts, family)?;
+    let mut built = BpmnScene::build_with_overlay(
+        document,
+        diagram_id,
+        options.appearance,
+        fonts,
+        family,
+        overlay,
+    )?;
     if options.format == ExportFormat::Pdf {
         built.diagnostics.push(crate::pdf::OUTLINE_NOTICE.into());
     }

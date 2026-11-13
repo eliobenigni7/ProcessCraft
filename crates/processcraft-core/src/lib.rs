@@ -27,6 +27,7 @@ pub use validation::{Diagnostic, DiagnosticSeverity};
 pub mod layout;
 pub mod manipulate;
 pub mod modeling;
+pub mod overlay;
 pub mod replace;
 pub mod rules;
 
