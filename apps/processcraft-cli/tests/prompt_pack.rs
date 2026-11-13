@@ -476,8 +476,8 @@ fn transcripts_are_registered_in_the_manifest() {
             )
         );
         assert!(provenance.contains(&format!("docs/prompts/{prompt}/SKILL.md")));
-        assert!(provenance.contains("commit 194475a"));
-        assert!(provenance.contains("harness note"));
+        assert!(provenance.contains("commit 076ee9c"));
+        assert!(provenance.contains("separate request directory per run"));
         assert!(!provenance.contains("not an independent"));
     }
 }

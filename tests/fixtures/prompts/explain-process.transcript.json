@@ -1,6 +1,6 @@
 {
   "prompt": "explain-process",
-  "recordedBy": "independent run 2026-11-13 by a fresh Claude Sonnet subagent given only docs/prompts/explain-process/SKILL.md and docs/prompts/README.md at commit 194475a, task text chosen by the coordinator, calls composed by the agent and forwarded verbatim by a local relay (not in repo)",
+  "recordedBy": "independent run 2026-11-13 by a fresh Claude Sonnet subagent given only docs/prompts/explain-process/SKILL.md and docs/prompts/README.md at commit 076ee9c, task text chosen by the coordinator, calls composed by the agent and forwarded verbatim by a local relay (not in repo), separate request directory per run",
   "recordedOn": "2026-11-13",
   "task": "Explain the project (built from tests/fixtures/commands/raci.json) without changing it.",
   "harnessNote": "No shared request directory was used; no call was dropped for ambiguous origin.",
@@ -9,8 +9,19 @@
     "requestId": "setup",
     "note": "The agent opened this project from a saved file, so its first call saw generation 0. The replay builds it with one setup batch (generation 1) and shifts every recorded generation by one."
   },
-  "notAchieved": "Nothing the task asked for was missed: the run is read only, the generation did not change, and it wrote the explanation recorded here. It paged query model four times (one page request was repeated) to reach the structure, because no query listed document and process IDs.",
-  "droppedCalls": [],
+  "notAchieved": "Nothing the task asked for was missed: the run is read only and the generation stayed 0. One query conventions call with offset and limit was refused (conventions takes no paging fields) and repeated without them.",
+  "droppedCalls": [
+    {
+      "jsonRpcId": 18,
+      "tool": "query",
+      "arguments": {
+        "kind": "conventions",
+        "offset": 0,
+        "limit": 1
+      },
+      "reason": "rejected with JSON-RPC error -32602: unknown field `limit`, there are no fields (no state change)"
+    }
+  ],
   "calls": [
     {
       "tool": "inspect",
@@ -23,33 +34,12 @@
     {
       "tool": "query",
       "arguments": {
-        "kind": "diagnostics",
+        "kind": "documents",
         "offset": 0,
-        "limit": 100
+        "limit": 20
       },
       "expect": {
-        "total": 0
-      }
-    },
-    {
-      "tool": "validate",
-      "arguments": {},
-      "expect": {
-        "valid": true,
-        "errorCount": 0,
-        "warningCount": 0
-      }
-    },
-    {
-      "tool": "query",
-      "arguments": {
-        "kind": "model",
-        "document_id": "11111111-1111-4111-8111-111111111111",
-        "offset": 0,
-        "limit": 100
-      },
-      "expect": {
-        "total": 201
+        "total": 1
       }
     },
     {
@@ -104,9 +94,38 @@
     {
       "tool": "query",
       "arguments": {
+        "kind": "diagnostics",
+        "offset": 0,
+        "limit": 100
+      },
+      "expect": {
+        "total": 0
+      }
+    },
+    {
+      "tool": "validate",
+      "arguments": {},
+      "expect": {
+        "valid": true,
+        "errorCount": 0,
+        "warningCount": 0
+      }
+    },
+    {
+      "tool": "query",
+      "arguments": {
+        "kind": "conventions"
+      },
+      "expect": {
+        "conventions": null
+      }
+    },
+    {
+      "tool": "query",
+      "arguments": {
         "kind": "model",
         "document_id": "11111111-1111-4111-8111-111111111111",
-        "offset": 100,
+        "offset": 0,
         "limit": 100
       },
       "expect": {
@@ -119,18 +138,6 @@
         "kind": "model",
         "document_id": "11111111-1111-4111-8111-111111111111",
         "offset": 100,
-        "limit": 100
-      },
-      "expect": {
-        "total": 201
-      }
-    },
-    {
-      "tool": "query",
-      "arguments": {
-        "kind": "model",
-        "document_id": "11111111-1111-4111-8111-111111111111",
-        "offset": 200,
         "limit": 100
       },
       "expect": {
@@ -138,7 +145,7 @@
       }
     }
   ],
-  "answer": "# Procurement process: walkthrough for a new team member\n\nSource: project \"Procurement\", document 11111111-1111-4111-8111-111111111111, process `procurement`, generation 0 (unchanged during this review). Everything below comes from query results; nothing was modified.\n\n## What happens\n1. **Request received** (start event) in the lane \"Request and review\".\n2. **Review request** (user task, same lane). A person reviews the request.\n3. **Approved?** (exclusive gateway, same lane) decides on two branches:\n   - \"Approved\", condition `approved`: go to **Place order**.\n   - \"Rejected\", condition `not approved`: go straight to **Complete**.\n4. **Place order** (plain task, lane \"Procurement\"), then **Complete** (end event, lane \"Procurement\").\n\nBoth branches end in the same end event, \"Complete\".\n\n## Who is responsible (as recorded in the model)\nThe lane \"Request and review\" has the role Requester. The lane \"Procurement\" has the role Procurement.\n\n| Activity | Responsible | Accountable | Consulted | Informed |\n|---|---|---|---|---|\n| Review request | Requester | Procurement | Finance manager | Legal (free-text label, not a dictionary entry) |\n| Place order | Procurement | Procurement | Requester | Finance manager |\n\nThe dictionary holds three roles: Requester, Procurement and Finance manager. No systems or documents are linked to either activity. Owner and contact fields are empty on every element. Durations, costs and system names are not recorded.\n\n## Anything that looks off\n- Legal is Informed on Review request but is only a typed label, not a dictionary role, so it cannot be reused or checked.\n- Review request: Procurement is Accountable while the Requester does the work. That may be intended, but it is unusual that the requester reviews their own request. Who actually approves is not recorded.\n- Rejected requests end in \"Complete\", the same end event as completed orders. Nothing tells the requester about a rejection, and the end event does not distinguish the outcomes.\n- The gateway conditions are free text (\"approved\" / \"not approved\"), and there is no default flow. This is a modeling choice, not a diagnostic.\n- Place order has Procurement as both Responsible and Accountable. The Finance manager is only Informed, so no one is recorded as checking budget before ordering.\n\n## Checks\n`diagnostics` returned 0 findings and `validate` returned valid with 0 errors and 0 warnings. These are advisory checks of this application under the stored profile, not a statement of BPMN conformance or correctness.",
+  "answer": "# Procurement process explained (project \"Procurement\", generation 0, not changed)\n\nSource: MCP queries on document 11111111-1111-4111-8111-111111111111, process `procurement`. Everything below is what the model records, not policy.\n\n## What happens\n1. **Request received** (start event) in lane \"Request and review\".\n2. **Review request** (user task, same lane).\n3. **Approved?** (exclusive gateway, same lane) with two branches:\n   - \"Approved\", condition `approved`: goes to **Place order**.\n   - \"Rejected\", condition `not approved`: goes straight to **Complete** (end event).\n4. **Place order** (task, lane \"Procurement\"), then **Complete** (end event, lane \"Procurement\").\n\n## Who is responsible (RACI, per activity)\n| Activity | Responsible | Accountable | Consulted | Informed |\n|---|---|---|---|---|\n| Review request | Requester | Procurement | Finance manager | Legal (free text, not a dictionary role) |\n| Place order | Procurement | Procurement | Requester | Finance manager |\n\nR comes from the lane's role link (lane \"Request and review\" -> Requester, lane \"Procurement\" -> Procurement); A, C and I come from the activity attributes. Events and the gateway have no RACI. The dictionary holds three roles: Requester, Procurement, Finance manager. No systems, documents, durations, costs, owners or contacts are recorded for any element.\n\n## Anything that looks off\n- \"Legal\" is Informed on Review request but is only a free-text label, not a dictionary role, so it cannot be reused or checked.\n- Review request is performed (R) by the Requester role, i.e. the person who made the request reviews it, while Procurement is Accountable. This looks like a possible self-review or a wrongly assigned lane role. Not recorded who actually approves.\n- Rejected requests end at \"Complete\", the same end event as completed orders, so the end state does not distinguish rejection from fulfilment. That end event sits in the Procurement lane although the rejection decision happens in the request lane.\n- Place order: Procurement is both Responsible and Accountable (allowed, but no separation of duties).\n- Finance manager is consulted on the review but only informed about the order; nothing in the flow shows a budget/finance approval step.\n- Branch conditions are informal text (`approved`, `not approved`) and the gateway has no default flow.\n- Lane \"Request and review\" mixes requester and reviewer activities under one role.\n\n## Checks\n- `diagnostics`: 0 findings. `validate`: valid, 0 errors, 0 warnings. No conventions profile is stored, so this means only the built-in checks passed, not that the process is correct or complete.",
   "expected": {
     "documents": 1,
     "nodes": 5,

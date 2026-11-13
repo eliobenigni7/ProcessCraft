@@ -27,7 +27,8 @@ and say so. The same holds for attribute names against definitions.
 
 Value formats (canonical, checked by the core): `Text` any string; `Number`, `Currency` a decimal
 string such as `"40.5"` (never a float); `Duration` ISO 8601 `PnDTnHnMnS` such as `"PT2H30M"` (`P1D`
-is 24 elapsed hours, not a working day); `Enum` one of the definition's `options`; `Date`
+is 24 elapsed hours, not a working day); a note's words map as 45 minutes to `PT45M`, 1 hour to
+`PT1H`, 2 days to `P2D`, 1 hour 30 minutes to `PT1H30M`; `Enum` one of the definition's `options`; `Date`
 `YYYY-MM-DD`; `Url` text; `DictionaryRefs` a list of `{"Entry": "<dictionary id>"}` (a
 dictionary entry, taken from `query dictionary`) or `{"Literal": "<text>"}` (free text that is not
 in the dictionary; it is stored and shown but cannot be reused or checked). The wire form is
@@ -50,9 +51,11 @@ in the dictionary; it is stored and shown but cannot be reused or checked). The 
 5. `apply` one batch: `createAttributeDefinition` first (only if allowed), then one
    `setAttributeValues` per element. A value you set replaces the existing one for that
    definition; `"value": null` clears it. If an element already has a different value from the
-   one in the source, do not guess which is right: leave it, and report both. Overwrite only when
-   the source itself says the value changed ("now 120", "was 100, is 120"), and list every
-   overwrite (old and new) in the report. "Different" is not the same as "changed".
+   one in the source, do not guess which is right. Overwrite only when the source itself says the
+   value changed ("changed to 30", "now 120", "was 100, is 120"); "changed to X" is enough, no
+   further confirmation is needed. List every overwrite (old and new) in the report. When the
+   source gives a different value without such wording, keep the stored value and report the
+   discrepancy (stored value, source value, element). "Different" is not the same as "changed".
    If nothing in the source can be placed, `apply` nothing and report why; an empty result with
    reasons is correct.
 6. `query` `attributes` and `query` `diagnostics`, then `validate`. Report the values set, the
@@ -96,6 +99,18 @@ The user allowed a new `Risk` enum, so create it and set all values in one batch
       ]}
     ]
   }
+}
+```
+
+A `Duration` definition (unit `null`, no options) is created like this, and is used with values
+such as `{"Duration": "PT45M"}`:
+
+```json tool=request
+{
+  "type": "batch",
+  "mutations": [
+    {"type": "createAttributeDefinition", "definition": {"id": "6a000000-0000-4000-8000-000000000012", "name": "Duration", "description": "Time the activity takes.", "value_type": "Duration", "unit": null, "options": [], "dictionary_kind": null, "applies_to": ["Activity"], "required": false}}
+  ]
 }
 ```
 

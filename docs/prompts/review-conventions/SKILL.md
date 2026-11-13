@@ -12,10 +12,12 @@ live schemas.
 ## Inputs
 
 - A session on the project to review (`--in <file>`, or attached to the desktop app).
-- Which profile to review against: the profile stored in the project, or "the recommended profile"
-  (the user must say so; setting a profile changes project content). If the user said neither,
-  review under the stored profile and, if the project has none, report that and ask; in an
-  autonomous run use the recommended profile only when the task text says to.
+- Which profile to review against. The stored profile wins: if `query conventions` returns one,
+  review under it, even when the task mentions "the recommended profile", unless the user
+  explicitly asks to switch to the recommended one (setting a profile changes project content,
+  and the stored one is the team's agreement). If the project stores none, use the recommended
+  profile when the task says to (including "the recommended profile if the project has none");
+  otherwise report that there is none and ask.
 - Permission to edit. If the user only asked for a review, stop after step 4 and report.
 
 The eight rules: `labelRequired`, `activityVerbObject` (word-list heuristic, see below),
@@ -26,18 +28,24 @@ and `conventionRequiredAttribute`, a `severity`, the `documentId` and the `eleme
 ## Tool sequence
 
 1. `inspect`: note `sessionId` and `generation`.
-2. `query` `conventions` shows the stored profile (`null` when there is none) and `query`
+2. `query` `conventions` (no `offset` or `limit`: it takes only `kind`, and extra fields are
+   refused) shows the stored profile (`null` when there is none) and `query`
    `diagnostics` the findings under it. Page diagnostics until `nextOffset` is `null`. `query`
    `documents` gives the document and process IDs if you need them for `table` or `model`.
 3. If the user asked for the recommended profile, `apply` `setConventionsProfile` with it (see the
    example), then `query` `diagnostics` again. If the project has no stored profile, only the
    built-in advisory findings appear until a profile is set.
-4. Group the findings by code and element. For each, decide: fix, or report.
+4. Group the findings by code and element. For each, decide: fix, or report. To see an
+   activity's predecessor and successor (what the step does in the flow), read its flows with
+   `query model` (`/processes/N/flows/M/{source,target,name}`); `table` shows only outgoing flows.
    - Fix when the correction follows from the model itself: an activity label that is a noun
      phrase of a step that is clearly "Notify requester" and not "Requester notification"; a
      gateway flow whose sibling already carries "Approved" and whose target is a rejection. A
      rename for the verb-object rule is allowed when it keeps the meaning and only reorders or
-     replaces the verb; it is not allowed when the label is the user's own wording.
+     replaces the verb; it is not allowed when the label is the user's own wording. The tool has
+     no authorship signal: no query says who wrote a label. So rename only when the finding and
+     the model together support the new text (lane, neighbours, flows make the meaning clear),
+     otherwise report. Every rename goes in the report as old text and new text.
    - Report, do not fix: a missing attribute value, a role that is not in the dictionary, a model
      over `maxElements`, a missing end event, anything where the correction is a business decision.
 5. `apply` the fixes as one batch (`rename` for labels and flow names), with `expectedGeneration`

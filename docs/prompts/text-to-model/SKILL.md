@@ -47,12 +47,23 @@ Build elements in reading order, one `append` per element. Kinds you will use: `
   with two incoming flows is an implicit join and is reported by the conventions.
 - Write each activity label as a verb followed by an object ("Create employee record"). The
   conventions check the first word against a built-in English verb list: a label the description
-  forces into another shape, or a verb the list lacks, is reported by the check; keep the
-  description's meaning and report the finding rather than bend the label.
-- One end event. When a branch ends in the description, route it to the end event; several
-  outcomes may share one end event (`connect` to it). If the description does not say what
-  happens after a step on a branch, connect that step to the existing end event and list the open
-  point in the reply. Do not add a second end event or a loop the text does not state.
+  forces into another shape, or a verb the list lacks, is reported by the check (for example
+  "follow" is not in the list, so "Follow up on checklist" is flagged); keep the description's
+  meaning and report the finding rather than bend the label.
+- One end event, reached through a merge. The recommended profile has two rules that meet here:
+  `singleStartEnd` wants exactly one end event (`conventionEndCount`), and `noImplicitSplitJoin`
+  reports any activity or event with several incoming flows (`conventionImplicitJoin`), an end
+  event included. Several flows into the one end event therefore always produce a warning. The
+  pattern that satisfies both: join the outcomes at an exclusive gateway ("Routes joined", a merge
+  gateway with one outgoing flow needs no label) and connect that gateway to the single end event,
+  as the worked example does. If the outcomes are different end states that the description cares
+  about ("closed" against "escalated"), use one end event each, accept `conventionEndCount`, and
+  report it; do not hide the difference. If the description does not say what happens after a step
+  on a branch, connect that step to the merge (or to the end event) and list the open point in the
+  reply. Do not add a loop the text does not state.
+- Gateways: the recommended profile's `labelRequired` covers `Activity`, `Event`, `Lane` and
+  `Participant`, not gateways, so a gateway name is optional; a short question on a decision
+  ("Amount above 1000?") still helps the reader. The flows out of an exclusive gateway need labels.
 
 ## Actors and lanes
 
@@ -64,19 +75,25 @@ ID (one `createDictionaryEntry` with a fresh UUID per actor, one `createLane` pe
 description does not name is not invented: leave the step out of every lane and report it. Reuse
 an entry from `query dictionary` instead of creating a second one with the same name.
 
-```json tool=request
+```json tool=apply
 {
-  "type": "batch",
-  "mutations": [
-    {"type": "createDictionaryEntry", "entry": {"id": "aaaaaaaa-0000-4000-8000-0000000000a1", "kind": "Role", "name": "Accounts payable", "description": ""}},
-    {"type": "createLane", "document_id": "aaaaaaaa-0000-4000-8000-000000000001", "process_id": "invoice", "lane": {"id": "lane_ap", "name": "Accounts payable", "parent": null, "members": ["check", "big", "approve", "join", "pay"]}},
-    {"type": "setDictionaryLinks", "source": {"document_id": "aaaaaaaa-0000-4000-8000-000000000001", "xml_id": "lane_ap"}, "kind": "Role", "targets": [{"Entry": "aaaaaaaa-0000-4000-8000-0000000000a1"}]}
-  ]
+  "sessionId": "00000000-0000-4000-8000-000000000000",
+  "requestId": "invoice-lanes-1",
+  "expectedGeneration": 1,
+  "request": {
+    "type": "batch",
+    "mutations": [
+      {"type": "createDictionaryEntry", "entry": {"id": "aaaaaaaa-0000-4000-8000-0000000000a1", "kind": "Role", "name": "Accounts payable", "description": ""}},
+      {"type": "createLane", "document_id": "aaaaaaaa-0000-4000-8000-000000000001", "process_id": "invoice", "lane": {"id": "lane_ap", "name": "Accounts payable", "parent": null, "members": ["check", "big", "approve", "join", "pay"]}},
+      {"type": "setDictionaryLinks", "source": {"document_id": "aaaaaaaa-0000-4000-8000-000000000001", "xml_id": "lane_ap"}, "kind": "Role", "targets": [{"Entry": "aaaaaaaa-0000-4000-8000-0000000000a1"}]}
+    ]
+  }
 }
 ```
 
-This batch is the second one after the worked example below (generation 1 to 2, or put its three
-mutations at the end of the first batch). Start and end events may stay outside lanes.
+This call comes after the worked example below (generation 1 to 2); its three mutations may also
+sit at the end of the first batch. Replace `sessionId` with the one from `inspect`. Start and end
+events may stay outside lanes.
 
 ## Worked example
 

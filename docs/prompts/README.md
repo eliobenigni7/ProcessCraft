@@ -26,6 +26,21 @@ Windows, attaches to the visible session of the desktop app, using the pipe, tok
 the app shows when the user authorizes it; the agent then edits the same project as the person
 looking at the screen. No listener starts by default.
 
+A complete start on an existing file that will be edited and saved:
+
+```text
+processcraft-cli mcp --in C:\work\in\procurement.processcraft --read-root C:\work\in --write-root C:\work\out
+```
+
+Roots are absolute paths of existing folders; each flag may be repeated. What each needs:
+
+| Task | Needs |
+|---|---|
+| read only (`explain-process`), file given with `--in` | the file's folder as `--read-root` (or `--write-root`) |
+| edit and save a new project (`--new`) | `--write-root` only |
+| edit an `--in` file and save a result | the `--in` file inside a `--read-root` or `--write-root`, and a `--write-root` for `save` and `export` |
+| edit the `--in` file in place | the file's own folder as `--write-root`; save to the same path with `overwrite: true`, only if the person asked |
+
 ## Talking to the server
 
 The server speaks JSON-RPC 2.0, one JSON message per line, on stdin and stdout.
@@ -59,9 +74,13 @@ whole; the pack never needs them except to see that a value changed.
 ## The query kinds
 
 Every `query` takes `kind`, `offset` and `limit` (1..100) plus the fields in the table, except
-`conventions`, which takes only `kind`. The field names are `snake_case` (`document_id`,
+`conventions`, which takes only `kind` (adding `offset` or `limit` is refused with `-32602`:
+``unknown field `limit` ``). The field names are `snake_case` (`document_id`,
 `process_id`, `entry_id`), unlike the camelCase envelope of `apply`. A page is `{"total", "items",
-"nextOffset"}`; follow `nextOffset` until it is `null`.
+"nextOffset"}`. Follow `nextOffset` while you still need rows, and stop as soon as you have them:
+a complete list (`diagnostics`, `table`, `raci`, `dictionary`) is paged to the end, but a `model`
+dump of hundreds of rows is read only as far as the nodes, lanes and flows you need (the diagram
+shapes come last).
 
 | kind | extra fields | `items` hold |
 |---|---|---|
@@ -89,7 +108,7 @@ activity) or `query diagnostics` to find the ones that do not.
 `inspect` gives only a count. To get the IDs, call `query documents`:
 
 ```json tool=query
-{"kind": "documents", "offset": 0, "limit": 20}
+{"kind": "documents", "offset": 0, "limit": 100}
 ```
 
 ```json output
@@ -173,10 +192,19 @@ used (the person edited in the desktop app, or another write landed). Nothing wa
 ## File roots
 
 `save` and `export` write only below a `--write-root` (standalone) or a folder the person
-authorized in the desktop app (attached). A path outside every root is answered with
+authorized in the desktop app (attached). The `path` must be absolute (a relative path is not
+resolved against a root and is answered with `pathNotAuthorized`), inside a root and not the root
+itself, without `..`, UNC or device prefixes, or links; on Windows `C:/work/out/a.processcraft`
+and `C:\work\out\a.processcraft` both work. A path outside every root is answered with
 `pathNotAuthorized`, which also hides whether the file exists. `--read-root` governs reading other
 files and is not needed for `--new`. Use `overwrite: false` unless the person asked to replace a
 file.
+
+A writable file leaves a sidecar `<file>.lock` (an empty file) next to it, for example
+`onboarding.processcraft.lock`. It is the lock that keeps two ProcessCraft sessions from writing
+one file; a second session on a locked file is read-only. The sidecar stays after the session ends
+and is harmless; delete it only when no ProcessCraft session has the file open. Do not list it as
+a result.
 
 ### Save and reconcile
 

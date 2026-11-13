@@ -671,8 +671,8 @@ documents` and `query conventions` (see "What the independent runs exposed").
   --new` stdio session. The tool replies must match the recorded `expect` fields; the session is
   then saved, reloaded with `native::load_bytes`, and must pass `ProjectData::validate` and match
   the recorded counts, including the number of findings under
-  `ConventionsProfile::recommended()` (1, 0, 2 and 1; the independent runs do not all end clean,
-  and the transcripts say so). The "no `error` diagnostic" check is structural only: every
+  `ConventionsProfile::recommended()` (2, 0, 2 and 0 for the second-round runs; the runs do not all
+  end clean, and the transcripts say so). The "no `error` diagnostic" check is structural only: every
   recommended rule is a warning, so it cannot fail; the exact warning count is the real check.
   A run that starts from a fixture saw generation 0 (it opened a saved file); the replay builds
   the same project with one setup batch and shifts every recorded generation by one.
@@ -687,9 +687,11 @@ rows; the listed process ID is accepted by `query table`; `conventions` is `null
 
 ### Transcript provenance
 
-The four transcripts are independent runs, recorded on 2026-11-13: one fresh Claude Sonnet
-subagent per prompt, given only that prompt's `SKILL.md` and `docs/prompts/README.md` (documents as
-of commit 194475a), a task chosen by the coordinator, and MCP access through a local relay (not in
+The transcripts in the repository are the second-round independent runs, described under "Second
+round" below. The first round, whose findings are kept as history under "First round", used the
+same method on the documents of commit 194475a. Method of both rounds: one fresh Claude Sonnet
+subagent per prompt, given only that prompt's `SKILL.md` and `docs/prompts/README.md`, a task
+chosen by the coordinator, and MCP access through a local relay (not in
 the repository) that forwards each request file unchanged as one JSON-RPC line and logs every
 request and reply. The agents composed every call themselves. The transcripts are the relay logs
 converted mechanically: the session ID replaced by `${sessionId}`, calls the server rejected with
@@ -698,7 +700,10 @@ a JSON-RPC error (no state change) and `save` calls (file effects) moved to `dro
 starts from a project, that project is a pinned fixture (`setup`); the agent opened it from a
 saved file.
 
-Harness flaw, disclosed: the text-to-model and review-conventions agents wrote request files into
+### First round (documents of commit 194475a; superseded as transcripts)
+
+The first-round runs are no longer in the repository; this is their record. Harness flaw,
+disclosed: the text-to-model and review-conventions agents wrote request files into
 a shared directory, so a few read calls (`query dictionary` and `query diagnostics`, JSON-RPC ids
 4 and 10) may have been forwarded to the other session. Every `apply` and `save` carried its own
 run's `sessionId` and `requestId`, so state changes are not affected, and the replies of those
@@ -720,7 +725,8 @@ cold agent; they do not show that every prompt reaches its goal.
 
 ### What the independent runs exposed, and how the documents and tools changed
 
-The documents changed after the runs, so the transcripts do not follow the current text exactly.
+The documents changed after the first round (this list), and again after the second round (see
+"Second round").
 
 - No way to get document and process IDs (`inspect` gives a count; every agent fell back to
   `processcraft-cli info` or paging `query model`). Added read-only `query documents`: per document
@@ -744,16 +750,52 @@ The documents changed after the runs, so the transcripts do not follow the curre
   of the replay setup); a project opened from a file starts at generation 0, and the examples now
   say so.
 
+### Second round (documents of commit 076ee9c)
+
+Four new fresh Claude Sonnet subagents re-ran the rewritten documents on 2026-11-13, each given
+only one `SKILL.md` and `docs/prompts/README.md`, a task chosen by the coordinator, its own
+request directory (no shared directory, so no call was ambiguous), a copy of the CLI built from
+076ee9c and the same verbatim relay (not in the repository). Their transcripts replace the
+first-round ones, converted the same way (session ID replaced, rejected calls, calls to a dead
+server and `save` calls moved to `droppedCalls`). All four reached their goal.
+
+| Prompt | Task | Calls replayed / dropped | End state (nodes / flows / lanes / attribute values / definitions) | Warnings under the recommended profile | Notes |
+|---|---|---|---|---|---|
+| `text-to-model` | the onboarding paragraph plus "show who does what", saved as `onboarding.processcraft` | 7 / 1 | 11 / 12 / 4 / 0 / 0 | 2 | four role lanes, one end event, saved at generation 2; remaining: verb-object on "Follow up on checklist" (word list lacked "follow"), implicit join at the single end event |
+| `review-conventions` | `conventions/fail-activity-verb-object.json`; recommended profile if none | 9 / 2 | 7 / 7 / 2 / 3 / 1 | 0 | read the stored profile with `query conventions`, renamed "Requester notification" to "Notify requester", 0 findings, saved at generation 1; its first server died (a backgrounded subshell) and it restarted, the dead server's `inspect` is dropped |
+| `explain-process` | `commands/raci.json`; read only | 11 / 1 | 5 / 5 / 2 / 6 / 3 | 2 | generation stayed 0; one `query conventions` with `offset` and `limit` was refused (`-32602`) and is dropped |
+| `fill-attributes` | `conventions/fail-required-attributes.json` plus a note using the activity names, with permission for duration and risk definitions | 9 / 1 | 7 / 7 / 2 / 8 / 3 | 0 | created Duration and Risk, set 7 values in one batch, overwrote Review request cost (the note said "changed to 30"), kept Place order cost 40.5 (no change wording), 0 findings, saved at generation 1 |
+
+The agents reported these gaps, and the documents were adjusted once more (one repair pass, not
+re-run since): a complete `--in` startup example with the roots each task needs; `save` paths
+must be absolute, inside a root, and are not resolved against it (checked in `RootGrant` and
+`FileGrant`); the empty `<file>.lock` sidecar that a writable file leaves (the writer lock, kept
+after the session); stop paging when the needed rows are found, and `conventions` takes no
+`offset` or `limit` (stated in each step that uses it); `text-to-model`: several flows into the one
+end event always trigger `conventionImplicitJoin`, so the documented pattern is a merge gateway
+before the single end event, separate end events only when the outcomes differ and then reporting
+`conventionEndCount`, gateway labels are optional under the recommended profile, and the lane
+example is a complete `apply` call; `review-conventions`: the stored profile wins unless the user
+asks to switch, the tool has no authorship signal (rename only when the finding and the model
+support it, report every rename), predecessors come from `query model`; `explain-process`:
+inferences allowed when labelled and grounded, `table` lists activities only; `fill-attributes`:
+"changed to X" is enough to overwrite, a differing value without change wording is kept and
+reported, natural-language durations map to ISO, and a `Duration` definition example. "follow"
+is not in the built-in verb list and was left out on purpose: adding it would change the
+diagnostics the recorded `text-to-model` run saw and break its replay, so it stays a documented
+known miss (the document names it). The adjusted documents have not been run by an agent again.
+
 ### Limits and what is not established
 
-- One run per prompt, by one model. The transcripts show what each agent did with the documents of
-  that day; they say nothing about how often an agent does so, or about any other model. The
-  documents were changed afterwards and have not been run again by an agent.
+- One run per prompt and round, by one model. The transcripts show what each agent did with the
+  documents of that day; they say nothing about how often an agent does so, or about any other
+  model. The documents were adjusted after the second round and have not been run again by an
+  agent.
 - The replay is deterministic: it replays recorded calls, it does not re-run an agent. If a
   mutation field is renamed, the examples are caught by the schema check, but the transcripts must
   be re-recorded by an agent following the updated documents.
-- Not every run met its task (table above); `text-to-model` ends with a warning and without
-  lanes, `fill-attributes` sets no value. They are kept as recorded rather than edited.
+- Not every run ends without findings (table above); `text-to-model` ends with two warnings. They
+  are kept as recorded rather than edited.
 - `explain-process` has a recorded answer text in its transcript, but the test does not check the
   prose, only that the session stayed read only and ended valid.
 - The schema check of `query` examples covers field names and required fields of the variant and

@@ -527,8 +527,10 @@ independent runs then exposed two missing read-only queries (`documents`, `conve
 - [x] Check (1) lands with the documents. Check (2) needs one real agent run per prompt, the only
   external dependency in M5. Met with independent runs: a fresh Claude Sonnet subagent per prompt,
   given only its `SKILL.md` and the README, drove a real session through a verbatim relay; the four
-  transcripts are those runs (see `docs/implementation/m5-evidence.md`, M5.5). Not every run
-  achieved its task fully; each transcript records what it did not achieve.
+  transcripts are those of a second round of such runs, after the documents had been rewritten
+  once (see `docs/implementation/m5-evidence.md`, M5.5). The documents were then adjusted once
+  more and not run again, by design (one repair pass). Each transcript records what it did not
+  achieve.
 - [x] Link the pack from `README.md` and the site only after both checks pass. (Linked from `README.md` and from the "Automate it" section of the GitHub Pages site in `site/`.)
 
 **Acceptance:** `cargo test -p processcraft-cli --test prompt_pack` passes; the evidence file records

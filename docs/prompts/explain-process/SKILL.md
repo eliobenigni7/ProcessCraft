@@ -31,6 +31,7 @@ carry an info string; the pack's test validates each one against the live schema
    first and the shapes last. Follow `nextOffset` when the process you explain is not yet in the
    page. `table` is the shorter way to the activities; use `model` for gateways and flows.
 3. `query` `table` for the process (needs `document_id` and `process_id`): one row per activity
+   (activities only; events and gateways are not listed, take them from `model`)
    with its lane, the role of the lane, the systems and documents linked to it, its attribute
    values, and its outgoing flows with conditions. This is the backbone of the explanation.
 4. `query` `raci` for the process (same two IDs): who is Responsible, Accountable, Consulted and
@@ -42,10 +43,19 @@ carry an info string; the pack's test validates each one against the live schema
 6. `query` `attributes` for the document: definitions with `usage_count`, and the values per element.
 7. `query` `diagnostics` and `validate`: findings the reader should know about. No findings
    means none under the stored profile (or only the built-in checks when no profile is stored);
-   say that, not "the process is correct". `query` `conventions` shows which profile that is.
+   say that, not "the process is correct". `query` `conventions` (no `offset` or `limit`: it takes only `kind`) shows which profile that is.
 8. Write the explanation from those results only.
 
-Page each query until `nextOffset` is `null`. If a query is refused for size, lower `limit`.
+Page each query until `nextOffset` is `null`, except `model`: stop as soon as the process's nodes,
+lanes and flows have been read (the diagram shapes follow and are not needed). If a query is
+refused for size, lower `limit`.
+
+If the explanation includes "anything that looks off", it may contain two kinds of remark, kept
+apart: findings and facts the queries return (diagnostics, a `Literal` role, a gateway flow with
+no condition, "not recorded"), and inferences you draw from them (a possible self-review because
+the same role does and approves, an end event that hides the rejection path). An inference is
+allowed when you label it as one ("this looks like...", "possibly") and name the query result it
+rests on. Never present an inference as a recorded fact or as policy.
 
 ## Worked example
 

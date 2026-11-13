@@ -1,16 +1,16 @@
 {
   "prompt": "text-to-model",
-  "recordedBy": "independent run 2026-11-13 by a fresh Claude Sonnet subagent given only docs/prompts/text-to-model/SKILL.md and docs/prompts/README.md at commit 194475a, task text chosen by the coordinator, calls composed by the agent and forwarded verbatim by a local relay (not in repo)",
+  "recordedBy": "independent run 2026-11-13 by a fresh Claude Sonnet subagent given only docs/prompts/text-to-model/SKILL.md and docs/prompts/README.md at commit 076ee9c, task text chosen by the coordinator, calls composed by the agent and forwarded verbatim by a local relay (not in repo), separate request directory per run",
   "recordedOn": "2026-11-13",
-  "task": "Model this as a new process in a new document: When a new hire's contract is signed, HR creates the employee record. In parallel, IT prepares a laptop and accounts while the manager plans the first week. When both are ready, the employee has an onboarding day; if the onboarding checklist is incomplete, HR follows up, otherwise onboarding is closed.",
-  "harnessNote": "Harness flaw: the text-to-model and review-conventions agents wrote request files into a shared directory, so a few read calls (query dictionary and query diagnostics, JSON-RPC ids 4 and 10) may have been forwarded to the other session. Every apply and save carried its own run's sessionId and requestId, so state changes are not affected. Those reads are kept and marked originAmbiguous; their replies match the state of the session they are recorded in.",
+  "task": "Model this as a new process in a new document: When a new hire's contract is signed, HR creates the employee record. In parallel, IT prepares a laptop and accounts while the manager plans the first week. When both are ready, the employee has an onboarding day; if the onboarding checklist is incomplete, HR follows up, otherwise onboarding is closed. Show who does what. Save it as onboarding.processcraft",
+  "harnessNote": "No shared request directory was used; no call was dropped for ambiguous origin.",
   "setup": null,
-  "notAchieved": "Recorded no actors or lanes (the description names HR, IT and the manager); invented a second end event ('Follow-up started') so the process ends with two end events and the stored recommended profile still reports conventionEndCount; renamed 'Follow up with employee' to 'Contact employee about open checklist items' to satisfy the verb-object heuristic.",
+  "notAchieved": "Built four role lanes (HR, IT, Manager, Employee) with one end event and saved at generation 2. Two warnings remain under the recommended profile: conventionActivityVerbObject on 'Follow up on checklist' (the word list lacked 'follow') and conventionImplicitJoin at the single end event, which the documents told it to share between outcomes.",
   "droppedCalls": [
     {
-      "jsonRpcId": 16,
+      "jsonRpcId": 15,
       "tool": "save",
-      "reason": "file effect, not replayed; reply status committed, ok true, expectedGeneration 3"
+      "reason": "file effect, not replayed; reply status committed, ok true, expectedGeneration 2"
     }
   ],
   "calls": [
@@ -25,32 +25,19 @@
     {
       "tool": "query",
       "arguments": {
-        "kind": "diagnostics",
-        "offset": 0,
-        "limit": 50
-      },
-      "expect": {
-        "total": 0
-      },
-      "originAmbiguous": true
-    },
-    {
-      "tool": "query",
-      "arguments": {
         "kind": "dictionary",
         "offset": 0,
         "limit": 50
       },
       "expect": {
         "total": 0
-      },
-      "originAmbiguous": true
+      }
     },
     {
       "tool": "apply",
       "arguments": {
         "sessionId": "${sessionId}",
-        "requestId": "onboarding-model-1",
+        "requestId": "onb-1",
         "expectedGeneration": 0,
         "request": {
           "type": "batch",
@@ -58,7 +45,7 @@
             {
               "type": "createDocument",
               "document": {
-                "id": "3f1c2a10-7b5d-4c1e-9a2b-5d6e7f809a01",
+                "id": "bbbbbbbb-0000-4000-8000-000000000001",
                 "name": "Employee onboarding",
                 "folder": null,
                 "definitions_id": "defs",
@@ -71,7 +58,7 @@
             },
             {
               "type": "createProcess",
-              "document_id": "3f1c2a10-7b5d-4c1e-9a2b-5d6e7f809a01",
+              "document_id": "bbbbbbbb-0000-4000-8000-000000000001",
               "process": {
                 "id": "onboarding",
                 "name": "Employee onboarding",
@@ -83,10 +70,10 @@
             },
             {
               "type": "createDiagram",
-              "document_id": "3f1c2a10-7b5d-4c1e-9a2b-5d6e7f809a01",
+              "document_id": "bbbbbbbb-0000-4000-8000-000000000001",
               "diagram": {
-                "id": "onboarding_diagram",
-                "plane_id": "onboarding_plane",
+                "id": "onb_diagram",
+                "plane_id": "onb_plane",
                 "plane": "onboarding",
                 "shapes": [],
                 "edges": []
@@ -94,21 +81,21 @@
             },
             {
               "type": "createAt",
-              "document_id": "3f1c2a10-7b5d-4c1e-9a2b-5d6e7f809a01",
-              "diagram_id": "onboarding_diagram",
+              "document_id": "bbbbbbbb-0000-4000-8000-000000000001",
+              "diagram_id": "onb_diagram",
               "kind": "StartEvent",
               "name": "Contract signed",
               "center": {
                 "x": 100,
-                "y": 200
+                "y": 120
               },
               "node_id": "start",
               "shape_id": "start_shape"
             },
             {
               "type": "append",
-              "document_id": "3f1c2a10-7b5d-4c1e-9a2b-5d6e7f809a01",
-              "diagram_id": "onboarding_diagram",
+              "document_id": "bbbbbbbb-0000-4000-8000-000000000001",
+              "diagram_id": "onb_diagram",
               "source_id": "start",
               "kind": "UserTask",
               "name": "Create employee record",
@@ -119,11 +106,11 @@
             },
             {
               "type": "append",
-              "document_id": "3f1c2a10-7b5d-4c1e-9a2b-5d6e7f809a01",
-              "diagram_id": "onboarding_diagram",
+              "document_id": "bbbbbbbb-0000-4000-8000-000000000001",
+              "diagram_id": "onb_diagram",
               "source_id": "record",
               "kind": "ParallelGateway",
-              "name": "Start preparation",
+              "name": "Preparation starts",
               "node_id": "split",
               "shape_id": "split_shape",
               "flow_id": "f_record_split",
@@ -131,8 +118,8 @@
             },
             {
               "type": "append",
-              "document_id": "3f1c2a10-7b5d-4c1e-9a2b-5d6e7f809a01",
-              "diagram_id": "onboarding_diagram",
+              "document_id": "bbbbbbbb-0000-4000-8000-000000000001",
+              "diagram_id": "onb_diagram",
               "source_id": "split",
               "kind": "UserTask",
               "name": "Prepare laptop and accounts",
@@ -143,20 +130,20 @@
             },
             {
               "type": "append",
-              "document_id": "3f1c2a10-7b5d-4c1e-9a2b-5d6e7f809a01",
-              "diagram_id": "onboarding_diagram",
+              "document_id": "bbbbbbbb-0000-4000-8000-000000000001",
+              "diagram_id": "onb_diagram",
               "source_id": "split",
               "kind": "UserTask",
               "name": "Plan first week",
-              "node_id": "week_plan",
-              "shape_id": "week_plan_shape",
-              "flow_id": "f_split_week",
-              "edge_id": "f_split_week_edge"
+              "node_id": "plan",
+              "shape_id": "plan_shape",
+              "flow_id": "f_split_plan",
+              "edge_id": "f_split_plan_edge"
             },
             {
               "type": "append",
-              "document_id": "3f1c2a10-7b5d-4c1e-9a2b-5d6e7f809a01",
-              "diagram_id": "onboarding_diagram",
+              "document_id": "bbbbbbbb-0000-4000-8000-000000000001",
+              "diagram_id": "onb_diagram",
               "source_id": "it_prep",
               "kind": "ParallelGateway",
               "name": "Both ready",
@@ -167,17 +154,17 @@
             },
             {
               "type": "connect",
-              "document_id": "3f1c2a10-7b5d-4c1e-9a2b-5d6e7f809a01",
-              "diagram_id": "onboarding_diagram",
-              "source_id": "week_plan",
+              "document_id": "bbbbbbbb-0000-4000-8000-000000000001",
+              "diagram_id": "onb_diagram",
+              "source_id": "plan",
               "target_id": "join",
-              "flow_id": "f_week_join",
-              "edge_id": "f_week_join_edge"
+              "flow_id": "f_plan_join",
+              "edge_id": "f_plan_join_edge"
             },
             {
               "type": "append",
-              "document_id": "3f1c2a10-7b5d-4c1e-9a2b-5d6e7f809a01",
-              "diagram_id": "onboarding_diagram",
+              "document_id": "bbbbbbbb-0000-4000-8000-000000000001",
+              "diagram_id": "onb_diagram",
               "source_id": "join",
               "kind": "UserTask",
               "name": "Hold onboarding day",
@@ -188,8 +175,8 @@
             },
             {
               "type": "append",
-              "document_id": "3f1c2a10-7b5d-4c1e-9a2b-5d6e7f809a01",
-              "diagram_id": "onboarding_diagram",
+              "document_id": "bbbbbbbb-0000-4000-8000-000000000001",
+              "diagram_id": "onb_diagram",
               "source_id": "day",
               "kind": "ExclusiveGateway",
               "name": "Checklist complete?",
@@ -200,11 +187,11 @@
             },
             {
               "type": "append",
-              "document_id": "3f1c2a10-7b5d-4c1e-9a2b-5d6e7f809a01",
-              "diagram_id": "onboarding_diagram",
+              "document_id": "bbbbbbbb-0000-4000-8000-000000000001",
+              "diagram_id": "onb_diagram",
               "source_id": "check",
               "kind": "UserTask",
-              "name": "Follow up with employee",
+              "name": "Follow up on checklist",
               "node_id": "followup",
               "shape_id": "followup_shape",
               "flow_id": "f_check_followup",
@@ -212,39 +199,189 @@
             },
             {
               "type": "append",
-              "document_id": "3f1c2a10-7b5d-4c1e-9a2b-5d6e7f809a01",
-              "diagram_id": "onboarding_diagram",
-              "source_id": "followup",
+              "document_id": "bbbbbbbb-0000-4000-8000-000000000001",
+              "diagram_id": "onb_diagram",
+              "source_id": "check",
+              "kind": "Task",
+              "name": "Close onboarding",
+              "node_id": "close",
+              "shape_id": "close_shape",
+              "flow_id": "f_check_close",
+              "edge_id": "f_check_close_edge"
+            },
+            {
+              "type": "append",
+              "document_id": "bbbbbbbb-0000-4000-8000-000000000001",
+              "diagram_id": "onb_diagram",
+              "source_id": "close",
               "kind": "EndEvent",
-              "name": "Follow-up started",
-              "node_id": "end_followup",
-              "shape_id": "end_followup_shape",
+              "name": "Onboarding finished",
+              "node_id": "end",
+              "shape_id": "end_shape",
+              "flow_id": "f_close_end",
+              "edge_id": "f_close_end_edge"
+            },
+            {
+              "type": "connect",
+              "document_id": "bbbbbbbb-0000-4000-8000-000000000001",
+              "diagram_id": "onb_diagram",
+              "source_id": "followup",
+              "target_id": "end",
               "flow_id": "f_followup_end",
               "edge_id": "f_followup_end_edge"
             },
             {
-              "type": "append",
-              "document_id": "3f1c2a10-7b5d-4c1e-9a2b-5d6e7f809a01",
-              "diagram_id": "onboarding_diagram",
-              "source_id": "check",
-              "kind": "EndEvent",
-              "name": "Onboarding closed",
-              "node_id": "end_closed",
-              "shape_id": "end_closed_shape",
-              "flow_id": "f_check_closed",
-              "edge_id": "f_check_closed_edge"
-            },
-            {
               "type": "rename",
-              "document_id": "3f1c2a10-7b5d-4c1e-9a2b-5d6e7f809a01",
+              "document_id": "bbbbbbbb-0000-4000-8000-000000000001",
               "element_id": "f_check_followup",
               "name": "No"
             },
             {
               "type": "rename",
-              "document_id": "3f1c2a10-7b5d-4c1e-9a2b-5d6e7f809a01",
-              "element_id": "f_check_closed",
+              "document_id": "bbbbbbbb-0000-4000-8000-000000000001",
+              "element_id": "f_check_close",
               "name": "Yes"
+            },
+            {
+              "type": "createDictionaryEntry",
+              "entry": {
+                "id": "bbbbbbbb-0000-4000-8000-0000000000a1",
+                "kind": "Role",
+                "name": "HR",
+                "description": ""
+              }
+            },
+            {
+              "type": "createDictionaryEntry",
+              "entry": {
+                "id": "bbbbbbbb-0000-4000-8000-0000000000a2",
+                "kind": "Role",
+                "name": "IT",
+                "description": ""
+              }
+            },
+            {
+              "type": "createDictionaryEntry",
+              "entry": {
+                "id": "bbbbbbbb-0000-4000-8000-0000000000a3",
+                "kind": "Role",
+                "name": "Manager",
+                "description": ""
+              }
+            },
+            {
+              "type": "createDictionaryEntry",
+              "entry": {
+                "id": "bbbbbbbb-0000-4000-8000-0000000000a4",
+                "kind": "Role",
+                "name": "Employee",
+                "description": ""
+              }
+            },
+            {
+              "type": "createLane",
+              "document_id": "bbbbbbbb-0000-4000-8000-000000000001",
+              "process_id": "onboarding",
+              "lane": {
+                "id": "lane_hr",
+                "name": "HR",
+                "parent": null,
+                "members": [
+                  "record",
+                  "followup"
+                ]
+              }
+            },
+            {
+              "type": "createLane",
+              "document_id": "bbbbbbbb-0000-4000-8000-000000000001",
+              "process_id": "onboarding",
+              "lane": {
+                "id": "lane_it",
+                "name": "IT",
+                "parent": null,
+                "members": [
+                  "it_prep"
+                ]
+              }
+            },
+            {
+              "type": "createLane",
+              "document_id": "bbbbbbbb-0000-4000-8000-000000000001",
+              "process_id": "onboarding",
+              "lane": {
+                "id": "lane_manager",
+                "name": "Manager",
+                "parent": null,
+                "members": [
+                  "plan"
+                ]
+              }
+            },
+            {
+              "type": "createLane",
+              "document_id": "bbbbbbbb-0000-4000-8000-000000000001",
+              "process_id": "onboarding",
+              "lane": {
+                "id": "lane_employee",
+                "name": "Employee",
+                "parent": null,
+                "members": [
+                  "day"
+                ]
+              }
+            },
+            {
+              "type": "setDictionaryLinks",
+              "source": {
+                "document_id": "bbbbbbbb-0000-4000-8000-000000000001",
+                "xml_id": "lane_hr"
+              },
+              "kind": "Role",
+              "targets": [
+                {
+                  "Entry": "bbbbbbbb-0000-4000-8000-0000000000a1"
+                }
+              ]
+            },
+            {
+              "type": "setDictionaryLinks",
+              "source": {
+                "document_id": "bbbbbbbb-0000-4000-8000-000000000001",
+                "xml_id": "lane_it"
+              },
+              "kind": "Role",
+              "targets": [
+                {
+                  "Entry": "bbbbbbbb-0000-4000-8000-0000000000a2"
+                }
+              ]
+            },
+            {
+              "type": "setDictionaryLinks",
+              "source": {
+                "document_id": "bbbbbbbb-0000-4000-8000-000000000001",
+                "xml_id": "lane_manager"
+              },
+              "kind": "Role",
+              "targets": [
+                {
+                  "Entry": "bbbbbbbb-0000-4000-8000-0000000000a3"
+                }
+              ]
+            },
+            {
+              "type": "setDictionaryLinks",
+              "source": {
+                "document_id": "bbbbbbbb-0000-4000-8000-000000000001",
+                "xml_id": "lane_employee"
+              },
+              "kind": "Role",
+              "targets": [
+                {
+                  "Entry": "bbbbbbbb-0000-4000-8000-0000000000a4"
+                }
+              ]
             }
           ]
         }
@@ -258,7 +395,7 @@
       "tool": "apply",
       "arguments": {
         "sessionId": "${sessionId}",
-        "requestId": "onboarding-profile-1",
+        "requestId": "onb-2",
         "expectedGeneration": 1,
         "request": {
           "type": "batch",
@@ -339,56 +476,26 @@
       }
     },
     {
-      "tool": "apply",
-      "arguments": {
-        "sessionId": "${sessionId}",
-        "requestId": "onboarding-fix-1",
-        "expectedGeneration": 2,
-        "request": {
-          "type": "batch",
-          "mutations": [
-            {
-              "type": "rename",
-              "document_id": "3f1c2a10-7b5d-4c1e-9a2b-5d6e7f809a01",
-              "element_id": "followup",
-              "name": "Contact employee about open checklist items"
-            }
-          ]
-        }
-      },
-      "expect": {
-        "ok": true,
-        "generation": 3
-      }
-    },
-    {
       "tool": "query",
       "arguments": {
-        "kind": "diagnostics",
+        "kind": "table",
+        "document_id": "bbbbbbbb-0000-4000-8000-000000000001",
+        "process_id": "onboarding",
         "offset": 0,
         "limit": 50
       },
       "expect": {
-        "total": 1
-      }
-    },
-    {
-      "tool": "validate",
-      "arguments": {},
-      "expect": {
-        "valid": true,
-        "errorCount": 0,
-        "warningCount": 1
+        "total": 6
       }
     }
   ],
   "expected": {
     "documents": 1,
     "nodes": 11,
-    "flows": 11,
-    "lanes": 0,
+    "flows": 12,
+    "lanes": 4,
     "attributeValues": 0,
     "attributeDefinitions": 0,
-    "recommendedWarnings": 1
+    "recommendedWarnings": 2
   }
 }

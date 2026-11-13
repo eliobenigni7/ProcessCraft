@@ -1,62 +1,20 @@
 {
   "prompt": "fill-attributes",
-  "recordedBy": "independent run 2026-11-13 by a fresh Claude Sonnet subagent given only docs/prompts/fill-attributes/SKILL.md and docs/prompts/README.md at commit 194475a, task text chosen by the coordinator, calls composed by the agent and forwarded verbatim by a local relay (not in repo)",
+  "recordedBy": "independent run 2026-11-13 by a fresh Claude Sonnet subagent given only docs/prompts/fill-attributes/SKILL.md and docs/prompts/README.md at commit 076ee9c, task text chosen by the coordinator, calls composed by the agent and forwarded verbatim by a local relay (not in repo), separate request directory per run",
   "recordedOn": "2026-11-13",
-  "task": "The project is built from tests/fixtures/conventions/fail-required-attributes.json. Source note: 'Checking a request takes about 45 minutes and costs 30 EUR. Approval takes up to 2 days, costs 15 EUR and is high risk. Ordering costs 12.50 EUR and takes 1 hour; risk medium.'",
+  "task": "The project is built from tests/fixtures/conventions/fail-required-attributes.json. You may create duration and risk definitions (risk levels Low, Medium, High). Source note: 'Review request takes 45 minutes; its cost changed to 30 EUR. Place order costs 12.50 EUR, takes 1 hour, risk medium. Notify requester costs 2 EUR and takes 5 minutes, risk low.'",
   "harnessNote": "No shared request directory was used; no call was dropped for ambiguous origin.",
   "setup": {
     "fixture": "conventions/fail-required-attributes.json",
     "requestId": "setup",
     "note": "The agent opened this project from a saved file, so its first call saw generation 0. The replay builds it with one setup batch (generation 1) and shifts every recorded generation by one."
   },
-  "notAchieved": "Set nothing: the note's names (Checking a request, Approval, Ordering) do not match the model's activity names exactly, and no Time or Risk definition existed. It reported the unplaced rows and left the required Cost on 'notify' empty, so one conventionRequiredAttribute warning remains.",
+  "notAchieved": "Created Duration and Risk and set 7 values in one batch (review request: cost 30 as the note said it changed, 45 minutes; place order: 1 hour, medium; notify requester: cost 2, 5 minutes, low). Kept Place order cost 40.5 because the note did not say it changed. 0 warnings; saved at generation 1.",
   "droppedCalls": [
     {
-      "jsonRpcId": 4,
-      "tool": "query",
-      "arguments": {
-        "kind": "table",
-        "offset": 0,
-        "limit": 50
-      },
-      "reason": "rejected with JSON-RPC error -32602: missing field `document_id` (no state change)"
-    },
-    {
-      "jsonRpcId": 4,
-      "tool": "query",
-      "arguments": {
-        "kind": "table",
-        "offset": 0,
-        "limit": 50
-      },
-      "reason": "rejected with JSON-RPC error -32602: missing field `document_id` (no state change)"
-    },
-    {
-      "jsonRpcId": 5,
-      "tool": "query",
-      "arguments": {
-        "kind": "table",
-        "document_id": "44444444-4444-4444-8444-444444444444",
-        "offset": 0,
-        "limit": 50
-      },
-      "reason": "rejected with JSON-RPC error -32602: missing field `process_id` (no state change)"
-    },
-    {
-      "jsonRpcId": 5,
-      "tool": "query",
-      "arguments": {
-        "kind": "table",
-        "document_id": "44444444-4444-4444-8444-444444444444",
-        "offset": 0,
-        "limit": 50
-      },
-      "reason": "rejected with JSON-RPC error -32602: missing field `process_id` (no state change)"
-    },
-    {
-      "jsonRpcId": 8,
+      "jsonRpcId": 10,
       "tool": "save",
-      "reason": "file effect, not replayed; reply status committed, ok true, expectedGeneration 0"
+      "reason": "file effect, not replayed; reply status committed, ok true, expectedGeneration 1"
     }
   ],
   "calls": [
@@ -71,9 +29,9 @@
     {
       "tool": "query",
       "arguments": {
-        "kind": "diagnostics",
+        "kind": "documents",
         "offset": 0,
-        "limit": 50
+        "limit": 20
       },
       "expect": {
         "total": 1
@@ -94,13 +52,14 @@
     {
       "tool": "query",
       "arguments": {
-        "kind": "model",
+        "kind": "table",
         "document_id": "44444444-4444-4444-8444-444444444444",
+        "process_id": "conv_process",
         "offset": 0,
         "limit": 50
       },
       "expect": {
-        "total": 190
+        "total": 3
       }
     },
     {
@@ -115,12 +74,157 @@
       }
     },
     {
+      "tool": "apply",
+      "arguments": {
+        "sessionId": "${sessionId}",
+        "requestId": "fill-1",
+        "expectedGeneration": 0,
+        "request": {
+          "type": "batch",
+          "mutations": [
+            {
+              "type": "createAttributeDefinition",
+              "definition": {
+                "id": "7b000000-0000-4000-8000-000000000021",
+                "name": "Duration",
+                "description": "Time the activity takes.",
+                "value_type": "Duration",
+                "unit": null,
+                "options": [],
+                "dictionary_kind": null,
+                "applies_to": [
+                  "Activity"
+                ],
+                "required": false
+              }
+            },
+            {
+              "type": "createAttributeDefinition",
+              "definition": {
+                "id": "7b000000-0000-4000-8000-000000000022",
+                "name": "Risk",
+                "description": "Operational risk of the activity.",
+                "value_type": "Enum",
+                "unit": null,
+                "options": [
+                  "Low",
+                  "Medium",
+                  "High"
+                ],
+                "dictionary_kind": null,
+                "applies_to": [
+                  "Activity"
+                ],
+                "required": false
+              }
+            },
+            {
+              "type": "setAttributeValues",
+              "source": {
+                "document_id": "44444444-4444-4444-8444-444444444444",
+                "xml_id": "review"
+              },
+              "values": [
+                {
+                  "definition_id": "44444444-4444-4444-8444-000000000010",
+                  "value": {
+                    "Currency": "30"
+                  }
+                },
+                {
+                  "definition_id": "7b000000-0000-4000-8000-000000000021",
+                  "value": {
+                    "Duration": "PT45M"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "setAttributeValues",
+              "source": {
+                "document_id": "44444444-4444-4444-8444-444444444444",
+                "xml_id": "order"
+              },
+              "values": [
+                {
+                  "definition_id": "7b000000-0000-4000-8000-000000000021",
+                  "value": {
+                    "Duration": "PT1H"
+                  }
+                },
+                {
+                  "definition_id": "7b000000-0000-4000-8000-000000000022",
+                  "value": {
+                    "Enum": "Medium"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "setAttributeValues",
+              "source": {
+                "document_id": "44444444-4444-4444-8444-444444444444",
+                "xml_id": "notify"
+              },
+              "values": [
+                {
+                  "definition_id": "44444444-4444-4444-8444-000000000010",
+                  "value": {
+                    "Currency": "2"
+                  }
+                },
+                {
+                  "definition_id": "7b000000-0000-4000-8000-000000000021",
+                  "value": {
+                    "Duration": "PT5M"
+                  }
+                },
+                {
+                  "definition_id": "7b000000-0000-4000-8000-000000000022",
+                  "value": {
+                    "Enum": "Low"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expect": {
+        "ok": true,
+        "generation": 1
+      }
+    },
+    {
+      "tool": "query",
+      "arguments": {
+        "kind": "attributes",
+        "document_id": "44444444-4444-4444-8444-444444444444",
+        "offset": 0,
+        "limit": 50
+      },
+      "expect": {
+        "total": 3
+      }
+    },
+    {
+      "tool": "query",
+      "arguments": {
+        "kind": "diagnostics",
+        "offset": 0,
+        "limit": 50
+      },
+      "expect": {
+        "total": 0
+      }
+    },
+    {
       "tool": "validate",
       "arguments": {},
       "expect": {
         "valid": true,
         "errorCount": 0,
-        "warningCount": 1
+        "warningCount": 0
       }
     }
   ],
@@ -129,8 +233,8 @@
     "nodes": 7,
     "flows": 7,
     "lanes": 2,
-    "attributeValues": 2,
-    "attributeDefinitions": 1,
-    "recommendedWarnings": 1
+    "attributeValues": 8,
+    "attributeDefinitions": 3,
+    "recommendedWarnings": 0
   }
 }

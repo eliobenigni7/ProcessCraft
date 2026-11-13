@@ -205,32 +205,32 @@
     }
     ,{
       "path": "prompts/text-to-model.transcript.json",
-      "sha256": "e15d9067ed9954cc550cdd8ca06c5addc0a6cfd73a090d49f8d6aa5c9d67a340",
-      "provenance": "M5.5 MCP tool-call transcript from an independent run 2026-11-13 by a fresh Claude Sonnet subagent given only docs/prompts/text-to-model/SKILL.md and docs/prompts/README.md at commit 194475a, task text chosen by the coordinator, calls composed by the agent and forwarded verbatim by a local relay (not in repo); harness note: a shared request directory between the text-to-model and review-conventions runs caused possible cross-forwarding of read calls, which are marked originAmbiguous; rejected calls and file effects are listed under droppedCalls and not replayed",
+      "sha256": "cc1eb85901a7404f1cf8fc6c0ac02ec162d6284f36b42cb00f1fef72cd842284",
+      "provenance": "M5.5 MCP tool-call transcript from an independent run 2026-11-13 by a fresh Claude Sonnet subagent given only docs/prompts/text-to-model/SKILL.md and docs/prompts/README.md at commit 076ee9c, task text chosen by the coordinator, calls composed by the agent and forwarded verbatim by a local relay (not in repo), separate request directory per run, second round of runs; rejected calls, calls to a dead server process and file effects are listed under droppedCalls and not replayed",
       "license": "CC0-1.0",
       "expected_mode": "not a project: JSON list of MCP tool calls replayed by apps/processcraft-cli/tests/prompt_pack.rs",
       "semantic_di_checks": "Replay ends with validate ok, no error diagnostics under ConventionsProfile::recommended(), and the element and attribute counts stored in the transcript"
     }
     ,{
       "path": "prompts/review-conventions.transcript.json",
-      "sha256": "c3150b974cb7b0dddf74231bc27c103f3c32465b90aa64c0b3a2c0d874feda2a",
-      "provenance": "M5.5 MCP tool-call transcript from an independent run 2026-11-13 by a fresh Claude Sonnet subagent given only docs/prompts/review-conventions/SKILL.md and docs/prompts/README.md at commit 194475a, task text chosen by the coordinator, calls composed by the agent and forwarded verbatim by a local relay (not in repo); harness note: a shared request directory between the text-to-model and review-conventions runs caused possible cross-forwarding of read calls, which are marked originAmbiguous; rejected calls and file effects are listed under droppedCalls and not replayed",
+      "sha256": "43a8e48787e2f2bb6e7ef06a57c2c018914b2b3b9b033f7e551c7acf0f7df33f",
+      "provenance": "M5.5 MCP tool-call transcript from an independent run 2026-11-13 by a fresh Claude Sonnet subagent given only docs/prompts/review-conventions/SKILL.md and docs/prompts/README.md at commit 076ee9c, task text chosen by the coordinator, calls composed by the agent and forwarded verbatim by a local relay (not in repo), separate request directory per run, second round of runs; rejected calls, calls to a dead server process and file effects are listed under droppedCalls and not replayed",
       "license": "CC0-1.0",
       "expected_mode": "not a project: JSON list of MCP tool calls replayed by apps/processcraft-cli/tests/prompt_pack.rs",
       "semantic_di_checks": "Replay ends with validate ok, no error diagnostics under ConventionsProfile::recommended(), and the element and attribute counts stored in the transcript"
     }
     ,{
       "path": "prompts/explain-process.transcript.json",
-      "sha256": "faee511ef757b1d5daded24d6167ef2d44ca50c590db08e7578be5b3ab544f85",
-      "provenance": "M5.5 MCP tool-call transcript from an independent run 2026-11-13 by a fresh Claude Sonnet subagent given only docs/prompts/explain-process/SKILL.md and docs/prompts/README.md at commit 194475a, task text chosen by the coordinator, calls composed by the agent and forwarded verbatim by a local relay (not in repo); harness note: a shared request directory between the text-to-model and review-conventions runs caused possible cross-forwarding of read calls, which are marked originAmbiguous; rejected calls and file effects are listed under droppedCalls and not replayed",
+      "sha256": "0d610adb520728dc11c276109b4ce503d2a14c1432fc18a83d3dcc9e7cc83778",
+      "provenance": "M5.5 MCP tool-call transcript from an independent run 2026-11-13 by a fresh Claude Sonnet subagent given only docs/prompts/explain-process/SKILL.md and docs/prompts/README.md at commit 076ee9c, task text chosen by the coordinator, calls composed by the agent and forwarded verbatim by a local relay (not in repo), separate request directory per run, second round of runs; rejected calls, calls to a dead server process and file effects are listed under droppedCalls and not replayed",
       "license": "CC0-1.0",
       "expected_mode": "not a project: JSON list of MCP tool calls replayed by apps/processcraft-cli/tests/prompt_pack.rs",
       "semantic_di_checks": "Replay ends with validate ok, no error diagnostics under ConventionsProfile::recommended(), and the element and attribute counts stored in the transcript"
     }
     ,{
       "path": "prompts/fill-attributes.transcript.json",
-      "sha256": "1fccfcc7c03f4b06c0710e32231436398ea237876589cd26c65981ffa1fa3d03",
-      "provenance": "M5.5 MCP tool-call transcript from an independent run 2026-11-13 by a fresh Claude Sonnet subagent given only docs/prompts/fill-attributes/SKILL.md and docs/prompts/README.md at commit 194475a, task text chosen by the coordinator, calls composed by the agent and forwarded verbatim by a local relay (not in repo); harness note: a shared request directory between the text-to-model and review-conventions runs caused possible cross-forwarding of read calls, which are marked originAmbiguous; rejected calls and file effects are listed under droppedCalls and not replayed",
+      "sha256": "485d1e3afd5bb07371a81e4f247280933068b3a6513987fe1d67c7d980e53831",
+      "provenance": "M5.5 MCP tool-call transcript from an independent run 2026-11-13 by a fresh Claude Sonnet subagent given only docs/prompts/fill-attributes/SKILL.md and docs/prompts/README.md at commit 076ee9c, task text chosen by the coordinator, calls composed by the agent and forwarded verbatim by a local relay (not in repo), separate request directory per run, second round of runs; rejected calls, calls to a dead server process and file effects are listed under droppedCalls and not replayed",
       "license": "CC0-1.0",
       "expected_mode": "not a project: JSON list of MCP tool calls replayed by apps/processcraft-cli/tests/prompt_pack.rs",
       "semantic_di_checks": "Replay ends with validate ok, no error diagnostics under ConventionsProfile::recommended(), and the element and attribute counts stored in the transcript"

@@ -1,39 +1,24 @@
 {
   "prompt": "review-conventions",
-  "recordedBy": "independent run 2026-11-13 by a fresh Claude Sonnet subagent given only docs/prompts/review-conventions/SKILL.md and docs/prompts/README.md at commit 194475a, task text chosen by the coordinator, calls composed by the agent and forwarded verbatim by a local relay (not in repo)",
+  "recordedBy": "independent run 2026-11-13 by a fresh Claude Sonnet subagent given only docs/prompts/review-conventions/SKILL.md and docs/prompts/README.md at commit 076ee9c, task text chosen by the coordinator, calls composed by the agent and forwarded verbatim by a local relay (not in repo), separate request directory per run",
   "recordedOn": "2026-11-13",
   "task": "Open the project (built from tests/fixtures/conventions/fail-activity-verb-object.json), review it against the conventions (the recommended profile if the project has none), fix what the model decides, and save the result.",
-  "harnessNote": "Harness flaw: the text-to-model and review-conventions agents wrote request files into a shared directory, so a few read calls (query dictionary and query diagnostics, JSON-RPC ids 4 and 10) may have been forwarded to the other session. Every apply and save carried its own run's sessionId and requestId, so state changes are not affected. Those reads are kept and marked originAmbiguous; their replies match the state of the session they are recorded in.",
+  "harnessNote": "No shared request directory was used; no call was dropped for ambiguous origin.",
   "setup": {
     "fixture": "conventions/fail-activity-verb-object.json",
     "requestId": "setup",
     "note": "The agent opened this project from a saved file, so its first call saw generation 0. The replay builds it with one setup batch (generation 1) and shifts every recorded generation by one."
   },
-  "notAchieved": "Could not read the stored conventions profile (no query for it existed at commit 194475a); reviewed against the findings only and did not set the recommended profile, so the end state is clean only under the profile the project already stored.",
+  "notAchieved": "Nothing the task asked for was missed: it found the stored profile with query conventions, renamed 'Requester notification' to 'Notify requester', ended with 0 findings and saved at generation 1. The first server process died (a backgrounded subshell) and the agent restarted cleanly; calls to the dead process are not part of the replay.",
   "droppedCalls": [
     {
-      "jsonRpcId": 6,
-      "tool": "query",
-      "arguments": {
-        "kind": "table",
-        "document_id": "44444444-4444-4444-8444-444444444444",
-        "offset": 0,
-        "limit": 50
-      },
-      "reason": "rejected with JSON-RPC error -32602: missing field `process_id` (no state change)"
+      "jsonRpcId": 3,
+      "tool": "inspect",
+      "arguments": {},
+      "reason": "sent to the first server process, which died (a backgrounded subshell); the agent restarted the server and a second initialize and inspect followed. Entries before the restart's initialize are dropped, not replayed."
     },
     {
-      "jsonRpcId": 101,
-      "tool": "query",
-      "arguments": {
-        "kind": "model",
-        "offset": 0,
-        "limit": 50
-      },
-      "reason": "rejected with JSON-RPC error -32602: missing field `document_id` (no state change)"
-    },
-    {
-      "jsonRpcId": 107,
+      "jsonRpcId": 12,
       "tool": "save",
       "reason": "file effect, not replayed; reply status committed, ok true, expectedGeneration 1"
     }
@@ -50,56 +35,69 @@
     {
       "tool": "query",
       "arguments": {
-        "kind": "diagnostics",
-        "offset": 0,
-        "limit": 50
+        "kind": "conventions"
       },
       "expect": {
-        "total": 1
-      },
-      "originAmbiguous": true
-    },
-    {
-      "tool": "query",
-      "arguments": {
-        "kind": "dictionary",
-        "offset": 0,
-        "limit": 50
-      },
-      "expect": {
-        "total": 2
-      },
-      "originAmbiguous": true
-    },
-    {
-      "tool": "query",
-      "arguments": {
-        "kind": "model",
-        "document_id": "44444444-4444-4444-8444-444444444444",
-        "offset": 0,
-        "limit": 50
-      },
-      "expect": {
-        "total": 190
+        "conventions": {
+          "rules": [
+            {
+              "severity": "warning",
+              "type": "activityVerbObject",
+              "verbs": []
+            }
+          ]
+        }
       }
     },
     {
       "tool": "query",
       "arguments": {
-        "kind": "model",
-        "document_id": "44444444-4444-4444-8444-444444444444",
-        "offset": 50,
-        "limit": 60
+        "kind": "diagnostics",
+        "offset": 0,
+        "limit": 100
       },
       "expect": {
-        "total": 190
+        "total": 1
+      }
+    },
+    {
+      "tool": "query",
+      "arguments": {
+        "kind": "documents",
+        "offset": 0,
+        "limit": 20
+      },
+      "expect": {
+        "total": 1
+      }
+    },
+    {
+      "tool": "validate",
+      "arguments": {},
+      "expect": {
+        "valid": true,
+        "errorCount": 0,
+        "warningCount": 1
+      }
+    },
+    {
+      "tool": "query",
+      "arguments": {
+        "kind": "table",
+        "document_id": "44444444-4444-4444-8444-444444444444",
+        "process_id": "conv_process",
+        "offset": 0,
+        "limit": 100
+      },
+      "expect": {
+        "total": 3
       }
     },
     {
       "tool": "apply",
       "arguments": {
         "sessionId": "${sessionId}",
-        "requestId": "rc-fix-notify",
+        "requestId": "review-fix-notify-1",
         "expectedGeneration": 0,
         "request": {
           "type": "batch",
@@ -123,7 +121,7 @@
       "arguments": {
         "kind": "diagnostics",
         "offset": 0,
-        "limit": 50
+        "limit": 100
       },
       "expect": {
         "total": 0
