@@ -453,10 +453,25 @@ impl ServerHandler for Server {
                         processcraft_core::queries::activity_table(&snapshot.project, document_id, &process_id)
                             .ok_or_else(|| ErrorData::invalid_params("process not found", None))?
                             .into_iter().map(|row| json!({"key":row.key,"name":row.name,"lane":row.lane,"role":row.role,"systems":row.systems,"documents":row.documents,"attributes":row.attributes,"outgoing":row.outgoing.into_iter().map(|f| json!({"id":f.id,"target":f.target,"condition":f.condition})).collect::<Vec<_>>() })).collect(), offset, limit),
-                    Query::Raci { document_id, process_id, offset, limit } => (
-                        processcraft_core::queries::raci_matrix(&snapshot.project, document_id, &process_id)
-                            .ok_or_else(|| ErrorData::invalid_params("process not found", None))?
-                            .rows.into_iter().map(|row| json!(row)).collect(), offset, limit),
+                    Query::Raci { document_id, process_id, offset, limit } => {
+                        let matrix = processcraft_core::queries::raci_matrix(&snapshot.project, document_id, &process_id)
+                            .ok_or_else(|| ErrorData::invalid_params("process not found", None))?;
+                        let total = matrix.rows.len();
+                        let columns = json!(matrix.columns);
+                        let reserved = serde_json::to_vec(&columns)
+                            .map_err(|e| ErrorData::internal_error(e.to_string(), None))?
+                            .len();
+                        let mut result = crate::run::bounded_page_reserved(
+                            matrix.rows.into_iter().skip(offset).map(|row| json!(row)),
+                            total,
+                            offset,
+                            limit,
+                            reserved,
+                        )
+                        .map_err(|error| ErrorData::invalid_params(error.message, None))?;
+                        result["columns"] = columns;
+                        return Ok(CallToolResult::structured(result).into());
+                    }
                     Query::Attributes { document_id, offset, limit } => {
                         let definitions =
                             processcraft_core::queries::attribute_definitions(&snapshot.project);

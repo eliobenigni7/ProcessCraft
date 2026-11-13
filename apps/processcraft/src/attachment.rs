@@ -652,7 +652,30 @@ impl Attachment {
                         let Some(matrix) = processcraft_core::queries::raci_matrix(&snapshot.project, document_id, &process_id) else {
                             return json!({"ok":false,"error":"process not found"});
                         };
-                        (matrix.rows.into_iter().map(|row| json!(row)).collect(), offset, limit)
+                        if !(1..=100).contains(&limit) {
+                            return json!({"ok":false,"error":"limit must be 1..100"});
+                        }
+                        let columns = json!(matrix.columns);
+                        // The columns share the 3 MiB response budget with the page.
+                        let mut bytes = serde_json::to_vec(&columns).map_or(3 * 1024 * 1024 + 1, |v| v.len());
+                        if bytes > 3 * 1024 * 1024 {
+                            return json!({"ok":false,"error":"query header exceeds response limit"});
+                        }
+                        let total = matrix.rows.len();
+                        let mut page = Vec::new();
+                        for item in matrix.rows.into_iter().skip(offset).take(limit).map(|row| json!(row)) {
+                            let size = serde_json::to_vec(&item).map_or(3 * 1024 * 1024 + 1, |v| v.len());
+                            if bytes.saturating_add(size) > 3 * 1024 * 1024 {
+                                if page.is_empty() {
+                                    return json!({"ok":false,"error":"item exceeds response limit"});
+                                }
+                                break;
+                            }
+                            bytes += size;
+                            page.push(item);
+                        }
+                        let next = offset.saturating_add(page.len());
+                        return json!({"columns":columns,"total":total,"items":page,"nextOffset":if next < total { Some(next) } else { None }});
                     }
                     Query::Attributes { document_id, offset, limit } => {
                         let Some(rows) = processcraft_core::queries::element_attributes(&snapshot.project, document_id) else {

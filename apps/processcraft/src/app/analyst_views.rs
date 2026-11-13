@@ -1343,6 +1343,14 @@ impl ProcessCraft {
                                                             RaciAttribute::Consulted => c.consulted,
                                                             RaciAttribute::Informed => c.informed,
                                                         });
+                                                        let name = format!(
+                                                            "{} for {}: {}",
+                                                            raci.name(),
+                                                            row.name
+                                                                .as_deref()
+                                                                .unwrap_or("unnamed activity"),
+                                                            column.name
+                                                        );
                                                         let response = ui
                                                             .add_enabled_ui(editable, |ui| {
                                                                 ui.selectable_label(
@@ -1351,14 +1359,15 @@ impl ProcessCraft {
                                                                 )
                                                             })
                                                             .inner
-                                                            .on_hover_text(format!(
-                                                                "{} for {}: {}",
-                                                                raci.name(),
-                                                                row.name
-                                                                    .as_deref()
-                                                                    .unwrap_or("unnamed activity"),
-                                                                column.name
-                                                            ));
+                                                            .on_hover_text(&name);
+                                                        response.widget_info(|| {
+                                                            egui::WidgetInfo::selected(
+                                                                egui::Role::Button,
+                                                                editable,
+                                                                on,
+                                                                name.clone(),
+                                                            )
+                                                        });
                                                         if response.clicked() {
                                                             toggles.push((
                                                                 row.key.clone(),

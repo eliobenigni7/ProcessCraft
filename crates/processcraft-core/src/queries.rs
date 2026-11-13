@@ -1032,11 +1032,11 @@ pub fn raci_matrix(
 }
 
 /// RFC 4180 CSV of a [`RaciMatrix`]: UTF-8 with BOM, CRLF, one column per role.
-/// A field starting with `=`, `+`, `-` or `@` is prefixed with `'` so an
+/// A field starting with `=`, `+`, `-`, `@`, TAB or CR is prefixed with `'` so an
 /// imported name cannot become a spreadsheet formula.
 pub fn raci_csv(matrix: &RaciMatrix) -> String {
     fn field(text: &str) -> String {
-        let text = if text.starts_with(['=', '+', '-', '@']) {
+        let text = if text.starts_with(['=', '+', '-', '@', '\t', '\r']) {
             format!("'{text}")
         } else {
             text.to_owned()

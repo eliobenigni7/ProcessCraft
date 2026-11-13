@@ -395,6 +395,34 @@ fn csv_quotes_fields_and_neutralises_formulas() {
 }
 
 #[test]
+fn csv_neutralises_leading_tab_and_carriage_return() {
+    let mut session = session();
+    batch(
+        &mut session,
+        vec![
+            set(
+                "review",
+                RaciAttribute::Informed,
+                vec![
+                    DictionaryTarget::Literal("\tcmd".into()),
+                    DictionaryTarget::Literal("\rcmd".into()),
+                ],
+            ),
+            Mutation::Rename {
+                document_id: doc(),
+                element_id: "order".parse().unwrap(),
+                name: Some("\t=1+1".into()),
+            },
+        ],
+    );
+    let csv = queries::raci_csv(&matrix(&session));
+    assert!(csv.contains("'\tcmd"), "{csv:?}");
+    // A CR-led field is prefixed, then quoted because it contains CR.
+    assert!(csv.contains("\"'\rcmd\""), "{csv:?}");
+    assert!(csv.contains("\r\n'\t=1+1,"), "{csv:?}");
+}
+
+#[test]
 fn raci_definitions_have_fixed_ids_and_are_valid_mutations() {
     let ids: Vec<_> = RaciAttribute::ALL.iter().map(|r| r.id()).collect();
     assert_eq!(ids.len(), 3);

@@ -414,7 +414,7 @@ assert; nothing else is claimed.
   - `csv_matches_the_pinned_file_and_is_deterministic`: the CSV equals the
     byte-pinned `raci.expected.csv` (UTF-8 BOM, CRLF) and two calls agree.
   - `csv_quotes_fields_and_neutralises_formulas`: quotes, commas and newlines
-    follow RFC 4180; fields starting with `=`, `+`, `-` or `@` (activity names,
+    follow RFC 4180; fields starting with `=`, `+`, `-`, `@`, TAB or CR (activity names,
     role names, literals) are prefixed with `'`.
   - `raci_definitions_have_fixed_ids_and_are_valid_mutations`: the three IDs are
     distinct, match the fixture, round-trip through `from_id`, and all three are
@@ -435,8 +435,10 @@ assert; nothing else is claimed.
 
 - Matrix cells are sparse per row (a role without a letter has no cell) and each
   cell carries its target and name, so a row is readable without the column
-  list; the MCP and attached `raci` query page the rows (items), not the
-  columns. The CLI `query raci` returns the whole matrix.
+  list; the MCP and attached `raci` queries page the rows (`items`) and return
+  the full `columns` list beside them, counted in the 3 MiB response budget like
+  `definitions` of the attributes query. The CLI `query raci` returns
+  `{columns, rows}`.
 - A role is a column only when it holds at least one letter in the process. The
   desktop grid additionally offers "Add role column…" for dictionary roles not
   yet in use; those extra columns are view state and are not part of the query
@@ -457,8 +459,12 @@ assert; nothing else is claimed.
   mutation path behind the toggle is tested. Keyboard reachability rests on the
   use of standard selectable labels, not on a Tab-order test.
 - MCP and attached `query raci` compile against the same code as the other query
-  kinds but have no dedicated transport test; the CLI test covers the shared
-  core projection only.
+  kinds, but the `columns` header, its byte budget and the paging have no
+  transport test; the CLI test covers the shared core projection only. The A/C/I
+  toggles carry the accessible name "<Attribute> for <activity>: <role>" through
+  `widget_info`; no accessibility tree was inspected. Leading TAB and CR are
+  neutralised in CSV fields (`csv_neutralises_leading_tab_and_carriage_return`).
+  Activities in nested lanes or subprocesses have no RACI-specific test.
 - The matrix is recomputed when the model generation changes; no timing was
   measured (M5.6).
 - Attribute values on activities are not copied by clipboard or duplicate
