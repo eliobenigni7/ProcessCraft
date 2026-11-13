@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Download - ProcessCraft</title>
+<meta name="author" content="Elio Benigni">
+<meta name="description" content="Download ProcessCraft 0.2.0 for Windows: installer or portable ZIP, checksums, what unsigned means, and how to build from source.">
+<meta property="og:title" content="Download - ProcessCraft">
+<meta property="og:description" content="Download ProcessCraft 0.2.0 for Windows: installer or portable ZIP, checksums, what unsigned means, and how to build from source.">
+<meta property="og:image" content="images/workbench-light.png">
+<link rel="icon" type="image/png" href="icon.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-head">
+  <div class="wrap">
+    <a class="wordmark" href="index.html"><img src="icon.png" alt="" width="34" height="34">ProcessCraft</a>
+    <nav aria-label="Main">
+      <ul>
+        <li><a href="index.html">Home</a></li>
+        <li><a href="features.html">Features</a></li>
+        <li><a href="automation.html">Automation</a></li>
+        <li><a href="download.html" aria-current="page">Download</a></li>
+        <li><a href="status.html">Status</a></li>
+        <li><a href="https://github.com/eliobenigni7/ProcessCraft">GitHub</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+<main id="main" class="wrap">
+<div class="page-head">
+  <p class="eyebrow">Download</p>
+  <h1>Get ProcessCraft 0.2.0</h1>
+  <p class="lead">Two ways to get the same build: a per-user Windows installer, or a portable ZIP. Both are published on the release page, and neither is signed.</p>
+  <div class="actions"><a class="button" href="https://github.com/eliobenigni7/ProcessCraft/releases/tag/v0.2.0">Open the 0.2.0 release page</a></div>
+  <p class="note">Windows 10 or 11, 64-bit (x64). Nothing else was tested.</p>
+</div>
+
+<section id="choose" aria-labelledby="choose-title">
+  <h2 id="choose-title">MSI or portable ZIP</h2>
+  <div class="table-scroll">
+  <table>
+    <caption>The two files on the release page</caption>
+    <thead><tr><th scope="col">File</th><th scope="col">Size</th><th scope="col">What it is</th></tr></thead>
+    <tbody>
+      <tr><th scope="row"><code>processcraft-0.2.0-windows-x64.msi</code></th><td>56.5 MB</td><td>Installer. Installs for your account by default, with no administrator prompt, into <code>%LOCALAPPDATA%\Programs\ProcessCraft</code>. Adds a Start menu shortcut, makes ProcessCraft the handler for <code>.processcraft</code> files, offers it under "Open with" for <code>.bpmn</code>, and lets Win+R <code>processcraft</code> start it. Upgrades replace the older version. The first wizard page also offers "Everyone", which needs administrator rights and installs into Program Files.</td></tr>
+      <tr><th scope="row"><code>processcraft-0.2.0-windows-x64-portable.zip</code></th><td>66.5 MB</td><td>The two programs, the licenses and a README in one folder: unzip and run <code>processcraft.exe</code>. Nothing is registered, so file associations and shortcuts are yours to make.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="narrow">Both contain <code>processcraft.exe</code> (the desktop app) and <code>processcraft-cli.exe</code> (the command line and MCP server; see <a href="automation.html">Automation</a>). To uninstall the MSI, use Windows "Installed apps".</p>
+</section>
+
+<section id="unsigned" aria-labelledby="unsigned-title">
+  <h2 id="unsigned-title">Unsigned build</h2>
+  <p class="narrow">The files carry no code signature. Windows SmartScreen may therefore show "Windows protected your PC" and name an unknown publisher. That message says nobody has vouched for the publisher; it does not say anything about the contents. If you decide to run it anyway, choose "More info", then "Run anyway". Signing through a free open-source programme is planned but not done; see <a href="status.html#roadmap">the roadmap</a>.</p>
+  <p class="narrow">You do not have to trust a download blindly. The source is public, and you can <a href="#source">build it yourself</a>.</p>
+
+  <h3>Check the download</h3>
+  <p class="narrow">These SHA-256 checksums were computed from the files downloaded from the release page and match the digests GitHub shows for the release assets. They are on this page, not in a signed file, so they confirm that your download is complete and matches the release, not who published it.</p>
+  <div class="table-scroll">
+  <table>
+    <caption>SHA-256 of the 0.2.0 release files</caption>
+    <thead><tr><th scope="col">File</th><th scope="col">SHA-256</th></tr></thead>
+    <tbody>
+      <tr><th scope="row"><code>processcraft-0.2.0-windows-x64.msi</code></th><td><code>0060039a9f58cdf95689d66a0109fdc9b403e4f22dc38eb29fc44ee50d622295</code></td></tr>
+      <tr><th scope="row"><code>processcraft-0.2.0-windows-x64-portable.zip</code></th><td><code>9af3b2af1e1912d900358bfda744ab2123936aeb523ac3a0345b75f7f65f18db</code></td></tr>
+    </tbody>
+  </table>
+  </div>
+<pre tabindex="0"><code>Get-FileHash .\processcraft-0.2.0-windows-x64.msi -Algorithm SHA256</code></pre>
+</section>
+
+<section id="files" aria-labelledby="files-title">
+  <h2 id="files-title">Your files</h2>
+  <ul class="plain">
+    <li><b>A project is one <code>.processcraft</code> file</b>: a ZIP package of versioned JSON and resources that holds your BPMN documents and diagrams, the dictionary, folders, comments and checkpoints. The format may still change while the project is pre-alpha.</li>
+    <li><b>Saves are atomic</b>, a sidecar lock stops two writers, and recovery snapshots are kept outside the project.</li>
+    <li><b>Saving is qualified only on a fixed local Windows NTFS drive.</b> Network shares, cloud-synced folders, removable drives and other file systems have not been tested; keep your projects on a local disk and keep backups.</li>
+    <li><b>Import and export:</b> BPMN 2.0 XML in and out, SVG, PNG, PDF and draw.io out. Open a BPMN file with <code>processcraft.exe model.bpmn</code> or from the app.</li>
+  </ul>
+</section>
+
+<section id="source" aria-labelledby="source-title">
+  <h2 id="source-title">Build from source</h2>
+  <p class="narrow">You need <a href="https://rustup.rs">rustup</a> (the repository pins Rust 1.98.1 and installs it for you) and Git. The first build fetches pinned forks of egui, winit and craft-libs; after that it builds offline.</p>
+<pre tabindex="0"><code>git clone https://github.com/eliobenigni7/ProcessCraft.git
+cd ProcessCraft
+cargo run --release -p processcraft                  <span class="c"># desktop app</span>
+cargo run --release -p processcraft-cli -- --help    <span class="c"># command-line tool</span></code></pre>
+  <p class="narrow">The <a href="https://github.com/eliobenigni7/ProcessCraft#quick-start">README</a> has shortcuts and the three quality gates, and <code>packaging/windows/package.ps1</code> builds the installer (it needs WiX 5.0.2).</p>
+</section>
+</main>
+<footer class="site-foot">
+  <div class="wrap">
+    <ul>
+      <li><a href="https://github.com/eliobenigni7/ProcessCraft">Source on GitHub</a></li>
+      <li><a href="https://github.com/eliobenigni7/ProcessCraft/blob/main/LICENSE">MIT license</a></li>
+      <li><a href="https://github.com/eliobenigni7/ProcessCraft/issues">Issue tracker</a></li>
+      <li><a href="index.html#author">Contact</a></li>
+    </ul>
+    <p>ProcessCraft is made by <a href="index.html#author">Elio Benigni</a>, MIT licensed, and built on egui and the libraries of the <a href="https://github.com/storytold">Crafting Apps</a>. It is an independent project and is not made or endorsed by bpmn.io or the Object Management Group.</p>
+    <p>Pre-alpha software: version 0.2.0, Windows only, unsigned.</p>
+  </div>
+</footer>
+</body>
+</html>

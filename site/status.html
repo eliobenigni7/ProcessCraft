@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Status - ProcessCraft</title>
+<meta name="author" content="Elio Benigni">
+<meta name="description" content="What has been verified in ProcessCraft 0.2.0, what has not, measured numbers, and the roadmap.">
+<meta property="og:title" content="Status - ProcessCraft">
+<meta property="og:description" content="What has been verified in ProcessCraft 0.2.0, what has not, measured numbers, and the roadmap.">
+<meta property="og:image" content="images/workbench-light.png">
+<link rel="icon" type="image/png" href="icon.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-head">
+  <div class="wrap">
+    <a class="wordmark" href="index.html"><img src="icon.png" alt="" width="34" height="34">ProcessCraft</a>
+    <nav aria-label="Main">
+      <ul>
+        <li><a href="index.html">Home</a></li>
+        <li><a href="features.html">Features</a></li>
+        <li><a href="automation.html">Automation</a></li>
+        <li><a href="download.html">Download</a></li>
+        <li><a href="status.html" aria-current="page">Status</a></li>
+        <li><a href="https://github.com/eliobenigni7/ProcessCraft">GitHub</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+<main id="main" class="wrap">
+<div class="page-head">
+  <p class="eyebrow">Status</p>
+  <h1>What is verified, and what is not</h1>
+  <p class="lead">ProcessCraft 0.2.0 is pre-alpha. For trying it out and for modeling on Windows it works. It is not a finished product. This page follows the evidence files in the repository, which record what was run and what was measured.</p>
+  <ul class="plain">
+    <li><a href="#verified">Verified</a></li>
+    <li><a href="#measured">Measured</a></li>
+    <li><a href="#not-verified">Not verified</a></li>
+    <li><a href="#roadmap">Roadmap</a></li>
+  </ul>
+</div>
+
+<section id="verified" aria-labelledby="verified-title">
+  <h2 id="verified-title">Verified</h2>
+  <ul class="plain">
+    <li><b>Quality gates.</b> At the M5 qualification run: formatting, Clippy with warnings as errors, and the full test suite, which passed 1,258 tests with 0 failures and 3 ignored.</li>
+    <li><b>CLI workflow for the analyst layer.</b> A repeatable script drives attributes, conventions, RACI, the overlay and a BPMN round trip through the command line only; all 10 checks pass. For example, the saved file reopens with the same content identity, and the RACI export matches a pinned CSV byte for byte.</li>
+    <li><b>Installer.</b> For the 0.1.0 package, which shares the installer definition of 0.2.0, the per-user install, upgrade from a lower version, refusal of a downgrade, a failed install that rolls back, uninstall, and the wizard pages were run on one Windows 11 machine, and a per-machine install from an elevated shell.</li>
+    <li><b>Release.</b> 0.2.0 was built by the release workflow and published with an MSI (56.5 MB) and a portable ZIP (66.5 MB).</li>
+    <li><b>Prompt pack.</b> Two rounds of runs by fresh agent sessions led to changes in the documents. The documents were changed again after the second round and have not been re-run by a fresh agent since.</li>
+  </ul>
+</section>
+
+<section id="measured" aria-labelledby="measured-title">
+  <h2 id="measured-title">Measured</h2>
+  <p class="narrow">All numbers come from one machine (AMD Ryzen 5 5600X, 17 GB of memory, NVMe SSD, Windows 11), two release-build runs, 95th percentile of wall time. The model is the project's medium test fixture: 20 documents, 5,000 nodes, 500 shapes in the open diagram, a 20 MiB resource, and a 21.2 MB native file. The probe added 10 attribute definitions and 10,000 attribute values.</p>
+  <div class="table-scroll">
+  <table>
+    <caption>M5 measurements, milliseconds (two runs)</caption>
+    <thead><tr><th scope="col">Operation</th><th scope="col">Run 1</th><th scope="col">Run 2</th><th scope="col">Design budget</th></tr></thead>
+    <tbody>
+      <tr><th scope="row">Convention diagnostics, recommended profile (5,041 findings)</th><td>29.2</td><td>30.7</td><td>none set</td></tr>
+      <tr><th scope="row">Heatmap projection, Number attribute, 500 activities</th><td>0.87</td><td>0.85</td><td>viewport raster under 150</td></tr>
+      <tr><th scope="row">Activity table projection, ten attribute columns</th><td>9.3</td><td>9.3</td><td>search under 100</td></tr>
+      <tr><th scope="row">Native save to memory, 10,000 values</th><td>385</td><td>390</td><td>under 1,000</td></tr>
+      <tr><th scope="row">Native open from memory, 10,000 values</th><td>313</td><td>323</td><td>under 1,000</td></tr>
+      <tr><th scope="row">Save to disk, 10,000 values</th><td>1,055</td><td>2,209</td><td>under 1,000: <b>missed</b></td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="narrow">Saving to disk misses its budget, as it already did before attributes existed (889 and 1,367 ms without the values); resource hashing and compression dominate. The fastest samples were about 1.0 s and 0.7 s. The overlay and table rows measure the data projection only, not painting. Not measured: memory, cold start, frame time in the desktop app, and behaviour near the limits.</p>
+</section>
+
+<section id="not-verified" aria-labelledby="nv-title">
+  <h2 id="nv-title">Not verified</h2>
+  <p class="narrow"><b>M5's manual checks are still open</b>, so M5 is released but not closed:</p>
+  <ul class="plain">
+    <li>The procurement workflow with attributes, conventions, RACI and overlay in the desktop app, by hand, including save and reopen. The command-line half is done.</li>
+    <li>The same workflow through MCP attached to the open desktop app.</li>
+    <li>Opening the exported BPMN in an external tool (bpmn.io or Camunda Modeler), saving it unchanged and importing it again, to see whether <code>pc:attributes</code> survives. Nothing was observed, and no claim is made.</li>
+  </ul>
+  <p class="narrow">Also not established:</p>
+  <ul class="plain">
+    <li>Signed builds. The packages are unsigned.</li>
+    <li>macOS and Linux. Only Windows is supported, and saving is qualified only on local NTFS.</li>
+    <li>Screen-reader support on the canvas, and keyboard-only use of every view. The installer wizard was driven by window messages, not by keyboard or Narrator.</li>
+    <li>Formal performance targets on very large models, and any machine other than the development PC.</li>
+    <li>Complete BPMN 2.0.2 coverage or OMG conformance. Coverage is a tracked, tested profile.</li>
+    <li>The quality of any AI model's output when it uses the prompt pack.</li>
+  </ul>
+</section>
+
+<section id="roadmap" aria-labelledby="roadmap-title">
+  <h2 id="roadmap-title">Roadmap</h2>
+  <p class="narrow">ProcessCraft stays offline, single-user and agent-ready. Real-time collaboration, cloud storage and accounts, ERP connectors, a process execution engine and a built-in AI provider are out of scope. The detailed plan is <a href="https://github.com/eliobenigni7/ProcessCraft/blob/main/docs/plans/roadmap.md">in the repository</a>; these are plain-language summaries, not promises or dates.</p>
+
+  <h3>M4: finish shipping (open)</h3>
+  <ul class="plain">
+    <li><b>Signing.</b> Sign the installer and ZIP through a free open-source signing programme, and verify the signatures.</li>
+    <li><b>Installer follow-ups.</b> Check the "Everyone" path with a real administrator prompt, cancelling mid-install, and machines other than the development PC.</li>
+    <li><b>Accessibility and performance.</b> Keyboard-only modeling, table and dictionary workflows; Narrator; focus, contrast and display scaling; recorded timing and memory on a declared machine.</li>
+  </ul>
+
+  <h3>M5: analyst foundations (released, not closed)</h3>
+  <p class="narrow">Attributes, conventions, RACI, the overlay and the prompt pack are in 0.2.0. Closing M5 needs the manual checks listed above.</p>
+
+  <h3>M6: publish and structure</h3>
+  <p class="narrow">Export a project as one self-contained HTML handbook with a process map, one page per activity and search that works from a file share, plus a PDF from the browser. A process map document with drill-down into sub-processes and called processes. A semantic diff between two versions, from the command line and as an overlay.</p>
+
+  <h3>M7: analyse</h3>
+  <p class="narrow">A seeded simulation of a process from attributes, gateway probabilities and resources, with what-if comparison of two scenarios. It estimates behaviour and never runs a process. Visio import follows, but only once real sample files are available.</p>
+
+  <h3>M8: decide</h3>
+  <p class="narrow">DMN decision tables linked to business rule tasks, with the same keep-or-refuse rule for DMN files as for BPMN.</p>
+
+  <h3>M9: observe (optional)</h3>
+  <p class="narrow">Local event logs: import, conformance checking against a model, and a performance overlay; process discovery only later. Everything would stay on your machine.</p>
+</section>
+</main>
+<footer class="site-foot">
+  <div class="wrap">
+    <ul>
+      <li><a href="https://github.com/eliobenigni7/ProcessCraft">Source on GitHub</a></li>
+      <li><a href="https://github.com/eliobenigni7/ProcessCraft/blob/main/LICENSE">MIT license</a></li>
+      <li><a href="https://github.com/eliobenigni7/ProcessCraft/issues">Issue tracker</a></li>
+      <li><a href="index.html#author">Contact</a></li>
+    </ul>
+    <p>ProcessCraft is made by <a href="index.html#author">Elio Benigni</a>, MIT licensed, and built on egui and the libraries of the <a href="https://github.com/storytold">Crafting Apps</a>. It is an independent project and is not made or endorsed by bpmn.io or the Object Management Group.</p>
+    <p>Pre-alpha software: version 0.2.0, Windows only, unsigned.</p>
+  </div>
+</footer>
+</body>
+</html>

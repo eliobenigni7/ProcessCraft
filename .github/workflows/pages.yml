@@ -1,6 +1,6 @@
 name: Pages
 
-# Publishes site/ with the README screenshots and the app icon to GitHub Pages.
+# Publishes site/ (pages, style.css, images) with the README screenshots and the app icon to GitHub Pages.
 on:
   push:
     branches: [main]
@@ -27,7 +27,8 @@ jobs:
       - name: Assemble site
         run: |
           mkdir -p _site/images
-          cp site/index.html _site/
+          cp site/*.html site/style.css _site/
+          cp site/images/* _site/images/
           cp docs/images/*.png _site/images/
           cp assets/app-icon/processcraft-256.png _site/icon.png
       - uses: actions/configure-pages@v5

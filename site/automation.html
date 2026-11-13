@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Automation - ProcessCraft</title>
+<meta name="author" content="Elio Benigni">
+<meta name="description" content="Drive ProcessCraft from the command line or from an AI agent over MCP, with examples that were run.">
+<meta property="og:title" content="Automation - ProcessCraft">
+<meta property="og:description" content="Drive ProcessCraft from the command line or from an AI agent over MCP, with examples that were run.">
+<meta property="og:image" content="images/workbench-light.png">
+<link rel="icon" type="image/png" href="icon.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-head">
+  <div class="wrap">
+    <a class="wordmark" href="index.html"><img src="icon.png" alt="" width="34" height="34">ProcessCraft</a>
+    <nav aria-label="Main">
+      <ul>
+        <li><a href="index.html">Home</a></li>
+        <li><a href="features.html">Features</a></li>
+        <li><a href="automation.html" aria-current="page">Automation</a></li>
+        <li><a href="download.html">Download</a></li>
+        <li><a href="status.html">Status</a></li>
+        <li><a href="https://github.com/eliobenigni7/ProcessCraft">GitHub</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+<main id="main" class="wrap">
+<div class="page-head">
+  <p class="eyebrow">Automation</p>
+  <h1>The CLI and the MCP server</h1>
+  <p class="lead">Every change is a typed command. The desktop app, the command-line tool and the MCP server run the same commands through the same engine. A batch applies completely or not at all, and undoes as one step.</p>
+  <p class="narrow">Every example on this page was run against the 0.2.0 command-line tool; the outputs shown are what it printed. The files used live in the <a href="https://github.com/eliobenigni7/ProcessCraft/tree/main/tests/fixtures">repository's fixtures</a>, so run the commands from a checkout. <code>processcraft-cli.exe</code> is in the installer and in the portable ZIP.</p>
+  <ul class="plain">
+    <li><a href="#build">Build a project</a></li>
+    <li><a href="#validate">Validate against conventions</a></li>
+    <li><a href="#raci">RACI</a></li>
+    <li><a href="#images">Images with an overlay</a></li>
+    <li><a href="#bpmn">BPMN</a></li>
+    <li><a href="#mcp">MCP</a></li>
+  </ul>
+</div>
+
+<section id="build" aria-labelledby="build-title">
+  <h2 id="build-title">Build a project from a batch</h2>
+  <p class="narrow">List every command, with the JSON Schema of the request protocol. Then build a project from a JSON batch and read back its document and diagram IDs.</p>
+<pre tabindex="0"><code>processcraft-cli commands --json
+processcraft-cli run --new Procurement --batch tests/fixtures/commands/procurement.json --out procurement.processcraft
+processcraft-cli info procurement.processcraft</code></pre>
+  <p class="narrow"><code>run</code> prints a JSON receipt with <code>"ok":true</code> and the content identity of the saved project; <code>info</code> lists the documents, for example <code>"id":"11111111-1111-4111-8111-111111111111"</code> with the diagram <code>procurement_diagram</code>. To change an existing project, start from it with <code>--in</code> instead of <code>--new</code>; this batch adds a folder and a dictionary of roles and systems:</p>
+<pre tabindex="0"><code>processcraft-cli run --in procurement.processcraft --batch tests/fixtures/commands/library-dictionary.json --out procurement-dictionary.processcraft</code></pre>
+  <p class="narrow">Read projections without changing the file: <code>processcraft-cli query procurement-dictionary.processcraft dictionary</code> (also <code>documents</code>, <code>table</code>, <code>conventions</code>, <code>attributes</code>, <code>diagnostics</code> and more; <code>query --help</code> lists them).</p>
+</section>
+
+<section id="validate" aria-labelledby="validate-title">
+  <h2 id="validate-title">Validate against conventions</h2>
+  <p class="narrow"><code>validate</code> applies the profile stored in the project, or the one you pass with <code>--profile</code>. It exits with 3 when it finds an error, or a warning if you pass <code>--fail-on warning</code>, so it works as a CI gate. The summary line goes to stderr; the diagnostics go to stdout as JSON.</p>
+<pre tabindex="0"><code><span class="c"># project with a stored profile: 4 warnings, so this exits 3</span>
+processcraft-cli run --new Procurement --batch tests/fixtures/conventions/pass.json --out conventions.processcraft
+processcraft-cli run --in conventions.processcraft --batch tests/fixtures/commands/raci.json --out project.processcraft
+processcraft-cli validate project.processcraft --fail-on warning
+<span class="c"># stderr: 0 error and 4 warning diagnostics</span>
+<span class="c"># the same project with the default threshold exits 0</span>
+processcraft-cli validate project.processcraft</code></pre>
+  <p class="narrow">To try a profile without storing it, write one and pass it. This one makes an implicit join an error:</p>
+<pre tabindex="0"><code><span class="c"># profile.json</span>
+{"rules": [
+  {"type": "labelRequired", "severity": "warning", "kinds": ["Activity", "Event", "Lane", "Participant"]},
+  {"type": "gatewayFlowsLabelled", "severity": "warning"},
+  {"type": "noImplicitSplitJoin", "severity": "error"}
+]}
+
+processcraft-cli validate project.processcraft --profile profile.json
+<span class="c"># stderr: 1 error and 0 warning diagnostics; exit code 3</span></code></pre>
+  <p class="narrow">In that output the finding is <code>conventionImplicitJoin</code> on the element <code>end</code>: "Element has several incoming flows; use a gateway to join." (two flows run into the one end event of the procurement process). The schema of a profile is the one of the <code>setConventionsProfile</code> command in <code>commands --json</code>.</p>
+</section>
+
+<section id="raci" aria-labelledby="raci-title">
+  <h2 id="raci-title">RACI as JSON or CSV</h2>
+<pre tabindex="0"><code>processcraft-cli query project.processcraft raci 11111111-1111-4111-8111-111111111111 procurement
+processcraft-cli export-raci project.processcraft 11111111-1111-4111-8111-111111111111 procurement --out raci.csv</code></pre>
+  <p class="narrow">The CSV is UTF-8 with a byte order mark and CRLF line ends. For this project it reads:</p>
+<pre tabindex="0"><code>Activity,Finance manager,Procurement,Requester,Legal
+Review request,C,A,R,I
+Place order,I,"R,A",C,</code></pre>
+  <p class="narrow">The same table is on the <a href="features.html#analyst">features page</a>. The output is byte-identical to <code>tests/fixtures/commands/raci.expected.csv</code>.</p>
+</section>
+
+<section id="images" aria-labelledby="images-title">
+  <h2 id="images-title">Images with an attribute overlay</h2>
+  <p class="narrow">Find the attribute's ID with <code>query attributes</code>, then export a PNG, SVG or PDF with the overlay. <code>--overlay-mode</code> is <code>heatmap</code> (the default) or <code>badge</code>; <code>--dark</code> renders the dark appearance and <code>--scale</code> sets the size.</p>
+<pre tabindex="0"><code>processcraft-cli query project.processcraft attributes 44444444-4444-4444-8444-444444444444
+processcraft-cli export-image project.processcraft --document-id 44444444-4444-4444-8444-444444444444 --diagram-id conv_diagram --format png --out cost-badges.png --overlay-attribute 44444444-4444-4444-8444-000000000010 --overlay-mode badge</code></pre>
+  <p class="narrow">The two figures on the features page were produced this way, from an onboarding process built from the batch recorded in <code>tests/fixtures/prompts/text-to-model.transcript.json</code> plus six Cost values.</p>
+</section>
+
+<section id="bpmn" aria-labelledby="bpmn-title">
+  <h2 id="bpmn-title">BPMN in and out</h2>
+<pre tabindex="0"><code>processcraft-cli export-bpmn project.processcraft --document-id &lt;document-id&gt; --out diagram.bpmn --acknowledge-native-fields
+processcraft-cli import-bpmn diagram.bpmn --out diagram.processcraft
+processcraft-cli info diagram.bpmn</code></pre>
+  <p class="narrow">Without <code>--acknowledge-native-fields</code>, <code>export-bpmn</code> refuses when the project holds data BPMN cannot carry (navigation and dictionary links), and says what it would leave out. <code>info</code> on a BPMN file reports the import outcome before you create anything. <code>export-drawio</code>, <code>layout-preview</code> and <code>layout-apply</code> complete the set.</p>
+</section>
+
+<section id="mcp" aria-labelledby="mcp-title">
+  <h2 id="mcp-title">MCP for AI agents</h2>
+  <p class="narrow">The MCP server speaks JSON-RPC 2.0 over stdio, one message per line. It offers seven tools: <code>inspect</code>, <code>validate</code>, <code>query</code>, <code>apply</code>, <code>save</code>, <code>export</code> and <code>reconcile</code>. File access is limited to the folders you name. Nothing listens by default.</p>
+  <h3>Standalone</h3>
+<pre tabindex="0"><code><span class="c"># a new project; the agent may write only below C:\models\out</span>
+processcraft-cli mcp --new "Invoice approval" --write-root C:\models\out
+
+<span class="c"># an existing file, read from one folder and saved to another</span>
+processcraft-cli mcp --in C:\models\procurement.processcraft --read-root C:\models --write-root C:\models\out</code></pre>
+  <p class="narrow">An MCP client sends these three lines to start; the server answers the first with its name and version and the third with the tool list (checked against 0.2.0):</p>
+<pre tabindex="0"><code>{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"0"}}}
+{"jsonrpc":"2.0","method":"notifications/initialized"}
+{"jsonrpc":"2.0","id":2,"method":"tools/list"}</code></pre>
+  <p class="narrow">Most MCP clients take a command and arguments in their configuration; point them at <code>processcraft-cli</code> with the arguments above.</p>
+  <h3>Attached to the desktop app</h3>
+<pre tabindex="0"><code>processcraft-cli mcp --attach &lt;pipe&gt; --token &lt;token&gt; --session &lt;session id&gt;</code></pre>
+  <p class="narrow">On Windows, the agent can edit the project that is open on your screen. You switch this on in the desktop app, which shows the pipe, token and session ID and asks you to authorize folders. This path was not run for this page, and the desktop side of it is one of the manual checks still open on the <a href="status.html">status page</a>.</p>
+
+  <h3>The prompt pack</h3>
+  <p class="narrow">The repository holds <a href="https://github.com/eliobenigni7/ProcessCraft/blob/main/docs/prompts/README.md">four instruction documents</a> for an agent that drives this server: turn a written description into a model, review a model against the conventions, explain a process in plain language, and fill attributes from source material. They are plain text and also agent skills. The recorded runs behind them are replayed in the project's CI to check that the calls still work. How well any particular model follows the instructions has not been measured, and no claim is made about it.</p>
+</section>
+</main>
+<footer class="site-foot">
+  <div class="wrap">
+    <ul>
+      <li><a href="https://github.com/eliobenigni7/ProcessCraft">Source on GitHub</a></li>
+      <li><a href="https://github.com/eliobenigni7/ProcessCraft/blob/main/LICENSE">MIT license</a></li>
+      <li><a href="https://github.com/eliobenigni7/ProcessCraft/issues">Issue tracker</a></li>
+      <li><a href="index.html#author">Contact</a></li>
+    </ul>
+    <p>ProcessCraft is made by <a href="index.html#author">Elio Benigni</a>, MIT licensed, and built on egui and the libraries of the <a href="https://github.com/storytold">Crafting Apps</a>. It is an independent project and is not made or endorsed by bpmn.io or the Object Management Group.</p>
+    <p>Pre-alpha software: version 0.2.0, Windows only, unsigned.</p>
+  </div>
+</footer>
+</body>
+</html>

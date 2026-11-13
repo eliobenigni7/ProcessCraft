@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Features - ProcessCraft</title>
+<meta name="author" content="Elio Benigni">
+<meta name="description" content="What ProcessCraft does: BPMN modeling, file interchange, and analyst tools such as attributes, conventions, RACI and heatmaps.">
+<meta property="og:title" content="Features - ProcessCraft">
+<meta property="og:description" content="What ProcessCraft does: BPMN modeling, file interchange, and analyst tools such as attributes, conventions, RACI and heatmaps.">
+<meta property="og:image" content="images/workbench-light.png">
+<link rel="icon" type="image/png" href="icon.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-head">
+  <div class="wrap">
+    <a class="wordmark" href="index.html"><img src="icon.png" alt="" width="34" height="34">ProcessCraft</a>
+    <nav aria-label="Main">
+      <ul>
+        <li><a href="index.html">Home</a></li>
+        <li><a href="features.html" aria-current="page">Features</a></li>
+        <li><a href="automation.html">Automation</a></li>
+        <li><a href="download.html">Download</a></li>
+        <li><a href="status.html">Status</a></li>
+        <li><a href="https://github.com/eliobenigni7/ProcessCraft">GitHub</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+<main id="main" class="wrap">
+<div class="page-head">
+  <p class="eyebrow">Features</p>
+  <h1>What ProcessCraft does</h1>
+  <p class="lead">Three areas: drawing, exchanging BPMN files, and analysing a process once it is drawn. <a href="status.html">The status page</a> says what has been verified and what has not.</p>
+  <ul class="plain">
+    <li><a href="#modeling">Modeling</a></li>
+    <li><a href="#interchange">BPMN interchange</a></li>
+    <li><a href="#analyst">Analyst layer</a></li>
+  </ul>
+</div>
+
+<section id="modeling" aria-labelledby="modeling-title">
+  <h2 id="modeling-title">Modeling</h2>
+  <p class="narrow">The canvas follows the interaction model of bpmn-js, re-implemented natively. BPMN rules decide what can connect to what and which kind of connection is created, so the diagram stays valid while you sketch; an operation that would break the model is refused with a reason.</p>
+
+  <h3>Canvas</h3>
+  <p class="narrow">A context pad beside the selection appends the next task, gateway, event or annotation. Drag or click to connect, with green or red feedback while you hover. New elements are placed and routed for you. Pan, zoom and box-select work as in other canvas tools.</p>
+
+  <h3>Editing</h3>
+  <p class="narrow"><code>R</code> changes the type of a task, event, gateway, sub-process or data element. <code>E</code> renames it inline. Snapping guides and a 10 px grid help placement; bendpoints and segments can be dragged, and flow ends can be reconnected. Copy, cut, paste and duplicate create fresh IDs, align and distribute work on selections, and <code>Ctrl+F</code> searches the canvas.</p>
+
+  <h3>Structure</h3>
+  <p class="narrow">Boundary events follow their activity and attach by dropping on its border. Dropping an element on a flow inserts it. Pools, lanes and sub-processes grow with their content; lanes can be added, split, resized and deleted; the space tool (<code>S</code>) opens room in a diagram. Every edit, including auto-layout of a whole diagram with a preview, is one undo step.</p>
+
+  <figure>
+    <div class="frame"><img src="images/onboarding.png" width="1562" height="804" loading="lazy" alt="An employee onboarding process in an HR pool with two lanes and a rework loop through Request missing documents"></div>
+    <figcaption>An onboarding process built with append, connect and replace. ProcessCraft placed and routed every element.</figcaption>
+  </figure>
+  <figure>
+    <div class="frame"><img src="images/order-fulfilment.png" width="2744" height="774" loading="lazy" alt="An order fulfilment process with a parallel split and join, a business rule task, a timer event, a data object and a text annotation"></div>
+    <figcaption>Sequence flows, data associations and annotation links are chosen by the BPMN rules. Rendered by the same code the canvas uses.</figcaption>
+  </figure>
+  <figure>
+    <div class="frame"><img src="images/workbench-empty.png" width="1544" height="952" loading="lazy" alt="A new, empty process in the ProcessCraft window: a prompt to build your process, a hint about the palette and the 1 key, and an Add start event button"></div>
+    <figcaption>A new project. Empty views say what to do next, and single keys (<code>1</code>, <code>T</code>, <code>X</code>) add elements.</figcaption>
+  </figure>
+</section>
+
+<section id="interchange" aria-labelledby="interchange-title">
+  <h2 id="interchange-title">BPMN interchange</h2>
+  <p class="narrow">ProcessCraft reads and writes BPMN 2.0 XML with diagram interchange (DI) and exports SVG, PNG, PDF and draw.io. The rule that governs it: content outside the supported profile is <b>kept byte for byte or refused with a reason</b>. It is never dropped quietly or reinterpreted.</p>
+
+  <div class="table-scroll">
+  <table>
+    <caption>How an imported BPMN file opens</caption>
+    <thead><tr><th scope="col">Import mode</th><th scope="col">What it means</th></tr></thead>
+    <tbody>
+      <tr><th scope="row">Editable</th><td>The model fits the supported profile and is fully editable.</td></tr>
+      <tr><th scope="row">Editable with retained extensions</th><td>Vendor extensions are kept verbatim. Vendor attributes such as <code>camunda:assignee</code> do not restrict modeling, but an element they reference by ID cannot be deleted, and vendor elements that ProcessCraft does not model block structural edits that could invalidate them.</td></tr>
+      <tr><th scope="row">Preserved source</th><td>The original XML is kept byte for byte and exported unchanged. The import report names what prevented editing.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <figure>
+    <div class="frame"><picture><source srcset="images/claims-camunda-dark.png" media="(prefers-color-scheme: dark)"><img src="images/claims-camunda.png" width="1864" height="1086" loading="lazy" alt="A claim handling collaboration imported from Camunda Modeler, with Customer and Insurance company pools, message flows, lanes and a timer boundary event"></picture></div>
+    <figcaption>A claim handling collaboration from Camunda Modeler, opened for editing. Its vendor attributes are kept through export. Exports render in a light or a dark appearance.</figcaption>
+  </figure>
+
+  <h3>Custom attributes in BPMN: <code>pc:attributes</code></h3>
+  <p class="narrow">Custom attribute values are written into the element's <code>extensionElements</code> in the namespace <code>urn:processcraft:attributes:1</code>, and read back on import. Foreign extensions next to them are preserved. Limits, as checked in the command-line workflow: a dictionary reference value does not survive the trip, because dictionary entries exist only in the native file, and the exporter asks you to acknowledge that omission. Whether other BPMN tools keep <code>pc:attributes</code> when they save the file has not been tested.</p>
+
+  <h3>What this is not</h3>
+  <p class="narrow">This is a broad, tested profile, not a claim of complete BPMN 2.0.2 coverage or of OMG conformance. Parsing is bounded, rejects DTDs and external entities, and never loads remote resources. Coverage is tracked element by element in <a href="https://github.com/eliobenigni7/ProcessCraft/blob/main/docs/research/bpmn-2-coverage.md">the coverage notes</a>.</p>
+</section>
+
+<section id="analyst" aria-labelledby="analyst-title">
+  <h2 id="analyst-title">Analyst layer</h2>
+  <p class="narrow">Added in 0.2.0. The images below are drawn by ProcessCraft's renderer from a project built with the command-line tool, so they show what an export looks like. On the desktop the same overlay is available on the canvas; that part has not been checked by hand yet (see <a href="status.html">Status</a>).</p>
+
+  <h3>Custom attributes</h3>
+  <p class="narrow">A project defines typed attributes: text, number, duration, currency, enum, date, dictionary reference or URL. Each definition says which element kinds it applies to and whether it is required. Values are edited in the inspector and as columns of the activity table. Starter definitions are Duration, Cost, SLA, Risk, Control and Process owner; nothing is created unless you ask for it.</p>
+
+  <h3>Modeling conventions</h3>
+  <p class="narrow">A conventions profile stored in the project turns house rules into findings in the problems panel, each with a severity you choose. The rules are:</p>
+  <ul class="plain">
+    <li>label required (by element kind)</li>
+    <li>activity label as verb plus object (a configurable English word list, so it misses some verbs)</li>
+    <li>labelled gateway outgoing flows</li>
+    <li>no implicit split or join</li>
+    <li>one start and one end per process level</li>
+    <li>maximum number of elements per diagram</li>
+    <li>required attributes</li>
+    <li>dictionary terms instead of free text</li>
+  </ul>
+  <p class="narrow">The same findings come out of the CLI and MCP; see <a href="automation.html#validate">validate</a>.</p>
+
+  <h3>RACI matrix</h3>
+  <p class="narrow">A view derived from the lanes and the dictionary roles, with Responsible, Accountable, Consulted and Informed assignments stored as attributes. It exports to CSV. This is the matrix of the procurement fixture, as <code>query raci</code> returns it:</p>
+  <div class="table-scroll">
+  <table>
+    <caption>RACI for the process Procurement (R responsible, A accountable, C consulted, I informed)</caption>
+    <thead><tr><th scope="col">Activity</th><th scope="col" class="c">Finance manager</th><th scope="col" class="c">Procurement</th><th scope="col" class="c">Requester</th><th scope="col" class="c">Legal</th></tr></thead>
+    <tbody>
+      <tr><th scope="row">Review request</th><td class="c">C</td><td class="c">A</td><td class="c">R</td><td class="c">I</td></tr>
+      <tr><th scope="row">Place order</th><td class="c">I</td><td class="c">R, A</td><td class="c">C</td><td class="c"></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>Heatmap and badges</h3>
+  <p class="narrow">Colour activities by a numeric or enum attribute in five steps, or show the value as a badge on each activity. The heatmap adds a legend. The overlay is on screen only by default and is an option when you export an image or a PDF.</p>
+  <figure>
+    <div class="frame"><picture><source srcset="images/cost-heatmap-dark.png" media="(prefers-color-scheme: dark)"><img src="images/cost-heatmap.png" width="1108" height="338" loading="lazy" alt="The onboarding process with each activity shaded by its Cost attribute in five blue steps, darkest for Hold onboarding day at 240 EUR, and a legend below"></picture></div>
+    <figcaption>Heatmap on a Cost attribute. The values are made up for the example.</figcaption>
+  </figure>
+  <figure>
+    <div class="frame"><img src="images/cost-badges.png" width="1108" height="250" loading="lazy" alt="The same onboarding process with a dark badge on each activity showing its cost, for example 240 EUR on Hold onboarding day"></div>
+    <figcaption>The same attribute as value badges.</figcaption>
+  </figure>
+
+  <h3>Library, dictionary, table and checkpoints</h3>
+  <ul class="plain">
+    <li><b>Model library</b> with folders and search.</li>
+    <li><b>Dictionary</b> of roles, systems and documents, linked to elements, with a list of where each entry is used.</li>
+    <li><b>Activity table</b>: an editable table of every activity with its role, systems, documents and attributes.</li>
+    <li><b>Problems panel</b> and <b>comments</b> on elements.</li>
+    <li><b>Checkpoints</b>: named revisions you can compare with the current model and restore.</li>
+  </ul>
+</section>
+</main>
+<footer class="site-foot">
+  <div class="wrap">
+    <ul>
+      <li><a href="https://github.com/eliobenigni7/ProcessCraft">Source on GitHub</a></li>
+      <li><a href="https://github.com/eliobenigni7/ProcessCraft/blob/main/LICENSE">MIT license</a></li>
+      <li><a href="https://github.com/eliobenigni7/ProcessCraft/issues">Issue tracker</a></li>
+      <li><a href="index.html#author">Contact</a></li>
+    </ul>
+    <p>ProcessCraft is made by <a href="index.html#author">Elio Benigni</a>, MIT licensed, and built on egui and the libraries of the <a href="https://github.com/storytold">Crafting Apps</a>. It is an independent project and is not made or endorsed by bpmn.io or the Object Management Group.</p>
+    <p>Pre-alpha software: version 0.2.0, Windows only, unsigned.</p>
+  </div>
+</footer>
+</body>
+</html>
