@@ -1,8 +1,5 @@
 use super::{ProcessCraft, advance_drag, begin_drag, diagram_extents, finish_drag};
-use crate::{
-    theme::Theme,
-    widgets::{Icon, icon_button},
-};
+use crate::theme::Theme;
 use egui::{Color32, Pos2, Rect, Sense, Vec2};
 use processcraft_core::{
     arrange::{Alignment, Distribution},
@@ -16,7 +13,7 @@ use std::sync::Arc;
 
 const MIN_ZOOM: f32 = 0.125;
 const MAX_ZOOM: f32 = 8.0;
-const ZOOM_STEP: f32 = 1.25;
+pub(super) const ZOOM_STEP: f32 = 1.25;
 
 /// Camera of a rendered texture, so an older frame can be shown scaled until the new one arrives.
 #[derive(Clone, Copy)]
@@ -854,7 +851,7 @@ fn paint_pad_icon(painter: &egui::Painter, action: PadAction, r: Rect, color: Co
 
 /// Small icon of a replace target: event circles with a trigger letter, gateway diamonds with
 /// their marker, activity boxes with a type letter or subprocess marker, data shapes, flows.
-fn paint_replace_icon(
+pub(super) fn paint_replace_icon(
     painter: &egui::Painter,
     target: &processcraft_core::replace::ReplaceTarget,
     r: Rect,
@@ -1313,7 +1310,7 @@ impl ProcessCraft {
             self.camera.1 + size.y as f64 / self.zoom as f64 / 2.0,
         )
     }
-    fn zoom_canvas(&mut self, new_zoom: f32, anchor: Option<Vec2>) {
+    pub(super) fn zoom_canvas(&mut self, new_zoom: f32, anchor: Option<Vec2>) {
         let anchor = anchor.unwrap_or(self.canvas.size / 2.0);
         (self.camera, self.zoom) = zoom_at(self.camera, self.zoom, new_zoom, anchor);
     }
@@ -1497,28 +1494,16 @@ impl ProcessCraft {
                     });
                 }
             }
-            ui.horizontal(|ui| {
-                if icon_button(ui, Icon::ZoomOut, "Zoom out (Ctrl+Minus)", false).clicked() {
-                    self.zoom_canvas(self.zoom / ZOOM_STEP, None);
-                }
-                ui.label(format!("{:.0}%", self.zoom * 100.0));
-                if icon_button(ui, Icon::ZoomIn, "Zoom in (Ctrl+Plus)", false).clicked() {
-                    self.zoom_canvas(self.zoom * ZOOM_STEP, None);
-                }
-                fit_clicked = ui.button("Fit").on_hover_text("Fit diagram").clicked();
-                if ui.button("Reset").on_hover_text("Reset view").clicked() {
-                    self.camera = (0.0, 0.0);
-                    self.zoom = 1.0;
-                }
-                if self.multi.len() >= 2 {
-                    ui.separator();
-                    self.arrange_menus(ui);
-                }
-            });
         }
+        // Fit is clicked in the zoom capsule, drawn after the canvas.
+        let fit_id_clicked = egui::Id::unique("processcraft-fit-clicked");
+        fit_clicked |= ui
+            .ctx()
+            .data_mut(|data| data.remove_temp::<bool>(fit_id_clicked))
+            .unwrap_or(false);
         let size = Vec2::new(
-            (ui.available_width() - 24.0).max(1.0),
-            (ui.available_height() - 24.0).max(1.0),
+            ui.available_width().max(1.0),
+            ui.available_height().max(1.0),
         );
         #[cfg(test)]
         ui.ctx()
@@ -1533,7 +1518,10 @@ impl ProcessCraft {
             && let (Some(diagram), Some(key)) = (diagram, document_key)
             && (fit_clicked || previous.as_ref() != Some(&key))
         {
-            (self.camera, self.zoom) = fit(diagram, size);
+            // Fit beside the palette capsule, not under it.
+            let inset = super::overlays::PALETTE_INSET;
+            let (camera, zoom) = fit(diagram, Vec2::new((size.x - inset).max(1.0), size.y));
+            (self.camera, self.zoom) = ((camera.0 - (inset / zoom) as f64, camera.1), zoom);
             ui.ctx().data_mut(|data| data.insert_temp(fit_id, key));
         }
         if preview.is_none()
@@ -1543,8 +1531,12 @@ impl ProcessCraft {
         }
         let frame = egui::Frame::new()
             .fill(self.theme.palette().canvas)
-            .inner_margin(12)
             .show(ui, |ui| self.canvas_render(ui, size, true));
+        if preview.is_none() && self.canvas_overlays(ui.ctx(), frame.response.rect) {
+            ui.ctx()
+                .data_mut(|data| data.insert_temp(fit_id_clicked, true));
+            ui.ctx().request_repaint();
+        }
         self.auto_scroll(ui.ctx());
         self.search_ui(ui.ctx());
         self.replace_ui(ui.ctx());

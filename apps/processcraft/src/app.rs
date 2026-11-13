@@ -1809,6 +1809,7 @@ impl ProcessCraft {
             self.ctl.save(None)
         }
     }
+    #[cfg(test)]
     fn add(&mut self, kind: NodeKind) {
         self.add_entry(kind.into());
     }
@@ -4674,6 +4675,7 @@ mod graph_data;
 mod inspector;
 mod loop_advanced;
 mod mixed_body;
+mod overlays;
 mod participant_di;
 mod partners;
 mod process_activity;

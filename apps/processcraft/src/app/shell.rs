@@ -318,6 +318,10 @@ pub(super) struct ShellState {
     project: bool,
     pub(super) problems: bool,
     search: String,
+    /// Focus mode (Ctrl+.): only the canvas and its capsules.
+    pub(super) focus: bool,
+    /// The window is wide enough to dock the side panels.
+    wide: bool,
 }
 
 /// How long a success notice stays in the status bar.
@@ -332,7 +336,12 @@ impl ProcessCraft {
         let wide = ui.available_width() >= 980.0;
         let compact_height = ui.available_height() < 600.0;
         let toolbar_room = ui.available_width() >= 500.0;
-        ui.spacing_mut().item_spacing.y = 3.0;
+        self.shell.wide = wide;
+        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::Period)) {
+            self.shell.focus = !self.shell.focus;
+        }
+        let focus = self.shell.focus && self.view == 0;
+        ui.spacing_mut().item_spacing.y = 0.0;
         let can_undo = snap.undo_count > 0 || self.has_drafts();
         // Redo first applies open drafts; an unchanged draft leaves the redo stack intact.
         let can_redo = snap.redo_count > 0;
@@ -422,6 +431,7 @@ impl ProcessCraft {
                         ui.checkbox(&mut self.shell.properties, "Properties panel");
                     }
                     ui.checkbox(&mut self.shell.problems, "Problems");
+                    ui.checkbox(&mut self.shell.focus, "Focus mode    Ctrl+.");
                     ui.checkbox(&mut self.canvas.grid_snap, "Snap to 10 px grid");
                     ui.checkbox(&mut self.canvas.space_tool, "Space tool (S)")
                         .on_hover_text("Drag on the canvas to insert space; drag back to remove it. Ctrl moves the shapes before the line.");
@@ -494,75 +504,11 @@ impl ProcessCraft {
                 });
             });
         });
-        if !compact_height {
-            ui.separator();
-            ui.horizontal(|ui| {
-                if widgets::icon_button(ui, Icon::FolderOpen, "Open…", false).clicked() {
-                    self.new_or_open("open");
-                }
-                let save = if toolbar_room {
-                    widgets::action_button(ui, Icon::Save, "Save")
-                } else {
-                    widgets::icon_button(ui, Icon::Save, "Save", false)
-                };
-                if save.clicked() {
-                    self.save(false);
-                }
-                if toolbar_room {
-                    ui.separator();
-                    if ui
-                        .add_enabled_ui(can_undo, |ui| {
-                            widgets::icon_button(ui, Icon::Undo, "Undo", false)
-                        })
-                        .inner
-                        .clicked()
-                    {
-                        self.history(Request::Undo);
-                    }
-                    if ui
-                        .add_enabled_ui(can_redo, |ui| {
-                            widgets::icon_button(ui, Icon::Redo, "Redo", false)
-                        })
-                        .inner
-                        .clicked()
-                    {
-                        self.history(Request::Redo);
-                    }
-                    ui.separator();
-                    if widgets::icon_button(ui, Icon::PanelLeft, "Project panel", self.show_left)
-                        .clicked()
-                    {
-                        if !wide {
-                            self.shell.project = !self.shell.project;
-                        } else {
-                            self.show_left = !self.show_left;
-                        }
-                    }
-                    if widgets::icon_button(ui, Icon::PanelRight, "Properties", self.show_right)
-                        .clicked()
-                    {
-                        if !wide {
-                            self.shell.properties = !self.shell.properties;
-                        } else {
-                            self.show_right = !self.show_right;
-                        }
-                    }
-                }
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.menu_button("Export", |ui| self.interchange_ui(ui, false));
-                    if ui.available_width() > 180.0
-                        && widgets::secondary_button(ui, "Validate model").clicked()
-                    {
-                        self.shell.problems = !self.shell.problems;
-                    }
-                });
-            });
-            ui.separator();
+        if !compact_height && !focus {
             self.document_tabs_ui(ui);
-            ui.separator();
         }
         let body = ui.available_rect_before_wrap();
-        let footer_height = 34.0;
+        let footer_height = 28.0;
         let content = Rect::from_min_max(
             body.min,
             egui::pos2(
@@ -571,42 +517,67 @@ impl ProcessCraft {
             ),
         );
 
-        let project_width = if self.show_left && wide {
+        let project_width = if self.show_left && wide && !focus {
             self.left_width.clamp(180.0, 300.0)
         } else {
             0.0
         };
-        let inspector_width = if self.view == 0 && self.show_right && wide {
+        let inspector_width = if self.view == 0 && self.show_right && wide && !focus {
             self.right_width.clamp(260.0, 380.0)
         } else {
             0.0
         };
-        let rail = Rect::from_min_size(content.min, egui::vec2(46.0, content.height()));
-        self.shell_panel(ui, "navigation", rail, p.panel, |app, ui| {
-            app.navigation_ui(ui)
-        });
+        let rail = Rect::from_min_size(
+            content.min,
+            egui::vec2(if focus { 0.0 } else { 48.0 }, content.height()),
+        );
+        if !focus {
+            self.shell_panel(ui, "navigation", rail, p.panel, true, |app, ui| {
+                app.navigation_ui(ui)
+            });
+        }
         let project_rect = Rect::from_min_size(
             egui::pos2(rail.right(), content.top()),
             egui::vec2(project_width, content.height()),
         );
         if project_width > 0.0 {
-            self.shell_panel(ui, "project", project_rect, p.panel, |app, ui| {
+            self.shell_panel(ui, "project", project_rect, p.panel, true, |app, ui| {
                 app.project_ui(ui)
             });
         }
         let central = Rect::from_min_max(
-            egui::pos2(project_rect.right() + 1.0, content.top()),
+            egui::pos2(project_rect.right(), content.top()),
             egui::pos2(content.right() - inspector_width, content.bottom()),
         );
-        self.shell_panel(ui, "content", central, p.base, |app, ui| {
+        self.shell_panel(ui, "content", central, p.canvas, false, |app, ui| {
             if app.view == 0 {
-                if compact_height {
-                    app.compact_document_header(ui);
-                } else {
-                    app.document_header(ui);
+                if !focus {
+                    egui::Frame::new()
+                        .fill(p.base)
+                        .inner_margin(egui::Margin {
+                            left: 16,
+                            right: 12,
+                            top: 8,
+                            bottom: 8,
+                        })
+                        .show(ui, |ui| {
+                            ui.set_width(ui.available_width());
+                            ui.spacing_mut().item_spacing = egui::vec2(8.0, 4.0);
+                            if compact_height {
+                                app.compact_document_header(ui);
+                            } else {
+                                app.document_header(ui);
+                            }
+                            app.layout_bar(ui);
+                        });
+                    let line = ui.available_rect_before_wrap();
+                    ui.painter().hline(
+                        line.x_range(),
+                        line.top(),
+                        egui::Stroke::new(1.0, p.border),
+                    );
                 }
-                app.layout_bar(ui);
-                if app.shell.problems {
+                if app.shell.problems && !focus {
                     let max_height = (ui.available_height() * 0.28).clamp(60.0, 150.0);
                     egui::Panel::bottom("model_problems")
                         .resizable(true)
@@ -616,6 +587,7 @@ impl ProcessCraft {
                 }
                 app.canvas_ui(ui);
             } else {
+                ui.add_space(10.0);
                 egui::ScrollArea::vertical()
                     .id_salt(("data_view", app.view))
                     .show(ui, |ui| {
@@ -647,7 +619,7 @@ impl ProcessCraft {
                 egui::pos2(content.right() - inspector_width, content.top()),
                 content.max,
             );
-            self.shell_panel(ui, "properties", rect, p.panel, |app, ui| {
+            self.shell_panel(ui, "properties", rect, p.base, true, |app, ui| {
                 app.inspector_ui(ui, true)
             });
             let handle = Rect::from_center_size(
@@ -668,46 +640,58 @@ impl ProcessCraft {
             }
         }
         let footer = Rect::from_min_max(egui::pos2(body.left(), content.bottom()), body.max);
-        self.shell_panel(ui, "footer", footer, p.panel, |app, ui| {
-            ui.horizontal(|ui| {
+        self.shell_panel(ui, "footer", footer, p.panel, true, |app, ui| {
+            ui.spacing_mut().item_spacing.x = 10.0;
+            ui.horizontal_centered(|ui| {
+                let small = |text: &str| egui::RichText::new(text).size(11.0).color(p.muted);
                 if app.ctl.uncertain && ui.small_button("Check save outcome").clicked() {
                     app.ctl.reconcile();
                 }
-                widgets::icon(ui, Icon::HardDrive, 16.0, p.muted);
+                widgets::icon(ui, Icon::HardDrive, 14.0, p.faint);
                 if let Some(file) = &app.ctl.file {
                     ui.add_sized(
-                        [if toolbar_room { 220.0 } else { 120.0 }, 20.0],
+                        [if toolbar_room { 200.0 } else { 110.0 }, 18.0],
                         egui::Label::new(
-                            file.target()
-                                .file_name()
-                                .map_or_else(|| "Project".into(), |n| n.to_string_lossy()),
+                            small(
+                                &file
+                                    .target()
+                                    .file_name()
+                                    .map_or_else(|| "Project".into(), |n| n.to_string_lossy()),
+                            )
+                            .color(p.text),
                         )
                         .truncate(),
                     )
                     .on_hover_text(file.target().display().to_string());
                     if !file.is_writable() {
-                        ui.colored_label(p.warning, "Read only · use Save As");
+                        ui.label(small("Read only · use Save As").color(p.warning));
                     }
                 } else {
-                    ui.label("Local project");
+                    ui.label(small("Local project").color(p.text));
                 }
-                ui.separator();
-                ui.label(if app.ctl.is_saving() {
-                    "Saving…"
+                let (state, color) = if app.ctl.is_saving() {
+                    ("Saving…", p.muted)
                 } else if snap.dirty || app.has_drafts() {
-                    "Unsaved changes"
+                    ("Unsaved changes", p.accent_ink)
                 } else if app.ctl.file.is_none() {
-                    "New project"
+                    ("New project", p.muted)
                 } else {
-                    "Saved"
-                });
+                    ("Saved", p.muted)
+                };
+                ui.label(small(state).color(color));
                 if app.ctl.migration {
-                    ui.colored_label(p.warning, "Migration · Save As required");
+                    ui.label(small("Migration · Save As required").color(p.warning));
+                }
+                if app.view == 0
+                    && toolbar_room
+                    && let Some(stats) = app.diagram_stats(&snap)
+                {
+                    ui.label(small("·"));
+                    ui.label(small(&stats));
                 }
                 if app.effects.busy() {
-                    ui.separator();
                     ui.spinner();
-                    ui.label(app.effects.label);
+                    ui.label(small(app.effects.label));
                 }
                 // Success notices are transient: shown for a few seconds, then fade out.
                 let age = app.ctl.info_at.elapsed().as_secs_f32();
@@ -716,22 +700,14 @@ impl ProcessCraft {
                         app.ctl.info.clear();
                     } else {
                         let alpha = (INFO_SECONDS - age).min(1.0);
-                        ui.separator();
-                        ui.label(
-                            egui::RichText::new(&app.ctl.info)
-                                .color(p.accent.gamma_multiply(alpha)),
-                        );
+                        ui.label(small(&app.ctl.info).color(p.success.gamma_multiply(alpha)));
                         ui.ctx()
                             .request_repaint_after(std::time::Duration::from_millis(50));
                     }
                 }
                 if toolbar_room {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(
-                            egui::RichText::new("Offline workspace")
-                                .small()
-                                .color(p.muted),
-                        );
+                        ui.label(small("BPMN 2.0 · Local, offline"));
                     });
                 }
             });
@@ -833,19 +809,28 @@ impl ProcessCraft {
         id: &'static str,
         rect: Rect,
         fill: Color32,
+        padded: bool,
         add: impl FnOnce(&mut Self, &mut egui::Ui),
     ) {
+        let p = self.theme.palette();
         parent.painter().rect_filled(rect, 0.0, fill);
-        parent.painter().rect_stroke(
-            rect,
-            0.0,
-            egui::Stroke::new(1.0, self.theme.palette().border),
-            egui::StrokeKind::Inside,
-        );
-        let mut child =
-            parent.new_child(egui::UiBuilder::new().id_salt(id).max_rect(rect.shrink2(
-                egui::vec2(10.0, if rect.height() < 50.0 { 4.0 } else { 10.0 }),
-            )));
+        // Hairline seams between panels instead of boxed outlines.
+        let seam = egui::Stroke::new(1.0, p.border);
+        parent
+            .painter()
+            .vline(rect.right() - 0.5, rect.y_range(), seam);
+        parent
+            .painter()
+            .hline(rect.x_range(), rect.top() + 0.5, seam);
+        let inner = if padded {
+            rect.shrink2(egui::vec2(
+                10.0,
+                if rect.height() < 50.0 { 4.0 } else { 10.0 },
+            ))
+        } else {
+            rect.shrink2(egui::vec2(0.0, 1.0))
+        };
+        let mut child = parent.new_child(egui::UiBuilder::new().id_salt(id).max_rect(inner));
         child.set_clip_rect(rect);
         child.spacing_mut().item_spacing = egui::vec2(8.0, 8.0);
         add(self, &mut child);
@@ -988,203 +973,199 @@ impl ProcessCraft {
         }
     }
     fn navigation_ui(&mut self, ui: &mut egui::Ui) {
-        ui.spacing_mut().item_spacing.y = 10.0;
-        for (index, icon, label) in [
-            (1, Icon::Folder, "Library"),
-            (0, Icon::Workflow, "Model"),
-            (2, Icon::Book, "Dictionary"),
-            (3, Icon::Table, "Table"),
-        ] {
-            if widgets::icon_button(ui, icon, label, self.view == index).clicked()
-                && self.prepare_navigation()
-            {
-                self.view = index;
+        ui.spacing_mut().item_spacing.y = 6.0;
+        ui.vertical_centered(|ui| {
+            for (index, icon, label) in [
+                (1, Icon::Folder, "Library"),
+                (0, Icon::Workflow, "Model"),
+                (2, Icon::Book, "Dictionary"),
+                (3, Icon::Table, "Table"),
+            ] {
+                if widgets::icon_button(ui, icon, label, self.view == index).clicked()
+                    && self.prepare_navigation()
+                {
+                    self.view = index;
+                }
             }
-        }
+        });
         ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
             if widgets::icon_button(ui, Icon::Settings, "Local automation", false).clicked() {
                 self.shell.automation = true;
+            }
+            let (left, right) = if self.shell.wide {
+                (self.show_left, self.show_right)
+            } else {
+                (self.shell.project, self.shell.properties)
+            };
+            if widgets::icon_button(ui, Icon::PanelRight, "Properties panel", right).clicked() {
+                if self.shell.wide {
+                    self.show_right = !self.show_right;
+                } else {
+                    self.shell.properties = !self.shell.properties;
+                }
+            }
+            if widgets::icon_button(ui, Icon::PanelLeft, "Project panel", left).clicked() {
+                if self.shell.wide {
+                    self.show_left = !self.show_left;
+                } else {
+                    self.shell.project = !self.shell.project;
+                }
+            }
+            if widgets::icon_button(ui, Icon::Focus, "Focus mode (Ctrl+.)", self.shell.focus)
+                .clicked()
+            {
+                self.shell.focus = !self.shell.focus;
+                self.view = 0;
             }
         });
     }
     fn project_ui(&mut self, ui: &mut egui::Ui) {
         let snap = self.ctl.session.snapshot();
         let p = self.theme.palette();
-        ui.strong(&snap.project.name);
+        ui.spacing_mut().item_spacing.y = 6.0;
+        ui.label(egui::RichText::new(&snap.project.name).font(crate::theme::semibold(14.0)));
         ui.label(
-            egui::RichText::new("LOCAL WORKSPACE")
-                .size(10.0)
-                .color(p.muted),
+            egui::RichText::new("Local workspace")
+                .size(11.0)
+                .color(p.faint),
         );
-        ui.add_space(8.0);
-        let search_label = ui.label(egui::RichText::new("Search project").small().color(p.muted));
+        ui.add_space(6.0);
         ui.add(
             egui::TextEdit::singleline(&mut self.shell.search)
                 .hint_text("Search project")
                 .desired_width(f32::INFINITY),
         )
-        .labelled_by(search_label.id);
+        .widget_info(|| egui::WidgetInfo::labeled(egui::Role::SearchInput, true, "Search project"));
         ui.add_space(4.0);
         widgets::section_label(ui, "Models");
         let search = self.shell.search.clone();
+        let outline = self.view == 0;
         egui::ScrollArea::both()
             .id_salt("project_tree")
-            .max_height(if self.view == 0 {
-                (ui.available_height() * 0.27).max(90.0)
+            .max_height(if outline {
+                (ui.available_height() - 44.0).max(90.0)
             } else {
                 ui.available_height()
             })
             .show(ui, |ui| self.project_tree_ui(ui, &search));
-        if self.view != 0 {
+        if !outline {
             return;
         }
-        ui.separator();
-        let editable = snap
-            .project
-            .documents
-            .get(self.doc)
-            .is_some_and(|d| d.capability.allows_structural_editing());
-        widgets::section_label(ui, "BPMN elements");
-        let active_choreography = snap.project.documents.get(self.doc).and_then(|document| {
-            let diagram = document
-                .diagrams
-                .iter()
-                .find(|diagram| self.diagram_id.as_ref().is_none_or(|id| diagram.id == *id))?;
-            self.choreography_scope_infos(document, snap.generation)
-                .iter()
-                .find(|scope| scope.owner == diagram.plane)
-                .map(|scope| (document, scope.owner.clone(), scope.graph))
-        });
-        if let Some((document, owner, graph)) = active_choreography {
-            ui.label("Choreography scope");
-            // The borrowed scope is only needed when an element is added.
-            let add = |app: &mut Self, kind: &str| {
-                if let Some(scope) = processcraft_core::queries::choreography_scopes(document)
-                    .into_iter()
-                    .find(|scope| scope.owner == owner)
-                {
-                    app.add_choreography_element(document, &scope, kind, snap.generation);
-                }
-            };
-            if !graph {
-                ui.label("Convert the legacy choreography to a graph from the Diagram menu before adding graph elements.");
-            } else {
-                ui.add_enabled_ui(editable, |ui| {
-                    for kind in [
-                        "Task",
-                        "Sub-choreography",
-                        "Call choreography",
-                        "Start event",
-                        "End event",
-                        "Exclusive gateway",
-                        "Parallel gateway",
-                        "Sequence flow",
-                    ] {
-                        if ui.button(kind).clicked() {
-                            add(self, kind);
-                        }
-                    }
-                    ui.menu_button("More choreography elements…", |ui| {
-                        for kind in [
-                            "Intermediate catch event",
-                            "Intermediate throw event",
-                            "Boundary event",
-                            "Inclusive gateway",
-                            "Complex gateway",
-                            "Event-based gateway",
-                        ] {
-                            if ui.button(kind).clicked() {
-                                add(self, kind);
-                                ui.close();
-                            }
-                        }
-                    });
-                });
-            }
-        } else {
-            ui.add_enabled_ui(editable, |ui| {
-                ui.horizontal(|ui| {
-                    if ui.button("Pool").clicked() {
-                        self.add_pool();
-                    }
-                    if ui.button("Lane").clicked() {
-                        self.add_lane();
-                    }
-                });
-                for (label, kind) in [
-                    ("Task", NodeKind::Task),
-                    ("User task", NodeKind::UserTask),
-                    ("Manual task", NodeKind::ManualTask),
-                    ("Start event", NodeKind::StartEvent),
-                    ("End event", NodeKind::EndEvent),
-                    ("Exclusive gateway", NodeKind::ExclusiveGateway),
-                    ("Parallel gateway", NodeKind::ParallelGateway),
-                ] {
-                    let item = palette_item(ui, kind, label);
-                    if item.clicked() {
-                        self.add(kind);
-                    } else if item.drag_started() {
-                        // Drag onto the canvas to place it there.
-                        self.canvas.palette_drag = Some(kind.into());
-                    }
-                }
-            });
-            ui.menu_button("More BPMN elements…", |ui| {
-                ui.add_enabled_ui(editable, |ui| {
-                    for (label, entry) in more_palette_entries() {
-                        // Click places the element; drag it onto the canvas to drop it there.
-                        let item = ui
-                            .add(egui::Button::new(label).sense(egui::Sense::click_and_drag()))
-                            .on_hover_text("Click to add, or drag onto the canvas");
-                        if item.clicked() {
-                            self.add_entry(entry);
-                            ui.close();
-                        } else if item.drag_started() {
-                            self.canvas.palette_drag = Some(entry);
-                            ui.close();
-                        }
-                    }
-                });
-            });
-        }
-        ui.separator();
-        egui::CollapsingHeader::new("Outline").show(ui, |ui| {
-            egui::ScrollArea::vertical()
-                .id_salt("model_outline")
-                .max_height(ui.available_height())
-                .show(ui, |ui| {
-                    if let Some(doc) = snap.project.documents.get(self.doc) {
-                        for process in processcraft_core::queries::scopes(doc) {
-                            // Unnamed elements show their type, never a raw XML ID.
-                            for (id, name, kind) in process
-                                .lanes
-                                .iter()
-                                .map(|l| (l.id.selector(), l.name.as_deref(), "Lane"))
-                                .chain(process.nodes.iter().map(|n| {
-                                    (
-                                        n.id.selector(),
-                                        n.name.as_deref(),
-                                        super::node_kind_label(n.kind),
-                                    )
-                                }))
-                                .chain(process.flows.iter().map(|f| {
-                                    (f.id.selector(), f.name.as_deref(), flow_kind_label(f.kind))
-                                }))
-                            {
-                                if ui
-                                    .selectable_label(
-                                        self.selected.as_ref() == Some(&id),
-                                        name.filter(|n| !n.is_empty()).unwrap_or(kind),
-                                    )
-                                    .clicked()
+        ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
+            egui::CollapsingHeader::new(
+                egui::RichText::new("Outline").font(crate::theme::medium(12.0)),
+            )
+            .show(ui, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("model_outline")
+                    .max_height(240.0)
+                    .show(ui, |ui| {
+                        if let Some(doc) = snap.project.documents.get(self.doc) {
+                            for process in processcraft_core::queries::scopes(doc) {
+                                // Unnamed elements show their type, never a raw XML ID.
+                                for (id, name, kind) in process
+                                    .lanes
+                                    .iter()
+                                    .map(|l| (l.id.selector(), l.name.as_deref(), "Lane"))
+                                    .chain(process.nodes.iter().map(|n| {
+                                        (
+                                            n.id.selector(),
+                                            n.name.as_deref(),
+                                            super::node_kind_label(n.kind),
+                                        )
+                                    }))
+                                    .chain(process.flows.iter().map(|f| {
+                                        (
+                                            f.id.selector(),
+                                            f.name.as_deref(),
+                                            flow_kind_label(f.kind),
+                                        )
+                                    }))
                                 {
-                                    self.select(Some(id.clone()));
+                                    if ui
+                                        .selectable_label(
+                                            self.selected.as_ref() == Some(&id),
+                                            name.filter(|n| !n.is_empty()).unwrap_or(kind),
+                                        )
+                                        .clicked()
+                                    {
+                                        self.select(Some(id.clone()));
+                                    }
                                 }
                             }
                         }
-                    }
-                });
+                    });
+            });
         });
+    }
+    /// Lane and activity counts of the shown process, for the status bar.
+    fn diagram_stats(&self, snap: &processcraft_core::commands::Snapshot) -> Option<String> {
+        let doc = snap.project.documents.get(self.doc)?;
+        let scopes = processcraft_core::queries::scopes(doc);
+        let process = scopes.iter().find(|scope| {
+            self.process_id
+                .as_ref()
+                .is_none_or(|id| scope.id.selector() == *id)
+        })?;
+        let activities = process
+            .nodes
+            .iter()
+            .filter(|n| {
+                use processcraft_core::rules::{is_event, is_flow_node, is_gateway};
+                is_flow_node(n.kind) && !is_event(n.kind) && !is_gateway(n.kind)
+            })
+            .count();
+        let plural = |n: usize, word: &str| format!("{n} {word}{}", if n == 1 { "" } else { "s" });
+        Some(format!(
+            "{} · {}",
+            plural(process.lanes.len(), "lane"),
+            plural(activities, "activity").replace("activitys", "activities")
+        ))
+    }
+    /// Undo, Redo, Save, Export and Validate: the document's own actions, beside its title.
+    fn document_actions(&mut self, ui: &mut egui::Ui, labels: bool) {
+        let snap = self.ctl.session.snapshot();
+        let can_undo = snap.undo_count > 0 || self.has_drafts();
+        let can_redo = snap.redo_count > 0;
+        let validate = if labels {
+            widgets::primary_button(ui, "Validate")
+        } else {
+            widgets::icon_button(ui, Icon::Check, "Validate model", self.shell.problems)
+        };
+        if validate.on_hover_text("Validate model").clicked() {
+            self.shell.problems = !self.shell.problems;
+        }
+        let export = if labels {
+            ui.menu_button("Export", |ui| self.interchange_ui(ui, false))
+                .response
+        } else {
+            let response = widgets::icon_button(ui, Icon::Download, "Export", false);
+            egui::Popup::menu(&response).show(|ui| self.interchange_ui(ui, false));
+            response
+        };
+        let _ = export;
+        if widgets::icon_button(ui, Icon::Save, "Save (Ctrl+S)", false).clicked() {
+            self.save(false);
+        }
+        ui.add_space(4.0);
+        if ui
+            .add_enabled_ui(can_redo, |ui| {
+                widgets::icon_button(ui, Icon::Redo, "Redo (Ctrl+Y)", false)
+            })
+            .inner
+            .clicked()
+        {
+            self.history(Request::Redo);
+        }
+        if ui
+            .add_enabled_ui(can_undo, |ui| {
+                widgets::icon_button(ui, Icon::Undo, "Undo (Ctrl+Z)", false)
+            })
+            .inner
+            .clicked()
+        {
+            self.history(Request::Undo);
+        }
     }
     fn compact_document_header(&mut self, ui: &mut egui::Ui) {
         let snapshot = self.ctl.session.snapshot();
@@ -1192,7 +1173,10 @@ impl ProcessCraft {
             if let Some(document) = snapshot.project.documents.get(self.doc) {
                 ui.add_sized(
                     [ui.available_width().min(220.0), 24.0],
-                    egui::Label::new(egui::RichText::new(&document.name).strong()).truncate(),
+                    egui::Label::new(
+                        egui::RichText::new(&document.name).font(crate::theme::semibold(14.0)),
+                    )
+                    .truncate(),
                 )
                 .on_hover_text(&document.name);
             }
@@ -1204,27 +1188,31 @@ impl ProcessCraft {
                 ui.separator();
                 self.model_selectors(ui);
             });
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                self.document_actions(ui, false)
+            });
         });
     }
     fn document_header(&mut self, ui: &mut egui::Ui) {
         let snap = self.ctl.session.snapshot();
         let p = self.theme.palette();
-        ui.add_space(6.0);
         if let Some(doc) = snap.project.documents.get(self.doc) {
             ui.label(
                 egui::RichText::new(format!(
-                    "{} / {}",
+                    "{}  ›  {}",
                     snap.project.name,
                     doc.folder
                         .as_ref()
                         .and_then(|id| snap.project.folders.iter().find(|f| f.id == *id))
                         .map_or("Models", |f| f.name.as_str())
                 ))
-                .small()
-                .color(p.muted),
+                .size(11.0)
+                .color(p.faint),
             );
-            ui.horizontal_wrapped(|ui| {
-                ui.heading(&doc.name);
+        }
+        ui.horizontal(|ui| {
+            if let Some(doc) = snap.project.documents.get(self.doc) {
+                ui.label(egui::RichText::new(&doc.name).font(crate::theme::semibold(18.0)));
                 // Only limited documents get a badge; an editable model needs no label.
                 let badge = match &doc.capability {
                     Capability::Editable => None,
@@ -1234,29 +1222,27 @@ impl ProcessCraft {
                 if let Some((label, hint)) = badge {
                     widgets::badge(ui, label, p.warning, p.warning_soft).on_hover_text(hint);
                 }
-                ui.add_space(4.0);
-            });
-        }
-        ui.horizontal(|ui| {
+            }
+            ui.add_space(8.0);
             egui::Frame::new()
                 .fill(p.secondary)
-                .corner_radius(5)
-                .inner_margin(3)
+                .corner_radius(crate::theme::RADIUS)
+                .inner_margin(2)
                 .show(ui, |ui| {
+                    ui.spacing_mut().button_padding = egui::vec2(10.0, 2.0);
+                    ui.spacing_mut().item_spacing.x = 2.0;
                     ui.horizontal(|ui| {
-                        let _ = ui.selectable_label(true, "Model");
-                        if ui.selectable_label(false, "Table").clicked()
-                            && self.prepare_navigation()
-                        {
+                        let _ = segment(ui, true, "Model");
+                        if segment(ui, false, "Table").clicked() && self.prepare_navigation() {
                             self.view = 3;
                         }
                     });
                 });
+            ui.menu_button("Diagram ▾", |ui| self.model_selectors(ui));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.menu_button("Diagram", |ui| self.model_selectors(ui));
+                self.document_actions(ui, ui.available_width() > 360.0)
             });
         });
-        ui.separator();
     }
     fn model_selectors(&mut self, ui: &mut egui::Ui) {
         let snap = self.ctl.session.snapshot();
@@ -1403,7 +1389,7 @@ impl ProcessCraft {
             }
         }
     }
-    fn add_choreography_element(
+    pub(super) fn add_choreography_element(
         &mut self,
         document: &BpmnDocument,
         scope: &processcraft_core::queries::ChoreographyScope<'_>,
@@ -1752,73 +1738,25 @@ pub(super) fn more_palette_entries() -> Vec<(&'static str, super::canvas::Palett
         ("Transaction", NodeKind::Transaction.into()),
     ]
 }
-fn palette_item(ui: &mut egui::Ui, kind: NodeKind, label: &str) -> egui::Response {
-    let (rect, response) = ui.allocate_exact_size(
-        egui::vec2(ui.available_width(), 29.0),
-        egui::Sense::click_and_drag(),
-    );
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, ui.is_enabled(), label));
-    #[cfg(test)]
-    if kind == NodeKind::Task {
-        ui.ctx()
-            .data_mut(|data| data.insert_temp(egui::Id::unique("test_task_palette_rect"), rect));
-    }
-    let visuals = ui.style().interact(&response);
-    if response.hovered() || response.has_focus() {
-        ui.painter().rect_filled(rect, 4, visuals.bg_fill);
-    }
-    let center = egui::pos2(rect.left() + 13.0, rect.center().y);
-    let stroke = egui::Stroke::new(1.3, visuals.fg_stroke.color);
-    match kind {
-        NodeKind::StartEvent | NodeKind::EndEvent => {
-            ui.painter().circle_stroke(
-                center,
-                7.0,
-                if matches!(kind, NodeKind::EndEvent) {
-                    egui::Stroke::new(2.2, stroke.color)
-                } else {
-                    stroke
-                },
-            );
-        }
-        NodeKind::ExclusiveGateway | NodeKind::ParallelGateway => {
-            ui.painter().add(egui::Shape::closed_line(
-                vec![
-                    center + egui::vec2(0.0, -8.0),
-                    center + egui::vec2(8.0, 0.0),
-                    center + egui::vec2(0.0, 8.0),
-                    center + egui::vec2(-8.0, 0.0),
-                ],
-                stroke,
-            ));
-            if matches!(kind, NodeKind::ParallelGateway) {
-                ui.painter().line_segment(
-                    [center - egui::vec2(4.0, 0.0), center + egui::vec2(4.0, 0.0)],
-                    stroke,
-                );
-                ui.painter().line_segment(
-                    [center - egui::vec2(0.0, 4.0), center + egui::vec2(0.0, 4.0)],
-                    stroke,
-                );
-            }
-        }
-        _ => {
-            ui.painter().rect_stroke(
-                Rect::from_center_size(center, egui::vec2(18.0, 13.0)),
-                3,
-                stroke,
-                egui::StrokeKind::Inside,
-            );
-        }
-    }
-    ui.painter().text(
-        egui::pos2(rect.left() + 32.0, rect.center().y),
-        egui::Align2::LEFT_CENTER,
-        label,
-        egui::FontId::proportional(13.0),
-        visuals.fg_stroke.color,
-    );
-    response
+/// One option of a segmented control.
+fn segment(ui: &mut egui::Ui, selected: bool, label: &str) -> egui::Response {
+    let p = crate::theme::current(ui);
+    let text = egui::RichText::new(label).font(crate::theme::medium(12.0));
+    ui.add(
+        egui::Button::new(if selected {
+            text.color(p.text)
+        } else {
+            text.color(p.muted)
+        })
+        .fill(if selected {
+            p.base
+        } else {
+            Color32::TRANSPARENT
+        })
+        .stroke(egui::Stroke::NONE)
+        .corner_radius(crate::theme::RADIUS_SMALL)
+        .min_size(egui::vec2(0.0, 24.0)),
+    )
 }
 
 #[cfg(test)]

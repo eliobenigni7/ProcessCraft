@@ -46,14 +46,12 @@ pub struct Palette {
     pub danger: Color32,
     #[expect(dead_code, reason = "used by later steps of docs/plans/ux-shell.md")]
     pub danger_soft: Color32,
-    #[expect(dead_code, reason = "used by later steps of docs/plans/ux-shell.md")]
     pub success: Color32,
 }
 
 pub const RADIUS_SMALL: u8 = 4;
 pub const RADIUS: u8 = 6;
 pub const RADIUS_CARD: u8 = 8;
-#[expect(dead_code, reason = "used by later steps of docs/plans/ux-shell.md")]
 pub const RADIUS_FLOAT: u8 = 12;
 pub const INTERACT_HEIGHT: f32 = 28.0;
 
@@ -114,7 +112,6 @@ impl Theme {
         }
     }
 
-    #[expect(dead_code, reason = "used by later steps of docs/plans/ux-shell.md")]
     /// Elevation e1 (floating canvas capsules); dark mode uses a border instead.
     pub fn float_shadow(self) -> Shadow {
         if self == Self::Dark {
@@ -287,6 +284,10 @@ fn install_fonts(context: &Context) {
         )
         .family(Family::named(MEDIUM).weight(500))
         .family(Family::named(SEMIBOLD).weight(600))
+        // egui's own faces for symbols Inter lacks (▾ ✓ ⋯ ⏵).
+        .egui_face("Hack", &[FontFamily::Proportional])
+        .egui_face("NotoEmoji-Regular", &[FontFamily::Proportional])
+        .egui_face("emoji-icon-font", &[FontFamily::Proportional])
         .craft_faces(&craft)
         .languages(&["en"])
         .system_fonts(SystemFonts::Off)
@@ -312,6 +313,7 @@ mod tests {
                 (mono(12.0), "Activity_1x9"),
                 (regular(13.0), "موافقة"),
                 (regular(13.0), "审批"),
+                (regular(13.0), "▾✓⋯"),
             ] {
                 for ch in text.chars().filter(|c| !c.is_whitespace()) {
                     assert!(fonts.has_glyph(&font, ch), "{ch:?} missing in {font:?}");
