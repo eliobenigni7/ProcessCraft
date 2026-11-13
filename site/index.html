@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ProcessCraft</title>
+<meta name="description" content="ProcessCraft is an offline, native BPMN 2.0 modeling workbench written in Rust. No account, files you own, and the same engine for scripts and AI agents.">
+<meta property="og:title" content="ProcessCraft">
+<meta property="og:description" content="Offline BPMN 2.0 process modeling, built in pure Rust.">
+<meta property="og:image" content="images/workbench-light.png">
+<link rel="icon" type="image/png" href="icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400&family=Schibsted+Grotesk:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --amber: #f2a516;
+  --amber-ink: #9a6400;
+  --paper: #efe9dc;
+  --ink: #0b0b0c;
+  --canvas: #fbfaf7;
+  --dot: #dcd6c8;
+  --text: #1d1c1a;
+  --muted: #5c5850;
+  --line: #e4dfd3;
+  --code-bg: #f3efe6;
+  --shadow: 0 1px 0 rgba(11, 11, 12, .06), 0 24px 48px -24px rgba(60, 42, 0, .28);
+  --display: "Schibsted Grotesk", "Inter", system-ui, sans-serif;
+  --body: "Inter", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --canvas: #161513;
+    --dot: #2c2a26;
+    --text: #ece7dc;
+    --muted: #a8a194;
+    --line: #2e2b26;
+    --code-bg: #201e1a;
+    --amber-ink: #f2b544;
+    --shadow: 0 1px 0 rgba(255, 255, 255, .04), 0 24px 48px -24px rgba(0, 0, 0, .7);
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background-color: var(--canvas);
+  background-image: radial-gradient(var(--dot) 1.1px, transparent 1.2px);
+  background-size: 22px 22px;
+  color: var(--text);
+  font: 400 17px/1.6 var(--body);
+}
+a { color: var(--amber-ink); text-underline-offset: 3px; }
+a:focus-visible, button:focus-visible { outline: 3px solid var(--amber); outline-offset: 3px; border-radius: 6px; }
+img { max-width: 100%; height: auto; display: block; }
+.wrap { max-width: 1160px; margin: 0 auto; padding: 0 24px; }
+
+/* Header */
+.top { display: flex; align-items: center; justify-content: space-between; padding: 22px 0; }
+.brand { display: flex; align-items: center; gap: 12px; font: 700 20px/1 var(--display); color: var(--text); text-decoration: none; }
+.brand img { width: 36px; height: 36px; }
+.top nav { display: flex; gap: 22px; font-size: 15px; }
+.top nav a { color: var(--muted); text-decoration: none; }
+.top nav a:hover { color: var(--text); }
+
+/* Hero */
+.hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 48px; align-items: center; padding: 56px 0 72px; }
+.hero h1 { font: 800 clamp(44px, 6.2vw, 78px)/0.98 var(--display); letter-spacing: -0.03em; margin: 0 0 24px; max-width: 13ch; }
+.hero p { font-size: 19px; color: var(--muted); max-width: 34em; margin: 0 0 32px; }
+.actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.btn { display: inline-flex; align-items: center; gap: 10px; padding: 13px 20px; border-radius: 10px; font: 600 16px/1 var(--body); text-decoration: none; border: 2px solid var(--ink); }
+.btn-primary { background: var(--amber); color: var(--ink); box-shadow: 3px 3px 0 var(--ink); }
+.btn-primary:hover { transform: translate(-1px, -1px); box-shadow: 4px 4px 0 var(--ink); }
+.btn-secondary { background: transparent; color: var(--text); border-color: var(--line); }
+.btn-secondary:hover { border-color: var(--text); }
+.hero .status { margin: 22px 0 0; font-size: 14px; }
+.status strong { color: var(--text); font-weight: 600; }
+
+/* The hero process */
+.process { width: 100%; height: auto; overflow: visible; }
+.process .lane { fill: var(--amber); }
+.process .pool { fill: var(--paper); stroke: var(--ink); stroke-width: 3; }
+.process .shape { fill: #fffdf8; stroke: var(--ink); stroke-width: 3; }
+.process .flow { fill: none; stroke: var(--ink); stroke-width: 2.5; }
+.process .gw { fill: var(--amber); stroke: var(--ink); stroke-width: 3; }
+.process text { font: 600 15px var(--body); fill: var(--ink); }
+.process .small { font: 500 13px var(--body); fill: #3d3a33; }
+.process .lane-title { font: 700 14px var(--display); fill: var(--ink); letter-spacing: .02em; }
+.process .token { fill: var(--amber); stroke: var(--ink); stroke-width: 2.5; }
+
+/* Sections */
+section { padding: 72px 0; }
+h2 { font: 800 clamp(30px, 3.6vw, 44px)/1.05 var(--display); letter-spacing: -0.025em; margin: 0 0 16px; max-width: 20ch; }
+.lead { color: var(--muted); font-size: 18px; max-width: 40em; margin: 0 0 36px; }
+
+/* Workbench */
+.shot { background: var(--paper); border: 3px solid var(--ink); border-radius: 18px; padding: 14px; box-shadow: var(--shadow); }
+.shot img { border-radius: 8px; border: 1px solid rgba(11, 11, 12, .15); }
+.shot-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; flex-wrap: wrap; margin-bottom: 28px; }
+.shot-head .lead { margin: 0; }
+.toggle { display: inline-flex; border: 2px solid var(--ink); border-radius: 10px; overflow: hidden; background: var(--canvas); }
+.toggle button { font: 600 14px var(--body); padding: 9px 16px; border: 0; background: transparent; color: var(--text); cursor: pointer; }
+.toggle button[aria-pressed="true"] { background: var(--ink); color: #fff; }
+@media (prefers-color-scheme: dark) { .toggle button[aria-pressed="true"] { background: var(--amber); color: var(--ink); } }
+
+/* Reasons */
+.reasons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 40px 64px; margin: 0; }
+.reasons div { border-top: 3px solid var(--ink); padding-top: 18px; }
+@media (prefers-color-scheme: dark) { .reasons div { border-top-color: var(--amber); } }
+.reasons dt { font: 700 22px/1.2 var(--display); margin-bottom: 8px; }
+.reasons dd { margin: 0; color: var(--muted); max-width: 32em; }
+
+/* Gallery */
+.gallery { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 24px; }
+.gallery figure { margin: 0; background: #fff; border: 2px solid var(--line); border-radius: 14px; padding: 12px; }
+.gallery figure.dark { background: #1b1a18; border-color: #2e2b26; }
+.gallery .wide { grid-column: span 6; }
+.gallery .half { grid-column: span 3; }
+.gallery figcaption { font-size: 15px; color: #5c5850; padding: 12px 4px 2px; }
+.gallery figure.dark figcaption { color: #a8a194; }
+.gallery figcaption b { color: #1d1c1a; font-weight: 600; }
+.gallery figure.dark figcaption b { color: #ece7dc; }
+
+/* Agents */
+.agents { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 48px; align-items: start; }
+pre { margin: 0; background: var(--code-bg); border: 2px solid var(--line); border-radius: 14px; padding: 22px; overflow-x: auto; font: 400 14px/1.75 var(--mono); color: var(--text); }
+pre .c { color: var(--muted); }
+.agents ul { padding-left: 1.1em; margin: 0; color: var(--muted); }
+.agents li { margin-bottom: 10px; }
+.agents li strong { color: var(--text); font-weight: 600; }
+
+/* Status */
+.state { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+.state > div { border: 2px solid var(--line); border-radius: 14px; padding: 26px 28px; background: var(--canvas); }
+.state h3 { font: 700 20px/1.2 var(--display); margin: 0 0 14px; display: flex; align-items: center; gap: 10px; }
+.state ul { margin: 0; padding-left: 1.1em; color: var(--muted); }
+.state li { margin-bottom: 8px; }
+.marker { width: 18px; height: 18px; flex: none; }
+
+footer { border-top: 2px solid var(--line); padding: 36px 0 56px; color: var(--muted); font-size: 15px; }
+footer .wrap { display: flex; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
+
+@media (max-width: 860px) {
+  .hero, .agents, .state, .reasons { grid-template-columns: minmax(0, 1fr); }
+  .hero { padding-top: 24px; gap: 36px; }
+  .gallery .half { grid-column: span 6; }
+  .top nav { display: none; }
+  section { padding: 52px 0; }
+}
+@media (max-width: 480px) {
+  .wrap { padding: 0 16px; }
+  body { font-size: 16px; }
+  .hero p { font-size: 17px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .btn-primary:hover { transform: none; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="./"><img src="icon.png" alt="" width="36" height="36">ProcessCraft</a>
+    <nav aria-label="Sections">
+      <a href="#workbench">Workbench</a>
+      <a href="#agents">For agents</a>
+      <a href="#status">Status</a>
+      <a href="https://github.com/eliobenigni7/ProcessCraft">GitHub</a>
+    </nav>
+  </header>
+
+  <main>
+    <div class="hero">
+      <div>
+        <h1>Process modeling that stays on your machine.</h1>
+        <p>ProcessCraft is a native desktop workbench for BPMN&nbsp;2.0, written in Rust. Draw processes with familiar tools, keep them in files you own, and let scripts and AI agents make the same edits through a CLI and an MCP server.</p>
+        <div class="actions">
+          <a class="btn btn-primary" href="https://github.com/eliobenigni7/ProcessCraft">View on GitHub</a>
+          <a class="btn btn-secondary" href="https://github.com/eliobenigni7/ProcessCraft#quick-start">Build it yourself</a>
+        </div>
+        <p class="status"><strong>Pre-alpha 0.1.</strong> Windows first. MIT licensed. No account, no telemetry.</p>
+      </div>
+
+      <svg class="process" viewBox="0 0 600 330" role="img" aria-labelledby="process-title">
+        <title id="process-title">A small BPMN process in a pool: a start event, the task Sketch the process, a gateway Ready? that loops back when the answer is no, the task Share as BPMN, and an end event.</title>
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="#0b0b0c"/>
+          </marker>
+        </defs>
+        <rect class="pool" x="4" y="24" width="592" height="290" rx="16"/>
+        <path class="lane" d="M20,24 h28 v290 h-28 a16,16 0 0 1 -16,-16 v-258 a16,16 0 0 1 16,-16 z"/>
+        <path d="M48,24 v290" stroke="#0b0b0c" stroke-width="3"/>
+        <text class="lane-title" transform="translate(32 169) rotate(-90)" text-anchor="middle">Your process</text>
+
+        <path class="flow" d="M114,200 H148" marker-end="url(#arrow)"/>
+        <path class="flow" d="M286,200 H320" marker-end="url(#arrow)"/>
+        <path class="flow" d="M372,200 H404" marker-end="url(#arrow)"/>
+        <path class="flow" d="M532,200 H548" marker-end="url(#arrow)"/>
+        <path class="flow" d="M346,174 V104 H217 V160" marker-end="url(#arrow)"/>
+        <text class="small" x="356" y="132">no</text>
+        <text class="small" x="378" y="190">yes</text>
+
+        <circle class="shape" cx="94" cy="200" r="19"/>
+        <rect class="shape" x="150" y="162" width="136" height="76" rx="12"/>
+        <text x="218" y="196" text-anchor="middle">Sketch the</text>
+        <text x="218" y="215" text-anchor="middle">process</text>
+        <path class="gw" d="M346,174 L372,200 L346,226 L320,200 z"/>
+        <path d="M337,191 L355,209 M355,191 L337,209" stroke="#0b0b0c" stroke-width="3"/>
+        <text class="small" x="346" y="252" text-anchor="middle">Ready?</text>
+        <rect class="shape" x="406" y="162" width="126" height="76" rx="12"/>
+        <text x="469" y="196" text-anchor="middle">Share as</text>
+        <text x="469" y="215" text-anchor="middle">BPMN</text>
+        <circle class="shape end" cx="569" cy="200" r="18" stroke-width="6"/>
+
+        <!-- One token runs the process once on load: the BPMN way of saying "this is how it executes". -->
+        <circle class="token" r="9" cx="0" cy="0" opacity="0">
+          <set attributeName="opacity" to="1" begin="0.8s"/>
+          <animateMotion id="run" begin="0.8s" dur="5.5s" fill="freeze" calcMode="linear"
+            path="M94,200 H218 M218,200 H346 V104 H217 V200 M217,200 H469 H569"
+            keyPoints="0;0.134;0.134;0.619;0.619;0.892;0.892;1"
+            keyTimes="0;0.07;0.17;0.43;0.52;0.75;0.85;1"/>
+          <set attributeName="opacity" to="0" begin="run.end"/>
+        </circle>
+        <circle cx="569" cy="200" r="7" fill="#0b0b0c" opacity="0">
+          <set attributeName="opacity" to="1" begin="run.end"/>
+        </circle>
+      </svg>
+    </div>
+
+    <section id="workbench" aria-labelledby="workbench-title">
+      <div class="shot-head">
+        <div>
+          <h2 id="workbench-title">A canvas you already know how to use.</h2>
+          <p class="lead">A context pad next to the selection, drag-to-connect with live rule feedback, single-key element shortcuts, lanes, pools and an inspector of collapsible sections. The interaction model of bpmn-js, rebuilt natively.</p>
+        </div>
+        <div class="toggle" role="group" aria-label="Screenshot theme">
+          <button type="button" aria-pressed="true" data-src="images/workbench-light.png" data-alt="The ProcessCraft workbench in the light theme">Light</button>
+          <button type="button" aria-pressed="false" data-src="images/workbench-dark.png" data-alt="The ProcessCraft workbench in the dark theme">Dark</button>
+        </div>
+      </div>
+      <div class="shot">
+        <img id="workbench-img" src="images/workbench-light.png" width="1544" height="952" alt="The ProcessCraft workbench in the light theme: a project sidebar, a procurement process with two lanes on a dotted canvas with a floating palette, and a properties inspector">
+      </div>
+    </section>
+
+    <section aria-labelledby="why-title">
+      <h2 id="why-title">Built for people who own their processes.</h2>
+      <p class="lead">Analysts get a modeling tool that respects BPMN; developers get an engine they can drive. Both get files that stay where they put them.</p>
+      <dl class="reasons">
+        <div><dt>Correct by construction</dt><dd>BPMN rules decide what may connect to what and which kind of connection to create. An edit that would break the model is refused with a reason.</dd></div>
+        <div><dt>Honest interchange</dt><dd>Camunda Modeler and bpmn.io files open editable. Anything outside the supported profile is preserved byte-for-byte or refused, never silently dropped.</dd></div>
+        <div><dt>An analyst workbench</dt><dd>A model library, a dictionary of roles, systems and documents linked to elements, an editable activity table, comments, checkpoints and comparison.</dd></div>
+        <div><dt>Yours, offline</dt><dd>One portable <code>.processcraft</code> file per project, with atomic saves, crash recovery and undo for every change. No account and no telemetry.</dd></div>
+      </dl>
+    </section>
+
+    <section aria-labelledby="gallery-title">
+      <h2 id="gallery-title">Drawn by its own renderer.</h2>
+      <p class="lead">Every diagram here was rendered by ProcessCraft from processes built through the CLI or imported from Camunda Modeler. Export to SVG, PNG, PDF, BPMN XML or draw.io.</p>
+      <div class="gallery">
+        <figure class="wide"><img src="images/order-fulfilment.png" width="2744" height="774" loading="lazy" alt="An order fulfilment process with a parallel split and join, a business rule task, a timer intermediate event, a data object and a text annotation"><figcaption><b>Rules pick the connection.</b> Sequence flows, data associations and annotation links follow the BPMN rules.</figcaption></figure>
+        <figure class="half"><img src="images/onboarding.png" width="1562" height="804" loading="lazy" alt="An employee onboarding process in an HR pool with two lanes and a rework loop"><figcaption><b>Modeling.</b> Auto-placed elements, Manhattan routing and a pool that wraps its content.</figcaption></figure>
+        <figure class="half"><img src="images/claims-camunda.png" width="1864" height="1086" loading="lazy" alt="A claim handling collaboration imported from Camunda Modeler, with two pools, message flows and a timer boundary event"><figcaption><b>Interchange.</b> A Camunda Modeler file, opened as an editable model.</figcaption></figure>
+      </div>
+    </section>
+
+    <section id="agents" aria-labelledby="agents-title">
+      <div class="agents">
+        <div>
+          <h2 id="agents-title">Anything the canvas can do, a script can do.</h2>
+          <p class="lead">Every change is a typed command, applied atomically as one undo step. The desktop app, the CLI and the MCP server run the same commands through the same engine.</p>
+          <ul>
+            <li><strong>Batches</strong> of typed mutations: append, connect, replace, move, lanes, pools, align.</li>
+            <li><strong>An MCP server</strong>, standalone on a file or attached to the open desktop session, limited to folders you allow.</li>
+            <li><strong>Queries and validation</strong> as JSON, for checks in CI or in an agent's loop.</li>
+          </ul>
+        </div>
+        <pre><code><span class="c"># Every command, with the JSON Schema of the protocol</span>
+processcraft-cli commands --json
+
+<span class="c"># Build a process from a batch of commands</span>
+processcraft-cli run --new Procurement \
+  --batch procurement.json --out procurement.processcraft
+
+<span class="c"># Check it, then hand it to other tools</span>
+processcraft-cli validate procurement.processcraft --json
+processcraft-cli export-bpmn procurement.processcraft \
+  --document-id &lt;id&gt; --out procurement.bpmn
+
+<span class="c"># Let an AI agent work on it, inside folders you allow</span>
+processcraft-cli mcp --in procurement.processcraft \
+  --read-root C:\models --write-root C:\models\out</code></pre>
+      </div>
+    </section>
+
+    <section id="status" aria-labelledby="status-title">
+      <h2 id="status-title">Where it stands.</h2>
+      <p class="lead">ProcessCraft is pre-alpha. It models and exchanges BPMN today, verified by about 1,100 automated tests, and says plainly what is not qualified yet.</p>
+      <div class="state">
+        <div>
+          <h3><svg class="marker" viewBox="0 0 18 18" aria-hidden="true"><circle cx="9" cy="9" r="7.5" fill="var(--amber)" stroke="currentColor" stroke-width="2"/><path d="M5.5 9.2 8 11.5l4.5-5" fill="none" stroke="#0b0b0c" stroke-width="2"/></svg>Works today</h3>
+          <ul>
+            <li>Canvas modeling with context pad, rules, snapping, lanes and pools</li>
+            <li>BPMN 2.0 XML import and export with diagram layout</li>
+            <li>Library, dictionary, activity table, comments and checkpoints</li>
+            <li>CLI and MCP automation on the same command engine</li>
+            <li>A per-user Windows installer</li>
+          </ul>
+        </div>
+        <div>
+          <h3><svg class="marker" viewBox="0 0 18 18" aria-hidden="true"><circle cx="9" cy="9" r="7.5" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="3 2.4"/></svg>Not yet</h3>
+          <ul>
+            <li>A signed public release</li>
+            <li>macOS and Linux</li>
+            <li>Screen-reader support for the canvas</li>
+            <li>Formal performance targets on large models</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<footer>
+  <div class="wrap">
+    <span>ProcessCraft is open source under the MIT License.</span>
+    <span>Built on egui and the <a href="https://github.com/storytold">Crafting Apps</a> libraries. <a href="https://github.com/eliobenigni7/ProcessCraft">Source on GitHub</a></span>
+  </div>
+</footer>
+
+<script>
+  // Screenshot theme toggle.
+  const img = document.getElementById('workbench-img');
+  document.querySelectorAll('.toggle button').forEach((button) => {
+    button.addEventListener('click', () => {
+      document.querySelectorAll('.toggle button').forEach((b) => b.setAttribute('aria-pressed', String(b === button)));
+      img.src = button.dataset.src;
+      img.alt = button.dataset.alt;
+    });
+  });
+  // Reduced motion: skip the token run and show the finished process.
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    document.querySelectorAll('.process animateMotion, .process set').forEach((a) => a.remove());
+    document.querySelector('.process .token').remove();
+    document.querySelector('.process circle[r="7"]').setAttribute('opacity', '1');
+  }
+</script>
+</body>
+</html>
