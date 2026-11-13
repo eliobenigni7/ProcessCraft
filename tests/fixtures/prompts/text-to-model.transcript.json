@@ -1,6 +1,6 @@
 {
  "prompt": "text-to-model",
- "recordedBy": "Claude Sonnet subagent (an agent following the document, not a scripted replay)",
+ "recordedBy": "Claude Sonnet subagent, the same agent that wrote the documents; calls sent through a local driver script (not in the repository); not an independent agent run",
  "recordedOn": "2026-11-13",
  "task": "Process description given to the agent: 'An invoice arrives and is checked. If the amount is above 1000 it needs approval; otherwise it goes straight on. Then it is paid and the process ends.' Build it as a new model and check it against the recommended conventions.",
  "setup": null,

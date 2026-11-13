@@ -1,6 +1,6 @@
 {
  "prompt": "explain-process",
- "recordedBy": "Claude Sonnet subagent (an agent following the document, not a scripted replay)",
+ "recordedBy": "Claude Sonnet subagent, the same agent that wrote the documents; calls sent through a local driver script (not in the repository); not an independent agent run",
  "recordedOn": "2026-11-13",
  "task": "Explain process 'procurement' of document 11111111-1111-4111-8111-111111111111 to a new colleague: steps, decisions, who is responsible, and what is not recorded. Read only.",
  "setup": {

@@ -597,19 +597,25 @@ The server has no `prompts` capability; nothing under `src/` changed.
   occurs in a transcript must carry exactly the recorded request.
 - `transcript_*_replays` (four): each transcript replays through a fresh `processcraft-cli mcp
   --new` stdio session. The tool replies must match the recorded `expect` fields; the session is
-  then saved, reloaded with `native::load_bytes`, and must pass `ProjectData::validate`, have no
-  `error` diagnostic under `ConventionsProfile::recommended()`, and match the recorded counts.
+  then saved, reloaded with `native::load_bytes`, and must pass `ProjectData::validate` and match
+  the recorded counts, including the number of findings under
+  `ConventionsProfile::recommended()` (0 for three transcripts, which the test requires, and the
+  recorded 2 for the read-only `explain-process` input). The "no `error` diagnostic" check is
+  structural only: every recommended rule is a warning, so it cannot fail; the exact warning count
+  is the real check.
 - `transcripts_are_registered_in_the_manifest`: path, SHA-256, CC0-1.0 and the provenance text.
 
 ### Transcript provenance
 
-Recorded on 2026-11-13 by a Claude Sonnet subagent that followed each document against a real
-`processcraft-cli mcp --new` stdio session. The agent chose the task inputs, composed each call
-from the document's instructions and the previous replies, and sent the calls through a small
-driver script (not part of the repository) that wrote the call list and the reply fields it
-checks. Where the task starts from an existing project, that project is a pinned fixture applied
-at generation 0 before the first recorded call (`setup` in the transcript); it is the input, not an
-agent action.
+Recorded on 2026-11-13 by the same Claude Sonnet subagent that wrote the four documents, which
+then followed each one against a real `processcraft-cli mcp --new` stdio session. It chose the task
+inputs, composed each call from the document and the previous replies, and sent the calls through a
+local driver script that is not in the repository; the script wrote the call list and the reply
+fields the replay checks. These are **not independent agent runs**: the author of a document also
+followed it, so they are evidence that each document can be followed to a valid end state with the
+real tools, not evidence of how a cold agent behaves. Where the task starts from an existing
+project, that project is a pinned fixture applied at generation 0 before the first recorded call
+(`setup` in the transcript); it is the input, not an agent action.
 
 | Prompt | Task input | Calls | End state (nodes / flows / lanes / attribute values / definitions) | Warnings under the recommended profile |
 |---|---|---|---|---|
@@ -620,10 +626,12 @@ agent action.
 
 The `explain-process` end state is the unchanged input; its two warnings are existing findings of
 the fixture under the recommended profile, which the agent did not query (the stored profile of
-that fixture is empty). The replay asserts only that there is no `error`.
+that fixture is empty). The replay asserts its recorded count of 2.
 
 ### Limits and what is not established
 
+- The plan's "one real agent run per prompt" is only partly met. Independent runs (a fresh agent
+  given only the `SKILL.md` and MCP access) are left to M5.6, and M5 is not closed without them.
 - One run per prompt. The transcripts show that each document can be followed to a valid end state
   with the real tools; they say nothing about how often an agent does so, or about any model.
 - The replay is deterministic: it replays recorded calls, it does not re-run an agent. If a
@@ -631,8 +639,8 @@ that fixture is empty). The replay asserts only that there is no `error`.
   the updated document.
 - `explain-process` has a recorded answer text in its transcript, but the test does not check the
   prose, only that the session stayed read only and ended valid.
-- The schema check of `query` examples covers field names and required fields of the variant, not
-  value types; wrong types are caught only when the call is made (the transcripts do make theirs).
+- The schema check of `query` examples covers field names and required fields of the variant and
+  that document, entry and checkpoint IDs are UUIDs, not other value types; wrong types are caught only when the call is made (the transcripts do make theirs).
 - `inspect` does not return document IDs; the documents tell the agent to take them from the task
   input, `processcraft-cli info` or a diagnostics row. A `query` listing documents would remove
   that step; it is not in M5.

@@ -115,42 +115,39 @@ fn json_blocks(file: &Path) -> Vec<Block> {
     let text = fs::read_to_string(file).unwrap();
     let name = file.strip_prefix(root()).unwrap().display().to_string();
     let mut blocks = Vec::new();
-    let mut open: Option<Block> = None;
+    // The open fence: its marker and, for a JSON fence, the block being collected.
+    let mut open: Option<(&str, Option<Block>)> = None;
     for (index, line) in text.lines().enumerate() {
         match open.take() {
-            Some(mut block) if line.trim_end() == "```" => {
-                blocks.push(Block {
-                    body: std::mem::take(&mut block.body),
-                    ..block
-                });
+            Some((marker, block)) if line.trim_end() == marker => {
+                blocks.extend(block);
             }
-            Some(mut block) => {
+            Some((marker, Some(mut block))) => {
                 block.body.push_str(line);
                 block.body.push('\n');
-                open = Some(block);
+                open = Some((marker, Some(block)));
             }
+            Some(other) => open = Some(other),
             None => {
-                if let Some(info) = line.strip_prefix("```json") {
-                    open = Some(Block {
+                let Some(marker) = ["```", "~~~"].into_iter().find(|m| line.starts_with(m)) else {
+                    continue;
+                };
+                let info = line[marker.len()..].trim();
+                let (language, claim) = info.split_once(' ').unwrap_or((info, ""));
+                // `jsonc` is collected too: comments are not JSON, so it fails to parse
+                // instead of slipping past unchecked.
+                let block = matches!(language.to_ascii_lowercase().as_str(), "json" | "jsonc")
+                    .then(|| Block {
                         file: name.clone(),
                         line: index + 1,
-                        info: info.trim().to_owned(),
+                        info: claim.trim().to_owned(),
                         body: String::new(),
                     });
-                } else if line.starts_with("```") {
-                    // A non-JSON fence: skip to its end.
-                    open = Some(Block {
-                        file: String::new(),
-                        line: 0,
-                        info: "skip".into(),
-                        body: String::new(),
-                    });
-                }
+                open = Some((marker, block));
             }
         }
     }
     assert!(open.is_none(), "{name}: unterminated code fence");
-    blocks.retain(|b| !b.file.is_empty());
     blocks
 }
 fn prompt_files() -> Vec<PathBuf> {
@@ -257,6 +254,20 @@ fn prompt_examples_match_live_schemas() {
                         })
                         .unwrap_or_else(|| panic!("{here}: unknown query kind `{kind}`"));
                     check_object(&here, &value, variant);
+                    for (key, field) in value.as_object().unwrap() {
+                        if key.ends_with("_id") || key.ends_with("Id") {
+                            let text = field.as_str().unwrap_or_default();
+                            // Document, entry and checkpoint IDs are UUIDs; process and element
+                            // selectors are XML IDs.
+                            if matches!(
+                                key.as_str(),
+                                "document_id" | "documentId" | "entry_id" | "checkpointId"
+                            ) {
+                                uuid::Uuid::parse_str(text)
+                                    .unwrap_or_else(|_| panic!("{here}: `{key}` is not a UUID"));
+                            }
+                        }
+                    }
                     assert!(
                         value["offset"].is_u64() && value["limit"].is_u64(),
                         "{here}"
@@ -417,6 +428,10 @@ fn replay(prompt: &str) {
         "{prompt}: error diagnostics under the recommended profile: {findings:?}"
     );
     let expected = &transcript["expected"];
+    if prompt != "explain-process" {
+        // Only the read-only input fixture may carry warnings; the others must end clean.
+        assert_eq!(expected["recommendedWarnings"], 0, "{prompt}");
+    }
     let count = |f: fn(&processcraft_core::model::Process) -> usize| -> usize {
         project
             .documents
@@ -482,6 +497,7 @@ fn transcripts_are_registered_in_the_manifest() {
         assert_eq!(entry["license"], "CC0-1.0");
         let provenance = entry["provenance"].as_str().unwrap();
         assert!(provenance.contains("recorded by a Claude Sonnet subagent on 2026-11-13"));
+        assert!(provenance.contains("not an independent agent run"));
         assert!(provenance.contains(prompt));
     }
 }

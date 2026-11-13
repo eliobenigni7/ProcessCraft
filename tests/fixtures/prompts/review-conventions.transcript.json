@@ -1,6 +1,6 @@
 {
  "prompt": "review-conventions",
- "recordedBy": "Claude Sonnet subagent (an agent following the document, not a scripted replay)",
+ "recordedBy": "Claude Sonnet subagent, the same agent that wrote the documents; calls sent through a local driver script (not in the repository); not an independent agent run",
  "recordedOn": "2026-11-13",
  "task": "Review the project against the recommended profile and fix findings that follow from the model itself; report the rest.",
  "setup": {
