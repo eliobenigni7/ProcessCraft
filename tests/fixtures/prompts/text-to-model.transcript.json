@@ -1,0 +1,290 @@
+{
+ "prompt": "text-to-model",
+ "recordedBy": "Claude Sonnet subagent (an agent following the document, not a scripted replay)",
+ "recordedOn": "2026-11-13",
+ "task": "Process description given to the agent: 'An invoice arrives and is checked. If the amount is above 1000 it needs approval; otherwise it goes straight on. Then it is paid and the process ends.' Build it as a new model and check it against the recommended conventions.",
+ "setup": null,
+ "calls": [
+  {
+   "tool": "inspect",
+   "arguments": {},
+   "expect": {
+    "documents": 0,
+    "generation": 0
+   }
+  },
+  {
+   "tool": "query",
+   "arguments": {
+    "kind": "dictionary",
+    "offset": 0,
+    "limit": 50
+   },
+   "expect": {
+    "total": 0
+   }
+  },
+  {
+   "tool": "apply",
+   "arguments": {
+    "sessionId": "${sessionId}",
+    "requestId": "invoice-model-1",
+    "expectedGeneration": 0,
+    "request": {
+     "type": "batch",
+     "mutations": [
+      {
+       "type": "createDocument",
+       "document": {
+        "id": "aaaaaaaa-0000-4000-8000-000000000001",
+        "name": "Invoice approval",
+        "folder": null,
+        "definitions_id": "defs",
+        "processes": [],
+        "collaboration": null,
+        "diagrams": [],
+        "provenance": null,
+        "capability": "Editable"
+       }
+      },
+      {
+       "type": "createProcess",
+       "document_id": "aaaaaaaa-0000-4000-8000-000000000001",
+       "process": {
+        "id": "invoice",
+        "name": "Invoice approval",
+        "documentation": "",
+        "nodes": [],
+        "lanes": [],
+        "flows": []
+       }
+      },
+      {
+       "type": "createDiagram",
+       "document_id": "aaaaaaaa-0000-4000-8000-000000000001",
+       "diagram": {
+        "id": "invoice_diagram",
+        "plane_id": "invoice_plane",
+        "plane": "invoice",
+        "shapes": [],
+        "edges": []
+       }
+      },
+      {
+       "type": "createAt",
+       "document_id": "aaaaaaaa-0000-4000-8000-000000000001",
+       "diagram_id": "invoice_diagram",
+       "kind": "StartEvent",
+       "name": "Invoice received",
+       "center": {
+        "x": 100,
+        "y": 120
+       },
+       "node_id": "start",
+       "shape_id": "start_shape"
+      },
+      {
+       "type": "append",
+       "document_id": "aaaaaaaa-0000-4000-8000-000000000001",
+       "diagram_id": "invoice_diagram",
+       "source_id": "start",
+       "kind": "UserTask",
+       "name": "Check invoice",
+       "node_id": "check",
+       "shape_id": "check_shape",
+       "flow_id": "f_start_check",
+       "edge_id": "f_start_check_edge"
+      },
+      {
+       "type": "append",
+       "document_id": "aaaaaaaa-0000-4000-8000-000000000001",
+       "diagram_id": "invoice_diagram",
+       "source_id": "check",
+       "kind": "ExclusiveGateway",
+       "name": "Amount above 1000?",
+       "node_id": "big",
+       "shape_id": "big_shape",
+       "flow_id": "f_check_big",
+       "edge_id": "f_check_big_edge"
+      },
+      {
+       "type": "append",
+       "document_id": "aaaaaaaa-0000-4000-8000-000000000001",
+       "diagram_id": "invoice_diagram",
+       "source_id": "big",
+       "kind": "UserTask",
+       "name": "Approve invoice",
+       "node_id": "approve",
+       "shape_id": "approve_shape",
+       "flow_id": "f_big_approve",
+       "edge_id": "f_big_approve_edge"
+      },
+      {
+       "type": "append",
+       "document_id": "aaaaaaaa-0000-4000-8000-000000000001",
+       "diagram_id": "invoice_diagram",
+       "source_id": "approve",
+       "kind": "ExclusiveGateway",
+       "name": "Routes joined",
+       "node_id": "join",
+       "shape_id": "join_shape",
+       "flow_id": "f_approve_join",
+       "edge_id": "f_approve_join_edge"
+      },
+      {
+       "type": "connect",
+       "document_id": "aaaaaaaa-0000-4000-8000-000000000001",
+       "diagram_id": "invoice_diagram",
+       "source_id": "big",
+       "target_id": "join",
+       "flow_id": "f_big_join",
+       "edge_id": "f_big_join_edge"
+      },
+      {
+       "type": "append",
+       "document_id": "aaaaaaaa-0000-4000-8000-000000000001",
+       "diagram_id": "invoice_diagram",
+       "source_id": "join",
+       "kind": "ServiceTask",
+       "name": "Pay invoice",
+       "node_id": "pay",
+       "shape_id": "pay_shape",
+       "flow_id": "f_join_pay",
+       "edge_id": "f_join_pay_edge"
+      },
+      {
+       "type": "append",
+       "document_id": "aaaaaaaa-0000-4000-8000-000000000001",
+       "diagram_id": "invoice_diagram",
+       "source_id": "pay",
+       "kind": "EndEvent",
+       "name": "Invoice paid",
+       "node_id": "end",
+       "shape_id": "end_shape",
+       "flow_id": "f_pay_end",
+       "edge_id": "f_pay_end_edge"
+      },
+      {
+       "type": "rename",
+       "document_id": "aaaaaaaa-0000-4000-8000-000000000001",
+       "element_id": "f_big_approve",
+       "name": "Yes"
+      },
+      {
+       "type": "rename",
+       "document_id": "aaaaaaaa-0000-4000-8000-000000000001",
+       "element_id": "f_big_join",
+       "name": "No"
+      }
+     ]
+    }
+   },
+   "expect": {
+    "ok": true
+   }
+  },
+  {
+   "tool": "query",
+   "arguments": {
+    "kind": "diagnostics",
+    "offset": 0,
+    "limit": 50
+   },
+   "expect": {
+    "total": 0
+   }
+  },
+  {
+   "tool": "apply",
+   "arguments": {
+    "sessionId": "${sessionId}",
+    "requestId": "invoice-profile",
+    "expectedGeneration": 1,
+    "request": {
+     "type": "batch",
+     "mutations": [
+      {
+       "type": "setConventionsProfile",
+       "profile": {
+        "rules": [
+         {
+          "type": "labelRequired",
+          "severity": "warning",
+          "kinds": [
+           "Activity",
+           "Event",
+           "Lane",
+           "Participant"
+          ]
+         },
+         {
+          "type": "activityVerbObject",
+          "severity": "warning",
+          "verbs": []
+         },
+         {
+          "type": "gatewayFlowsLabelled",
+          "severity": "warning"
+         },
+         {
+          "type": "noImplicitSplitJoin",
+          "severity": "warning"
+         },
+         {
+          "type": "singleStartEnd",
+          "severity": "warning"
+         },
+         {
+          "type": "maxElements",
+          "severity": "warning",
+          "limit": 50
+         },
+         {
+          "type": "requiredAttributes",
+          "severity": "warning"
+         },
+         {
+          "type": "dictionaryTerms",
+          "severity": "warning"
+         }
+        ]
+       }
+      }
+     ]
+    }
+   },
+   "expect": {
+    "ok": true
+   }
+  },
+  {
+   "tool": "query",
+   "arguments": {
+    "kind": "diagnostics",
+    "offset": 0,
+    "limit": 50
+   },
+   "expect": {
+    "total": 0
+   }
+  },
+  {
+   "tool": "validate",
+   "arguments": {},
+   "expect": {
+    "valid": true,
+    "errorCount": 0,
+    "warningCount": 0
+   }
+  }
+ ],
+ "expected": {
+  "documents": 1,
+  "nodes": 7,
+  "flows": 7,
+  "lanes": 0,
+  "attributeValues": 0,
+  "attributeDefinitions": 0,
+  "recommendedWarnings": 0
+ }
+}

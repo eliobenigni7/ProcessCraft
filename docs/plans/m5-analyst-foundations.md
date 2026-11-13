@@ -506,25 +506,25 @@ the PNG and PDF agree; without the option exports are unchanged.
 **Own:** new `docs/prompts/` and `tests/fixtures/prompts/`; new
 `apps/processcraft-cli/tests/prompt_pack.rs`. No change under `src/`.
 
-- [ ] Four documents, each usable as plain prompt text and as an agent skill (`SKILL.md` front matter
+- [x] Four documents, each usable as plain prompt text and as an agent skill (`SKILL.md` front matter
   with name and description, then the instructions):
   `docs/prompts/text-to-model/SKILL.md`, `review-conventions/SKILL.md`, `explain-process/SKILL.md`,
   `fill-attributes/SKILL.md`, plus `docs/prompts/README.md` (how to start `processcraft-cli mcp`
   standalone or attached, the seven tools, the generation and request-ID rules, file roots).
-- [ ] Each document states its inputs, the exact tool sequence (`inspect` → `query` → `apply` with
+- [x] Each document states its inputs, the exact tool sequence (`inspect` → `query` → `apply` with
   `expectedGeneration` → `query diagnostics`), worked example requests as fenced JSON, what to do on
   `GenerationConflict`, and what the agent must not do (no guessing IDs, no layout by hand when
   `append`/`createAt` exist, no claims of BPMN conformance).
-- [ ] `prompt_pack.rs` checks, without any model or network, in this order: (1) every fenced JSON example in the
+- [x] `prompt_pack.rs` checks, without any model or network, in this order: (1) every fenced JSON example in the
   four documents deserializes as the tool input it claims to be (`Request`, MCP `Query`, …) against
   the live schema from `commands --json` and `tools/list`; (2) a recorded transcript per prompt in
   `tests/fixtures/prompts/*.transcript.json` (the tool calls of one real agent run, pinned in the
   manifest with provenance) replays through a real `processcraft-cli mcp --new` stdio session and
   ends with a project that passes `validate`, has no `error` diagnostics under
   `ConventionsProfile::recommended()` and matches the expected element and attribute counts.
-- [ ] Check (1) lands with the documents. Check (2) needs one real agent run per prompt, the only
+- [x] Check (1) lands with the documents. Check (2) needs one real agent run per prompt, the only
   external dependency in M5: transcripts are recorded in M5.6, and M5 is not closed without them.
-- [ ] Link the pack from `README.md` and the site only after both checks pass.
+- [x] Link the pack from `README.md` and the site only after both checks pass. (README only: this repository has no site.)
 
 **Acceptance:** `cargo test -p processcraft-cli --test prompt_pack` passes; the evidence file records
 which agent and date produced each transcript. No statement about model quality is made.

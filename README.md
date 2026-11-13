@@ -167,6 +167,10 @@ processcraft-cli mcp --attach <endpoint> --session <session> --token <token>
 Nothing listens by default; attachment is switched on from the desktop app, which shows the
 endpoint, session and token, and file access is limited to folders you authorize.
 
+Four ready-made agent instructions (text to model, review conventions, explain a process, fill
+attributes) live in [docs/prompts](docs/prompts/README.md). Their examples are checked against the
+live schemas and their recorded runs are replayed in CI.
+
 ## BPMN interchange
 
 | Import mode | Meaning |
