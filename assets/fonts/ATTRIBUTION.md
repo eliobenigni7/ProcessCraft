@@ -53,3 +53,11 @@ http://scripts.sil.org/OFL
 ## Noto Sans Bold, Italic and Bold Italic
 
 Copyright 2015-2021 Google LLC. Monotype Design Team, Monotype Imaging Inc. Original unmodified font files, licensed under SIL Open Font License 1.1; see OFL-NotoSans.txt and provenance.json.
+
+## Inter Regular, Medium and SemiBold (user interface)
+
+Copyright (c) 2016 The Inter Project Authors (https://github.com/rsms/inter). Original unmodified font files, licensed under SIL Open Font License 1.1; see OFL-Inter.txt. Taken byte-for-byte from the pinned font set of the ArtCraft WordCraft app so the interface matches the office apps of the family; exact source revision and SHA-256 in provenance.json. Used only by the desktop interface, never by diagram rendering or export.
+
+## JetBrains Mono Regular (user interface)
+
+Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono). Original unmodified font file, licensed under SIL Open Font License 1.1; see OFL-JetBrainsMono.txt and provenance.json. Used only by the desktop interface for identifiers and expressions.

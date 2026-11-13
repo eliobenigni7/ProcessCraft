@@ -104,7 +104,8 @@ pub fn icon_button_sized(
     let (rect, response) = ui.allocate_exact_size(Vec2::splat(size), Sense::click());
     let visuals = ui.style().interact_selectable(&response, selected);
     if selected || response.hovered() || response.has_focus() {
-        ui.painter().rect_filled(rect, 4, visuals.bg_fill);
+        ui.painter()
+            .rect_filled(rect, crate::theme::RADIUS, visuals.bg_fill);
     }
     let color = if selected {
         ui.visuals().selection.stroke.color
@@ -148,35 +149,39 @@ pub fn application_icon() -> egui::IconData {
 }
 
 pub fn primary_button(ui: &mut Ui, text: &str) -> Response {
-    let accent = ui.visuals().selection.stroke.color;
-    let text_color = if ui.visuals().dark_mode {
-        Color32::from_rgb(16, 36, 65)
-    } else {
-        Color32::WHITE
-    };
+    let p = crate::theme::current(ui);
     ui.add(
-        egui::Button::new(RichText::new(text).color(text_color))
-            .fill(accent)
-            .min_size(vec2(0.0, 32.0)),
+        egui::Button::new(
+            RichText::new(text)
+                .font(crate::theme::medium(13.0))
+                .color(p.on_accent),
+        )
+        .fill(p.accent)
+        .stroke(egui::Stroke::NONE)
+        .min_size(vec2(0.0, crate::theme::INTERACT_HEIGHT)),
     )
 }
 pub fn secondary_button(ui: &mut Ui, text: &str) -> Response {
-    ui.add(egui::Button::new(text).min_size(vec2(0.0, 32.0)))
+    ui.add(egui::Button::new(text).min_size(vec2(0.0, crate::theme::INTERACT_HEIGHT)))
 }
 pub fn section_label(ui: &mut Ui, text: &str) -> Response {
     ui.label(
         RichText::new(text.to_uppercase())
-            .size(12.0)
-            .color(ui.visuals().weak_text_color()),
+            .font(crate::theme::semibold(11.0))
+            .color(crate::theme::current(ui).faint),
     )
 }
 pub fn badge(ui: &mut Ui, text: &str, foreground: Color32, background: Color32) -> Response {
     egui::Frame::new()
         .fill(background)
-        .corner_radius(4)
-        .inner_margin(egui::Margin::symmetric(8, 4))
+        .corner_radius(crate::theme::RADIUS_SMALL)
+        .inner_margin(egui::Margin::symmetric(6, 2))
         .show(ui, |ui| {
-            ui.label(RichText::new(text).size(12.0).color(foreground))
+            ui.label(
+                RichText::new(text)
+                    .font(crate::theme::medium(11.0))
+                    .color(foreground),
+            )
         })
         .inner
 }

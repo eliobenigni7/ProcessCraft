@@ -13,6 +13,7 @@ processcraft-io = { path = "../../crates/processcraft-io" }
 processcraft-render = { path = "../../crates/processcraft-render" }
 egui.workspace = true
 eframe.workspace = true
+craft-ui.workspace = true
 egui_extras = { version = "=0.37.0", default-features = false }
 egui_ltreeview = { version = "=0.10.0", default-features = false }
 rfd = "0.15"

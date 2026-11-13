@@ -40,5 +40,33 @@
     "sha256": "6edf4227ef0fa846aca70e86a307804ca4401741830f5b3af0f2554abe2b8466",
     "source": "https://raw.githubusercontent.com/notofonts/noto-fonts/ffebf8c1ee449e544955a7e813c54f9b73848eac/hinted/ttf/NotoSans/NotoSans-BoldItalic.ttf",
     "revision": "ffebf8c1ee449e544955a7e813c54f9b73848eac"
+  },
+  {
+    "path": "assets/fonts/Inter-Regular.ttf",
+    "license": "OFL-1.1",
+    "sha256": "40d692fce188e4471e2b3cba937be967878f631ad3ebbbdcd587687c7ebe0c82",
+    "source": "https://raw.githubusercontent.com/storytold/wordcraft/d7d9702bda1fe626952024dc37fd2624323dad0f/assets/fonts/Inter-Regular.ttf",
+    "revision": "d7d9702bda1fe626952024dc37fd2624323dad0f"
+  },
+  {
+    "path": "assets/fonts/Inter-Medium.ttf",
+    "license": "OFL-1.1",
+    "sha256": "97ad806f526e41546d46365bb3a393145f75b7b1568913db74549ad8b8dba872",
+    "source": "https://raw.githubusercontent.com/storytold/wordcraft/d7d9702bda1fe626952024dc37fd2624323dad0f/assets/fonts/Inter-Medium.ttf",
+    "revision": "d7d9702bda1fe626952024dc37fd2624323dad0f"
+  },
+  {
+    "path": "assets/fonts/Inter-SemiBold.ttf",
+    "license": "OFL-1.1",
+    "sha256": "78a843fade9d4612a5567302fb595b56976eb5fcebf4fea5a5912d638bafcde3",
+    "source": "https://raw.githubusercontent.com/storytold/wordcraft/d7d9702bda1fe626952024dc37fd2624323dad0f/assets/fonts/Inter-SemiBold.ttf",
+    "revision": "d7d9702bda1fe626952024dc37fd2624323dad0f"
+  },
+  {
+    "path": "assets/fonts/JetBrainsMono-Regular.ttf",
+    "license": "OFL-1.1",
+    "sha256": "e6fd0d7e91550b3ed2b735d4312474362c4716edc4fc0577a0f61ed782d5aed1",
+    "source": "https://raw.githubusercontent.com/storytold/wordcraft/d7d9702bda1fe626952024dc37fd2624323dad0f/assets/fonts/JetBrainsMono-Regular.ttf",
+    "revision": "d7d9702bda1fe626952024dc37fd2624323dad0f"
   }
 ]
