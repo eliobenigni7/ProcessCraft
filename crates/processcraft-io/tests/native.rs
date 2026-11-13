@@ -546,7 +546,12 @@ fn expanded_data_capability_covers_live_and_checkpoint_documents() {
     let bytes = write_bytes(&p).unwrap();
     let mut archived = entries(&bytes);
     assert_eq!(
-        load_bytes(&bytes).unwrap().project.checkpoints[0]
+        load_bytes(&bytes)
+            .unwrap()
+            .project
+            .checkpoints
+            .last()
+            .unwrap()
             .content
             .documents[0]
             .data_stores,
@@ -736,7 +741,12 @@ fn historical_unresolved_activity_bindings_round_trip_without_new_capabilities()
     let bytes = write_bytes(&p).unwrap();
     let mut archived = entries(&bytes);
     assert_eq!(
-        load_bytes(&bytes).unwrap().project.checkpoints[0]
+        load_bytes(&bytes)
+            .unwrap()
+            .project
+            .checkpoints
+            .last()
+            .unwrap()
             .content
             .documents[0]
             .processes[0]
@@ -848,7 +858,12 @@ fn supporting_catalog_capability_covers_live_and_checkpoint_documents() {
     let bytes = write_bytes(&p).unwrap();
     let mut archived = entries(&bytes);
     assert_eq!(
-        load_bytes(&bytes).unwrap().project.checkpoints[0]
+        load_bytes(&bytes)
+            .unwrap()
+            .project
+            .checkpoints
+            .last()
+            .unwrap()
             .content
             .documents[0]
             .catalog,
@@ -941,7 +956,12 @@ fn definitions_metadata_requires_capability_in_live_and_checkpoint_documents() {
     let bytes = write_bytes(&p).unwrap();
     let mut archived = entries(&bytes);
     assert_eq!(
-        load_bytes(&bytes).unwrap().project.checkpoints[0]
+        load_bytes(&bytes)
+            .unwrap()
+            .project
+            .checkpoints
+            .last()
+            .unwrap()
             .content
             .documents[0]
             .definitions,
@@ -1109,7 +1129,12 @@ fn structured_expression_capability_covers_live_and_checkpoint_documents() {
     let bytes = write_bytes(&p).unwrap();
     let mut archived = entries(&bytes);
     assert_eq!(
-        load_bytes(&bytes).unwrap().project.checkpoints[0]
+        load_bytes(&bytes)
+            .unwrap()
+            .project
+            .checkpoints
+            .last()
+            .unwrap()
             .content
             .documents[0]
             .processes[0]
@@ -1229,7 +1254,12 @@ fn compensation_event_capability_covers_live_and_checkpoint_documents() {
     let bytes = write_bytes(&p).unwrap();
     let mut archived = entries(&bytes);
     assert_eq!(
-        load_bytes(&bytes).unwrap().project.checkpoints[0]
+        load_bytes(&bytes)
+            .unwrap()
+            .project
+            .checkpoints
+            .last()
+            .unwrap()
             .content
             .documents[0]
             .processes[0]
@@ -2750,4 +2780,91 @@ fn analyst_attributes_round_trip_and_capability_gate() {
     });
     let error = load_bytes(&archive(&contents)).err().unwrap().to_string();
     assert!(error.contains("analyst attributes require capability"));
+}
+
+#[test]
+fn modeling_conventions_round_trip_and_capability_gate() {
+    use processcraft_core::{
+        conventions::ConventionsProfile,
+        ids::CheckpointId,
+        model::{Checkpoint, FrozenProject},
+    };
+    let baseline =
+        include_bytes!("../../../tests/fixtures/native/identity-baseline-2f0f770.processcraft");
+    let capabilities = |bytes: &[u8]| -> Vec<String> {
+        let manifest: serde_json::Value = serde_json::from_slice(
+            &entries(bytes)
+                .iter()
+                .find(|(name, _)| name == "manifest.json")
+                .unwrap()
+                .1,
+        )
+        .unwrap();
+        manifest["required_capabilities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| c.as_str().unwrap().to_owned())
+            .collect()
+    };
+    // Existing files are untouched: no capability, same identity.
+    let mut project = load_bytes(baseline).unwrap().project;
+    assert!(
+        !capabilities(&write_bytes(&project).unwrap()).contains(&"modeling-conventions-v1".into())
+    );
+    let plain_identity = project.content_identity().unwrap();
+
+    project.conventions = Some(ConventionsProfile::recommended());
+    let identity = project.content_identity().unwrap();
+    assert_ne!(identity, plain_identity);
+    let bytes = write_bytes(&project).unwrap();
+    assert!(capabilities(&bytes).contains(&"modeling-conventions-v1".into()));
+    let reloaded = load_bytes(&bytes).unwrap();
+    assert!(!reloaded.requires_save_as_or_backup);
+    assert_eq!(reloaded.project.conventions, project.conventions);
+    assert_eq!(reloaded.project.content_identity().unwrap(), identity);
+
+    // The payload is refused without the capability.
+    let mut contents = entries(&bytes);
+    edit_json(&mut contents, "manifest.json", |manifest| {
+        manifest["required_capabilities"]
+            .as_array_mut()
+            .unwrap()
+            .retain(|capability| capability != "modeling-conventions-v1")
+    });
+    let error = load_bytes(&archive(&contents)).err().unwrap().to_string();
+    assert!(error.contains("modeling conventions require capability"));
+
+    // A profile frozen in a checkpoint alone also writes and requires the capability.
+    let mut checkpointed = load_bytes(baseline).unwrap().project;
+    checkpointed.checkpoints.push(Checkpoint {
+        id: CheckpointId::new(),
+        name: "snapshot".into(),
+        created_unix_ms: 0,
+        content: FrozenProject {
+            conventions: project.conventions.clone(),
+            ..FrozenProject::capture(&checkpointed)
+        },
+    });
+    let bytes = write_bytes(&checkpointed).unwrap();
+    assert!(capabilities(&bytes).contains(&"modeling-conventions-v1".into()));
+    assert_eq!(
+        load_bytes(&bytes)
+            .unwrap()
+            .project
+            .checkpoints
+            .last()
+            .unwrap()
+            .content
+            .conventions,
+        project.conventions
+    );
+    let mut contents = entries(&bytes);
+    edit_json(&mut contents, "manifest.json", |manifest| {
+        manifest["required_capabilities"]
+            .as_array_mut()
+            .unwrap()
+            .retain(|capability| capability != "modeling-conventions-v1")
+    });
+    assert!(load_bytes(&archive(&contents)).is_err());
 }

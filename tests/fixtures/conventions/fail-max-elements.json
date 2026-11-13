@@ -1,0 +1,488 @@
+{
+  "type": "batch",
+  "mutations": [
+    {
+      "type": "createDocument",
+      "document": {
+        "id": "44444444-4444-4444-8444-444444444444",
+        "name": "Conventions",
+        "folder": null,
+        "definitions_id": "defs",
+        "processes": [],
+        "collaboration": null,
+        "diagrams": [],
+        "provenance": null,
+        "capability": "Editable"
+      }
+    },
+    {
+      "type": "createProcess",
+      "document_id": "44444444-4444-4444-8444-444444444444",
+      "process": {
+        "id": "conv_process",
+        "name": "Request handling",
+        "documentation": "",
+        "nodes": [],
+        "lanes": [],
+        "flows": []
+      }
+    },
+    {
+      "type": "createElement",
+      "document_id": "44444444-4444-4444-8444-444444444444",
+      "process_id": "conv_process",
+      "element": {
+        "id": "start",
+        "name": "Request received",
+        "documentation": "",
+        "kind": "StartEvent",
+        "owner": "",
+        "contact": ""
+      }
+    },
+    {
+      "type": "createElement",
+      "document_id": "44444444-4444-4444-8444-444444444444",
+      "process_id": "conv_process",
+      "element": {
+        "id": "review",
+        "name": "Review request",
+        "documentation": "",
+        "kind": "UserTask",
+        "owner": "",
+        "contact": ""
+      }
+    },
+    {
+      "type": "createElement",
+      "document_id": "44444444-4444-4444-8444-444444444444",
+      "process_id": "conv_process",
+      "element": {
+        "id": "decision",
+        "name": "Approved?",
+        "documentation": "",
+        "kind": "ExclusiveGateway",
+        "owner": "",
+        "contact": ""
+      }
+    },
+    {
+      "type": "createElement",
+      "document_id": "44444444-4444-4444-8444-444444444444",
+      "process_id": "conv_process",
+      "element": {
+        "id": "order",
+        "name": "Place order",
+        "documentation": "",
+        "kind": "Task",
+        "owner": "",
+        "contact": ""
+      }
+    },
+    {
+      "type": "createElement",
+      "document_id": "44444444-4444-4444-8444-444444444444",
+      "process_id": "conv_process",
+      "element": {
+        "id": "notify",
+        "name": "Notify requester",
+        "documentation": "",
+        "kind": "Task",
+        "owner": "",
+        "contact": ""
+      }
+    },
+    {
+      "type": "createElement",
+      "document_id": "44444444-4444-4444-8444-444444444444",
+      "process_id": "conv_process",
+      "element": {
+        "id": "merge",
+        "name": "Merged",
+        "documentation": "",
+        "kind": "ExclusiveGateway",
+        "owner": "",
+        "contact": ""
+      }
+    },
+    {
+      "type": "createElement",
+      "document_id": "44444444-4444-4444-8444-444444444444",
+      "process_id": "conv_process",
+      "element": {
+        "id": "end",
+        "name": "Request closed",
+        "documentation": "",
+        "kind": "EndEvent",
+        "owner": "",
+        "contact": ""
+      }
+    },
+    {
+      "type": "createFlow",
+      "document_id": "44444444-4444-4444-8444-444444444444",
+      "process_id": "conv_process",
+      "flow": {
+        "id": "f_start_review",
+        "kind": "Sequence",
+        "source": "start",
+        "target": "review",
+        "name": "",
+        "documentation": "",
+        "condition": null
+      }
+    },
+    {
+      "type": "createFlow",
+      "document_id": "44444444-4444-4444-8444-444444444444",
+      "process_id": "conv_process",
+      "flow": {
+        "id": "f_review_decision",
+        "kind": "Sequence",
+        "source": "review",
+        "target": "decision",
+        "name": "",
+        "documentation": "",
+        "condition": null
+      }
+    },
+    {
+      "type": "createFlow",
+      "document_id": "44444444-4444-4444-8444-444444444444",
+      "process_id": "conv_process",
+      "flow": {
+        "id": "f_approved",
+        "kind": "Sequence",
+        "source": "decision",
+        "target": "order",
+        "name": "Approved",
+        "documentation": "",
+        "condition": null
+      }
+    },
+    {
+      "type": "createFlow",
+      "document_id": "44444444-4444-4444-8444-444444444444",
+      "process_id": "conv_process",
+      "flow": {
+        "id": "f_rejected",
+        "kind": "Sequence",
+        "source": "decision",
+        "target": "notify",
+        "name": "Rejected",
+        "documentation": "",
+        "condition": null
+      }
+    },
+    {
+      "type": "createFlow",
+      "document_id": "44444444-4444-4444-8444-444444444444",
+      "process_id": "conv_process",
+      "flow": {
+        "id": "f_order_merge",
+        "kind": "Sequence",
+        "source": "order",
+        "target": "merge",
+        "name": "",
+        "documentation": "",
+        "condition": null
+      }
+    },
+    {
+      "type": "createFlow",
+      "document_id": "44444444-4444-4444-8444-444444444444",
+      "process_id": "conv_process",
+      "flow": {
+        "id": "f_notify_merge",
+        "kind": "Sequence",
+        "source": "notify",
+        "target": "merge",
+        "name": "",
+        "documentation": "",
+        "condition": null
+      }
+    },
+    {
+      "type": "createFlow",
+      "document_id": "44444444-4444-4444-8444-444444444444",
+      "process_id": "conv_process",
+      "flow": {
+        "id": "f_merge_end",
+        "kind": "Sequence",
+        "source": "merge",
+        "target": "end",
+        "name": "",
+        "documentation": "",
+        "condition": null
+      }
+    },
+    {
+      "type": "createLane",
+      "document_id": "44444444-4444-4444-8444-444444444444",
+      "process_id": "conv_process",
+      "lane": {
+        "id": "lane_requester",
+        "name": "Requester",
+        "parent": null,
+        "members": [
+          "start",
+          "review",
+          "decision",
+          "notify"
+        ]
+      }
+    },
+    {
+      "type": "createLane",
+      "document_id": "44444444-4444-4444-8444-444444444444",
+      "process_id": "conv_process",
+      "lane": {
+        "id": "lane_buyer",
+        "name": "Buyer",
+        "parent": null,
+        "members": [
+          "order",
+          "merge",
+          "end"
+        ]
+      }
+    },
+    {
+      "type": "createDictionaryEntry",
+      "entry": {
+        "id": "44444444-4444-4444-8444-000000000001",
+        "kind": "Role",
+        "name": "Requester",
+        "description": ""
+      }
+    },
+    {
+      "type": "createDictionaryEntry",
+      "entry": {
+        "id": "44444444-4444-4444-8444-000000000002",
+        "kind": "Role",
+        "name": "Buyer",
+        "description": ""
+      }
+    },
+    {
+      "type": "setDictionaryLinks",
+      "source": {
+        "document_id": "44444444-4444-4444-8444-444444444444",
+        "xml_id": "lane_requester"
+      },
+      "kind": "Role",
+      "targets": [
+        {
+          "Entry": "44444444-4444-4444-8444-000000000001"
+        }
+      ]
+    },
+    {
+      "type": "setDictionaryLinks",
+      "source": {
+        "document_id": "44444444-4444-4444-8444-444444444444",
+        "xml_id": "lane_buyer"
+      },
+      "kind": "Role",
+      "targets": [
+        {
+          "Entry": "44444444-4444-4444-8444-000000000002"
+        }
+      ]
+    },
+    {
+      "type": "createAttributeDefinition",
+      "definition": {
+        "id": "44444444-4444-4444-8444-000000000010",
+        "name": "Cost",
+        "description": "Cost of the activity.",
+        "value_type": "Currency",
+        "unit": "EUR",
+        "options": [],
+        "dictionary_kind": null,
+        "applies_to": [
+          "Activity"
+        ],
+        "required": true
+      }
+    },
+    {
+      "type": "setAttributeValues",
+      "source": {
+        "document_id": "44444444-4444-4444-8444-444444444444",
+        "xml_id": "review"
+      },
+      "values": [
+        {
+          "definition_id": "44444444-4444-4444-8444-000000000010",
+          "value": {
+            "Currency": "100"
+          }
+        }
+      ]
+    },
+    {
+      "type": "setAttributeValues",
+      "source": {
+        "document_id": "44444444-4444-4444-8444-444444444444",
+        "xml_id": "order"
+      },
+      "values": [
+        {
+          "definition_id": "44444444-4444-4444-8444-000000000010",
+          "value": {
+            "Currency": "40.5"
+          }
+        }
+      ]
+    },
+    {
+      "type": "setAttributeValues",
+      "source": {
+        "document_id": "44444444-4444-4444-8444-444444444444",
+        "xml_id": "notify"
+      },
+      "values": [
+        {
+          "definition_id": "44444444-4444-4444-8444-000000000010",
+          "value": {
+            "Currency": "5"
+          }
+        }
+      ]
+    },
+    {
+      "type": "createDiagram",
+      "document_id": "44444444-4444-4444-8444-444444444444",
+      "diagram": {
+        "id": "conv_diagram",
+        "plane_id": "conv_plane",
+        "plane": "conv_process",
+        "shapes": [
+          {
+            "id": "pc_shape_lane_requester",
+            "element": "lane_requester",
+            "bounds": {
+              "x": 40,
+              "y": 40,
+              "width": 900,
+              "height": 180
+            },
+            "label": null,
+            "style": null
+          },
+          {
+            "id": "pc_shape_lane_buyer",
+            "element": "lane_buyer",
+            "bounds": {
+              "x": 40,
+              "y": 220,
+              "width": 900,
+              "height": 180
+            },
+            "label": null,
+            "style": null
+          },
+          {
+            "id": "pc_shape_start",
+            "element": "start",
+            "bounds": {
+              "x": 100,
+              "y": 100,
+              "width": 36,
+              "height": 36
+            },
+            "label": null,
+            "style": null
+          },
+          {
+            "id": "pc_shape_review",
+            "element": "review",
+            "bounds": {
+              "x": 220,
+              "y": 100,
+              "width": 140,
+              "height": 80
+            },
+            "label": null,
+            "style": null
+          },
+          {
+            "id": "pc_shape_decision",
+            "element": "decision",
+            "bounds": {
+              "x": 340,
+              "y": 100,
+              "width": 50,
+              "height": 50
+            },
+            "label": null,
+            "style": null
+          },
+          {
+            "id": "pc_shape_order",
+            "element": "order",
+            "bounds": {
+              "x": 460,
+              "y": 100,
+              "width": 140,
+              "height": 80
+            },
+            "label": null,
+            "style": null
+          },
+          {
+            "id": "pc_shape_notify",
+            "element": "notify",
+            "bounds": {
+              "x": 580,
+              "y": 100,
+              "width": 140,
+              "height": 80
+            },
+            "label": null,
+            "style": null
+          },
+          {
+            "id": "pc_shape_merge",
+            "element": "merge",
+            "bounds": {
+              "x": 700,
+              "y": 100,
+              "width": 50,
+              "height": 50
+            },
+            "label": null,
+            "style": null
+          },
+          {
+            "id": "pc_shape_end",
+            "element": "end",
+            "bounds": {
+              "x": 820,
+              "y": 100,
+              "width": 36,
+              "height": 36
+            },
+            "label": null,
+            "style": null
+          }
+        ],
+        "edges": []
+      }
+    },
+    {
+      "type": "setConventionsProfile",
+      "profile": {
+        "rules": [
+          {
+            "type": "maxElements",
+            "severity": "warning",
+            "limit": 5
+          }
+        ]
+      }
+    }
+  ]
+}

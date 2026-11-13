@@ -130,6 +130,78 @@
       "license": "CC0-1.0",
       "expected_mode": "not a project: expected CSV bytes compared by the CLI test",
       "semantic_di_checks": "Columns: dictionary entries by name, then literals; cells R,A,C,I in that order"
+    },
+    {
+      "path": "conventions/pass.json",
+      "sha256": "ba1dbe158f5318235e8e3b530fef21da203993d268c2f073630159b9ed664403",
+      "provenance": "Synthetic ProcessCraft M5.2 modeling-conventions batch authored 2026-11-13; satisfies all eight convention rules (warning severity)",
+      "license": "CC0-1.0",
+      "expected_mode": "native editable project",
+      "semantic_di_checks": "Stable document, entry and definition IDs; the batch ends with setConventionsProfile"
+    },
+    {
+      "path": "conventions/fail-activity-verb-object.json",
+      "sha256": "8c9a9460c1c4119dd2a6cc3086b126cc710ae5093080bf93fa1ccfaef526fdf6",
+      "provenance": "Synthetic ProcessCraft M5.2 modeling-conventions batch authored 2026-11-13; activity label that does not start with a listed verb; only activityVerbObject on",
+      "license": "CC0-1.0",
+      "expected_mode": "native editable project",
+      "semantic_di_checks": "Stable document, entry and definition IDs; the batch ends with setConventionsProfile"
+    },
+    {
+      "path": "conventions/fail-dictionary-terms.json",
+      "sha256": "c89de59b2f546c84b2d4ec1ea787bba4dac5e06922408599f25093a899813e92",
+      "provenance": "Synthetic ProcessCraft M5.2 modeling-conventions batch authored 2026-11-13; lane without a Role link and a free-text System link; only dictionaryTerms on",
+      "license": "CC0-1.0",
+      "expected_mode": "native editable project",
+      "semantic_di_checks": "Stable document, entry and definition IDs; the batch ends with setConventionsProfile"
+    },
+    {
+      "path": "conventions/fail-gateway-flow-label.json",
+      "sha256": "80e2ab03d66d2b40eb553a7e7fd09cdc149592c1e35ba2ab4d89a9216b576d9b",
+      "provenance": "Synthetic ProcessCraft M5.2 modeling-conventions batch authored 2026-11-13; unlabelled outgoing flow of an exclusive gateway; only gatewayFlowsLabelled on",
+      "license": "CC0-1.0",
+      "expected_mode": "native editable project",
+      "semantic_di_checks": "Stable document, entry and definition IDs; the batch ends with setConventionsProfile"
+    },
+    {
+      "path": "conventions/fail-label-required.json",
+      "sha256": "181f1a408546c46b2a19061dd964202467ff995dfa064d33dde7b50c816ca5e3",
+      "provenance": "Synthetic ProcessCraft M5.2 modeling-conventions batch authored 2026-11-13; unnamed activity; only labelRequired (error) on",
+      "license": "CC0-1.0",
+      "expected_mode": "native editable project",
+      "semantic_di_checks": "Stable document, entry and definition IDs; the batch ends with setConventionsProfile"
+    },
+    {
+      "path": "conventions/fail-max-elements.json",
+      "sha256": "798be66cedd21e07ac99d5dc04d4ab37e761256fd3359647f54efcef646a139b",
+      "provenance": "Synthetic ProcessCraft M5.2 modeling-conventions batch authored 2026-11-13; nine shapes against a limit of five; only maxElements on",
+      "license": "CC0-1.0",
+      "expected_mode": "native editable project",
+      "semantic_di_checks": "Stable document, entry and definition IDs; the batch ends with setConventionsProfile"
+    },
+    {
+      "path": "conventions/fail-no-implicit-split-join.json",
+      "sha256": "24f73e4f2dae4fbb687ec34778372fe18ea3186bf0fa0dd4d95b3492deba6124",
+      "provenance": "Synthetic ProcessCraft M5.2 modeling-conventions batch authored 2026-11-13; one activity with two outgoing flows and one event with two incoming flows; only noImplicitSplitJoin on",
+      "license": "CC0-1.0",
+      "expected_mode": "native editable project",
+      "semantic_di_checks": "Stable document, entry and definition IDs; the batch ends with setConventionsProfile"
+    },
+    {
+      "path": "conventions/fail-required-attributes.json",
+      "sha256": "91260f1ebcd4178232ac86c67eba4669214ae98250b764a1da15523f6be72f8d",
+      "provenance": "Synthetic ProcessCraft M5.2 modeling-conventions batch authored 2026-11-13; activity without the required Cost value; only requiredAttributes on",
+      "license": "CC0-1.0",
+      "expected_mode": "native editable project",
+      "semantic_di_checks": "Stable document, entry and definition IDs; the batch ends with setConventionsProfile"
+    },
+    {
+      "path": "conventions/fail-single-start-end.json",
+      "sha256": "9ebb29bf34b5fa748952158c3f3612c0e09ec01b521d957566214ce5e21bdeab",
+      "provenance": "Synthetic ProcessCraft M5.2 modeling-conventions batch authored 2026-11-13; two start and two end events in one process; only singleStartEnd (error) on",
+      "license": "CC0-1.0",
+      "expected_mode": "native editable project",
+      "semantic_di_checks": "Stable document, entry and definition IDs; the batch ends with setConventionsProfile"
     }
   ],
   "fonts": [

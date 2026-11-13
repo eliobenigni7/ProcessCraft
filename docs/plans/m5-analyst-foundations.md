@@ -338,7 +338,7 @@ replaced by creating a new one and re-entering the values.
 `apps/processcraft/src/attachment.rs`; `apps/processcraft/src/app/shell.rs` and a new
 `apps/processcraft/src/app/conventions.rs`.
 
-- [ ] Model: `ConventionsProfile { rules: Vec<ConventionRule> }` with at most one entry per rule;
+- [x] Model: `ConventionsProfile { rules: Vec<ConventionRule> }` with at most one entry per rule;
   `ConventionRule` is a serde-tagged enum whose variants carry `severity: DiagnosticSeverity` and
   their parameters:
   - `LabelRequired { kinds: Vec<AttributeTarget> }`
@@ -354,12 +354,12 @@ replaced by creating a new one and re-entering the values.
   `ProjectData.conventions: Option<ConventionsProfile>` (serde default, skipped when `None`), also in
   `FrozenProject`. `ConventionsProfile::recommended()` returns all eight rules as warnings with
   `MaxElements { limit: 50 }`.
-- [ ] Command: `Mutation::SetConventionsProfile { profile: Option<ConventionsProfile> }`, a
+- [x] Command: `Mutation::SetConventionsProfile { profile: Option<ConventionsProfile> }`, a
   whole-value setter like `SetSupportingCatalog`, plus its descriptor. Validation bounds: 2,000 verbs,
   each within 64 bytes; `limit` within 1..=10,000.
-- [ ] Native: capability `"modeling-conventions-v1"` written only when a profile is stored; reader
+- [x] Native: capability `"modeling-conventions-v1"` written only when a profile is stored; reader
   allow-list and refusal as in M5.1.
-- [ ] Evaluation: `conventions::diagnostics(project, profile) -> Vec<Diagnostic>` walking
+- [x] Evaluation: `conventions::diagnostics(project, profile) -> Vec<Diagnostic>` walking
   `queries::scopes(document)` once per document, for `Capability::Editable` documents only. Codes are
   `&'static str` like the existing ones: `conventionLabelRequired`, `conventionActivityVerbObject`,
   `conventionGatewayFlowLabel`, `conventionImplicitSplit`, `conventionImplicitJoin`,
@@ -378,7 +378,7 @@ replaced by creating a new one and re-entering the values.
   - *Dictionary terms*: a lane without a `DictionaryKind::Role` entry link, and any
     `DictionaryTarget::Literal` in dictionary links or attribute values.
   Output is capped at 10,000 diagnostics with a final "more results omitted" entry.
-- [ ] One result for all surfaces: `ProjectData::diagnostics()` appends
+- [x] One result for all surfaces: `ProjectData::diagnostics()` appends
   `conventions::diagnostics(self, profile)` when `self.conventions` is `Some`. A second entry point
   `ProjectData::diagnostics_with(&ConventionsProfile)` serves the CLI override. Where a convention
   rule covers the same condition as a built-in diagnostic, the built-in one is not emitted for that
@@ -388,19 +388,19 @@ replaced by creating a new one and re-entering the values.
   conditions no rule covers, and `NoImplicitSplitJoin` looks only at activities and events. The
   supersede table is one `const` and has a test that no element receives two diagnostics for one
   condition, run on fixtures that trigger every built-in code next to every rule.
-- [ ] CLI: `validate <PATH> --json` adds `diagnostics`, `errorCount` and `warningCount` to its output.
+- [x] CLI: `validate <PATH> --json` adds `diagnostics`, `errorCount` and `warningCount` to its output.
   `--profile <FILE>` evaluates a profile JSON file (same schema as the mutation payload, bounded by
   the 4 MiB request limit and strict JSON parsing) instead of the stored one; without the flag the
   stored profile applies. Exit 3 when any diagnostic has severity `error`, else 0 — warnings alone do
   not fail (solution design §16.1). `--fail-on warning` opts into failing on warnings.
-- [ ] MCP: add `Query::Diagnostics { offset, limit }` to `mcp.rs` and `attachment.rs` (paginated like
+- [x] MCP: add `Query::Diagnostics { offset, limit }` to `mcp.rs` and `attachment.rs` (paginated like
   the other kinds). The `validate` tool keeps empty arguments and adds `errorCount` and
   `warningCount` to its result.
-- [ ] Desktop: a "Conventions…" action in the Problems tab header (`shell.rs` bottom panel) opens a
+- [x] Desktop: a "Conventions…" action in the Problems tab header (`shell.rs` bottom panel) opens a
   window (`conventions.rs`) listing the eight rules with Off/Warning/Error, the element limit and the
   verb list; Apply submits `SetConventionsProfile`. `problems_ui` needs no change: results arrive
   through `DiagnosticsWorker` and navigate by `document_id`/`element_id` as today.
-- [ ] Fixtures: `tests/fixtures/conventions/` with one batch that satisfies every rule (`pass.json`)
+- [x] Fixtures: `tests/fixtures/conventions/` with one batch that satisfies every rule (`pass.json`)
   and one failing batch per rule (`fail-<rule>.json`), each in the manifest. The shared passing batch
   is the passing fixture of every rule (Decision 5).
 

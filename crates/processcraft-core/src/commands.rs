@@ -634,6 +634,10 @@ pub enum Mutation {
         source: ElementKey,
         values: Vec<crate::attributes::AttributeValueInput>,
     },
+    /// Whole-value setter of the modeling conventions profile; `None` switches every rule off.
+    SetConventionsProfile {
+        profile: Option<crate::conventions::ConventionsProfile>,
+    },
 
     CreateDocument {
         document: BpmnDocument,
@@ -5258,6 +5262,12 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             doc(p, source.document_id, false)?;
             crate::attributes::apply_set_values(p, source, values)?;
         }
+        Mutation::SetConventionsProfile { profile } => {
+            if let Some(profile) = &profile {
+                profile.validate()?;
+            }
+            p.conventions = profile;
+        }
         Mutation::CreateDocument { document } => p.documents.push(Arc::new(document)),
         Mutation::SetFlowCondition {
             document_id,
@@ -6412,6 +6422,7 @@ static COMMAND_DESCRIPTORS: &[CommandDescriptor] = &[
     descriptor!("updateAttributeDefinition","Update attribute definition","definition":"AttributeDefinition","resolution":"AttributeUpdateResolution"),
     descriptor!("deleteAttributeDefinition","Delete attribute definition","definition_id":"AttributeDefinitionId","resolution":"AttributeDeleteResolution"),
     descriptor!("setAttributeValues","Set attribute values","source":"ElementKey","values":"AttributeValueInput[]"),
+    descriptor!("setConventionsProfile","Set modeling conventions profile","profile":"ConventionsProfile|null"),
     descriptor!("batch","Apply batch","mutations":"Mutation[]"),
     descriptor!("undo", "Undo"),
     descriptor!("redo", "Redo"),

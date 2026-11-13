@@ -144,7 +144,8 @@ impl History {
                         total += string(s);
                     }
                 }
-                total += attribute_cost(&c.attribute_definitions, &c.attribute_values);
+                total += attribute_cost(&c.attribute_definitions, &c.attribute_values)
+                    + conventions_cost(&c.conventions);
                 for f in &c.folders {
                     total += xml(&f.id) + string(&f.name) + opt_xml(&f.parent);
                 }
@@ -182,7 +183,8 @@ impl History {
                     total += string(s);
                 }
             }
-            total += attribute_cost(&p.attribute_definitions, &p.attribute_values);
+            total += attribute_cost(&p.attribute_definitions, &p.attribute_values)
+                + conventions_cost(&p.conventions);
             for f in &p.folders {
                 total += xml(&f.id) + string(&f.name) + opt_xml(&f.parent);
             }
@@ -240,6 +242,23 @@ impl StringCost for crate::bpmn_metadata::DocumentationSet {
             Self::Structured(_) => 0,
         }
     }
+}
+/// Rule list plus every verb string; a constant for the rule headers.
+fn conventions_cost(profile: &Option<crate::conventions::ConventionsProfile>) -> usize {
+    use crate::conventions::ConventionRule;
+    profile.as_ref().map_or(0, |p| {
+        vec_cost(&p.rules)
+            + p.rules
+                .iter()
+                .map(|rule| match rule {
+                    ConventionRule::ActivityVerbObject { verbs, .. } => {
+                        vec_cost(verbs) + verbs.iter().map(string).sum::<usize>()
+                    }
+                    ConventionRule::LabelRequired { kinds, .. } => vec_cost(kinds),
+                    _ => 0,
+                })
+                .sum::<usize>()
+    })
 }
 /// Definitions and values with every string payload (names, units, options,
 /// value text and literal labels), not only their headers.

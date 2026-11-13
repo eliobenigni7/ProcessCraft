@@ -292,6 +292,7 @@ fn same_checkpoint(a: &Checkpoint, b: &Checkpoint) -> bool {
             &p.comments,
             &p.attribute_definitions,
             &p.attribute_values,
+            &p.conventions,
         ))
         .ok()
     };
@@ -602,6 +603,7 @@ impl ProjectData {
             }
         }
         crate::attributes::validate_project(self)?;
+        crate::conventions::validate_project(self)?;
         cache.checkpoints = validated;
         cache.resources = self.resources.clone();
         // Keep the current documents plus a few earlier versions, so undo and redo

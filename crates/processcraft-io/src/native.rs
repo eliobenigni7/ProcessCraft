@@ -1,6 +1,7 @@
 //! Strict, bounded ZIP/JSON native project format.
 //! Schema 0 is a synthetic migration exercise: it lacks `description`.
 use processcraft_core::attributes::{AttributeAssignment, AttributeDefinition};
+use processcraft_core::conventions::ConventionsProfile;
 use processcraft_core::{
     ProjectId,
     ids::{CheckpointId, XmlId},
@@ -43,6 +44,7 @@ const EXPANDED_COLLABORATION_CAPABILITY: &str = "bpmn-expanded-collaboration-v1"
 const CHOREOGRAPHY_GRAPH_CAPABILITY: &str = "bpmn-choreography-graph-v1";
 const QUALIFIED_BOUNDARY_CAPABILITY: &str = "bpmn-qualified-boundary-reference-v1";
 const ANALYST_ATTRIBUTES_CAPABILITY: &str = "analyst-attributes-v1";
+const MODELING_CONVENTIONS_CAPABILITY: &str = "modeling-conventions-v1";
 
 fn has_analyst_attributes(
     definitions: &[AttributeDefinition],
@@ -213,6 +215,8 @@ struct ProjectDto {
     attribute_definitions: Vec<AttributeDefinition>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     attribute_values: Vec<AttributeAssignment>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    conventions: Option<ConventionsProfile>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     checkpoints: Vec<CheckpointMeta>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -242,6 +246,8 @@ struct FrozenDto {
     attribute_definitions: Vec<AttributeDefinition>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     attribute_values: Vec<AttributeAssignment>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    conventions: Option<ConventionsProfile>,
 }
 fn resource_dto(r: &Resource) -> ResourceDto {
     ResourceDto {
@@ -310,6 +316,7 @@ pub fn write_bytes(project: &ProjectData) -> Result<Vec<u8>, NativeError> {
         comments: project.comments.clone(),
         attribute_definitions: project.attribute_definitions.clone(),
         attribute_values: project.attribute_values.clone(),
+        conventions: project.conventions.clone(),
         checkpoints: project
             .checkpoints
             .iter()
@@ -511,6 +518,14 @@ pub fn write_bytes(project: &ProjectData) -> Result<Vec<u8>, NativeError> {
     {
         required_capabilities.push(ANALYST_ATTRIBUTES_CAPABILITY.into());
     }
+    if project.conventions.is_some()
+        || project
+            .checkpoints
+            .iter()
+            .any(|c| c.content.conventions.is_some())
+    {
+        required_capabilities.push(MODELING_CONVENTIONS_CAPABILITY.into());
+    }
     let manifest = Manifest {
         format: "processcraft".into(),
         schema: 3,
@@ -545,6 +560,7 @@ pub fn write_bytes(project: &ProjectData) -> Result<Vec<u8>, NativeError> {
             comments: c.comments.clone(),
             attribute_definitions: c.attribute_definitions.clone(),
             attribute_values: c.attribute_values.clone(),
+            conventions: c.conventions.clone(),
         };
         let bytes = serde_json::to_vec(&dto).map_err(err)?;
         if bytes.len() > JSON_LIMIT {
@@ -721,6 +737,7 @@ fn load_with_limits(
                 && cap != CHOREOGRAPHY_GRAPH_CAPABILITY
                 && cap != QUALIFIED_BOUNDARY_CAPABILITY
                 && cap != ANALYST_ATTRIBUTES_CAPABILITY
+                && cap != MODELING_CONVENTIONS_CAPABILITY
         })
         || (manifest.schema < 3 && !manifest.required_capabilities.is_empty())
         || (manifest.schema == 3
@@ -757,6 +774,7 @@ fn load_with_limits(
             comments: vec![],
             attribute_definitions: vec![],
             attribute_values: vec![],
+            conventions: None,
             checkpoints: vec![],
             reference_checkpoint: None,
         }
@@ -775,6 +793,7 @@ fn load_with_limits(
             comments: vec![],
             attribute_definitions: vec![],
             attribute_values: vec![],
+            conventions: None,
             checkpoints: vec![],
             reference_checkpoint: None,
         }
@@ -995,6 +1014,14 @@ fn load_with_limits(
     {
         return Err(err("analyst attributes require capability"));
     }
+    if (dto.conventions.is_some() || frozen.iter().any(|(_, c)| c.conventions.is_some()))
+        && !manifest
+            .required_capabilities
+            .iter()
+            .any(|cap| cap == MODELING_CONVENTIONS_CAPABILITY)
+    {
+        return Err(err("modeling conventions require capability"));
+    }
     for resources in std::iter::once(&dto.resources).chain(frozen.iter().map(|(_, c)| &c.resources))
     {
         let mut declared_size = 0u64;
@@ -1058,6 +1085,7 @@ fn load_with_limits(
                 comments: c.comments,
                 attribute_definitions: c.attribute_definitions,
                 attribute_values: c.attribute_values,
+                conventions: c.conventions,
             },
         });
     }
@@ -1079,6 +1107,7 @@ fn load_with_limits(
         reference_checkpoint: dto.reference_checkpoint,
         attribute_definitions: dto.attribute_definitions,
         attribute_values: dto.attribute_values,
+        conventions: dto.conventions,
     };
     if project.id != manifest.project_id
         || (if manifest.schema < 2 {

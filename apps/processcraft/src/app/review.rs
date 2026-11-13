@@ -792,8 +792,9 @@ impl ProcessCraft {
                     diff.changed_documents.len()
                 ));
                 ui.label(format!(
-                    "Dictionary: {} · resources: {} · comments: {} · links: {} · project: {}",
+                    "Dictionary: {} · conventions: {} · resources: {} · comments: {} · links: {} · project: {}",
                     diff.dictionary_changed,
+                    diff.conventions_changed,
                     diff.resources_changed,
                     diff.comments_changed,
                     diff.links_changed,

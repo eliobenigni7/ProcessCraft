@@ -386,6 +386,110 @@ use"), as asserted in the core tests.
   side-by-side panel as in Entries).
 - Clipboard and duplicate still do not copy attribute values (decision 6).
 
+## M5.2 — modeling conventions
+
+### What exists
+
+- `crates/processcraft-core/src/conventions.rs`: `ConventionsProfile { rules }` with at
+  most one entry per rule and a closed `ConventionRule` enum (serde tag `type`, camelCase:
+  `labelRequired`, `activityVerbObject`, `gatewayFlowsLabelled`, `noImplicitSplitJoin`,
+  `singleStartEnd`, `maxElements`, `requiredAttributes`, `dictionaryTerms`), each carrying
+  `severity` (`DiagnosticSeverity` now derives `Deserialize` and `JsonSchema`). A rule that is
+  absent is off. `ConventionsProfile::recommended()` is all eight rules as warnings,
+  `labelRequired` over activities, events, lanes and participants, `maxElements` 50.
+- `ProjectData.conventions` and `FrozenProject.conventions` (serde default, skipped when
+  `None`), so content identity of existing files is unchanged. `Mutation::SetConventionsProfile
+  { profile: Option<_> }` is a whole-value setter with a descriptor and generated schema; bounds:
+  one entry per rule, `labelRequired` needs one to eight distinct kinds, at most 2,000 verbs of
+  one word and 1..=64 bytes, `maxElements.limit` 1..=10,000. `ProjectData::validate` applies the same
+  bounds to a stored profile.
+- Native format: capability `modeling-conventions-v1`, written only when the project or one of its
+  checkpoints stores a profile; the reader refuses a profile without it.
+- One result for all surfaces: `ProjectData::diagnostics()` is the built-in checks plus the stored
+  profile; `diagnostics_with(&profile)` serves the CLI override. Convention codes:
+  `conventionLabelRequired`, `conventionActivityVerbObject`, `conventionGatewayFlowLabel`,
+  `conventionImplicitSplit`, `conventionImplicitJoin`, `conventionStartCount`,
+  `conventionEndCount`, `conventionMaxElements`, `conventionRequiredAttribute`,
+  `conventionDictionaryTerm`, plus `conventionOutputTruncated`.
+- Supersede table (`SUPERSEDED_BUILTINS`): `missingStart` and `missingEnd` by `singleStartEnd`,
+  `unnamedExclusiveGateway` by `labelRequired` (only when its kinds include `Gateway`). A built-in
+  is dropped only for editable documents, which are the only ones the rules evaluate.
+  `unconnectedNode` and `gatewayDoesNotSplitOrMerge` are kept.
+- CLI: `validate --json` adds `diagnostics`, `errorCount`, `warningCount` (native and BPMN input, including preserved-source BPMN, where the rules skip the document and only the built-in coverage warning is reported);
+  `--profile <FILE>` (strict JSON: duplicate keys and unknown fields refused, 4 MiB, bounds
+  checked, exit 2) replaces the stored profile; exit 3 when an `error` diagnostic exists, or any
+  diagnostic with `--fail-on warning`; the JSON is printed before the exit. New `query diagnostics`.
+- MCP and attached MCP: `Query::Diagnostics { offset, limit }` (paginated like the others) in
+  `mcp.rs` and `attachment.rs`; the `validate` tool keeps empty arguments and adds `errorCount`
+  and `warningCount`.
+- Desktop: a "Conventions…" button in the Problems tab header opens a window with Off/Warning/Error
+  per rule, the label kinds, the verb list and the shape limit; Apply submits one
+  `SetConventionsProfile` (all rules off stores `None`), values outside the core bounds are shown
+  and not submitted. `DiagnosticsWorker` already called `ProjectData::diagnostics()`, so results
+  arrive through the existing path.
+- Fixtures `tests/fixtures/conventions/`: `pass.json` (satisfies all eight rules with
+  warnings) and eight `fail-<rule>.json`, each with the profile of the one rule it violates as its
+  last mutation; all nine in `tests/fixtures/manifest.json` (CC0-1.0, SHA-256).
+
+### What is verified
+
+- `crates/processcraft-core/tests/conventions.rs` (10 tests): `pass.json` yields no diagnostic at
+  all; each failing fixture yields exactly the expected code, element and severity (including
+  `error` for `labelRequired` and `singleStartEnd`); the same project with no profile yields no
+  convention code; the full profile finds the same problems; configured severity, limit, label kinds
+  and custom verb list (case-insensitive) are honoured; a default flow is exempt from the gateway
+  label rule; sub-process scopes are checked on their own and ad-hoc sub-processes are skipped;
+  a preserved-source document gets no convention diagnostic and keeps `missingStart`/`missingEnd`;
+  10,100 unlabelled activities produce 10,000 diagnostics plus one `conventionOutputTruncated`
+  entry; on a project that triggers every built-in code, the three superseded codes disappear while
+  `unconnectedNode` and `gatewayDoesNotSplitOrMerge` stay, and no element has the same diagnostic
+  twice; implicit split/join ignore gateways; `SetConventionsProfile` rejects each bound violation
+  atomically (a failing second mutation rolls the batch back), clears with `None` and undoes in one
+  step; profile JSON is strict and changes content identity.
+- `crates/processcraft-io/tests/native.rs` `modeling_conventions_round_trip_and_capability_gate`: a
+  file without a profile has no capability and unchanged content identity; a profile round-trips with
+  the same identity, needs the capability to load, and a profile frozen only in a checkpoint writes
+  and requires it too.
+- `apps/processcraft-cli/tests/cli.rs` (3 tests): `validate` exits 0 for a clean project and for
+  warnings, 3 for an error diagnostic and for a warning with `--fail-on warning`; `--profile`
+  overrides the stored profile without changing it and exits 2 for an unknown field, a duplicate
+  key, an out-of-bounds value and a file over 4 MiB; for each of the eight failing fixtures the
+  `diagnostics` array of `validate`, of `query diagnostics` and of the MCP stdio `query` is the same
+  JSON string, and the MCP `validate` tool reports the same counts.
+- `apps/processcraft/src/jobs.rs`: `DiagnosticsWorker` returns exactly `project.diagnostics()` of the
+  submitted snapshot, including convention results. `apps/processcraft/src/app/conventions.rs`:
+  the draft round-trips with `recommended()`, Apply is one undo step, and an out-of-bounds draft is
+  not submitted.
+- Review fixes: `compare_checkpoint` reports `conventions_changed` (shown in the Review panel, tested
+  by `checkpoint_comparison_reports_a_changed_profile`); the history memory estimate counts the profile
+  (rule list, kinds and verb strings) for the live project and checkpoints, with no direct test; Apply
+  with an unchanged draft submits nothing; `validate` on preserved-source BPMN is covered by
+  `validate_on_preserved_source_bpmn_keeps_the_output_shape`.
+- Gates in this worktree: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets --all-features --locked --offline -- -D warnings` and `python scripts/check_text_hygiene.py` pass; `cargo test --workspace --all-targets --all-features --locked --offline` reports 119 `test result: ok` lines, 1,209 tests passed, 0 failed.
+
+### Limits and what is not established
+
+- The verb + object rule is a built-in list of 227 English verbs compared with the first word of
+  the label. Known misses: other languages, labels that start with an article or adverb
+  ("Quickly review request"), nouns that are also verbs ("Order"), gerund labels, and verbs absent
+  from the list. An empty label is left to `labelRequired`. The default severity is a warning for
+  this reason and the message names the heuristic.
+- `singleStartEnd` counts events per scope, so event sub-processes and process fragments without a
+  start event are flagged; ad-hoc sub-processes are skipped. A scope without nodes (an empty process)
+  is flagged.
+- `labelRequired` over `SequenceFlow` flags every unnamed flow. `noImplicitSplitJoin` ignores
+  gateways, and a boundary event counts as an event.
+- `requiredAttributes` reports every element of an applicable target without a value, including
+  elements inside non-lane scopes; `dictionaryTerms` reports one entry per free-text link or value.
+- Convention results are not bounded per document, only in total (10,000 plus one entry); the
+  built-in diagnostics are still unbounded as before.
+- Not verified: the attached-session `Query::Diagnostics` and `validate` additions in
+  `attachment.rs` (the code mirrors `mcp.rs` and compiles; there is no attach test for them); no
+  GUI session or screenshot of the Conventions window or of the Problems header button, no keyboard
+  or screen-reader check; BPMN export does not carry the profile
+  (it is native-only, like dictionary links); no timing measurement of `diagnostics_with` was taken
+  (M5.6).
+
 ## M5.3 RACI matrix
 
 Scope: fixed RACI attribute definitions, `queries::raci_matrix` / `raci_csv`,

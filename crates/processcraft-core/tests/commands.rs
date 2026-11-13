@@ -2971,6 +2971,7 @@ fn descriptors_match_protocol_tags() {
         "updateAttributeDefinition",
         "deleteAttributeDefinition",
         "setAttributeValues",
+        "setConventionsProfile",
         "batch",
         "undo",
         "redo",

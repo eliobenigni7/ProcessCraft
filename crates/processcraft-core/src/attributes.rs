@@ -228,40 +228,40 @@ impl AttributeDefinition {
     }
 }
 
+/// The element family of a node kind (`None` for annotations).
+pub(crate) fn node_target(kind: NodeKind) -> Option<AttributeTarget> {
+    Some(match kind {
+        NodeKind::Task
+        | NodeKind::UserTask
+        | NodeKind::ManualTask
+        | NodeKind::ServiceTask
+        | NodeKind::SendTask
+        | NodeKind::ReceiveTask
+        | NodeKind::ScriptTask
+        | NodeKind::BusinessRuleTask
+        | NodeKind::SubProcess
+        | NodeKind::AdHocSubProcess
+        | NodeKind::Transaction
+        | NodeKind::CallActivity => AttributeTarget::Activity,
+        NodeKind::StartEvent
+        | NodeKind::EndEvent
+        | NodeKind::IntermediateCatchEvent
+        | NodeKind::IntermediateThrowEvent
+        | NodeKind::BoundaryEvent => AttributeTarget::Event,
+        NodeKind::InclusiveGateway
+        | NodeKind::ComplexGateway
+        | NodeKind::EventBasedGateway
+        | NodeKind::ExclusiveGateway
+        | NodeKind::ParallelGateway => AttributeTarget::Gateway,
+        NodeKind::TextAnnotation => return None,
+        NodeKind::DataObjectReference | NodeKind::DataStoreReference => AttributeTarget::DataObject,
+    })
+}
+
 /// The element family of a model element, or `None` for element kinds that
 /// carry no attribute target (annotations, groups, choreography, DI-only IDs).
 /// Every caller of attribute `applies_to` checks goes through this function.
 pub fn target_of(document: &BpmnDocument, selector: &ElementSelector) -> Option<AttributeTarget> {
-    fn node_target(kind: NodeKind) -> Option<AttributeTarget> {
-        Some(match kind {
-            NodeKind::Task
-            | NodeKind::UserTask
-            | NodeKind::ManualTask
-            | NodeKind::ServiceTask
-            | NodeKind::SendTask
-            | NodeKind::ReceiveTask
-            | NodeKind::ScriptTask
-            | NodeKind::BusinessRuleTask
-            | NodeKind::SubProcess
-            | NodeKind::AdHocSubProcess
-            | NodeKind::Transaction
-            | NodeKind::CallActivity => AttributeTarget::Activity,
-            NodeKind::StartEvent
-            | NodeKind::EndEvent
-            | NodeKind::IntermediateCatchEvent
-            | NodeKind::IntermediateThrowEvent
-            | NodeKind::BoundaryEvent => AttributeTarget::Event,
-            NodeKind::InclusiveGateway
-            | NodeKind::ComplexGateway
-            | NodeKind::EventBasedGateway
-            | NodeKind::ExclusiveGateway
-            | NodeKind::ParallelGateway => AttributeTarget::Gateway,
-            NodeKind::TextAnnotation => return None,
-            NodeKind::DataObjectReference | NodeKind::DataStoreReference => {
-                AttributeTarget::DataObject
-            }
-        })
-    }
     fn walk_nodes(
         nodes: &[crate::model::Node],
         selector: &ElementSelector,
