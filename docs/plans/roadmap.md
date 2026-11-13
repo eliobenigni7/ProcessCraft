@@ -40,8 +40,9 @@ Remaining from the M4 plan (`m0-m1-implementation-plan.md`, rows M4.1–M4.2):
 
 - **Signing**: SignPath Foundation open-source signing wired into `release-windows.yml`; signed MSI and
   ZIP verified with `signtool verify`.
-- **Installer gaps** from `m4-evidence.md`: per-machine install under UAC, full interactive wizard,
-  upgrade from a lower version, first CI release run.
+- **Installer**: per-machine install, full wizard, upgrade from a lower version, rollback and the
+  first CI release run are recorded in `m4-evidence.md` (2026-11-13); what remains is listed there
+  under "Not established".
 - **M4.2 accessibility and performance**: keyboard-only modeling, table and dictionary workflows;
   Narrator; focus, contrast, DPI; recorded timing and memory on a declared machine.
 

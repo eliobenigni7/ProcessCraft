@@ -25,8 +25,20 @@ Recorded 2026-11-13 on Windows 11 Pro 10.0.26300 (x64), WiX Toolset 5.0.2, Rust 
 ## CI
 
 `.github/workflows/release-windows.yml` runs `package.ps1` on `windows-latest` (manual runs and
-`v*` tags), uploads the MSI and ZIP as artifacts, and drafts a GitHub release for tags. It has not
-run yet; the repository is public, which SignPath's open-source programme requires.
+`v*` tags), uploads the MSI and ZIP as artifacts, and drafts a GitHub release for tags. The tag must
+name the `Cargo.toml` version (`v0.1.0`, or `v0.1.0-rc.1`, which is drafted as a prerelease).
+
+First run, 2026-11-13, tag `v0.1.0-rc.1` (run 43434865783): the reused CI gates and the Windows
+job passed, and the draft prerelease holds `processcraft-0.1.0-windows-x64.msi` (55.9 MB) and the
+portable ZIP (65.6 MB), both unsigned. `v0.1.0` is kept for the first signed build.
+
+## Install policy checker
+
+`packaging/windows/check-install-policy.ps1` runs the policy cases with real `msiexec` calls on
+MSIs it builds from the binaries `package.ps1` staged (0.0.9 and 0.1.0, so every upgrade is a real
+major upgrade). It refuses to start when ProcessCraft is already installed and uninstalls what it
+installs. The per-machine cases run only when it is elevated. Run 2026-11-13, standard user and
+then elevated: all checks passed.
 
 ## Measured
 
@@ -43,6 +55,13 @@ run yet; the repository is public, which SignPath's open-source programme requir
 | Interactive wizard, first page | Shows "Who should use ProcessCraft?" with Only for me selected (captured with PrintWindow) |
 | Wizard bitmaps | 493×312 and 493×58, 24-bit, generated from `processcraft-256.png` |
 | Silent uninstall | Exit 0; install folder, file associations, App Paths and shortcut removed; no product left |
+| Upgrade from a lower version (checker) | 0.0.9 → 0.1.0, per-user and per-machine: exit 0, one product, version 0.1.0 |
+| Downgrade (checker) | 0.0.9 over 0.1.0 refused; 0.1.0 stays installed |
+| Per-machine install (checker, elevated) | `ALLUSERS=1`: files under `C:\Program Files\ProcessCraft`, `HKLM\Software\ProcessCraft\InstallDir` recorded; uninstall removes both |
+| Per-user over a per-machine copy (checker, elevated) | Refused with "ProcessCraft is already installed for everyone…" |
+| Failure mid-install (checker) | A file named `licenses` in the target folder fails `CreateFolders` with error 1312 after both executables were copied; exit 1603, rollback removes them, no product, registry key, association or shortcut left |
+| Interactive wizard, every page | Driven by `WM_COMMAND` clicks on the WixUI buttons, captured with PrintWindow: scope → "Welcome to the ProcessCraft 0.1.0 Setup Wizard" (dialog art) → Destination Folder (`%LOCALAPPDATA%\Programs\ProcessCraft\`) → "Ready to install ProcessCraft 0.1.0" (banner art) → "Completed the ProcessCraft 0.1.0 Setup Wizard"; Finish with "Launch ProcessCraft" ticked starts the installed app |
+| Cancel on the first page | "ProcessCraft Setup Wizard was interrupted … Your system has not been modified"; nothing installed |
 | Sizes (0.1.0) | MSI 55.5 MB, portable ZIP 64.5 MB |
 
 The same-package case is not a context test: re-running the installed MSI with `ALLUSERS=1` enters
@@ -55,9 +74,12 @@ A first build with `Scope="perUser"` failed with error 1303: without `ALLUSERS=2
 
 - The packages are **unsigned**; SmartScreen warns about an unknown publisher. The intended free
   route is the SignPath Foundation open-source programme (application and CI wiring pending).
-- Not run: a per-machine install (needs elevation), the interactive wizard past its first page
-  (WixUI buttons are not reachable through UI Automation here; the welcome/finish art and version
-  strings were not seen rendered), cancellation and rollback mid-install, an upgrade from a lower
-  version number, the CI workflow, x86/arm64 builds, machines other than the development PC.
-- No automated policy checker like FigCraft's `check-install-policy.ps1`; the cases above were run
-  by hand.
+- Not run: the interactive "Everyone" path through the wizard with a real UAC prompt (the
+  per-machine cases ran silently from an elevated shell), cancelling while files are being copied
+  (rollback was triggered by a failure instead), x86/arm64 builds, machines other than the
+  development PC.
+- The wizard was driven by window messages, not by keyboard or screen-reader use; that belongs to
+  the M4.2 accessibility checks.
+- On the Completed page the "Launch ProcessCraft" checkbox draws a grey band over the white panel
+  (stock WixUI `ExitDialog` behaviour); cosmetic, left as is.
+- The interactive checks are not in CI; `check-install-policy.ps1` is run by hand.
