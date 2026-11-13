@@ -349,6 +349,7 @@ impl ProcessCraft {
             ui.set_min_width(200.0);
             if ui.selectable_label(active.is_none(), "Off").clicked() {
                 self.canvas.overlay = None;
+                self.canvas.export_overlay = false;
                 ui.close();
             }
             ui.separator();
@@ -666,5 +667,25 @@ mod tests {
                 .is_none()
         );
         assert!(app.canvas.overlay.is_none());
+    }
+
+    #[test]
+    fn export_option_is_cleared_when_the_overlay_is_dropped() {
+        let mut app = ProcessCraft::default();
+        let snap = app.ctl.session.snapshot();
+        let document = snap.project.documents[0].id;
+        let session = app.ctl.session.id();
+        app.canvas.export_overlay = true;
+        app.canvas.overlay = Some(OverlaySpec {
+            definition: AttributeDefinitionId::new(),
+            mode: OverlayMode::Heatmap,
+        });
+        // The definition does not exist, so the overlay is dropped and the flag with it.
+        assert!(
+            app.canvas
+                .overlay_for(&session, snap.generation, &snap.project, document)
+                .is_none()
+        );
+        assert!(!app.canvas.export_overlay);
     }
 }

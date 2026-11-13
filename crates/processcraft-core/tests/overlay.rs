@@ -112,6 +112,16 @@ fn buckets(overlay: &Overlay) -> Vec<(String, Option<u8>)> {
         .map(|e| (e.element.to_string(), e.bucket))
         .collect()
 }
+fn labels(overlay: &Overlay) -> Vec<&str> {
+    overlay.legend.iter().map(|l| l.label.as_str()).collect()
+}
+fn heat(values: &[&str]) -> Overlay {
+    let (p, d) = numeric(values);
+    attribute_overlay(&p, docid(), &spec(&d, OverlayMode::Heatmap))
+}
+fn bucket_list(overlay: &Overlay) -> Vec<u8> {
+    overlay.entries.iter().map(|e| e.bucket.unwrap()).collect()
+}
 fn numeric(values: &[&str]) -> (ProjectData, AttributeDefinition) {
     let mut p = project(values.len());
     let d = definition(AttributeType::Number, Some("EUR"), &[]);
@@ -136,9 +146,17 @@ fn five_equal_width_buckets_have_exact_boundaries() {
     let got: Vec<u8> = overlay.entries.iter().map(|e| e.bucket.unwrap()).collect();
     assert_eq!(got, vec![0, 0, 1, 1, 2, 3, 3, 4, 4, 4]);
     assert_eq!(overlay.scale, OverlayScale::Sequential);
-    assert_eq!(overlay.legend.len(), 5);
-    assert_eq!(overlay.legend[0].label, "0 \u{2013} 2");
-    assert_eq!(overlay.legend[4].label, "8 \u{2013} 10");
+    // Legend items name the stored values of each bucket, exactly as written.
+    assert_eq!(
+        labels(&overlay),
+        [
+            "0 \u{2013} 1.99",
+            "2 \u{2013} 3.9",
+            "4",
+            "6 \u{2013} 7",
+            "8 \u{2013} 10"
+        ]
+    );
     assert_eq!(overlay.title, "Cost (EUR)");
     assert!(overlay.entries.iter().all(|e| e.badge.is_none()));
 }
@@ -162,8 +180,8 @@ fn elements_without_a_value_or_outside_activities_are_not_listed() {
         buckets(&overlay),
         vec![("a0".into(), Some(0)), ("a1".into(), Some(4))]
     );
-    // The event's 1000 does not stretch the range.
-    assert_eq!(overlay.legend[4].label, "7.4 \u{2013} 9");
+    // The event's 1000 does not stretch the range; empty buckets have no legend item.
+    assert_eq!(labels(&overlay), ["1", "9"]);
 }
 
 #[test]
@@ -199,8 +217,7 @@ fn duration_ranks_by_elapsed_seconds_not_by_text() {
     let overlay = attribute_overlay(&p, docid(), &spec(&d, OverlayMode::Heatmap));
     let got: Vec<u8> = overlay.entries.iter().map(|e| e.bucket.unwrap()).collect();
     assert_eq!(got, vec![3, 0, 0, 4]);
-    assert_eq!(overlay.legend[0].label, "PT30M \u{2013} PT7H36M");
-    assert_eq!(overlay.legend[4].label, "P1DT4H54M \u{2013} P1DT12H");
+    assert_eq!(labels(&overlay), ["PT30M \u{2013} PT2H", "P1D", "P1DT12H"]);
 }
 
 #[test]
@@ -283,4 +300,67 @@ fn projection_is_deterministic_regardless_of_value_order() {
         first,
         attribute_overlay(&p, docid(), &spec(&d, OverlayMode::Heatmap))
     );
+}
+
+#[test]
+fn small_decimals_keep_distinct_exact_labels() {
+    let overlay = heat(&["0.001", "0.002", "0.004"]);
+    assert_eq!(bucket_list(&overlay), vec![0, 1, 4]);
+    assert_eq!(labels(&overlay), ["0.001", "0.002", "0.004"]);
+}
+
+#[test]
+fn negative_values_never_render_as_negative_zero() {
+    let overlay = heat(&["-0.001", "0.001"]);
+    assert_eq!(bucket_list(&overlay), vec![0, 4]);
+    assert_eq!(labels(&overlay), ["-0.001", "0.001"]);
+    assert!(
+        overlay
+            .legend
+            .iter()
+            .all(|l| !l.label.contains("-0 ") && l.label != "-0")
+    );
+}
+
+#[test]
+fn values_beyond_f64_precision_stay_exact() {
+    let values = ["9007199254740993", "9007199254740995", "9007199254740997"];
+    let overlay = heat(&values);
+    assert_eq!(bucket_list(&overlay), vec![0, 2, 4]);
+    assert_eq!(labels(&overlay), values);
+}
+
+#[test]
+fn very_long_decimals_are_ranked_and_labelled_without_nan_or_infinity() {
+    let big = |lead: char| format!("{lead}{}", "0".repeat(399));
+    let (one, two) = (big('1'), big('2'));
+    let overlay = heat(&["0", &one, &two]);
+    assert_eq!(bucket_list(&overlay), vec![0, 2, 4]);
+    assert_eq!(labels(&overlay), ["0", one.as_str(), two.as_str()]);
+    assert!(
+        overlay
+            .legend
+            .iter()
+            .all(|l| !l.label.contains("NaN") && !l.label.contains("inf"))
+    );
+}
+
+#[test]
+fn exact_boundary_values_land_in_the_upper_bucket() {
+    // 0.1..0.6 split at 0.2, 0.3, 0.4, 0.5: with f64, 0.3 fell one bucket low.
+    let overlay = heat(&["0.1", "0.3", "0.6"]);
+    assert_eq!(bucket_list(&overlay), vec![0, 2, 4]);
+    let overlay = heat(&["0.1", "0.2", "0.3", "0.4", "0.5", "0.6"]);
+    assert_eq!(bucket_list(&overlay), vec![0, 1, 2, 3, 4, 4]);
+}
+
+#[test]
+fn projection_scales_linearly_with_many_nodes() {
+    // Many activities and values complete well under a second even unoptimized.
+    let values: Vec<String> = (0..3000).map(|i| format!("{i}.5")).collect();
+    let refs: Vec<&str> = values.iter().map(String::as_str).collect();
+    let started = std::time::Instant::now();
+    let overlay = heat(&refs);
+    assert_eq!(overlay.entries.len(), 3000);
+    assert!(started.elapsed() < std::time::Duration::from_secs(5));
 }

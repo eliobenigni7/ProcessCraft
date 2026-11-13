@@ -390,10 +390,16 @@ use"), as asserted in the core tests.
 
 What the tests prove (all run in the workspace gates):
 
-- Core projection (`crates/processcraft-core/tests/overlay.rs`, 10 tests): five
-  equal-width buckets with exact boundaries (0..10 gives 0,0,1,1,2,3,3,4,4,4; the
-  maximum falls in the last bucket), equal values share bucket 0 with a one-item
-  legend, durations rank by elapsed seconds (not text), enums get one bucket per
+- Core projection (`crates/processcraft-core/tests/overlay.rs`, 16 tests): ranking
+  and bucketing use exact decimal arithmetic on the stored canonical strings (no
+  `f64`). Five equal-width buckets with exact boundaries (0..10 gives
+  0,0,1,1,2,3,3,4,4,4; the maximum falls in the last bucket; 0.1, 0.3, 0.6 gives
+  0,2,4 where `f64` put 0.3 one bucket low). Legend items show the lowest and highest
+  stored value of each non-empty bucket as written, so labels are never rounded:
+  0.001/0.002/0.004 stay distinct, -0.001/0.001 never shows "-0", values above 2^53
+  stay exact, and 400-digit decimals give no NaN or infinity. Equal values share
+  bucket 0 with a one-item legend, a 3000-value projection finishes in under 5 s
+  (activities are collected in one walk, so the cost is linear), durations rank by elapsed seconds (not text), enums get one bucket per
   option in option order, more than eight options fall back to badges, values on
   events and missing values do not enter the range, unknown document or
   definition gives an empty overlay, output is independent of value order.
@@ -405,7 +411,8 @@ What the tests prove (all run in the workspace gates):
   document is untouched); badges are ink-coloured pills with paper-coloured text at
   contrast of at least 4.5; the legend grows the artboard and SVG, PNG and PDF
   report the same logical size; raster pixels show the ramp colour on the task and
-  in the first legend swatch; the viewport raster fills activities.
+  in the first legend swatch; the viewport raster fills activities; a badge is culled with its shape when the
+  view does not intersect it and drawn when the view cuts the shape.
 - Contrast (`render_regressions.rs`): label ink against all 5 sequential and 8
   categorical fills in all four appearances is at least 4.5:1; the measured worst
   case is 4.77:1.
@@ -419,7 +426,9 @@ What the tests prove (all run in the workspace gates):
   alone is a usage error.
 - GUI (`switching_the_overlay_changes_neither_generation_nor_dirty_state`): choosing
   an overlay changes neither generation, dirty state, content identity nor undo
-  count; a deleted definition drops the overlay.
+  count; a deleted definition drops the overlay. `export_option_is_cleared_when_the_overlay_is_dropped`:
+  the "Include overlay and legend" flag is reset when the overlay is dropped (and when
+  the capsule sets it Off), so it does not come back ticked.
 - An independent Pillow and pypdf script (scratchpad, not committed) on a CLI export
   of the procurement fixture with a Cost attribute found all five light ramp colours
   in the PNG (legend swatches 10x10 pixels each) and in the PDF diagram XObject, the
@@ -433,6 +442,9 @@ Design decisions where the plan was silent:
 - Only activities are covered (fill and badge); values on events, gateways and other
   targets are ignored by the projection. Heatmap on a text, date or URL attribute
   falls back to badges; dictionary references produce no entry.
+- Legend items are the member values of each non-empty bucket, not boundary
+  numbers, because exact boundaries are not generally short decimals and rounding them
+  would misstate where a value falls.
 - The legend is drawn by `BpmnScene::build_with_overlay` and therefore in exports;
   the live viewport raster has no legend, the Overlay capsule shows it instead.
 - The overlay is skipped on layout previews. The export checkbox is off by default.

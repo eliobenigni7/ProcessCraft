@@ -1416,7 +1416,8 @@ fn export_image_overlay_flags_draw_legend_and_leave_the_default_untouched() {
         String::from_utf8_lossy(&heat.stderr)
     );
     assert!(heat_svg.contains("Cost (EUR)"));
-    assert!(heat_svg.contains("100 \u{2013} 260") && heat_svg.contains("740 \u{2013} 900"));
+    // Legend items name the stored values of their buckets: 100 and 900 here.
+    assert!(heat_svg.contains(">100<") && heat_svg.contains(">900<"));
     assert_ne!(plain_svg, heat_svg);
     let (badge, badge_svg) = export(
         "badge.svg",
@@ -1428,7 +1429,7 @@ fn export_image_overlay_flags_draw_legend_and_leave_the_default_untouched() {
         String::from_utf8_lossy(&badge.stderr)
     );
     assert!(badge_svg.contains("100 EUR") && badge_svg.contains("900 EUR"));
-    assert!(!badge_svg.contains("100 \u{2013} 260"));
+    assert!(!badge_svg.contains("Cost (EUR)"));
     // An unknown definition is refused instead of exporting without colours.
     let (unknown, _) = export(
         "unknown.svg",

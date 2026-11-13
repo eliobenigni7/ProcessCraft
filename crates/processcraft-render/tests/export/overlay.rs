@@ -315,3 +315,43 @@ fn viewport_overlay_fills_activities_and_leaves_the_legend_to_the_desktop() {
         overlay_fill(Appearance::CanvasLight, OverlayScale::Sequential, 3)
     );
 }
+
+#[test]
+fn viewport_badges_are_culled_with_their_shape_at_the_view_edge() {
+    let d = two_nodes();
+    let overlay = Overlay {
+        entries: vec![entry("n", None, Some("12 EUR"))],
+        legend: vec![],
+        title: "Cost".into(),
+        scale: OverlayScale::Sequential,
+    };
+    let build_view = |x: f64, overlay: Option<&Overlay>| {
+        BpmnViewport::build_with_overlay(
+            &d,
+            &"d".parse().unwrap(),
+            Appearance::CanvasLight,
+            &mut TextEngine::new(),
+            "Noto Sans",
+            Viewport {
+                x,
+                y: -36.,
+                width: 60.,
+                height: 100.,
+                zoom: 1.,
+            },
+            overlay,
+        )
+        .unwrap()
+    };
+    // The task spans x -50..70. A view starting at 100 does not intersect it (nor its
+    // badge, which hangs only 6 px past the right edge): identical pixels, no error.
+    assert_eq!(
+        build_view(100., None).pixels.data(),
+        build_view(100., Some(&overlay)).pixels.data()
+    );
+    // A view whose left edge cuts the task keeps the shape and draws its badge pill.
+    assert_ne!(
+        build_view(60., None).pixels.data(),
+        build_view(60., Some(&overlay)).pixels.data()
+    );
+}

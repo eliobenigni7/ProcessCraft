@@ -489,6 +489,7 @@ impl CanvasState {
             .any(|d| d.id == spec.definition)
         {
             self.overlay = None;
+            self.export_overlay = false;
             return None;
         }
         if let Some((s, g, d, sp, overlay)) = &self.overlay_cache
