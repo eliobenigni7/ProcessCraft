@@ -43,7 +43,17 @@
 
 ## A look around
 
-Every picture below was drawn by ProcessCraft's own renderer — the same scene the canvas shows —
+<p align="center"><img src="docs/images/workbench-light.png" alt="The ProcessCraft workbench: a three-place rail and project sidebar on the left, a procurement process with two lanes on a dotted full-bleed canvas with a floating element palette and zoom controls, and a properties inspector with a header card and collapsible General, Data and collaboration, Advanced BPMN and Connections and lanes sections" width="100%"></p>
+<p align="center"><sub><b>The workbench.</b> A full-bleed canvas with a floating palette and zoom, the document's actions beside its title, and an inspector of collapsible sections.</sub></p>
+
+<table>
+<tr>
+<td width="50%" valign="top"><img src="docs/images/workbench-dark.png" alt="The same workbench in the dark theme" width="100%"><p align="center"><sub><b>Dark theme.</b> Every surface, the canvas dots and the BPMN shapes follow the same tokens.</sub></p></td>
+<td width="50%" valign="top"><img src="docs/images/workbench-empty.png" alt="A new, empty process: Build your process, a hint about the palette and the 1 key, and an Add start event button" width="100%"><p align="center"><sub><b>A clear first step.</b> Empty views say what to do next; single keys (<code>1</code> <code>T</code> <code>X</code>…) add or append elements.</sub></p></td>
+</tr>
+</table>
+
+The diagrams below were drawn by ProcessCraft's own renderer — the same scene the canvas shows —
 from processes built through the CLI or imported from Camunda Modeler.
 
 <table>
