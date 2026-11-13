@@ -720,3 +720,119 @@ that fixture is empty). The replay asserts its recorded count of 2.
   document tells the agent to report instead of rewording when the label is deliberate.
 - The pack is not linked from `README.md` yet: the plan links it only after both checks pass, and
   check (2) waits for the independent runs of M5.6. The repository has no site.
+
+## M5.6 Qualification and evidence
+
+Run on the final M5.1 to M5.5 source (`main` at `194475a`), 2026-11-13. This section records what
+could be automated. The manual and external items are listed at the end as **not done**; M5 is not
+closed.
+
+### Machine
+
+AMD Ryzen 5 5600X (6 cores, 12 threads), 17,099,001,856 bytes RAM, Samsung SSD 980 PRO 1 TB NVMe,
+Windows 11 Pro 10.0.26300, x86-64, Rust 1.98.1. Same machine as the M1 qualification. Other builds
+ran on the machine during some runs (see the file-save note).
+
+### Quality gates
+
+| Gate | Result |
+|---|---|
+| `cargo fmt --all -- --check` | pass |
+| `cargo clippy --workspace --all-targets --all-features --locked --offline -- -D warnings` | pass |
+| `cargo test --workspace --all-targets --all-features --locked --offline` | 122 `test result: ok` lines, 1,258 tests passed, 0 failed, 3 ignored |
+| `python scripts/check_text_hygiene.py` | pass |
+
+### CLI workflow (repeatable)
+
+`python scripts/m5_cli_workflow.py` (needs a built `processcraft-cli`; exit 0 only when every check
+passes) drives the fixtures through the CLI only. Project P is `conventions/pass.json` (stored
+recommended-style profile, diagram, required `Cost` attribute) plus `commands/raci.json`
+(procurement with Accountable, Consulted, Informed values). Project Q is `commands/raci.json` plus
+`commands/attributes.json` (eight definitions covering every value type except the RACI ones). All
+10 checks pass:
+
+- Save, then `info` on the saved file: the content identity equals the identity returned by `run`
+  (P and Q).
+- `validate --json` on P with its stored profile and on Q with the recommended profile as a
+  `--profile` file: no `error` diagnostics (warnings only: dictionary term, implicit join, required
+  attribute). A convention failure fixture exits 3 under `--fail-on warning`.
+- `query raci` gives 2 rows by 4 columns; `export-raci` is byte-identical to
+  `tests/fixtures/commands/raci.expected.csv`.
+- `export-image --format svg --overlay-attribute <Cost>` on P grows the SVG from 83,979 to 96,762
+  bytes (legend added); the plain export is unchanged.
+- `export-bpmn` of the attribute document of Q carries two `pc:attributes` blocks;
+  `import-bpmn` of that file gives the same 8 definitions (name, type, usage count) and the same
+  9 non-reference values. The one dictionary-reference value is excluded: dictionary entries are
+  native-only, so the reference does not survive the BPMN trip (see M5.1b; the exporter needs
+  `--acknowledge-native-fields`). Definitions used only by another document (the RACI ones) are not
+  exported with this document and are not compared.
+
+The script is a cross-check at the CLI boundary; the same behaviours are covered in-process by the
+tests of M5.1 to M5.5.
+
+### Measurements
+
+`M5_PROBE=1 cargo run --release -p processcraft-cli --example workbench_qualify -- --out DIR`
+(the existing M1 harness, which builds the M1 medium fixture: 20 documents, 5,000 nodes, 500 shapes
+in the active diagram, a 20 MiB resource, 30 dictionary entries, lanes, flows with conditions;
+native file 21.2 MB). The probe adds 10 attribute definitions on activities (two Number, Currency,
+two Duration, two Text, Enum, Date, Url) and **10,000 values** (ten on each of the first 1,000
+activities in document order: all 500 of the active document, the rest in the next documents), and
+validates the project. Release build, warm memory, 5 warmups and 30 samples per row, nearest-rank
+p95 of wall time. Two full runs; the table gives both.
+
+| Measurement | p95 ms, run 1 | p95 ms, run 2 | Budget (design section 19) | Disposition |
+|---|---|---|---|---|
+| `diagnostics()` with `ConventionsProfile::recommended()` (5,041 findings) | 29.2 | 30.7 | none for diagnostics | recorded; no target missed |
+| `diagnostics()` built-in only (comparison) | 21.4 | 22.0 | none | the profile adds about 8 ms |
+| `attribute_overlay` heatmap, Number, 500 activities | 0.87 | 0.85 | full viewport raster p95 < 150 ms | well inside |
+| `attribute_overlay` heatmap, Duration | 0.98 | 0.95 | same | well inside |
+| `attribute_overlay` heatmap, Enum | 0.10 | 0.11 | same | well inside |
+| `attribute_overlay` badge, Text | 0.14 | 0.14 | same | well inside |
+| table projection, ten attribute columns | 9.3 | 9.3 | search < 100 ms; commit < 20 ms | inside |
+| table projection, no attribute columns (comparison) | 8.2 | 8.6 | same | ten columns add about 1 ms |
+| native save to memory, 10,000 values | 385 | 390 | open/save medium project < 1,000 ms | inside; baseline without values 273 / 279 (about +110 ms, +40 %) |
+| native open from memory, 10,000 values | 313 | 323 | same | inside |
+| `FileSession::save`, 10,000 values, with disk | 1,055 (min 934) | 2,209 (min 1,013) | same | **missed**, see below |
+| `FileSession::save` without values (baseline) | 889 (min 703) | 1,367 (min 710) | same | missed already in M1 |
+
+Notes and dispositions:
+
+- The GUI table cannot be driven headless. What is measured is the projection the table builds
+  before painting: `queries::activity_table` for the active process, then one lookup per attribute
+  column per row as in `analyst_views.rs`. The cell text here is a `Debug` string, not the GUI
+  `display_value`, so formatting cost is approximate. Painting and egui layout are not measured.
+- Overlay timings are the projection (`attribute_overlay`) only, not a render. The M5.4 render tests
+  cover drawing; no viewport raster timing with an overlay was taken.
+- **File save**: the M1 evidence already records `FileSession` save above the 1,000 ms target
+  (resource hashing and compression dominate). The 10,000 values add about 110 ms of serialization
+  on top, so the target stays missed and M5 does not change the M1 disposition (accepted known
+  ceiling, profile before alpha). The run 2 p95 values of 2.2 s and 1.4 s come from a few slow
+  samples of the disk commit while other builds ran; the minima (1.0 s and 0.7 s) are the more
+  informative numbers. The in-memory save is stable between runs (385 and 390 ms).
+- The table cache question of solution design section 22 (measure before adding any cache) is
+  answered for this workload: ten attribute columns cost about 1 ms more than none, so no cache is
+  added.
+- Not measured: memory, cold open, GUI frame time, behaviour near the limits. One machine, two runs.
+
+### Items recorded elsewhere (not duplicated)
+
+- Supersede table (`SUPERSEDED_BUILTINS`): M5.2, "One result for all surfaces".
+- Known misses of the verb-list heuristic (227 English verbs): M5.2, "Limits and what is not
+  established". The M5.5 `review-conventions` prompt tells the agent to report instead of reword.
+- Transcript provenance of the prompt pack (same-author runs, not independent): M5.5, "Transcript
+  provenance". The independent runs are recorded separately and are not part of this section.
+- Equal-width heatmap buckets and an outlier: M5.4, "Known limits". No M5.6 fixture was built to
+  show the effect, so quantile buckets stay an upgrade, not a finding.
+
+### Not done (needs a human)
+
+- The procurement workflow with attributes, conventions, RACI and overlay **in the GUI**, by hand,
+  including save, reopen and content identity (the CLI half above is done).
+- The same workflow through **attached MCP**: it needs the desktop app to enable attachment and
+  authorize a folder.
+- Opening the exported BPMN in an **external tool** (bpmn.io or Camunda Modeler), saving it
+  unchanged and re-importing, to record whether `pc:attributes` survived. Nothing was observed and
+  no claim is made.
+- Independent prompt-pack runs (a fresh agent given only the `SKILL.md` and MCP access): recorded
+  separately by the coordinator. Linking the prompt pack from `README.md` waits on them.

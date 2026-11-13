@@ -536,17 +536,18 @@ which agent and date produced each transcript. No statement about model quality 
 **Own:** new `docs/implementation/m5-evidence.md`; `README.md`; `CLAUDE.md` (architecture notes for
 attributes, conventions and overlay); `docs/plans/roadmap.md` status line.
 
-- [ ] Run the three quality gates from `CLAUDE.md` on the final source.
+- [x] Run the three quality gates from `CLAUDE.md` on the final source.
 - [ ] Repeat the procurement workflow with attributes, conventions, RACI and overlay in the GUI, the
   CLI and attached MCP; save, reopen, compare content identity; export BPMN, re-import, compare.
+  Partly done: the CLI part is recorded in `m5-evidence.md` (M5.6) and repeatable with `scripts/m5_cli_workflow.py`; the GUI and attached MCP runs need a human.
 - [ ] Open the exported BPMN with attributes in one external tool (bpmn.io or Camunda Modeler),
   save it there unchanged and re-import: record whether `pc:attributes` survived. This is recorded
   as an observation, not a compatibility claim.
-- [ ] Measure on the medium fixture of the M1 qualification example: `diagnostics()` with the
+- [x] Measure on the medium fixture of the M1 qualification example: `diagnostics()` with the
   recommended profile, `attribute_overlay`, table view with ten attribute columns, native save with
   10,000 values. Record numbers and the machine; mark any miss against solution design §19 with an
   explicit disposition.
-- [ ] Record measured limits, the supersede table, the verb-list heuristic's known misses and the
+- [x] Record measured limits, the supersede table, the verb-list heuristic's known misses and the
   transcript provenance in the evidence file.
 
 ## Risks

@@ -218,6 +218,226 @@ fn measure(mut f: impl FnMut() -> Result<(), String>) -> Result<Value, String> {
     v.sort_by(f64::total_cmp);
     Ok(json!({"warmups":5,"samples":30,"p95_ms":v[28],"min_ms":v[0],"max_ms":v[29],"samples_ms":v}))
 }
+/// M5.6: ten attribute definitions on activities, 10,000 values (ten on each of the first 1,000
+/// activities in document order: all 500 of the active document, then the others), then the M5 measurements.
+fn m5_probe(out: &std::path::Path, mut medium: ProjectData) -> Result<(), Box<dyn Error>> {
+    use processcraft_core::{
+        attributes::{
+            AttributeAssignment, AttributeDefinition, AttributeTarget, AttributeType,
+            AttributeValue,
+        },
+        conventions::ConventionsProfile,
+        ids::AttributeDefinitionId,
+        overlay::{OverlayMode, OverlaySpec, attribute_overlay},
+    };
+    let types = [
+        AttributeType::Number,
+        AttributeType::Number,
+        AttributeType::Currency,
+        AttributeType::Duration,
+        AttributeType::Duration,
+        AttributeType::Text,
+        AttributeType::Text,
+        AttributeType::Enum,
+        AttributeType::Date,
+        AttributeType::Url,
+    ];
+    for (k, t) in types.iter().enumerate() {
+        medium.attribute_definitions.push(AttributeDefinition {
+            id: format!("50000000-0000-4000-8000-{k:012x}").parse().unwrap(),
+            name: format!("Attribute {k}"),
+            description: String::new(),
+            value_type: *t,
+            unit: matches!(t, AttributeType::Currency).then(|| "EUR".to_owned()),
+            options: if matches!(t, AttributeType::Enum) {
+                vec!["Low".into(), "Medium".into(), "High".into()]
+            } else {
+                vec![]
+            },
+            dictionary_kind: None,
+            applies_to: vec![AttributeTarget::Activity],
+            required: false,
+        });
+    }
+    let value = |k: usize, i: usize| match types[k] {
+        AttributeType::Number => AttributeValue::Number(
+            processcraft_core::attributes::parse_decimal(&format!("{}", (i * 7 + k) % 1000))
+                .unwrap(),
+        ),
+        AttributeType::Currency => AttributeValue::Currency(
+            processcraft_core::attributes::parse_decimal(&format!("{}.50", (i * 13) % 5000))
+                .unwrap(),
+        ),
+        AttributeType::Duration => AttributeValue::Duration(
+            processcraft_core::attributes::parse_duration(&format!("PT{}H{}M", i % 48, i % 60))
+                .unwrap(),
+        ),
+        AttributeType::Text => AttributeValue::Text(format!("Control note {i}")),
+        AttributeType::Enum => AttributeValue::Enum(["Low", "Medium", "High"][i % 3].into()),
+        AttributeType::Date => AttributeValue::Date(
+            processcraft_core::attributes::parse_date(&format!(
+                "2026-{:02}-{:02}",
+                i % 12 + 1,
+                i % 28 + 1
+            ))
+            .unwrap(),
+        ),
+        AttributeType::Url => AttributeValue::Url(format!("https://example.test/process/{i}")),
+        _ => unreachable!(),
+    };
+    let bare = medium.clone();
+    let mut count = 0;
+    for d in 0..medium.documents.len() {
+        let take = 1000 - count / 10;
+        let doc = &medium.documents[d];
+        let ids: Vec<_> = doc.processes[0]
+            .nodes
+            .iter()
+            .take(take)
+            .map(|n| n.id.selector())
+            .collect();
+        for (i, xml_id) in ids.into_iter().enumerate() {
+            for k in 0..10 {
+                medium.attribute_values.push(AttributeAssignment {
+                    source: ElementKey {
+                        document_id: doc.id,
+                        xml_id: xml_id.clone(),
+                    },
+                    definition: medium.attribute_definitions[k].id,
+                    value: value(k, i),
+                });
+                count += 1;
+            }
+        }
+    }
+    medium
+        .validate()
+        .map_err(|e| format!("probe fixture: {e}"))?;
+    let did = medium.documents[0].id;
+    let def = |k: usize| -> AttributeDefinitionId { medium.attribute_definitions[k].id };
+    let mut results = serde_json::Map::new();
+    let plain = medium.clone();
+    medium.conventions = Some(ConventionsProfile::recommended());
+    let findings = medium.diagnostics().len();
+    results.insert(
+        "diagnostics_recommended_profile".into(),
+        measure(|| {
+            black_box(medium.diagnostics());
+            Ok(())
+        })?,
+    );
+    results.insert(
+        "diagnostics_builtin_only_for_comparison".into(),
+        measure(|| {
+            black_box(plain.diagnostics());
+            Ok(())
+        })?,
+    );
+    for (name, k, mode) in [
+        ("overlay_heatmap_number", 0, OverlayMode::Heatmap),
+        ("overlay_heatmap_duration", 3, OverlayMode::Heatmap),
+        ("overlay_heatmap_enum", 7, OverlayMode::Heatmap),
+        ("overlay_badge_text", 5, OverlayMode::Badge),
+    ] {
+        let spec = OverlaySpec {
+            definition: def(k),
+            mode,
+        };
+        results.insert(
+            name.into(),
+            measure(|| {
+                black_box(attribute_overlay(&medium, did, &spec));
+                Ok(())
+            })?,
+        );
+    }
+    // The GUI table is not drivable headless: this is the projection it builds per frame of change
+    // (activity_table, then one cell lookup per column per row as in analyst_views.rs); painting
+    // is not measured.
+    results.insert(
+        "table_projection_ten_attribute_columns".into(),
+        measure(|| {
+            let rows = queries::activity_table(&medium, did, &id("process")).ok_or("table")?;
+            let mut cells = 0usize;
+            for row in &rows {
+                for k in 0..10 {
+                    let d = def(k);
+                    cells += row
+                        .attributes
+                        .iter()
+                        .find(|c| c.definition_id == d)
+                        .map_or(1, |c| format!("{:?}", c.value).len());
+                }
+            }
+            black_box(cells);
+            Ok(())
+        })?,
+    );
+    results.insert(
+        "table_projection_no_attribute_columns".into(),
+        measure(|| {
+            black_box(queries::activity_table(&medium, did, &id("process")).ok_or("table")?);
+            Ok(())
+        })?,
+    );
+    let bytes = native::write_bytes(&medium)?;
+    let base = native::write_bytes(&bare)?;
+    results.insert(
+        "native_save_memory_10000_values".into(),
+        measure(|| {
+            black_box(native::write_bytes(&medium).map_err(|e| e.to_string())?);
+            Ok(())
+        })?,
+    );
+    results.insert(
+        "native_open_memory_10000_values".into(),
+        measure(|| {
+            black_box(native::load_bytes(&bytes).map_err(|e| e.to_string())?);
+            Ok(())
+        })?,
+    );
+    results.insert(
+        "native_save_memory_no_values_baseline".into(),
+        measure(|| {
+            black_box(native::write_bytes(&bare).map_err(|e| e.to_string())?);
+            Ok(())
+        })?,
+    );
+    let bare_path = out.join("m5-commit-bare.processcraft");
+    fs::write(&bare_path, &base)?;
+    let (mut bare_file, _) =
+        FileSession::open("qualification", FileGrant::new(&bare_path, Access::Write)?)?;
+    results.insert(
+        "file_session_save_no_values_baseline_including_disk".into(),
+        measure(|| match bare_file.save(&bare) {
+            ProjectSaveOutcome::Committed { warning: None, .. } => Ok(()),
+            other => Err(format!("{other:?}")),
+        })?,
+    );
+    let path = out.join("m5-commit.processcraft");
+    fs::write(&path, &bytes)?;
+    let (mut file, _) = FileSession::open("qualification", FileGrant::new(&path, Access::Write)?)?;
+    results.insert(
+        "file_session_save_10000_values_including_disk".into(),
+        measure(|| match file.save(&medium) {
+            ProjectSaveOutcome::Committed { warning: None, .. } => Ok(()),
+            other => Err(format!("{other:?}")),
+        })?,
+    );
+    let reloaded = native::load_bytes(&bytes)?;
+    let report = json!({
+        "fixture": {"base": "M1 medium (20 documents, 5000 nodes, 500 shapes, 20 MiB resource)", "attribute_definitions": 10, "attribute_values": count, "values_in_active_document": 5000, "diagnostic_findings_recommended_profile": findings, "native_bytes_without_values": base.len(), "native_bytes_with_values": bytes.len(), "reload_identical_values": reloaded.project.attribute_values == medium.attribute_values},
+        "measurements": results,
+        "method": "Instant wall time; 5 warmups, 30 samples, p95 reported; warm memory; build profile is whatever this example was built with; FileSession includes serialization, resource SHA validation and disk commit",
+        "os": std::env::consts::OS, "arch": std::env::consts::ARCH,
+    });
+    fs::write(
+        out.join("m5-probe.json"),
+        serde_json::to_vec_pretty(&report)?,
+    )?;
+    println!("{}", serde_json::to_string_pretty(&report)?);
+    Ok(())
+}
 fn run() -> Result<(), Box<dyn Error>> {
     let mut args = std::env::args_os().skip(1);
     if args.next().as_deref() != Some(std::ffi::OsStr::new("--out")) {
@@ -276,6 +496,9 @@ fn run() -> Result<(), Box<dyn Error>> {
             )?,
         )?;
         return Ok(());
+    }
+    if std::env::var_os("M5_PROBE").is_some() {
+        return m5_probe(&out, medium);
     }
     let near = fixture(1, 2000, 2000, 0);
     for (name, p) in [
