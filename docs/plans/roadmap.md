@@ -66,9 +66,13 @@ The base every later milestone builds on.
 - Starter templates: Duration, Cost, SLA, Risk, Control, Process owner. Node owner/contact and IT
   systems (dictionary `System` links) already exist and stay as they are.
 
+Delivered in three phases (M5 plan): M5.1a model, commands, native format, CLI and MCP; M5.1b BPMN
+interchange; M5.1c desktop editing.
+
 Acceptance: round trip native → BPMN → native keeps every value; a foreign tool's extensions survive
-alongside; deleting a definition or changing its type when values would be orphaned asks for an
-explicit resolution, as deleting a used dictionary entry does.
+alongside; deleting a definition, removing an enum option or narrowing the element kinds while values
+would be orphaned asks for an explicit resolution, as deleting a used dictionary entry does. A
+definition's type never changes.
 
 ### M5.2 Modeling conventions
 

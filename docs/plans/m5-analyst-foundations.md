@@ -14,7 +14,9 @@ scene. `io` and `render` still never depend on each other.
 (attributes use explicit units and decimal/string values), §6 (preservation contract), §7 (commands),
 §8.2 (version contract), §10.1 (dictionary authority), §11 (table), §16 (CLI/MCP), §17.2 (limits).
 
-**Status:** Planned; not started. Depends on M4 only for release packaging, not for code.
+**Status:** Planned; not started. Depends on M4 only for release packaging, not for code. The
+recommended options of the former open decisions were adopted on 2026-11-13 (roadmap, "Decisions
+taken") and are listed under [Decisions](#decisions-adopted-2026-11-13).
 
 ## Boundaries
 
@@ -42,16 +44,15 @@ These were verified by reading the code on 2026-11-13; each one changes a task b
    New `ProjectData` fields are `#[serde(default, skip_serializing_if = …)]`, so the content identity
    (`ProjectData::content_identity`, `crates/processcraft-core/src/identity.rs`) of existing files does
    not change and `LoadedProject.requires_save_as_or_backup` stays `false` (`manifest.schema < 3`).
-   The roadmap says "schema bump with migration". This plan uses a capability instead; see Open
-   decision 1.
+   M5 follows the same route (Decision 1).
 2. **`Node.owner` and `Node.contact` already exist** (`model.rs`), with `Mutation::SetNodeOwnerContact`,
    an inspector section ("Responsibility & systems", `apps/processcraft/src/app/inspector.rs`) and a
    BPMN export rule that treats them as native-only fields requiring `acknowledge_native_fields`
-   (`interchange.rs`, "Node owner and contact are native-only fields"). The "Owner" starter template
-   overlaps them. See Open decision 2.
+   (`interchange.rs`, "Node owner and contact are native-only fields"). An "Owner" starter template
+   would overlap them (Decision 2).
 3. **IT systems are already dictionary links** (`DictionaryKind::System`, `DictionaryLink`,
-   `ActivityRow.systems`). An "IT system" starter attribute would store the same fact twice. See Open
-   decision 2.
+   `ActivityRow.systems`). An "IT system" starter attribute would store the same fact twice
+   (Decision 2).
 4. **Only the GUI shows diagnostics today.** `ProjectData::diagnostics()` (`validation.rs`) is called
    from `DiagnosticsWorker` (`apps/processcraft/src/jobs.rs`). CLI `validate` (`run.rs` `inspect`) and
    the MCP `validate` tool (`mcp.rs`) run only the structural `ProjectData::validate()` and return
@@ -65,34 +66,49 @@ These were verified by reading the code on 2026-11-13; each one changes a task b
 7. **The MCP query enum exists twice:** `enum Query` in `apps/processcraft-cli/src/mcp.rs` and in
    `apps/processcraft/src/attachment.rs`. Every new query kind is added to both.
 8. **Clipboard and `duplicate` do not copy dictionary links** (`clipboard.rs` has no project-level link
-   handling). Attribute values follow the same behaviour in M5; see Open decision 6.
+   handling). Attribute values follow the same behaviour in M5 (Decision 6).
+9. **`ActivityRow.role` is a display label, not an identity** (`queries.rs`, `activity_table`): it
+   is the name of the lane's `Role` link, resolved to a string. Two roles with the same name, or a
+   renamed entry, cannot be told apart from it, so RACI (M5.3) reads the lane's link target itself.
 
 ## Delivery order
 
 ```mermaid
 flowchart LR
-    A[M5.1 Custom attributes] --> B[M5.2 Conventions]
-    A --> C[M5.3 RACI]
-    A --> D[M5.4 Overlay]
+    A1[M5.1a Attributes: core, native, CLI/MCP] --> A2[M5.1b BPMN interchange]
+    A1 --> A3[M5.1c Desktop editing]
+    A1 --> B[M5.2 Conventions]
+    A1 --> C[M5.3 RACI]
+    A1 --> D[M5.4 Overlay]
+    A2 --> F[M5.6 Qualification]
+    A3 --> F
     B --> E[M5.5 Prompt pack]
     C --> E
-    D --> F[M5.6 Qualification]
+    D --> F
     E --> F
 ```
 
-M5.1 has one writer for `model.rs`, `commands.rs`, `identity.rs` and `native.rs`. After it lands,
-M5.2 (core validation + CLI), M5.3 (query + view) and M5.4 (render + canvas) touch disjoint files and
-can run in parallel; `commands.rs` and `native.rs` still have one writer at a time.
+M5.1 is delivered in three phases, each one a mergeable commit set that passes the quality gates on
+its own. M5.1a has one writer for `model.rs`, `commands.rs`, `identity.rs` and `native.rs`. After it
+lands, M5.1b (`interchange.rs`), M5.1c (inspector, table, Dictionary view), M5.2 (core validation +
+CLI), M5.3 (query + view) and M5.4 (render + canvas) touch mostly disjoint files and can run in
+parallel; `commands.rs`, `native.rs` and `attachment.rs` still have one writer at a time.
 
 ## Task M5.1: Custom attributes
 
-**Own:** new `crates/processcraft-core/src/attributes.rs`; `crates/processcraft-core/src/{ids,model,
-commands,identity,history,queries,element_identity_edit,lib}.rs`;
-`crates/processcraft-io/src/{native,interchange}.rs`; `apps/processcraft/src/app/{inspector,
-analyst_views}.rs`, new `apps/processcraft/src/app/attributes.rs`; `apps/processcraft-cli/src/{args,
-run,mcp}.rs`; `apps/processcraft/src/attachment.rs`.
+Three phases. Each ends with the quality gates passing and its own tests green; later phases add
+surfaces, never change the model or the native format defined in M5.1a.
 
-### Model
+### Phase M5.1a: model, commands, native format, CLI and MCP
+
+**Own:** new `crates/processcraft-core/src/attributes.rs`; `crates/processcraft-core/src/{ids,model,
+commands,identity,history,queries,element_identity_edit,lib}.rs`; `crates/processcraft-io/src/
+native.rs`; `apps/processcraft-cli/src/{args,run,mcp}.rs`; `apps/processcraft/src/attachment.rs`.
+
+After this phase attributes are fully usable headless: an agent or a CLI batch can define them, set
+values, query them and save them. The GUI shows nothing new yet.
+
+#### Model
 
 - [ ] Add `AttributeDefinitionId` (UUID newtype) to `ids.rs`, following `DictionaryEntryId`.
 - [ ] In `attributes.rs` define, all `deny_unknown_fields` with `schemars::JsonSchema`:
@@ -108,7 +124,9 @@ run,mcp}.rs`; `apps/processcraft/src/attachment.rs`.
   - `AttributeValue`: `Text(String)`, `Number(String)`, `Duration(String)`, `Currency(String)`,
     `Enum(String)`, `Date(String)`, `DictionaryRefs(Vec<DictionaryTarget>)`, `Url(String)`.
     Numbers and currency amounts are canonical decimal strings, never `f64` (solution design §5.3).
-    `Duration` is the ISO 8601 subset `PnDTnHnMnS` (no years or months). `Date` is `YYYY-MM-DD`.
+    `Duration` is the ISO 8601 subset `PnDTnHnMnS` (no years or months); `P1D` is exactly 24 hours
+    of elapsed time, never a working day. Working-time semantics belong to the M7 scenario
+    calendars, and the editor and the evidence file say so. `Date` is `YYYY-MM-DD`.
     `DictionaryRefs` reuses the existing `DictionaryTarget::{Entry, Literal}` so an imported label can
     stay an unlinked literal (§10.1); it is a list because RACI (M5.3) assigns several roles.
   - `AttributeAssignment { source: ElementKey, definition: AttributeDefinitionId, value }`.
@@ -132,7 +150,7 @@ run,mcp}.rs`; `apps/processcraft/src/attachment.rs`.
 - [ ] Add the two vectors to `same_checkpoint` in `identity.rs` and to the retained-memory estimates
   in `history.rs` (the blocks that count `dictionary_entries` and `dictionary_links`).
 
-### Commands
+#### Commands
 
 - [ ] Add to `Mutation` in `commands.rs`, with their application in `mutate` and entries in
   `COMMAND_DESCRIPTORS`:
@@ -166,7 +184,7 @@ run,mcp}.rs`; `apps/processcraft/src/attachment.rs`.
   decision 2 for the exact list). It is data for the GUI button and the prompt pack; nothing creates
   definitions implicitly.
 
-### Queries
+#### Queries
 
 - [ ] `queries::attribute_definitions(project)` with a usage count per definition, and
   `queries::element_attributes(project, document_id)` returning, per element, its target, name and
@@ -175,7 +193,7 @@ run,mcp}.rs`; `apps/processcraft/src/attachment.rs`.
   `CheckpointComparison` and a `PropertyDifference` per changed value on the element's
   `ElementChange.properties`, with `property` = `attribute:<definition name>`.
 
-### Native format
+#### Native format
 
 - [ ] In `native.rs` add the two fields to `ProjectDto` and `FrozenDto`, a constant
   `ANALYST_ATTRIBUTES_CAPABILITY = "analyst-attributes-v1"` pushed by `write_bytes` when the project
@@ -185,10 +203,41 @@ run,mcp}.rs`; `apps/processcraft/src/attachment.rs`.
 - [ ] Prove that existing files are untouched: `tests/fixtures/native/identity-baseline-2f0f770
   .processcraft` loads with the same content identity and re-saves without the new capability.
 
-### BPMN interchange
+#### CLI and MCP
+
+- [ ] CLI `query attributes <document_id>` and definition listing in `Query` (`args.rs`,
+  `query_project` in `run.rs`); MCP `Query::Attributes { document_id, offset, limit }` in `mcp.rs`
+  **and** `attachment.rs`. Mutations need no transport work: `commands --json` and the MCP `apply`
+  schema are generated from `Mutation`.
+- [ ] Add `tests/fixtures/commands/attributes.json`: a batch that creates definitions and sets values
+  on the procurement process, with a manifest entry.
+
+#### Tests
+
+- New `crates/processcraft-core/tests/attributes.rs`: every type's validator (accept, reject,
+  canonical form); set/clear; `applies_to` refusal; each update and delete resolution; failed batch
+  leaves state, history and generation unchanged; undo/redo; values pruned on element and document
+  delete and remapped on `setElementXmlId`; dictionary entry delete with each resolution; checkpoint
+  capture/restore/compare; limits.
+- `crates/processcraft-core/tests/commands.rs`: `descriptors_match_protocol_tags` and
+  `analyst_workbench.rs` `request_schema_covers_all_discovered_tags` cover the new variants.
+- `crates/processcraft-io/tests/native.rs`: round trip with attributes; capability present only when
+  used; payload without capability refused; baseline identity unchanged.
+- `apps/processcraft-cli/tests/cli.rs`: `run` with `attributes.json`, `query attributes`, `query
+  table` shows the values; MCP stdio `apply` + `query` returns the same values.
+
+**Exit:** a project with all eight types saves, reopens with the same content identity and answers
+the same values through CLI `query` and MCP `query`; deleting a used definition fails without a
+resolution.
+
+### Phase M5.1b: BPMN interchange
+
+**Own:** `crates/processcraft-io/src/interchange.rs`; the import commit in `apps/processcraft/src/
+app.rs` (`ResultValue::Import`) and `import_bpmn_cli` in `apps/processcraft-cli/src/run.rs`; new
+fixtures under `tests/fixtures/bpmn/attributes/`.
 
 - [ ] Namespace constant `PC_ATTRIBUTES_NS = "urn:processcraft:attributes:1"` in `interchange.rs`
-  (see Open decision 3). Shape, written as the last child of the owner's `extensionElements`:
+  (Decision 3). Shape, written as the last child of the owner's `extensionElements`:
 
   ```xml
   <pc:attributes xmlns:pc="urn:processcraft:attributes:1">
@@ -230,7 +279,21 @@ run,mcp}.rs`; `apps/processcraft/src/attachment.rs`.
   Camunda-style foreign extension elements and `pc:attributes` on the same task; plus a malformed
   variant. Sibling `*.manifest.md` with provenance, licence, SHA-256 and expected import mode.
 
-### Desktop
+#### Tests
+
+- New `crates/processcraft-io/tests/attributes_interchange.rs`: native → BPMN → native keeps every
+  value and type; foreign extensions on the same element survive in order; malformed `pc:attributes`
+  preserved as extension content with a limitation; re-import into the same project binds dictionary
+  entries by ID and into an empty project yields literals; exported XML validates against the pinned
+  XSD through `scripts/check_bpmn20_xsd.py`.
+- `apps/processcraft-cli/tests/cli.rs`: `import-bpmn` of the fixture followed by `query attributes`.
+
+**Exit:** acceptance items (a) and (b) below.
+
+### Phase M5.1c: desktop editing
+
+**Own:** `apps/processcraft/src/app/{inspector,analyst_views}.rs`, new
+`apps/processcraft/src/app/attributes.rs`, and the editable-cell callback in the shared table widget.
 
 - [ ] New `apps/processcraft/src/app/attributes.rs`: an "Attributes" tab in the Dictionary view
   (`analyst_views.rs`, beside the entry list) to create, edit and delete definitions. Delete and the
@@ -250,44 +313,22 @@ run,mcp}.rs`; `apps/processcraft/src/attachment.rs`.
 - [ ] Every new control has an accessible name and is reachable by keyboard, as the existing
   dictionary and table controls are.
 
-### CLI and MCP
+#### Tests
 
-- [ ] CLI `query attributes <document_id>` and definition listing in `Query` (`args.rs`,
-  `query_project` in `run.rs`); MCP `Query::Attributes { document_id, offset, limit }` in `mcp.rs`
-  **and** `attachment.rs`. Mutations need no transport work: `commands --json` and the MCP `apply`
-  schema are generated from `Mutation`.
-- [ ] Add `tests/fixtures/commands/attributes.json`: a batch that creates definitions and sets values
-  on the procurement process, with a manifest entry.
+GUI unit tests in `apps/processcraft/src/app/attributes.rs` and `analyst_views.rs`: invalid draft
+does not submit; multi-row edit is one undo step; drafts survive view changes; the restricted update
+and the delete open the resolution prompt instead of submitting.
 
-### Tests
-
-- New `crates/processcraft-core/tests/attributes.rs`: every type's validator (accept, reject,
-  canonical form); set/clear; `applies_to` refusal; each update and delete resolution; failed batch
-  leaves state, history and generation unchanged; undo/redo; values pruned on element and document
-  delete and remapped on `setElementXmlId`; dictionary entry delete with each resolution; checkpoint
-  capture/restore/compare; limits.
-- `crates/processcraft-core/tests/commands.rs`: `descriptors_match_protocol_tags` and
-  `analyst_workbench.rs` `request_schema_covers_all_discovered_tags` cover the new variants.
-- `crates/processcraft-io/tests/native.rs`: round trip with attributes; capability present only when
-  used; payload without capability refused; baseline identity unchanged.
-- New `crates/processcraft-io/tests/attributes_interchange.rs`: native → BPMN → native keeps every
-  value and type; foreign extensions on the same element survive in order; malformed `pc:attributes`
-  preserved as extension content with a limitation; re-import into the same project binds dictionary
-  entries by ID and into an empty project yields literals; exported XML validates against the pinned
-  XSD through `scripts/check_bpmn20_xsd.py`.
-- `apps/processcraft-cli/tests/cli.rs`: `run` with `attributes.json`, `query attributes`, `query
-  table` shows the values; MCP stdio `apply` + `query` returns the same values.
-- GUI unit tests in `apps/processcraft/src/app/attributes.rs` and `analyst_views.rs`: invalid draft
-  does not submit; multi-row edit is one undo step; drafts survive view changes.
+**Exit:** acceptance item (c) reachable from the GUI as well as from a batch.
 
 ### Acceptance
 
-Roadmap acceptance, made exact: (a) the round trip test above passes for all eight types; (b) the
+Roadmap acceptance, made exact: (a) the round trip test passes for all eight types; (b) the
 foreign-extension fixture re-exports with its foreign nodes unchanged; (c) deleting a definition, or
-removing an option or target kind, with values in use fails with `InvalidParams` unless a resolution
-is given. Renaming a definition needs no mapping because values refer to it by ID — the dictionary
-behaves the same way, so the roadmap wording "renaming … asks for an explicit mapping" is read as
-"changes that would orphan values".
+removing an option or narrowing the element kinds, with values in use fails with `InvalidParams`
+unless a resolution is given. Renaming a definition needs no resolution because values refer to it by
+ID, as dictionary usages do. `value_type` cannot change: a definition of the wrong type is
+replaced by creating a new one and re-entering the values.
 
 ## Task M5.2: Modeling conventions
 
@@ -341,8 +382,11 @@ behaves the same way, so the roadmap wording "renaming … asks for an explicit 
   `ProjectData::diagnostics_with(&ConventionsProfile)` serves the CLI override. Where a convention
   rule covers the same condition as a built-in diagnostic, the built-in one is not emitted for that
   element while the rule is on: `SingleStartEnd` supersedes `missingStart`/`missingEnd`,
-  `LabelRequired` supersedes `unnamedExclusiveGateway`. The supersede table is one `const` and has a
-  test that no element receives two diagnostics for one condition.
+  `LabelRequired` supersedes `unnamedExclusiveGateway`. The other built-ins stay: `unconnectedNode`
+  and `gatewayDoesNotSplitOrMerge` (a gateway with one incoming and one outgoing flow) describe
+  conditions no rule covers, and `NoImplicitSplitJoin` looks only at activities and events. The
+  supersede table is one `const` and has a test that no element receives two diagnostics for one
+  condition, run on fixtures that trigger every built-in code next to every rule.
 - [ ] CLI: `validate <PATH> --json` adds `diagnostics`, `errorCount` and `warningCount` to its output.
   `--profile <FILE>` evaluates a profile JSON file (same schema as the mutation payload, bounded by
   the 4 MiB request limit and strict JSON parsing) instead of the stored one; without the flag the
@@ -357,7 +401,7 @@ behaves the same way, so the roadmap wording "renaming … asks for an explicit 
   through `DiagnosticsWorker` and navigate by `document_id`/`element_id` as today.
 - [ ] Fixtures: `tests/fixtures/conventions/` with one batch that satisfies every rule (`pass.json`)
   and one failing batch per rule (`fail-<rule>.json`), each in the manifest. The shared passing batch
-  is the passing fixture of every rule; see Open decision 5 if sixteen separate files are wanted.
+  is the passing fixture of every rule (Decision 5).
 
 **Tests:** new `crates/processcraft-core/tests/conventions.rs` (per rule: the passing fixture yields
 no `convention*` code, the failing fixture yields exactly the expected code, element and severity;
@@ -384,8 +428,11 @@ attachment.rs`.
   implicitly on load. Fixed IDs let BPMN round trips and other projects recognise them.
 - [ ] `queries::raci_matrix(project, document_id, process_id) -> Option<RaciMatrix>`: columns are the
   roles in use (dictionary entries first, then literals), rows are the activities of
-  `activity_table`, each cell a set of R/A/C/I. Responsible is derived, read-only: the role linked to
-  the activity's lane (`ActivityRow.role`). A/C/I come from the three attributes.
+  `activity_table`, each cell a set of R/A/C/I. Responsible is derived, read-only: the `Role` link
+  target of the activity's lane, read from `dictionary_links` as a `DictionaryTarget`, not the
+  `ActivityRow.role` label (finding 9). A/C/I come from the three attributes. Columns are keyed by
+  `DictionaryTarget` (entry ID, or literal text), so R and A/C/I for the same entry share one
+  column even after a rename, and two entries with the same name stay two columns.
 - [ ] `queries::raci_csv(&RaciMatrix) -> String`: RFC 4180 quoting, CRLF, UTF-8 with BOM, first
   column activity name, one column per role, cells such as `R` or `A,C`. Cells that begin with `=`,
   `+`, `-` or `@` are prefixed with `'` so imported names cannot become spreadsheet formulas.
@@ -467,14 +514,16 @@ the PNG and PDF agree; without the option exports are unchanged.
   `expectedGeneration` → `query diagnostics`), worked example requests as fenced JSON, what to do on
   `GenerationConflict`, and what the agent must not do (no guessing IDs, no layout by hand when
   `append`/`createAt` exist, no claims of BPMN conformance).
-- [ ] `prompt_pack.rs` checks, without any model or network: (1) every fenced JSON example in the
+- [ ] `prompt_pack.rs` checks, without any model or network, in this order: (1) every fenced JSON example in the
   four documents deserializes as the tool input it claims to be (`Request`, MCP `Query`, …) against
   the live schema from `commands --json` and `tools/list`; (2) a recorded transcript per prompt in
   `tests/fixtures/prompts/*.transcript.json` (the tool calls of one real agent run, pinned in the
   manifest with provenance) replays through a real `processcraft-cli mcp --new` stdio session and
   ends with a project that passes `validate`, has no `error` diagnostics under
   `ConventionsProfile::recommended()` and matches the expected element and attribute counts.
-- [ ] Link the pack from `README.md` and the site only after the test passes.
+- [ ] Check (1) lands with the documents. Check (2) needs one real agent run per prompt, the only
+  external dependency in M5: transcripts are recorded in M5.6, and M5 is not closed without them.
+- [ ] Link the pack from `README.md` and the site only after both checks pass.
 
 **Acceptance:** `cargo test -p processcraft-cli --test prompt_pack` passes; the evidence file records
 which agent and date produced each transcript. No statement about model quality is made.
@@ -506,37 +555,42 @@ attributes, conventions and overlay); `docs/plans/roadmap.md` status line.
 | `pc:attributes` written by a future version is misread | Namespace carries a version; unknown types leave the element as preserved extension content |
 | Verb + object rule gives false positives | Default severity is warning; the message names the heuristic; the list is editable per project |
 | Overlay colours hide imported colours or reduce contrast | Screen only by default; contrast test per ramp colour; original style restored when off |
+| Equal-width heatmap buckets put most values in one bucket when one outlier is present | Known limit of the first cut, recorded in the evidence file; quantile buckets are the upgrade if the M5.6 fixture shows it |
+| M5.1 grows too large to review | Split into M5.1a/b/c, each passing the gates on its own |
 | Table view slows with many attribute columns | Measure in M5.6 before adding any cache (solution design §22) |
 | `commands.rs` is already 6,400 lines | Attribute and convention application goes in `attributes.rs`/`conventions.rs` functions called from `mutate`, not inline |
 
-## Open decisions
+## Decisions (adopted 2026-11-13)
 
-1. **Schema bump or capability?** The roadmap says "schema bump with migration". Recommended:
+The recommended option of each former open decision was adopted (roadmap, "Decisions taken").
+The alternatives are kept for the record.
+
+1. **Schema bump or capability?** Adopted:
    keep schema 3 and add the capabilities `analyst-attributes-v1` and `modeling-conventions-v1`,
    written only when used. Existing files keep their content identity and need no Save As; older
    readers refuse files that use the features. A schema 4 would force a migration and Save As on
    every existing project for no functional gain.
 2. **Starter templates versus existing data.** "Owner" overlaps `Node.owner`/`contact`; "IT system"
-   overlaps `DictionaryKind::System` links. Recommended: starter set = Duration (`Duration`), Cost
+   overlaps `DictionaryKind::System` links. Adopted: starter set = Duration (`Duration`), Cost
    (`Currency`), SLA (`Duration`), Risk (`Enum`: Low/Medium/High), Control (`Text`), Process owner
    (`DictionaryRef` to Role, applies to Process). Leave `Node.owner`/`contact` and System links as
    they are in M5. Alternative: migrate `owner`/`contact` into attributes — that is a real schema
    migration and belongs in its own slice.
-3. **Extension namespace URI.** It is permanent once files exist. Recommended:
+3. **Extension namespace URI.** It is permanent once files exist. Adopted:
    `urn:processcraft:attributes:1`, consistent with `urn:processcraft:generated`. Alternative: an
    `https://` URI under a domain the project controls.
-4. **`validate --profile` meaning.** Recommended: the stored project profile always applies;
+4. **`validate --profile` meaning.** Adopted: the stored project profile always applies;
    `--profile <FILE>` overrides it for CI. Alternative: the flag is a boolean switch and there is no
    external profile file.
-5. **Convention fixtures.** Recommended: one shared passing batch plus one failing batch per rule
+5. **Convention fixtures.** Adopted: one shared passing batch plus one failing batch per rule
    (nine files). Alternative: sixteen files, one passing and one failing per rule, as the roadmap
    sentence reads literally.
-6. **Copy and paste.** Recommended for M5: `duplicate` and clipboard paste do not copy attribute
+6. **Copy and paste.** Adopted for M5: `duplicate` and clipboard paste do not copy attribute
    values, matching dictionary links, and the evidence file records it as a limit. Alternative: copy
    both attribute values and dictionary links in one follow-up change to `clipboard.rs`.
-7. **Duration format.** Recommended: ISO 8601 `PnDTnHnMnS`, which M7 and BPMN timers also use, with
+7. **Duration format.** Adopted: ISO 8601 `PnDTnHnMnS`, which M7 and BPMN timers also use, with
    a friendly editor ("2h 30m"). Alternative: amount plus unit.
-8. **Prompt pack location and packaging.** Recommended: `docs/prompts/`, linked from the README, not
+8. **Prompt pack location and packaging.** Adopted: `docs/prompts/`, linked from the README, not
    shipped in the MSI. Alternative: also install them beside `processcraft-cli.exe`.
-9. **MCP `prompts` capability.** The roadmap says no code. Recommended: keep it that way in M5 and
+9. **MCP `prompts` capability.** The roadmap says no code. Adopted: keep it that way in M5 and
    revisit only if clients that cannot load files need `prompts/list`.
