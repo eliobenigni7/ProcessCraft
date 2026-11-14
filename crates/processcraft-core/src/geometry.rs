@@ -213,6 +213,42 @@ pub fn outline_point(kind: Option<NodeKind>, bounds: &Bounds, toward: &Point) ->
     };
     p(cx + dx / reach, cy + dy / reach)
 }
+/// Half the extent of a `kind` outline with radius `r` across the line at offset `o` from the
+/// centre (`ro` is the radius along that offset).
+fn outline_half(kind: Option<NodeKind>, r: f64, o: f64, ro: f64) -> f64 {
+    let t = (o / ro).abs();
+    if is_event(kind) {
+        r * (1.0 - t * t).max(0.0).sqrt()
+    } else if kind.is_some_and(crate::rules::is_gateway) {
+        r * (1.0 - t)
+    } else {
+        r
+    }
+}
+/// The point of a `kind` shape's outline on `side` at `along` (a y on the left or right side,
+/// an x on the top or bottom), so a straight end segment leaving that side docks there.
+/// `along` is clamped to the side's extent, and to its inner 80% on an ellipse or diamond so
+/// the segment never leaves at a tangent.
+pub fn side_point(kind: Option<NodeKind>, bounds: &Bounds, side: Side, along: f64) -> Point {
+    let (rx, ry) = (bounds.width / 2.0, bounds.height / 2.0);
+    let (cx, cy) = (bounds.x + rx, bounds.y + ry);
+    let curved = is_event(kind) || kind.is_some_and(crate::rules::is_gateway);
+    let limit = if curved { 0.8 } else { 1.0 };
+    let level = matches!(side, Side::Left | Side::Right);
+    let (c, r) = if level { (cy, ry) } else { (cx, rx) };
+    let o = (along - c).clamp(-r * limit, r * limit);
+    let out = if level {
+        outline_half(kind, rx, o, ry)
+    } else {
+        outline_half(kind, ry, o, rx)
+    };
+    match side {
+        Side::Left => p(cx - out, cy + o),
+        Side::Right => p(cx + out, cy + o),
+        Side::Top => p(cx + o, cy - out),
+        Side::Bottom => p(cx + o, cy + out),
+    }
+}
 /// Endpoints lying on the border band of their shape (see [`on_border`]) are moved onto its
 /// true outline: along the end segment's axis when it is horizontal or vertical, so the segment
 /// stays orthogonal, else radially. Endpoints away from the border (deliberately detached
@@ -237,17 +273,7 @@ pub(crate) fn dock_ends(
         let kind = crate::queries::find_node(doc, &shape.element).map(|node| node.kind);
         let (rx, ry) = (b.width / 2.0, b.height / 2.0);
         let (cx, cy) = (b.x + rx, b.y + ry);
-        // Half the outline's extent across the line at offset `o` from the centre.
-        let half = |r: f64, o: f64, ro: f64| {
-            let t = (o / ro).abs();
-            if is_event(kind) {
-                r * (1.0 - t * t).max(0.0).sqrt()
-            } else if kind.is_some_and(crate::rules::is_gateway) {
-                r * (1.0 - t)
-            } else {
-                r
-            }
-        };
+        let half = |r: f64, o: f64, ro: f64| outline_half(kind, r, o, ro);
         let sign = |v: f64, fallback: f64| {
             if v != 0.0 {
                 v.signum()

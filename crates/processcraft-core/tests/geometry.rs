@@ -579,6 +579,22 @@ fn reroute_tidies_the_route_and_its_label_follows() {
     assert_eq!((label.x, label.y), (15.5, 10.5));
 }
 #[test]
+fn side_point_docks_on_any_side_of_the_outline() {
+    let b = rect(0.0, 0.0, 40.0, 20.0);
+    // A rectangle keeps the position along the side, clamped to its extent.
+    assert_eq!(side_point(None, &b, Side::Top, 30.0), p(30.0, 0.0));
+    assert_eq!(side_point(None, &b, Side::Left, 50.0), p(0.0, 20.0));
+    assert_eq!(side_point(None, &b, Side::Right, 5.0), p(40.0, 5.0));
+    // A diamond's side point is on its outline; an ellipse keeps to its inner 80%.
+    assert_eq!(
+        side_point(Some(NodeKind::ExclusiveGateway), &b, Side::Bottom, 30.0),
+        p(30.0, 15.0)
+    );
+    let event = side_point(Some(NodeKind::StartEvent), &b, Side::Left, -10.0);
+    assert_eq!(event.y, 2.0);
+    assert!((((event.x - 20.0) / 20.0).hypot((event.y - 10.0) / 10.0) - 1.0).abs() < 1e-12);
+}
+#[test]
 fn reroute_docks_ends_on_the_true_outline() {
     use processcraft_core::commands::{Mutation, Request};
     let b = rect(0.0, 0.0, 40.0, 20.0);
