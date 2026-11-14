@@ -38,6 +38,11 @@ Windows job passed; `processcraft-0.2.0-windows-x64.msi` (56.5 MB) and
 was published (not a prerelease) while still **unsigned**; the release notes say so. Signing remains
 open (roadmap, M4).
 
+Third run, 2026-11-14, tag `v0.2.1` (run 43609469293): gates and the Windows job passed;
+`processcraft-0.2.1-windows-x64.msi` (56.8 MB) and `processcraft-0.2.1-windows-x64-portable.zip`
+(66.7 MB), published unsigned like 0.2.0. A first `v0.2.1` tag pushed on the wrong commit was
+deleted and its run (43609412278) cancelled before it built anything.
+
 ## Install policy checker
 
 `packaging/windows/check-install-policy.ps1` runs the policy cases with real `msiexec` calls on
