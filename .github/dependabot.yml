@@ -1,0 +1,11 @@
+# Keeps the GitHub Actions used by the workflows current. Cargo dependencies are not included: the
+# workspace builds with --locked against pinned git forks, and updates are made by hand with the gates.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]

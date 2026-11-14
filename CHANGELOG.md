@@ -1,0 +1,76 @@
+# Changelog
+
+Notable changes to ProcessCraft. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html). While the project is
+pre-alpha (0.x), the `.processcraft` format and the command protocol may change between minor
+versions; such changes are listed here.
+
+## [Unreleased]
+
+### Added
+
+- Documentation book at <https://eliobenigni7.github.io/ProcessCraft/docs/> with paths for analysts,
+  developers and AI agents, a procurement tutorial, a CLI and batch-command reference generated from
+  `processcraft-cli`, and `llms.txt` / `llms-full.txt` for agents.
+- Contributor guide, security policy, code of conduct, support page, and issue and pull request
+  templates.
+
+### Changed
+
+- The website follows the app's visual identity and is built around images of the app and its
+  exports.
+
+## [0.2.0] - 2026-11-13
+
+Unsigned Windows build (x64): MSI installer and portable ZIP.
+
+### Added
+
+- **Custom attributes:** typed definitions (text, number, duration, currency, enum, date, dictionary
+  reference, URL) and per-element values, edited in the inspector, the activity table (multi-row
+  edits) and the Dictionary view, and available through the CLI and MCP.
+- **Attributes in BPMN:** values travel in a `pc:attributes` extension element
+  (`urn:processcraft:attributes:1`); malformed or unplaceable values are kept as extension content,
+  never dropped.
+- **Modeling conventions:** a project profile of eight configurable rules, shown with the built-in
+  diagnostics; `processcraft-cli validate --profile FILE --fail-on warning|error` for CI.
+- **RACI matrix:** R from lane roles, A, C and I from attributes; a desktop grid, `query raci` and
+  CSV export.
+- **Attribute overlay:** heatmap or badges on the canvas, optional in SVG, PNG and PDF exports with a
+  legend.
+- **MCP prompt pack** (`docs/prompts`): four agent instructions, checked against the live schemas and
+  replayed from recorded runs; new MCP and CLI queries `documents` and `conventions`.
+
+### Changed
+
+- Projects that use attributes or conventions need 0.2.0 or later to open (native capabilities
+  `analyst-attributes-v1` and `modeling-conventions-v1`). Existing projects keep their content
+  identity.
+
+### Known limits
+
+- The desktop workflow, the attached MCP workflow and a round trip through an external BPMN tool have
+  not been checked by hand. Measured limits are in `docs/implementation/m5-evidence.md`.
+- No BPMN 2.0.2 conformance claim is made.
+
+## [0.1.0-rc.1] - 2026-11-13
+
+First public prerelease: an unsigned Windows build (MSI installer and portable ZIP).
+
+### Added
+
+- Desktop BPMN modeling with bpmn-js-style interaction: context pad, rule-checked connections,
+  automatic placement and routing, replace, lanes, pools, sub-processes, boundary events, space tool,
+  clipboard, align and distribute, auto-layout with preview, undo and redo.
+- Analyst workbench: model library with folders, dictionary of roles, systems and documents, activity
+  table, comments and checkpoints.
+- BPMN 2.0 XML import and export with diagram interchange, in three import modes (editable, editable
+  with retained extensions, preserved source); SVG, PNG, PDF and draw.io export.
+- The native `.processcraft` package (schema 3) with atomic save, a single-writer lock and recovery.
+- `processcraft-cli` for batches, queries, validation, import, export and layout, and a local MCP
+  server, standalone or attached to the open desktop session.
+- Per-user Windows installer with file association.
+
+[Unreleased]: https://github.com/eliobenigni7/ProcessCraft/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/eliobenigni7/ProcessCraft/compare/v0.1.0-rc.1...v0.2.0
+[0.1.0-rc.1]: https://github.com/eliobenigni7/ProcessCraft/releases/tag/v0.1.0-rc.1

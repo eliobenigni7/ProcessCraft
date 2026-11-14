@@ -1,0 +1,75 @@
+name: Bug report
+description: Something in the desktop app, the CLI or the MCP server does not work as it should.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please do not attach real business processes or confidential files;
+        a small example that shows the problem is best. Security problems go to SECURITY.md instead.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: "`processcraft-cli --version`, or the version in the installer or ZIP file name. For a source build, the commit."
+      placeholder: "0.2.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: part
+    attributes:
+      label: Where does it happen?
+      options:
+        - Desktop app
+        - Command-line tool (processcraft-cli)
+        - MCP server
+        - Installer or portable ZIP
+        - Documentation or website
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: "Windows 11 23H2, 64-bit"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: For the CLI or MCP, include the exact command or request.
+      placeholder: |
+        1. Open the attached file
+        2. Select …
+        3. Press …
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead
+      description: Error messages, screenshots of the app window, or the JSON output.
+    validations:
+      required: true
+  - type: textarea
+    id: files
+    attributes:
+      label: Files
+      description: Drag a small `.processcraft` or `.bpmn` file here if it helps reproduce the problem.
+  - type: dropdown
+    id: data
+    attributes:
+      label: Was any work lost?
+      options:
+        - "No"
+        - Yes, unsaved changes were lost
+        - Yes, a saved file is damaged or will not open
+    validations:
+      required: true

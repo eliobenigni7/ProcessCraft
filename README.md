@@ -25,6 +25,8 @@
 </p>
 
 <p align="center">
+  <a href="https://eliobenigni7.github.io/ProcessCraft/">Website</a> ·
+  <a href="https://eliobenigni7.github.io/ProcessCraft/docs/">Documentation</a> ·
   <a href="#a-look-around">A look around</a> ·
   <a href="#why-processcraft">Why ProcessCraft</a> ·
   <a href="#what-works-today">What works today</a> ·
@@ -240,10 +242,11 @@ recorded in [`docs/implementation/`](docs/implementation/).
 
 ## Contributing
 
-Contributions are welcome. Open an issue first for larger changes — especially anything touching
-the project format or BPMN interchange. Keep BPMN behavior in `processcraft-core` behind the command
-pipeline so the GUI, CLI and MCP stay consistent, add focused tests, make the three gates pass, and
-record what you verified in `docs/implementation/`. Please report security issues privately.
+Contributions are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) explains the setup, the quality gates
+and the rules reviews check; open an issue first for larger changes, especially anything touching
+the project format or BPMN interchange. Questions go by [SUPPORT.md](SUPPORT.md), security problems
+are reported privately as [SECURITY.md](SECURITY.md) explains, and everyone follows the
+[Code of Conduct](CODE_OF_CONDUCT.md). Changes per release are in [CHANGELOG.md](CHANGELOG.md).
 
 ## License and credits
 

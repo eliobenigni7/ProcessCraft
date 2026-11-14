@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation
+    url: https://eliobenigni7.github.io/ProcessCraft/docs/
+    about: Tutorial, CLI and MCP guides, and the command reference.
+  - name: Report a security vulnerability
+    url: https://github.com/eliobenigni7/ProcessCraft/security/advisories/new
+    about: Please report security problems privately, not as a public issue.

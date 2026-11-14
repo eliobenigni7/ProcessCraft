@@ -1,0 +1,53 @@
+name: BPMN interchange problem
+description: A BPMN file from another tool opens wrongly, or an exported file is wrong in another tool.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ProcessCraft supports a broad, tested part of BPMN 2.0.2, not all of it. Content outside that
+        profile should be kept byte for byte or refused with a reason. If it was dropped or changed
+        silently, that is a bug we especially want to hear about.
+  - type: dropdown
+    id: direction
+    attributes:
+      label: Direction
+      options:
+        - Import into ProcessCraft
+        - Export from ProcessCraft
+        - Round trip (import, edit or save, export)
+    validations:
+      required: true
+  - type: input
+    id: tool
+    attributes:
+      label: Other tool and version
+      placeholder: "Camunda Modeler 5.x, bpmn.io, …"
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: ProcessCraft version
+      placeholder: "0.2.0"
+    validations:
+      required: true
+  - type: input
+    id: mode
+    attributes:
+      label: Import mode reported
+      description: Editable, Editable with retained extensions, or Preserved source. `processcraft-cli info file.bpmn` prints it.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is wrong
+      description: Which elements, attributes or extensions are missing, changed or refused.
+    validations:
+      required: true
+  - type: textarea
+    id: file
+    attributes:
+      label: The file
+      description: Attach the smallest BPMN file that shows the problem. Please remove confidential content first.
+    validations:
+      required: true

@@ -1,0 +1,37 @@
+name: Feature request
+description: Suggest something ProcessCraft should do.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The [roadmap](https://github.com/eliobenigni7/ProcessCraft/blob/main/docs/plans/roadmap.md)
+        lists what is already planned. Describing the problem matters more than the solution.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do, and what gets in the way today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like
+      description: How you imagine it working, in the app, the CLI or MCP.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives and workarounds
+      description: Other tools that do this, or how you work around it now.
+  - type: dropdown
+    id: who
+    attributes:
+      label: Who would use it
+      multiple: true
+      options:
+        - Process analysts in the desktop app
+        - Developers using the CLI
+        - AI agents over MCP
