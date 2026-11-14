@@ -144,7 +144,9 @@ struct Space {
 type Changes = HashMap<usize, Bounds>;
 
 fn resizable(doc: &BpmnDocument, shape: &Shape) -> bool {
-    crate::manipulate::resize_rule(doc, shape).is_some_and(|rule| !rule.east_west_only)
+    // The space tool stretches containers only: pools, lanes, groups, expanded subprocesses.
+    crate::manipulate::resize_rule(doc, shape).is_some()
+        && (shape.is_expanded == Some(true) || queries::find_node(doc, &shape.element).is_none())
 }
 fn adjust(
     doc: &BpmnDocument,

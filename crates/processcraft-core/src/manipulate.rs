@@ -779,7 +779,8 @@ pub fn move_elements(
     Ok(batch)
 }
 
-/// The resize rule for a shape: its minimum size, or `None` when it keeps its size.
+/// The resize rule for a shape: its minimum size, or `None` when the shape shows no known
+/// element. A node without `isExpanded` counts as collapsed.
 pub fn resize_rule(doc: &BpmnDocument, shape: &Shape) -> Option<rules::MinSize> {
     let horizontal = shape.is_horizontal != Some(false);
     let element = &shape.element;
@@ -807,7 +808,7 @@ pub fn resize_rule(doc: &BpmnDocument, shape: &Shape) -> Option<rules::MinSize> 
     } else {
         return None;
     };
-    rules::can_resize(resized)
+    Some(rules::can_resize(resized))
 }
 /// Shapes a resize must keep inside: subprocess content, a pool's process nodes, lane members.
 fn children<'a>(
@@ -839,15 +840,16 @@ fn children<'a>(
         .map(|s| &s.bounds)
         .collect()
 }
-/// Resize a shape under the bpmn-js rules: only resizable elements, not below their minimum
-/// size, east/west only for text annotations, and never cutting off contained elements (20 px
-/// padding). Attached boundary events keep their place on the outline and docked edge ends
-/// move with it.
+/// Resize a shape under the bpmn-js rules: not below its minimum size, keeping the proportions
+/// of events, gateways and data references, and never cutting off contained elements (20 px
+/// padding). A boundary event keeps its centre on the host's border; an external label stays
+/// centred below its shape. Attached boundary events keep their place on the outline and
+/// docked edge ends move with it.
 pub fn resize(
     doc: &BpmnDocument,
     diagram_id: &ElementSelector,
     shape_id: &ElementSelector,
-    bounds: Bounds,
+    mut bounds: Bounds,
 ) -> Result<Vec<Mutation>, String> {
     let diagram = modeling::find_diagram(doc, diagram_id)?;
     let shape = diagram
@@ -859,15 +861,24 @@ pub fn resize(
     if !geometry::valid_bounds(&bounds) {
         return Err("invalid bounds".into());
     }
-    let rule = resize_rule(doc, shape).ok_or("This element keeps its size")?;
-    if rule.east_west_only && (bounds.y != old.y || bounds.height != old.height) {
-        return Err("This element only resizes horizontally".into());
-    }
-    if bounds.width < rule.width || (!rule.east_west_only && bounds.height < rule.height) {
+    let rule = resize_rule(doc, shape).ok_or("This element cannot be resized")?;
+    if bounds.width < rule.width || bounds.height < rule.height {
         return Err(format!(
             "The minimum size is {} x {}",
             rule.width, rule.height
         ));
+    }
+    if rule.keep_aspect
+        && old.width > 0.0
+        && (bounds.width * old.height / old.width - bounds.height).abs() > 1.0
+    {
+        return Err("This element keeps its proportions".into());
+    }
+    let node = queries::find_node(doc, &shape.element);
+    if node.is_some_and(|n| rules::attached_to(n).is_some()) {
+        let c = mid(old);
+        bounds.x = c.x - bounds.width / 2.0;
+        bounds.y = c.y - bounds.height / 2.0;
     }
     let inside = children(doc, diagram, &shape.element)
         .into_iter()
@@ -941,6 +952,20 @@ pub fn resize(
             diagram_id: diagram_id.clone(),
             shape_id: s.id.selector(),
             bounds: b.clone(),
+        });
+    }
+    if node.is_some_and(|n| modeling::has_external_label(n.kind))
+        && let Some(label) = shape.label.as_ref().and_then(|l| l.bounds.as_ref())
+    {
+        batch.push(Mutation::SetLabelBounds {
+            document_id: doc.id,
+            diagram_id: diagram_id.clone(),
+            representation_id: shape.id.selector(),
+            bounds: Bounds {
+                x: bounds.x + bounds.width / 2.0 - label.width / 2.0,
+                y: label.y + bounds.y + bounds.height - (old.y + old.height),
+                ..label.clone()
+            },
         });
     }
     for edge in &diagram.edges {

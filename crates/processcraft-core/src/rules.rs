@@ -509,12 +509,12 @@ pub fn can_attach(
     }
 }
 
-/// Minimum size of a resizable element; `east_west_only` limits resizing to the width.
+/// Minimum size of a resizable element; `keep_aspect` locks its width/height ratio.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MinSize {
     pub width: f64,
     pub height: f64,
-    pub east_west_only: bool,
+    pub keep_aspect: bool,
 }
 /// An element being resized.
 #[derive(Clone, Copy, Debug)]
@@ -524,32 +524,44 @@ pub enum Resized {
     Lane { horizontal: bool },
     Group,
 }
-/// `None` when the element keeps its default size (tasks, events, gateways, collapsed
-/// subprocesses, data references).
-pub fn can_resize(element: Resized) -> Option<MinSize> {
+/// Every element resizes. Events, gateways and data references keep their proportions; a data
+/// object's minimum follows its default 36 x 50 ratio.
+pub fn can_resize(element: Resized) -> MinSize {
     let size = |width, height| MinSize {
         width,
         height,
-        east_west_only: false,
+        keep_aspect: false,
+    };
+    let aspect = |width, height| MinSize {
+        width,
+        height,
+        keep_aspect: true,
     };
     match element {
         Resized::Node {
             kind: NodeKind::SubProcess | NodeKind::AdHocSubProcess | NodeKind::Transaction,
             expanded: true,
         }
-        | Resized::Group => Some(size(140.0, 120.0)),
+        | Resized::Group => size(140.0, 120.0),
         Resized::Node {
             kind: NodeKind::TextAnnotation,
             ..
-        } => Some(MinSize {
-            east_west_only: true,
-            ..size(100.0, 40.0)
-        }),
-        Resized::Node { .. } => None,
-        Resized::Lane { horizontal: true } => Some(size(300.0, 60.0)),
-        Resized::Lane { horizontal: false } => Some(size(60.0, 300.0)),
-        Resized::Participant { horizontal: true } => Some(size(300.0, 150.0)),
-        Resized::Participant { horizontal: false } => Some(size(150.0, 300.0)),
+        } => size(50.0, 30.0),
+        Resized::Node { kind, .. } if is_event(kind) => aspect(24.0, 24.0),
+        Resized::Node { kind, .. } if is_gateway(kind) => aspect(30.0, 30.0),
+        Resized::Node {
+            kind: NodeKind::DataObjectReference,
+            ..
+        } => aspect(24.0, 24.0 * 50.0 / 36.0),
+        Resized::Node {
+            kind: NodeKind::DataStoreReference,
+            ..
+        } => aspect(24.0, 24.0),
+        Resized::Node { .. } => size(60.0, 40.0),
+        Resized::Lane { horizontal: true } => size(300.0, 60.0),
+        Resized::Lane { horizontal: false } => size(60.0, 300.0),
+        Resized::Participant { horizontal: true } => size(300.0, 150.0),
+        Resized::Participant { horizontal: false } => size(150.0, 300.0),
     }
 }
 
@@ -767,35 +779,44 @@ mod tests {
         assert!(can_attach(n("timerCatch"), n("xor"), true, false).is_err());
         assert!(can_attach(n("timerCatch"), n("receive"), true, true).is_err());
 
-        let sub = Resized::Node {
-            kind: NodeKind::SubProcess,
-            expanded: true,
-        };
-        assert_eq!(
-            can_resize(sub).map(|m| (m.width, m.height)),
-            Some((140.0, 120.0))
-        );
-        assert!(
-            can_resize(Resized::Node {
-                kind: NodeKind::Task,
-                expanded: false
-            })
-            .is_none()
-        );
-        assert!(
-            can_resize(Resized::Node {
-                kind: NodeKind::TextAnnotation,
-                expanded: false
-            })
-            .is_some_and(|m| m.east_west_only && m.height == 40.0)
-        );
-        assert_eq!(
-            can_resize(Resized::Participant { horizontal: true }).map(|m| (m.width, m.height)),
-            Some((300.0, 150.0))
-        );
-        assert_eq!(
-            can_resize(Resized::Lane { horizontal: true }).map(|m| m.height),
-            Some(60.0)
-        );
+        let node = |kind, expanded| can_resize(Resized::Node { kind, expanded });
+        let table = [
+            (node(NodeKind::SubProcess, true), (140.0, 120.0, false)),
+            (node(NodeKind::Transaction, false), (60.0, 40.0, false)),
+            (node(NodeKind::AdHocSubProcess, false), (60.0, 40.0, false)),
+            (node(NodeKind::Task, false), (60.0, 40.0, false)),
+            (node(NodeKind::CallActivity, false), (60.0, 40.0, false)),
+            (node(NodeKind::TextAnnotation, false), (50.0, 30.0, false)),
+            (node(NodeKind::StartEvent, false), (24.0, 24.0, true)),
+            (node(NodeKind::BoundaryEvent, false), (24.0, 24.0, true)),
+            (node(NodeKind::ParallelGateway, false), (30.0, 30.0, true)),
+            (
+                node(NodeKind::DataObjectReference, false),
+                (24.0, 24.0 * 50.0 / 36.0, true),
+            ),
+            (
+                node(NodeKind::DataStoreReference, false),
+                (24.0, 24.0, true),
+            ),
+            (can_resize(Resized::Group), (140.0, 120.0, false)),
+            (
+                can_resize(Resized::Participant { horizontal: true }),
+                (300.0, 150.0, false),
+            ),
+            (
+                can_resize(Resized::Lane { horizontal: true }),
+                (300.0, 60.0, false),
+            ),
+        ];
+        for (rule, (width, height, keep_aspect)) in table {
+            assert_eq!(
+                rule,
+                MinSize {
+                    width,
+                    height,
+                    keep_aspect
+                }
+            );
+        }
     }
 }

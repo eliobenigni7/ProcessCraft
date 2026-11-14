@@ -36,6 +36,8 @@ enum Gesture {
         /// Handle direction per axis (-1 west/north, 0 none, 1 east/south).
         handle: (i8, i8),
         min: (f64, f64),
+        /// Keep the width/height ratio (events, gateways, data references).
+        aspect: bool,
     },
     /// Space tool drag from this screen point.
     Space(Pos2),
@@ -226,14 +228,10 @@ fn drop_feedback(
         ));
     }
 }
-/// Resize handles of a screen rectangle: four corners, or east and west only.
-fn resize_handles(r: Rect, east_west_only: bool) -> Vec<((i8, i8), Pos2)> {
-    let dirs: &[(i8, i8)] = if east_west_only {
-        &[(1, 0), (-1, 0)]
-    } else {
-        &[(-1, -1), (1, -1), (1, 1), (-1, 1)]
-    };
-    dirs.iter()
+/// Resize handles of a screen rectangle: its four corners.
+fn resize_handles(r: Rect) -> Vec<((i8, i8), Pos2)> {
+    [(-1, -1), (1, -1), (1, 1), (-1, 1)]
+        .iter()
         .map(|&(x, y)| {
             (
                 (x, y),
@@ -618,6 +616,17 @@ fn texture_rect(rect: Rect, view: TextureView, camera: (f64, f64), zoom: f32) ->
     )
 }
 
+/// `resized` scaled up to the ratio of `b`, anchored at the corner opposite the handle.
+fn keep_aspect(b: &Bounds, (hx, hy): (i8, i8), resized: Bounds) -> Bounds {
+    let scale = (resized.width / b.width).max(resized.height / b.height);
+    let (width, height) = (b.width * scale, b.height * scale);
+    Bounds {
+        x: if hx < 0 { b.x + b.width - width } else { b.x },
+        y: if hy < 0 { b.y + b.height - height } else { b.y },
+        width,
+        height,
+    }
+}
 /// Bounds after dragging the resize handle `(hx, hy)` by `(dx, dy)`, never below `min`.
 fn resize_bounds(b: &Bounds, (hx, hy): (i8, i8), dx: f64, dy: f64, min: (f64, f64)) -> Bounds {
     let (mut left, mut top, mut right, mut bottom) = (b.x, b.y, b.x + b.width, b.y + b.height);
@@ -2231,10 +2240,7 @@ impl ProcessCraft {
                     let mut pad = Vec::new();
                     if let Some(shape) = single {
                         let screen = to_screen(rect, camera, zoom, &shape.bounds);
-                        for (_, pos) in rule
-                            .map(|r| resize_handles(screen, r.east_west_only))
-                            .unwrap_or_default()
-                        {
+                        for (_, pos) in rule.map(|_| resize_handles(screen)).unwrap_or_default() {
                             let handle = Rect::from_center_size(pos, Vec2::splat(8.0));
                             painter.rect_filled(handle, 2.0, palette.base);
                             painter.rect_stroke(
@@ -2353,16 +2359,16 @@ impl ProcessCraft {
                         } else if let Some(shape) = single {
                             let screen = to_screen(rect, camera, zoom, &shape.bounds);
                             if let Some(rule) = rule
-                                && let Some((handle, _)) =
-                                    resize_handles(screen, rule.east_west_only)
-                                        .into_iter()
-                                        .find(|(_, c)| c.distance(pos) <= 6.0)
+                                && let Some((handle, _)) = resize_handles(screen)
+                                    .into_iter()
+                                    .find(|(_, c)| c.distance(pos) <= 6.0)
                             {
                                 self.canvas.gesture = Some(Gesture::Resize {
                                     shape: shape.id.selector(),
                                     bounds: shape.bounds.clone(),
                                     handle,
                                     min: (rule.width, rule.height),
+                                    aspect: rule.keep_aspect,
                                 });
                             } else if pad_at(pos) == Some(PadAction::Connect) {
                                 self.canvas.gesture = Some(Gesture::Connect {
@@ -2834,17 +2840,21 @@ impl ProcessCraft {
                                 bounds,
                                 handle,
                                 min,
+                                aspect,
                                 ..
                             }) => {
                                 if let (Some(pos), Some(start)) = (pointer, origin) {
                                     let delta = (pos - start) / zoom;
-                                    let resized = resize_bounds(
+                                    let mut resized = resize_bounds(
                                         bounds,
                                         *handle,
                                         delta.x as f64,
                                         delta.y as f64,
                                         *min,
                                     );
+                                    if *aspect {
+                                        resized = keep_aspect(bounds, *handle, resized);
+                                    }
                                     painter.rect_stroke(
                                         to_screen(rect, camera, zoom, &resized),
                                         0.0,
@@ -2938,16 +2948,20 @@ impl ProcessCraft {
                                 bounds,
                                 handle,
                                 min,
+                                aspect,
                             } => {
                                 if let (Some(pos), Some(start)) = (pointer, origin) {
                                     let delta = (pos - start) / zoom;
-                                    let resized = resize_bounds(
+                                    let mut resized = resize_bounds(
                                         &bounds,
                                         handle,
                                         delta.x as f64,
                                         delta.y as f64,
                                         min,
                                     );
+                                    if aspect {
+                                        resized = keep_aspect(&bounds, handle, resized);
+                                    }
                                     if resized != bounds {
                                         self.ctl.mutate(vec![Mutation::ResizeShape {
                                             document_id: d.id,
@@ -3975,10 +3989,12 @@ mod tests {
             resize_bounds(&start, (1, 0), 30.0, 50.0, (100.0, 40.0)),
             b(0.0, 0.0, 130.0, 80.0)
         );
-        let handles = resize_handles(Rect::from_min_size(Pos2::ZERO, Vec2::new(10.0, 10.0)), true);
+        // Locked proportions scale from the opposite corner.
+        let event = b(0.0, 0.0, 36.0, 36.0);
+        let dragged = resize_bounds(&event, (-1, -1), -12.0, -4.0, (24.0, 24.0));
         assert_eq!(
-            handles.iter().map(|(h, _)| *h).collect::<Vec<_>>(),
-            [(1, 0), (-1, 0)]
+            keep_aspect(&event, (-1, -1), dragged),
+            b(-12.0, -12.0, 48.0, 48.0)
         );
     }
 

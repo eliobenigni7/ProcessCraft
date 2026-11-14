@@ -17,6 +17,9 @@ while you sketch. An operation that would break the model is refused with a reas
 
 New elements are placed and their flows routed for you.
 
+Every shape can be resized from the corner handles of the selection. Events, gateways and data
+references keep their proportions, and their labels stay centred below them.
+
 ## Shortcuts
 
 | Action | How |

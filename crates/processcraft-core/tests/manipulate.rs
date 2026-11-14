@@ -199,6 +199,29 @@ fn boundary_events_follow_their_host_and_only_slide_along_its_border() {
 }
 
 #[test]
+fn a_resized_boundary_event_keeps_its_centre_on_the_border() {
+    let mut s = session();
+    with_boundary(&mut s);
+    let old = shape(&s, "timeout").bounds;
+    batch(
+        &mut s,
+        vec![Mutation::ResizeShape {
+            document_id: docid(),
+            diagram_id: sel("procurement_diagram"),
+            shape_id: sel("timeout_di"),
+            bounds: b(old.x, old.y, 48.0, 48.0),
+        }],
+    )
+    .unwrap();
+    let new = shape(&s, "timeout").bounds;
+    assert_eq!((new.width, new.height), (48.0, 48.0));
+    assert_eq!(
+        (new.x + 24.0, new.y + 24.0),
+        (old.x + old.width / 2.0, old.y + old.height / 2.0)
+    );
+}
+
+#[test]
 fn resize_follows_the_rules_and_never_cuts_off_children() {
     let mut s = session();
     let resize = |id: &str, bounds: Bounds| Mutation::ResizeShape {
@@ -207,12 +230,37 @@ fn resize_follows_the_rules_and_never_cuts_off_children() {
         shape_id: sel(id),
         bounds,
     };
-    // Tasks keep their size.
-    let err = batch(
+    // Tasks resize freely down to 60 x 40.
+    batch(
         &mut s,
-        vec![resize("pc_shape_order", b(515.0, 270.0, 200.0, 80.0))],
+        vec![resize("pc_shape_order", b(515.0, 270.0, 200.0, 90.0))],
+    )
+    .unwrap();
+    assert_eq!(shape(&s, "order").bounds, b(515.0, 270.0, 200.0, 90.0));
+    let small = batch(
+        &mut s,
+        vec![resize("pc_shape_order", b(515.0, 270.0, 50.0, 90.0))],
     );
-    assert!(matches!(err, Err(CommandError::InvalidParams(r)) if r.contains("keeps its size")));
+    assert!(matches!(small, Err(CommandError::InvalidParams(r)) if r.contains("minimum")));
+    // Events keep their proportions and their label stays centred below them.
+    let proportional = batch(
+        &mut s,
+        vec![resize("pc_shape_start", b(100.0, 110.0, 48.0, 40.0))],
+    );
+    assert!(
+        matches!(proportional, Err(CommandError::InvalidParams(r)) if r.contains("proportions"))
+    );
+    batch(
+        &mut s,
+        vec![resize("pc_shape_start", b(100.0, 110.0, 48.0, 48.0))],
+    )
+    .unwrap();
+    let start = shape(&s, "start");
+    assert_eq!(start.bounds, b(100.0, 110.0, 48.0, 48.0));
+    assert_eq!(
+        start.label.unwrap().bounds.unwrap(),
+        b(59.0, 163.0, 130.0, 38.0)
+    );
     let sub = element(
         "sub",
         "SubProcess",
