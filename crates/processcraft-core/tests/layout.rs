@@ -580,7 +580,7 @@ fn one_pool_contains_lanes_and_unlaned_band() {
     }
 }
 #[test]
-fn impossible_long_labels_are_refused_without_changes() {
+fn impossible_long_labels_are_laid_out_with_a_warning_without_changes() {
     use processcraft_core::model::Label;
     let mut d = fixture();
     for shape in &mut d.diagrams[0].shapes {
@@ -598,8 +598,10 @@ fn impossible_long_labels_are_refused_without_changes() {
         });
     }
     let before = serde_json::to_vec(&d).unwrap();
-    let result = propose_layout(&d, &id("diagram"), "s", 0, &AtomicBool::new(false));
-    assert_eq!(result.unwrap_err().code, "collision");
+    let p = propose_layout(&d, &id("diagram"), "s", 0, &AtomicBool::new(false)).unwrap();
+    assert!(p.warnings.iter().any(|w| w.code == "label_overlap"));
+    assert!(p.metrics.overlaps > 0);
+    validate_proposal(&d, &p).unwrap();
     assert_eq!(before, serde_json::to_vec(&d).unwrap());
 }
 #[test]
@@ -678,13 +680,7 @@ fn four_hundred_connected_nodes_fit_bounded_straight_route_profile() {
             Err(error) => format!("refused: {}", error.code),
         }
     );
-    assert!(
-        result.is_ok()
-            || matches!(
-                result.unwrap_err().code.as_str(),
-                "budget" | "routing" | "collision"
-            )
-    );
+    assert!(result.is_ok() || matches!(result.unwrap_err().code.as_str(), "budget" | "routing"));
     assert_eq!(before, serde_json::to_vec(&d).unwrap());
 }
 #[test]
@@ -1301,6 +1297,7 @@ fn assert_layout_succeeds(d: &BpmnDocument) {
     let p = propose_layout(d, &id("diagram"), "s", 0, &AtomicBool::new(false))
         .unwrap_or_else(|e| panic!("{}: {}", e.code, e.message));
     validate_proposal(d, &p).unwrap();
+    assert!(p.warnings.is_empty(), "{:?}", p.warnings);
     let container = p
         .proposed
         .shapes
@@ -1443,4 +1440,25 @@ fn loop_back_from_stacked_node_routes_around_the_node_above() {
         assert!(edge.waypoints[0].y == t2.y + t2.height);
         assert!(edge.waypoints.iter().all(|w| w.y >= t2.y));
     }
+}
+#[test]
+fn unavoidable_crossings_are_returned_with_a_warning() {
+    use NodeKind::*;
+    let gates = ["x1", "x2", "x3"];
+    let tasks = ["t1", "t2", "t3"];
+    let mut nodes = vec![("start", StartEvent), ("split", ParallelGateway)];
+    nodes.extend(gates.iter().map(|g| (*g, ExclusiveGateway)));
+    nodes.extend(tasks.iter().map(|t| (*t, Task)));
+    let mut flows = vec![("start", "split")];
+    for g in gates {
+        flows.push(("split", g));
+        flows.extend(tasks.iter().map(|t| (g, *t)));
+    }
+    // K3,3 between the gateways and the tasks is not planar.
+    let d = ordinary_process(&nodes, &flows, false);
+    let p = propose_layout(&d, &id("diagram"), "s", 0, &AtomicBool::new(false))
+        .unwrap_or_else(|e| panic!("{}: {}", e.code, e.message));
+    assert!(p.metrics.crossings >= 1);
+    assert!(p.warnings.iter().any(|w| w.code == "crossings"));
+    validate_proposal(&d, &p).unwrap();
 }

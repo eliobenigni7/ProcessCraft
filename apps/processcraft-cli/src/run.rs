@@ -879,6 +879,7 @@ fn layout_preview_file(
         ),
     }
     .map_err(|e| error(3, e))?;
+    let report = json!({"kind":"layoutPreview","warnings":proposal.warnings.len(),"metrics":proposal.metrics});
     let bytes = serde_json::to_vec(&FileLayoutProposal {
         base_content_id: snapshot.content_id,
         proposal,
@@ -887,7 +888,7 @@ fn layout_preview_file(
     if bytes.len() > 4 * 1024 * 1024 {
         return Err(error(3, "proposal exceeds 4 MiB"));
     }
-    write_export(out, &bytes, json!({"kind":"layoutPreview"}), !overwrite)
+    write_export(out, &bytes, report, !overwrite)
 }
 fn layout_apply_file(
     input: &Path,

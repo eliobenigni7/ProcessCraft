@@ -1,6 +1,6 @@
 # M3.0: Deterministic diagram auto-layout
 
-**Status:** Implemented as a bounded, opt-in profile; qualification is limited to the fixtures and environments recorded in [M3 evidence](../implementation/m3-evidence.md). Preview, cancellation, guarded apply and undo/redo exist. A 400-node chain was accepted while a more complex 400-node/500-edge case was safely refused; routing has explicit obstacle and work budgets. This document retains the original design and acceptance goals for continuing qualification, not a claim that every goal or BPMN structure is supported.
+**Status:** Implemented as a bounded, opt-in profile; qualification is limited to the fixtures and environments recorded in [M3 evidence](../implementation/m3-evidence.md). Preview, cancellation, guarded apply and undo/redo exist. A 400-node chain was accepted while a more complex 400-node/500-edge case was safely refused; routing has explicit obstacle and work budgets. Proposals are best-effort: only overlapping nodes, invalid geometry, unroutable edges and the budgets refuse; crossings, shared channels and label or route overlaps are returned as counted `warnings` with `metrics`, superseding the collision-free requirement below. This document retains the original design and acceptance goals for continuing qualification, not a claim that every goal or BPMN structure is supported.
 
 ## Contract and scope
 

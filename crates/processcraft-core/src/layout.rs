@@ -41,6 +41,27 @@ pub struct LayoutProposal {
     pub choreography_scope_shape: Option<ElementSelector>,
     pub original: LayoutGeometry,
     pub proposed: LayoutGeometry,
+    /// Counted quality defects of an otherwise valid proposal (one per code).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<LayoutWarning>,
+    #[serde(default)]
+    pub metrics: LayoutMetrics,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct LayoutWarning {
+    pub code: String,
+    pub message: String,
+}
+/// Measured quality of the proposed geometry. `overlaps` counts labels touching
+/// labels or nodes and route segments passing over labels or nodes.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct LayoutMetrics {
+    pub crossings: usize,
+    pub overlaps: usize,
+    pub bends: usize,
+    pub edge_length: f64,
+    pub area: f64,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct LayoutError {
@@ -449,6 +470,8 @@ fn propose_choreography_layout(
         choreography_scope_shape: None,
         original,
         proposed,
+        warnings: computed.warnings,
+        metrics: computed.metrics,
     })
 }
 
@@ -991,6 +1014,8 @@ fn propose_choreography_scope_impl(
         choreography_scope_shape: scope_shape_id.cloned(),
         original,
         proposed,
+        warnings: computed.warnings,
+        metrics: computed.metrics,
     })
 }
 
@@ -1764,63 +1789,9 @@ pub fn propose_layout(
             }
         }
     }
-    let proposal = LayoutProposal {
-        session_id: session_id.into(),
-        generation,
-        document_id: document.id,
-        diagram_id: diagram_id.clone(),
-        choreography_scope_shape: None,
-        original,
-        proposed: result,
-    };
-    if !valid_geometry(&proposal.proposed) {
-        return Err(err("invalid_geometry", "Computed geometry exceeds bounds"));
-    }
-    let node_shapes: Vec<_> = ids
-        .iter()
-        .map(|id| &proposal.proposed.shapes[index[&d.shapes[shape_by_element[id]].id.selector()]])
-        .collect();
-    for (i, shape) in node_shapes.iter().enumerate() {
-        if node_shapes
-            .iter()
-            .skip(i + 1)
-            .any(|other| overlap(&shape.bounds, &other.bounds))
-        {
-            return Err(err("collision", "Node placement overlaps"));
-        }
-    }
-    let labels: Vec<_> = proposal
-        .proposed
-        .shapes
-        .iter()
-        .filter_map(|shape| shape.label_bounds.as_ref())
-        .chain(
-            proposal
-                .proposed
-                .edges
-                .iter()
-                .filter_map(|edge| edge.label_bounds.as_ref()),
-        )
-        .collect();
-    for (i, label) in labels.iter().enumerate() {
-        if labels.iter().skip(i + 1).any(|other| overlap(label, other))
-            || node_shapes
-                .iter()
-                .any(|shape| overlap(label, &shape.bounds))
-        {
-            return Err(err("collision", "Label overlaps another label or node"));
-        }
-    }
-    for edge in &proposal.proposed.edges {
-        for segment in edge.waypoints.windows(2) {
-            if labels
-                .iter()
-                .any(|label| segment_hits(&segment[0], &segment[1], label))
-            {
-                return Err(err("collision", "Route crosses a label"));
-            }
-        }
-    }
+    let shape_at = |id: &ElementSelector| index[&d.shapes[shape_by_element[id]].id.selector()];
+    let node_shapes: Vec<_> = ids.iter().map(&shape_at).collect();
+    let mut endpoints = Vec::with_capacity(flows.len());
     for flow in flows.values() {
         let (
             Some(crate::bpmn_model::EventReference::Local(source_id)),
@@ -1829,46 +1800,87 @@ pub fn propose_layout(
         else {
             return Err(err("invalid_di", "Flow endpoint is missing or external"));
         };
-        let edge = &proposal.proposed.edges
-            [edge_index[&edge_by_element[&flow.id.selector()].id.selector()]];
-        for (segment_index, segment) in edge.waypoints.windows(2).enumerate() {
-            let source = &proposal.proposed.shapes
-                [index[&d.shapes[shape_by_element[source_id]].id.selector()]]
-                .bounds;
-            let target = &proposal.proposed.shapes
-                [index[&d.shapes[shape_by_element[target_id]].id.selector()]]
-                .bounds;
-            if (segment_index > 0 && segment_hits(&segment[0], &segment[1], source))
-                || (segment_index + 2 < edge.waypoints.len()
-                    && segment_hits(&segment[0], &segment[1], target))
-            {
-                return Err(err("routing", "Route re-enters an endpoint node"));
-            }
-            if ids
-                .iter()
-                .filter(|id| *id != source_id && *id != target_id)
-                .any(|id| {
-                    segment_hits(
-                        &segment[0],
-                        &segment[1],
-                        &proposal.proposed.shapes
-                            [index[&d.shapes[shape_by_element[id]].id.selector()]]
-                            .bounds,
-                    )
-                })
-            {
-                return Err(err("routing", "Route crosses a node"));
-            }
+        endpoints.push((
+            edge_index[&edge_by_element[&flow.id.selector()].id.selector()],
+            shape_at(source_id),
+            shape_at(target_id),
+        ));
+    }
+    let (warnings, metrics) = measure(&result, &node_shapes, &endpoints)?;
+    Ok(LayoutProposal {
+        session_id: session_id.into(),
+        generation,
+        document_id: document.id,
+        diagram_id: diagram_id.clone(),
+        choreography_scope_shape: None,
+        original,
+        proposed: result,
+        warnings,
+        metrics,
+    })
+}
+
+/// Final proof of a computed layout. Invalid geometry and overlapping nodes refuse
+/// the proposal; every other defect becomes one counted warning per code. The
+/// pairwise checks are bounded by the shape and edge limits checked on entry.
+/// `nodes` are flow-node shape indices and `endpoints` are
+/// `(edge, source shape, target shape)` indices into `g`.
+fn measure(
+    g: &LayoutGeometry,
+    nodes: &[usize],
+    endpoints: &[(usize, usize, usize)],
+) -> Result<(Vec<LayoutWarning>, LayoutMetrics), LayoutError> {
+    if !valid_geometry(g) {
+        return Err(err("invalid_geometry", "Computed geometry exceeds bounds"));
+    }
+    let node_bounds: Vec<_> = nodes.iter().map(|&i| &g.shapes[i].bounds).collect();
+    for (i, a) in node_bounds.iter().enumerate() {
+        if node_bounds[i + 1..].iter().any(|b| overlap(a, b)) {
+            return Err(err("collision", "Node placement overlaps"));
         }
     }
-    for (index, edge) in proposal.proposed.edges.iter().enumerate() {
-        for other in proposal.proposed.edges.iter().skip(index + 1) {
+    let labels: Vec<_> = g
+        .shapes
+        .iter()
+        .filter_map(|shape| shape.label_bounds.as_ref())
+        .chain(g.edges.iter().filter_map(|edge| edge.label_bounds.as_ref()))
+        .collect();
+    let mut label_overlaps = 0;
+    for (i, label) in labels.iter().enumerate() {
+        label_overlaps += labels[i + 1..]
+            .iter()
+            .filter(|other| overlap(label, other))
+            .count()
+            + node_bounds.iter().filter(|b| overlap(label, b)).count();
+    }
+    let mut over_label = 0;
+    for edge in &g.edges {
+        for s in edge.waypoints.windows(2) {
+            over_label += labels
+                .iter()
+                .filter(|label| segment_hits(&s[0], &s[1], label))
+                .count();
+        }
+    }
+    let mut over_node = 0;
+    for &(edge, source, target) in endpoints {
+        let points = &g.edges[edge].waypoints;
+        for (k, s) in points.windows(2).enumerate() {
+            let hits = |shape: usize| segment_hits(&s[0], &s[1], &g.shapes[shape].bounds);
+            // Leaving the source or entering the target is not a re-entry.
+            over_node +=
+                usize::from((k > 0 && hits(source)) || (k + 2 < points.len() && hits(target)));
+            over_node += nodes
+                .iter()
+                .filter(|&&n| n != source && n != target && hits(n))
+                .count();
+        }
+    }
+    let (mut shared_channels, mut crossings) = (0, 0);
+    for (i, edge) in g.edges.iter().enumerate() {
+        for other in &g.edges[i + 1..] {
             for a in edge.waypoints.windows(2) {
                 for b in other.waypoints.windows(2) {
-                    route_work += 1;
-                    if route_work > ROUTE_WORK_LIMIT {
-                        return Err(err("budget", "Routing work limit exceeded"));
-                    }
                     let shared = if a[0].x == a[1].x && b[0].x == b[1].x && a[0].x == b[0].x {
                         a[0].y.min(a[1].y).max(b[0].y.min(b[1].y))
                             < a[0].y.max(a[1].y).min(b[0].y.max(b[1].y))
@@ -1878,9 +1890,6 @@ pub fn propose_layout(
                     } else {
                         false
                     };
-                    if shared {
-                        return Err(err("routing", "Routes share a channel"));
-                    }
                     let crosses = if a[0].x == a[1].x && b[0].y == b[1].y {
                         a[0].x > b[0].x.min(b[1].x)
                             && a[0].x < b[0].x.max(b[1].x)
@@ -1894,12 +1903,56 @@ pub fn propose_layout(
                     } else {
                         false
                     };
-                    if crosses {
-                        return Err(err("routing", "Routes cross"));
-                    }
+                    shared_channels += usize::from(shared);
+                    crossings += usize::from(crosses);
                 }
             }
         }
     }
-    Ok(proposal)
+    let warnings = [
+        ("label_overlap", label_overlaps, "label overlaps"),
+        (
+            "route_over_label",
+            over_label,
+            "route segments over a label",
+        ),
+        ("route_over_node", over_node, "route segments over a node"),
+        (
+            "shared_channel",
+            shared_channels,
+            "route segments sharing a channel",
+        ),
+        ("crossings", crossings, "route crossings"),
+    ]
+    .into_iter()
+    .filter(|(_, count, _)| *count > 0)
+    .map(|(code, count, what)| LayoutWarning {
+        code: code.into(),
+        message: format!("{count} {what}"),
+    })
+    .collect();
+    let (mut min_x, mut min_y, mut max_x, mut max_y) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+    for b in g.shapes.iter().map(|s| &s.bounds) {
+        min_x = min_x.min(b.x);
+        min_y = min_y.min(b.y);
+        max_x = max_x.max(b.x + b.width);
+        max_y = max_y.max(b.y + b.height);
+    }
+    let metrics = LayoutMetrics {
+        crossings,
+        overlaps: label_overlaps + over_label + over_node,
+        bends: g.edges.iter().map(|e| e.waypoints.len() - 2).sum(),
+        edge_length: g
+            .edges
+            .iter()
+            .flat_map(|e| e.waypoints.windows(2))
+            .map(|s| (s[1].x - s[0].x).hypot(s[1].y - s[0].y))
+            .sum(),
+        area: if g.shapes.is_empty() {
+            0.0
+        } else {
+            (max_x - min_x) * (max_y - min_y)
+        },
+    };
+    Ok((warnings, metrics))
 }

@@ -101,6 +101,10 @@ Others exist (`events`, `data`, `catalog`, `identities`, `diagrams`, `comments`,
 `document_id`; every kind that names a document needs its `document_id`, and a call without it is
 refused with `-32602`.
 
+`layoutPreview` returns the proposal with `warnings` (one `{code, message}` per kind of defect:
+crossings, shared channels, labels or routes over labels and nodes) and `metrics` (`crossings`,
+`overlaps`, `bends`, `edge_length`, `area`); only overlapping nodes or invalid geometry refuse it.
+
 `query attributes` lists only elements that already have a value; use `query table` (every
 activity) or `query diagnostics` to find the ones that do not.
 
