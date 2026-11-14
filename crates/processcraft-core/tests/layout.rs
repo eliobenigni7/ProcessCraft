@@ -672,15 +672,16 @@ fn four_hundred_connected_nodes_fit_bounded_straight_route_profile() {
         );
     }
     let before = serde_json::to_vec(&d).unwrap();
-    let result = propose_layout(&d, &id("diagram"), "s", 0, &AtomicBool::new(false));
+    let started = std::time::Instant::now();
+    let p = propose_layout(&d, &id("diagram"), "s", 0, &AtomicBool::new(false))
+        .unwrap_or_else(|e| panic!("{}: {}", e.code, e.message));
     println!(
-        "500-edge connected fixture: {}",
-        match &result {
-            Ok(_) => "accepted".to_owned(),
-            Err(error) => format!("refused: {}", error.code),
-        }
+        "500-edge connected fixture: {:?}, {} crossings, {:?}",
+        started.elapsed(),
+        p.metrics.crossings,
+        p.warnings
     );
-    assert!(result.is_ok() || matches!(result.unwrap_err().code.as_str(), "budget" | "routing"));
+    assert!(p.proposed.edges.iter().all(|e| e.waypoints.len() <= 16));
     assert_eq!(before, serde_json::to_vec(&d).unwrap());
 }
 #[test]
@@ -1496,11 +1497,8 @@ fn other_flow_node_kinds_are_laid_out() {
         .find(|s| s.id == id::<ElementSelector>("shape_sub"))
         .unwrap()
         .is_expanded = Some(false);
-    // The current router reports one route segment over a node here (L5 target).
-    let p = propose_layout(&d, &id("diagram"), "s", 0, &AtomicBool::new(false))
-        .unwrap_or_else(|e| panic!("{}: {}", e.code, e.message));
-    validate_proposal(&d, &p).unwrap();
-    assert!(p.warnings.iter().all(|w| w.code == "route_over_node"));
+    let p = assert_layout_properties(&d);
+    assert!(p.warnings.is_empty(), "{:?}", p.warnings);
 }
 fn add_lane(d: &mut BpmnDocument, name: &str, members: &[&str]) {
     let mut shape = d.diagrams[0].shapes[0].clone();

@@ -1031,6 +1031,54 @@ fn segment_hits(a: &Point, b: &Point, r: &Bounds) -> bool {
         true
     }
 }
+/// Drop repeated points and the middle of collinear runs.
+fn simplify(points: Vec<Point>) -> Vec<Point> {
+    let mut out: Vec<Point> = Vec::with_capacity(points.len());
+    for p in points {
+        if out.last().is_some_and(|q| q.x == p.x && q.y == p.y) {
+            continue;
+        }
+        if let [.., a, b] = out.as_slice()
+            && ((a.x == b.x && b.x == p.x) || (a.y == b.y && b.y == p.y))
+        {
+            out.pop();
+        }
+        out.push(p);
+    }
+    out
+}
+/// Put an edge label beside its route: above, then below, each horizontal
+/// segment (longest first), then right of each vertical one. The first spot
+/// clear of nodes and placed labels wins; otherwise the first spot is kept and
+/// `measure` reports the overlap.
+fn place_label(label: &mut Bounds, points: &[Point], nodes: &[Bounds], placed: &[Bounds]) {
+    let length = |s: &&[Point]| (s[0].x - s[1].x).abs() + (s[0].y - s[1].y).abs();
+    let mut segments: Vec<&[Point]> = points.windows(2).collect();
+    segments.sort_by(|x, y| length(y).total_cmp(&length(x)));
+    let (w, h) = (label.width, label.height);
+    let spot = |x: f64, y: f64| Bounds {
+        x,
+        y,
+        width: w,
+        height: h,
+    };
+    let mut candidates = Vec::new();
+    for s in segments.iter().filter(|s| s[0].y == s[1].y) {
+        let x = (s[0].x + s[1].x - w) / 2.0;
+        candidates.push(spot(x, s[0].y - h - 4.0));
+        candidates.push(spot(x, s[0].y + 4.0));
+    }
+    for s in segments.iter().filter(|s| s[0].x == s[1].x) {
+        candidates.push(spot(s[0].x + 4.0, (s[0].y + s[1].y - h) / 2.0));
+    }
+    if let Some(best) = candidates
+        .iter()
+        .find(|c| !nodes.iter().chain(placed).any(|o| overlap(c, o)))
+        .or(candidates.first())
+    {
+        *label = best.clone();
+    }
+}
 /// Build a deterministic proposal without changing the document. Unsupported diagrams fail closed.
 pub fn propose_layout(
     document: &BpmnDocument,
@@ -1518,278 +1566,335 @@ pub fn propose_layout(
         .enumerate()
         .map(|(i, e)| (e.id.clone(), i))
         .collect();
-    let mut outgoing = BTreeMap::<ElementSelector, Vec<ElementSelector>>::new();
-    let mut incoming = BTreeMap::<ElementSelector, Vec<ElementSelector>>::new();
+    // Flows as (id, source, target) in id order, with the channel (bottom, y,
+    // band) of every back edge.
+    let mut flow_ends = Vec::with_capacity(flows.len());
     for flow in flows.values() {
         let (
-            Some(crate::bpmn_model::EventReference::Local(source_id)),
-            Some(crate::bpmn_model::EventReference::Local(target_id)),
+            Some(crate::bpmn_model::EventReference::Local(s)),
+            Some(crate::bpmn_model::EventReference::Local(t)),
         ) = (&flow.source, &flow.target)
         else {
             return Err(err("invalid_di", "Flow endpoint is missing or external"));
         };
-        outgoing
-            .entry(source_id.clone())
-            .or_default()
-            .push(flow.id.selector());
-        incoming
-            .entry(target_id.clone())
-            .or_default()
-            .push(flow.id.selector());
+        flow_ends.push((flow.id.selector(), indices[s], indices[t]));
     }
-    let mut route_work = 0usize;
-    const ROUTE_WORK_LIMIT: usize = 500_000;
-    // Event and gateway ports face their partner: aligned partners use the
-    // horizontal side, others the top or bottom vertex. Back-edges (rank does not
-    // increase) leave and enter over the top. Each side serves one flow per node.
-    let bounds_of = |id: &ElementSelector| {
-        result.shapes[index[&d.shapes[shape_by_element[id]].id.selector()]]
-            .bounds
-            .clone()
-    };
-    let is_task = |id: &ElementSelector| nodes[id].kind.is_activity();
-    let is_back = |s: &ElementSelector, t: &ElementSelector| rank[indices[s]] >= rank[indices[t]];
-    let mut sides = BTreeMap::<(ElementSelector, bool), Point>::new();
-    let mut used = BTreeMap::<ElementSelector, Vec<u8>>::new();
-    for back_pass in [true, false] {
-        for flow in flows.values() {
-            let (
-                Some(crate::bpmn_model::EventReference::Local(s)),
-                Some(crate::bpmn_model::EventReference::Local(t)),
-            ) = (&flow.source, &flow.target)
-            else {
-                return Err(err("invalid_di", "Flow endpoint is missing or external"));
-            };
-            if s == t || is_back(s, t) != back_pass {
-                continue;
-            }
-            for (own, other, source) in [(s, t, true), (t, s, false)] {
-                if !back_pass && is_task(own) {
-                    continue;
-                }
-                let (b, o) = (bounds_of(own), bounds_of(other));
-                let (cy, ocy) = (b.y + b.height / 2.0, o.y + o.height / 2.0);
-                // 0 top, 1 right, 2 bottom, 3 left.
-                let horizontal = if source { 1 } else { 3 };
-                let preferred = if back_pass {
-                    if loop_plan[&flow.id.selector()].0 {
-                        2
-                    } else {
-                        0
-                    }
-                } else if (ocy - cy).abs() < 0.5 {
-                    horizontal
-                } else if ocy > cy {
-                    2
+    let channel: Vec<_> = flow_ends
+        .iter()
+        .map(|(id, _, _)| {
+            loop_plan.get(id).map(|&(bottom, block, k)| {
+                let (rows_top, rows_bottom) = block_rows[&block];
+                let y = if bottom {
+                    rows_bottom + 12.0 + 8.0 * k as f64
                 } else {
-                    0
+                    rows_top - 12.0 - 8.0 * k as f64
                 };
-                // An external label below (or above) the node blocks that vertex.
-                let taken = used.entry(own.clone()).or_insert_with(|| {
-                    let label = result.shapes
-                        [index[&d.shapes[shape_by_element[own]].id.selector()]]
-                        .label_bounds
-                        .as_ref();
-                    match label {
-                        Some(l) if l.y >= b.y + b.height / 2.0 => vec![2],
-                        Some(_) => vec![0],
-                        None => vec![],
+                (bottom, y, block.0)
+            })
+        })
+        .collect();
+    let node_bounds: Vec<Bounds> = (0..n)
+        .map(|i| {
+            result.shapes[index[&shape_of(i).id.selector()]]
+                .bounds
+                .clone()
+        })
+        .collect();
+    let is_task = |i: usize| nodes[&ids[i]].kind.is_activity();
+    let vy = |v: usize| row_y[&key(v)];
+    // The chain vertex next to an end of a forward flow.
+    let partner = |a: usize, b: usize, source: bool| {
+        let chain = &lay.chains[&(a, b)];
+        chain[if source { 1 } else { chain.len() - 2 }]
+    };
+    // Sides: 0 top, 1 right, 2 bottom, 3 left. Self loops claim theirs first,
+    // then back edges (top or bottom unless a vertex blocks the way to their
+    // channel), then forward flows: aligned partners use the horizontal side,
+    // others the top or bottom vertex facing them unless a vertex of the same
+    // layer is in the way. Event and gateway sides serve one flow when possible;
+    // an external label below (or above) the node blocks that vertex.
+    let mut side = vec![[0u8; 2]; flow_ends.len()];
+    let mut taken: Vec<Vec<u8>> = (0..n)
+        .map(|i| {
+            let label = result.shapes[index[&shape_of(i).id.selector()]]
+                .label_bounds
+                .as_ref();
+            let b = &node_bounds[i];
+            match label {
+                Some(l) if l.y >= b.y + b.height / 2.0 => vec![2],
+                Some(_) => vec![0],
+                None => vec![],
+            }
+        })
+        .collect();
+    let pass_of = |f: usize| {
+        let (_, a, b) = flow_ends[f];
+        if a == b {
+            0
+        } else if channel[f].is_some() {
+            1
+        } else {
+            2
+        }
+    };
+    for pass in 0..3 {
+        for f in (0..flow_ends.len()).filter(|&f| pass_of(f) == pass) {
+            let (_, a, b) = flow_ends[f];
+            for (end, own) in [(0, a), (1, b)] {
+                let horizontal = if end == 0 { 1 } else { 3 };
+                let preferred = match channel[f] {
+                    _ if pass == 0 => [1, 0][end],
+                    Some((bottom, _, band)) => {
+                        if lay.between(own, !bottom, band) > 0 {
+                            horizontal
+                        } else if bottom {
+                            2
+                        } else {
+                            0
+                        }
                     }
-                });
-                let side = [preferred, horizontal, 2, 0]
-                    .into_iter()
-                    .find(|side| !taken.contains(side))
-                    .unwrap_or(preferred);
-                taken.push(side);
-                let point = match side {
-                    0 => Point {
-                        x: b.x + b.width / 2.0,
-                        y: b.y,
-                    },
-                    1 => Point {
-                        x: b.x + b.width,
-                        y: cy,
-                    },
-                    2 => Point {
-                        x: b.x + b.width / 2.0,
-                        y: b.y + b.height,
-                    },
-                    _ => Point { x: b.x, y: cy },
+                    None => {
+                        let (ko, kp) = (key(own), key(partner(a, b, end == 0)));
+                        let blocked = lay.order[lay.layer[own]].iter().any(|&w| {
+                            let kw = key(w);
+                            w != own && ((ko < kw && kw <= kp) || (kp <= kw && kw < ko))
+                        });
+                        if ko == kp || blocked {
+                            horizontal
+                        } else if kp > ko {
+                            2
+                        } else {
+                            0
+                        }
+                    }
                 };
-                sides.insert((flow.id.selector(), source), point);
+                side[f][end] = if is_task(own) {
+                    if pass == 2 { horizontal } else { preferred }
+                } else {
+                    let t = &mut taken[own];
+                    let s = [preferred, horizontal]
+                        .into_iter()
+                        .find(|s| !t.contains(s))
+                        .unwrap_or(preferred);
+                    t.push(s);
+                    s
+                };
             }
         }
     }
-    for (number, flow) in flows.values().enumerate() {
-        cancelled(cancel)?;
-        let (
-            Some(crate::bpmn_model::EventReference::Local(source_id)),
-            Some(crate::bpmn_model::EventReference::Local(target_id)),
-        ) = (&flow.source, &flow.target)
-        else {
-            return Err(err("invalid_di", "Flow endpoint is missing or external"));
-        };
-        let source =
-            &result.shapes[index[&d.shapes[shape_by_element[source_id]].id.selector()]].bounds;
-        let target =
-            &result.shapes[index[&d.shapes[shape_by_element[target_id]].id.selector()]].bounds;
-        let port_y = |id: &ElementSelector, bounds: &Bounds, list: &[ElementSelector]| {
-            if nodes[id].kind.is_activity() {
-                let position = list
-                    .iter()
-                    .position(|edge| edge == &flow.id.selector())
-                    .unwrap_or(0);
-                bounds.y + bounds.height * (position + 1) as f64 / (list.len() + 1) as f64
-            } else {
-                bounds.y + bounds.height / 2.0
-            }
-        };
-        let port =
-            |id: &ElementSelector, bounds: &Bounds, list: &[ElementSelector], source: bool| {
-                if nodes[id].kind.is_activity() {
-                    Point {
-                        x: if source {
-                            bounds.x + bounds.width
-                        } else {
-                            bounds.x
-                        },
-                        y: port_y(id, bounds, list),
-                    }
-                } else {
-                    // Only self-loops have no assigned side; they use the horizontal sides.
-                    sides
-                        .get(&(flow.id.selector(), source))
-                        .cloned()
-                        .unwrap_or(Point {
-                            x: if source {
-                                bounds.x + bounds.width
-                            } else {
-                                bounds.x
-                            },
-                            y: bounds.y + bounds.height / 2.0,
-                        })
-                }
-            };
-        let back = source_id != target_id && is_back(source_id, target_id);
-        let start = match sides.get(&(flow.id.selector(), true)) {
-            Some(point) => point.clone(),
-            None => port(source_id, source, &outgoing[source_id], true),
-        };
-        let end = match sides.get(&(flow.id.selector(), false)) {
-            Some(point) => point.clone(),
-            None => port(target_id, target, &incoming[target_id], false),
-        };
-        let points = if source_id == target_id {
-            let gap = 40.0 + number as f64 * 2.0;
-            vec![
-                start.clone(),
-                Point {
-                    x: start.x + gap,
-                    y: start.y,
-                },
-                Point {
-                    x: start.x + gap,
-                    y: source.y - gap,
-                },
-                Point {
-                    x: source.x - gap,
-                    y: source.y - gap,
-                },
-                Point {
-                    x: source.x - gap,
-                    y: end.y,
-                },
-                end.clone(),
-            ]
-        } else if back {
-            let (bottom, block, k) = loop_plan[&flow.id.selector()];
-            let (rows_top, rows_bottom) = block_rows[&block];
-            let channel_y = if bottom {
-                rows_bottom + 12.0 + 8.0 * k as f64
-            } else {
-                rows_top - 12.0 - 8.0 * k as f64
-            };
-            vec![
-                start.clone(),
-                Point {
-                    x: start.x,
-                    y: channel_y,
-                },
-                Point {
-                    x: end.x,
-                    y: channel_y,
-                },
-                end.clone(),
-            ]
-        } else {
-            let mut obstacles: Vec<_> = ids
-                .iter()
-                .filter(|id| *id != source_id && *id != target_id)
-                .map(|id| {
-                    result.shapes[index[&d.shapes[shape_by_element[id]].id.selector()]]
-                        .bounds
-                        .clone()
-                })
-                .collect();
-            // External labels are real obstacles too; routing around them avoids
-            // constructing a proposal which the later collision check must reject.
-            obstacles.extend(
-                result
-                    .shapes
-                    .iter()
-                    .filter_map(|shape| shape.label_bounds.clone()),
+    // Port points: side centres, except that the flows on one side of a task
+    // spread over it at (k + 1) / (m + 1), sorted by the y of their partner.
+    let mut port = Vec::with_capacity(flow_ends.len());
+    let mut spread = BTreeMap::<(usize, u8), Vec<(f64, usize, usize)>>::new();
+    for (f, &(_, a, b)) in flow_ends.iter().enumerate() {
+        let mut ends = Vec::with_capacity(2);
+        for (end, own) in [(0, a), (1, b)] {
+            let bounds = &node_bounds[own];
+            let (cx, cy) = (
+                bounds.x + bounds.width / 2.0,
+                bounds.y + bounds.height / 2.0,
             );
-            route_work = route_work.saturating_add(obstacles.len());
-            if route_work > ROUTE_WORK_LIMIT {
-                return Err(err("budget", "Routing work limit exceeded"));
+            ends.push(match side[f][end] {
+                0 => Point { x: cx, y: bounds.y },
+                1 => Point {
+                    x: bounds.x + bounds.width,
+                    y: cy,
+                },
+                2 => Point {
+                    x: cx,
+                    y: bounds.y + bounds.height,
+                },
+                _ => Point { x: bounds.x, y: cy },
+            });
+            if is_task(own) && side[f][end] % 2 == 1 {
+                let partner_y = match channel[f] {
+                    _ if a == b => f64::MIN,
+                    Some((_, y, _)) => y,
+                    None => vy(partner(a, b, end == 0)),
+                };
+                spread
+                    .entry((own, side[f][end]))
+                    .or_default()
+                    .push((partner_y, f, end));
             }
-            let straight = start.y == end.y
-                && start.x < end.x
-                && obstacles.iter().all(|b| {
-                    let inflated = Bounds {
-                        x: b.x - 8.0,
-                        y: b.y - 8.0,
-                        width: b.width + 16.0,
-                        height: b.height + 16.0,
-                    };
-                    valid_bounds(&inflated) && !segment_hits(&start, &end, &inflated)
-                });
-            if straight {
-                vec![start, end]
+        }
+        port.push(ends);
+    }
+    for ((own, _), mut list) in spread {
+        list.sort_by(|x, y| x.0.total_cmp(&y.0).then(x.1.cmp(&y.1)));
+        let (b, m) = (&node_bounds[own], list.len() as f64);
+        for (k, &(_, f, end)) in list.iter().enumerate() {
+            port[f][end].y = b.y + b.height * (k + 1) as f64 / (m + 1.0);
+        }
+    }
+    // Routes are planned as points and vertical legs in a gap (0 before the
+    // first layer, l + 1 after layer l). Forward flows run on their dummy rows
+    // and change rows in the gaps; back edges climb to their channel either from
+    // a top or bottom vertex or through the gap beside a blocked endpoint.
+    enum Step {
+        At(Point),
+        Leg(usize, f64, f64),
+    }
+    let mut plans: Vec<Vec<Step>> = Vec::with_capacity(flow_ends.len());
+    for (f, &(_, a, b)) in flow_ends.iter().enumerate() {
+        let (start, end) = (port[f][0].clone(), port[f][1].clone());
+        let vertical = |end: usize| side[f][end] % 2 == 0;
+        let mut steps = vec![Step::At(start.clone())];
+        if a == b {
+            let box_x = node_bounds[a].x + node_bounds[a].width + 20.0;
+            let box_y = node_bounds[a].y - 20.0;
+            steps.push(Step::At(Point {
+                x: box_x,
+                y: start.y,
+            }));
+            steps.push(Step::At(Point { x: box_x, y: box_y }));
+            steps.push(Step::At(Point { x: end.x, y: box_y }));
+        } else if let Some((_, y, _)) = channel[f] {
+            steps.push(if vertical(0) {
+                Step::At(Point { x: start.x, y })
             } else {
-                route_work = route_work.saturating_add(4 + 4 * obstacles.len());
-                if route_work > ROUTE_WORK_LIMIT {
-                    return Err(err("budget", "Routing work limit exceeded"));
+                Step::Leg(rank[a] + 1, start.y, y)
+            });
+            steps.push(if vertical(1) {
+                Step::At(Point { x: end.x, y })
+            } else {
+                Step::Leg(rank[b], y, end.y)
+            });
+        } else {
+            let chain = &lay.chains[&(a, b)];
+            let mut y = start.y;
+            if vertical(0) {
+                y = if chain.len() > 2 {
+                    vy(chain[1])
+                } else if !vertical(1) {
+                    end.y
+                } else {
+                    (start.y + end.y) / 2.0
+                };
+                steps.push(Step::At(Point { x: start.x, y }));
+            }
+            for pair in chain.windows(2) {
+                let next = if pair[1] != b {
+                    vy(pair[1])
+                } else if vertical(1) {
+                    y
+                } else {
+                    end.y
+                };
+                if next != y {
+                    steps.push(Step::Leg(lay.layer[pair[0]] + 1, y, next));
+                    y = next;
                 }
-                crate::geometry::route(start, end, &obstacles, 8.0, 1000)
-                    .map_err(|_| err("routing", "Invalid route geometry"))?
-                    .waypoints
-                    .ok_or_else(|| err("routing", "No collision-free route within budget"))?
             }
+            if vertical(1) {
+                steps.push(Step::At(Point { x: end.x, y }));
+            }
+        }
+        steps.push(Step::At(end));
+        plans.push(steps);
+    }
+    cancelled(cancel)?;
+    // Each leg gets its own 8 px track, centred in its gap: upward legs from the
+    // left and downward legs from the right, both by ascending start y.
+    let mut gap_legs = BTreeMap::<usize, Vec<(bool, f64, usize, usize)>>::new();
+    for (f, steps) in plans.iter().enumerate() {
+        for (s, step) in steps.iter().enumerate() {
+            if let Step::Leg(gap, from, to) = step {
+                gap_legs
+                    .entry(*gap)
+                    .or_default()
+                    .push((to > from, *from, f, s));
+            }
+        }
+    }
+    let mut track_x = BTreeMap::new();
+    for (gap, mut list) in gap_legs {
+        let left = if gap == 0 {
+            col_x[0] - 80.0
+        } else {
+            col_x[gap - 1] + column[gap - 1][0] + column[gap - 1][1]
         };
-        let original_edge = edge_by_element[&flow.id.selector()];
-        let out = &mut result.edges[edge_index[&original_edge.id.selector()]];
-        out.waypoints = points;
-        if let Some(label) = &mut out.label_bounds {
-            let segment = out
-                .waypoints
-                .windows(2)
-                .max_by(|a, b| {
-                    let length = |pair: &[Point]| {
-                        (pair[0].x - pair[1].x).abs() + (pair[0].y - pair[1].y).abs()
-                    };
-                    length(a).total_cmp(&length(b))
+        let right = if gap < layers {
+            col_x[gap]
+        } else {
+            left + 80.0
+        };
+        list.sort_by(|x, y| {
+            x.0.cmp(&y.0)
+                .then(if x.0 {
+                    y.1.total_cmp(&x.1)
+                } else {
+                    x.1.total_cmp(&y.1)
                 })
-                .ok_or_else(|| err("routing", "Edge has no label segment"))?;
-            let a = &segment[0];
-            let b = &segment[1];
-            if a.y == b.y {
-                label.x = (a.x + b.x - label.width) / 2.0;
-                label.y = a.y - label.height - 8.0;
-            } else {
-                label.x = a.x + 8.0;
-                label.y = (a.y + b.y - label.height) / 2.0;
+                .then((x.2, x.3).cmp(&(y.2, y.3)))
+        });
+        let first = (left + right) / 2.0 - 4.0 * (list.len() - 1) as f64;
+        for (k, &(_, _, f, s)) in list.iter().enumerate() {
+            track_x.insert((f, s), first + 8.0 * k as f64);
+        }
+    }
+    let mut route_work = 0usize;
+    const ROUTE_WORK_LIMIT: usize = 500_000;
+    for (f, steps) in plans.into_iter().enumerate() {
+        cancelled(cancel)?;
+        let (id, a, b) = &flow_ends[f];
+        let (a, b) = (*a, *b);
+        let mut points = Vec::with_capacity(steps.len() + 4);
+        for (s, step) in steps.into_iter().enumerate() {
+            match step {
+                Step::At(p) => points.push(p),
+                Step::Leg(_, from, to) => {
+                    let x = track_x[&(f, s)];
+                    points.push(Point { x, y: from });
+                    points.push(Point { x, y: to });
+                }
             }
+        }
+        let mut points = simplify(points);
+        // A plan with too many bends or one crossing a node falls back to the
+        // obstacle router, then to a plain route through the target's gap.
+        if points.len() > 16
+            || (0..n).any(|w| {
+                w != a
+                    && w != b
+                    && points
+                        .windows(2)
+                        .any(|s| segment_hits(&s[0], &s[1], &node_bounds[w]))
+            })
+        {
+            let (start, end) = (port[f][0].clone(), port[f][1].clone());
+            let mut obstacles: Vec<_> = (0..n)
+                .filter(|&w| w != a && w != b)
+                .map(|w| node_bounds[w].clone())
+                .collect();
+            obstacles.extend(result.shapes.iter().filter_map(|s| s.label_bounds.clone()));
+            route_work = route_work.saturating_add(4 + 5 * obstacles.len());
+            let routed = (route_work <= ROUTE_WORK_LIMIT)
+                .then(|| crate::geometry::route(start.clone(), end.clone(), &obstacles, 8.0, 1000))
+                .and_then(|r| r.ok()?.waypoints)
+                .filter(|w| w.len() <= 16);
+            points = routed.unwrap_or_else(|| {
+                let x = col_x[rank[b]] - 12.0;
+                simplify(vec![
+                    start.clone(),
+                    Point { x, y: start.y },
+                    Point { x, y: end.y },
+                    end.clone(),
+                ])
+            });
+        }
+        result.edges[edge_index[&edge_by_element[id].id.selector()]].waypoints = points;
+    }
+    let mut placed: Vec<Bounds> = result
+        .shapes
+        .iter()
+        .filter_map(|s| s.label_bounds.clone())
+        .collect();
+    for (id, _, _) in &flow_ends {
+        let out = &mut result.edges[edge_index[&edge_by_element[id].id.selector()]];
+        if let Some(label) = &mut out.label_bounds {
+            place_label(label, &out.waypoints, &node_bounds, &placed);
+            placed.push(label.clone());
         }
     }
     let shape_at = |id: &ElementSelector| index[&d.shapes[shape_by_element[id]].id.selector()];
