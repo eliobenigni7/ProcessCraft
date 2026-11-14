@@ -34,14 +34,26 @@
 <div class="page-head">
   <p class="eyebrow">Status</p>
   <h1>What is verified, and what is not</h1>
-  <p class="lead">ProcessCraft 0.2.0 is pre-alpha. For trying it out and for modeling on Windows it works. It is not a finished product. This page follows the evidence files in the repository, which record what was run and what was measured.</p>
+  <p class="lead">ProcessCraft 0.2.0 is pre-alpha. For trying it out and for modeling on Windows it works. It is not a finished product. This page follows the evidence files in the repository, which record what was run and what was measured. Last updated 14 November 2026; every change is in the <a href="https://github.com/eliobenigni7/ProcessCraft/blob/main/CHANGELOG.md">changelog</a>.</p>
   <ul class="plain">
+    <li><a href="#since">Since 0.2.0</a></li>
     <li><a href="#verified">Verified</a></li>
     <li><a href="#measured">Measured</a></li>
     <li><a href="#not-verified">Not verified</a></li>
     <li><a href="#roadmap">Roadmap</a></li>
   </ul>
 </div>
+
+<section id="since" aria-labelledby="since-title">
+  <h2 id="since-title">Since 0.2.0</h2>
+  <p class="narrow">Not in a release yet. These changes are to the website, the documentation and the project's own process; the app itself is unchanged since 0.2.0.</p>
+  <ul class="plain">
+    <li><b>Documentation.</b> <a href="docs/">A documentation book</a> with three paths: analysts (install, a procurement tutorial, the canvas, attributes, conventions and RACI, files), developers (the CLI, batches, the file format, architecture) and AI agents (the MCP server and the prompt pack). Agents can read <a href="docs/llms.txt"><code>llms.txt</code></a>, <a href="docs/llms-full.txt"><code>llms-full.txt</code></a> or the Markdown copy of any page.</li>
+    <li><b>Generated reference.</b> The pages listing every CLI subcommand and all 167 batch commands are generated from <code>processcraft-cli</code>, and CI fails if they no longer match it.</li>
+    <li><b>Contributing.</b> A contributor guide, a security policy with private vulnerability reporting on GitHub, a code of conduct, a support page, issue forms for bugs, BPMN interchange problems and feature requests, and a pull request checklist.</li>
+    <li><b>Website.</b> Redesigned in the app's own colours and fonts, around images of the app and its exports.</li>
+  </ul>
+</section>
 
 <section id="verified" aria-labelledby="verified-title">
   <h2 id="verified-title">Verified</h2>
@@ -50,6 +62,7 @@
     <li><b>CLI workflow for the analyst layer.</b> A repeatable script drives attributes, conventions, RACI, the overlay and a BPMN round trip through the command line only; all 10 checks pass. For example, the saved file reopens with the same content identity, and the RACI export matches a pinned CSV byte for byte.</li>
     <li><b>Installer.</b> For the 0.1.0 package, which shares the installer definition of 0.2.0, the per-user install, upgrade from a lower version, refusal of a downgrade, a failed install that rolls back, uninstall, and the wizard pages were run on one Windows 11 machine, and a per-machine install from an elevated shell.</li>
     <li><b>Release.</b> 0.2.0 was built by the release workflow and published with an MSI (56.5 MB) and a portable ZIP (66.5 MB).</li>
+    <li><b>Documentation.</b> The book and the site were built and checked locally in light and dark appearance and at phone width, with no broken internal links; the published pages respond. CI on <code>main</code> passes with the reference check included.</li>
     <li><b>Prompt pack.</b> Two rounds of runs by fresh agent sessions led to changes in the documents. The documents were changed again after the second round and have not been re-run by a fresh agent since.</li>
   </ul>
 </section>
@@ -78,7 +91,7 @@
   <h2 id="nv-title">Not verified</h2>
   <p class="narrow"><b>M5's manual checks are still open</b>, so M5 is released but not closed:</p>
   <ul class="plain">
-    <li>The procurement workflow with attributes, conventions, RACI and overlay in the desktop app, by hand, including save and reopen. The command-line half is done.</li>
+    <li>The procurement workflow with attributes, conventions, RACI and overlay in the desktop app, by hand, including save and reopen. The command-line half is done. The <a href="docs/analysts/tutorial.html">analyst tutorial</a> follows the same workflow; its desktop steps were written from the app's controls and have not been run by hand either.</li>
     <li>The same workflow through MCP attached to the open desktop app.</li>
     <li>Opening the exported BPMN in an external tool (bpmn.io or Camunda Modeler), saving it unchanged and importing it again, to see whether <code>pc:attributes</code> survives. Nothing was observed, and no claim is made.</li>
   </ul>
