@@ -15,12 +15,71 @@ const MIN_ZOOM: f32 = 0.125;
 const MAX_ZOOM: f32 = 8.0;
 pub(super) const ZOOM_STEP: f32 = 1.25;
 
-/// Camera of a rendered texture, so an older frame can be shown scaled until the new one arrives.
+/// Model origin, zoom and logical size of a rendered texture, so it can be moved and scaled on
+/// the GPU under another camera. `request` is the canvas camera and zoom it was rendered for.
 #[derive(Clone, Copy)]
 pub(super) struct TextureView {
     camera: (f64, f64),
     zoom: f32,
     size: Vec2,
+    request: ((f64, f64), f32),
+}
+
+/// Overscan per side, as a fraction of the canvas size, before the raster limits apply.
+const OVERSCAN: f32 = 0.5;
+/// Zoom ratios (current / rendered) served by scaling the texture instead of a new raster.
+const RESAMPLE_ZOOM: std::ops::RangeInclusive<f32> = 0.8..=1.25;
+/// Input quiet time after which the canvas is re-rasterized at its exact scale.
+const SETTLE: std::time::Duration = std::time::Duration::from_millis(100);
+
+/// The texture to render for a canvas camera: the canvas plus an overscan margin on every side,
+/// shrunk to stay within the raster limits (16384 px per axis, 64 MiB RGBA; with slack here).
+fn raster_view(camera: (f64, f64), zoom: f32, size: Vec2, pixels_per_point: f32) -> TextureView {
+    let (w, h) = (size.x * pixels_per_point, size.y * pixels_per_point);
+    let grow = (16000.0 / w)
+        .min(16000.0 / h)
+        .min((60.0 * 1024.0 * 1024.0 / 4.0 / (w * h)).sqrt());
+    let margin = size * ((grow - 1.0) / 2.0).clamp(0.0, OVERSCAN);
+    TextureView {
+        camera: (
+            camera.0 - (margin.x / zoom) as f64,
+            camera.1 - (margin.y / zoom) as f64,
+        ),
+        zoom,
+        size: size + margin * 2.0,
+        request: (camera, zoom),
+    }
+}
+
+/// Whether the canvas needs a new raster: none was asked for, the latest one does not cover the
+/// canvas under this camera, the zoom left [`RESAMPLE_ZOOM`] of it, or input has settled on a
+/// camera it was not rendered for (so the shown pixels are exact, not resampled).
+fn needs_raster(
+    submitted: Option<TextureView>,
+    camera: (f64, f64),
+    zoom: f32,
+    size: Vec2,
+    settled: bool,
+) -> bool {
+    let Some(view) = submitted else {
+        return true;
+    };
+    let edge = |origin: f64, extent: f32, zoom: f32| origin + (extent / zoom) as f64;
+    let slack = 1e-3;
+    let covers = view.camera.0 <= camera.0 + slack
+        && view.camera.1 <= camera.1 + slack
+        && edge(view.camera.0, view.size.x, view.zoom) + slack >= edge(camera.0, size.x, zoom)
+        && edge(view.camera.1, view.size.y, view.zoom) + slack >= edge(camera.1, size.y, zoom);
+    !covers
+        || !RESAMPLE_ZOOM.contains(&(zoom / view.zoom))
+        || (settled && view.request != (camera, zoom))
+}
+
+/// `PROCESSCRAFT_CANVAS_TRACE=1` logs, per shown raster, submit-to-display latency and the
+/// UI-thread texture update time to stderr.
+fn trace_canvas() -> bool {
+    static TRACE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *TRACE.get_or_init(|| std::env::var_os("PROCESSCRAFT_CANVAS_TRACE").is_some_and(|v| v == "1"))
 }
 
 enum Gesture {
@@ -762,7 +821,11 @@ pub(super) struct CanvasState {
     label_edit: Option<LabelEdit>,
     revealed: Option<ElementSelector>,
     view: Option<TextureView>,
-    pending: Vec<(String, TextureView)>,
+    pending: Vec<(String, TextureView, std::time::Instant)>,
+    /// Key and view of the latest raster asked for.
+    submitted: Option<(String, TextureView)>,
+    /// Camera and zoom seen last, and since when.
+    moved: Option<((f64, f64), f32, std::time::Instant)>,
     scene: String,
     size: Vec2,
     rect: Option<Rect>,
@@ -2506,34 +2569,44 @@ impl ProcessCraft {
                     (Some(_), Some(spec)) => format!("{}:{:?}", spec.definition, spec.mode),
                     _ => String::new(),
                 };
-                let key = format!(
-                    "{scene}:{overlay_tag}:{}:{}:{}:{}:{}:{}:{}",
+                // Everything but the camera: a change needs a new raster now.
+                let base = format!(
+                    "{scene}:{overlay_tag}:{}:{}:{}:{}",
                     snap.generation,
-                    camera.0,
-                    camera.1,
-                    zoom,
                     size.x,
                     size.y,
                     ctx.pixels_per_point()
                 );
+                let now = std::time::Instant::now();
+                match self.canvas.moved {
+                    Some((c, z, _)) if (c, z) == (camera, zoom) => {}
+                    _ => self.canvas.moved = Some((camera, zoom, now)),
+                }
+                let still = self.canvas.moved.map_or(SETTLE, |(_, _, at)| now - at);
                 // Another document, diagram, or theme: the previous frame is not a valid placeholder.
                 if self.canvas.scene != scene {
                     self.canvas.scene = scene;
                     self.canvas.pending.clear();
+                    self.canvas.submitted = None;
                     // Hidden without `view`; the texture handle is reused for the next frame.
                     self.canvas.view = None;
                     if interactive {
                         self.hits.clear();
                     }
                 }
-                if self.render_key != key {
+                let submitted = self.canvas.submitted.as_ref().map(|(_, view)| *view);
+                if self.render_key != base
+                    || needs_raster(submitted, camera, zoom, size, still >= SETTLE)
+                {
+                    let texture = raster_view(camera, zoom, size, ctx.pixels_per_point());
                     let view = Viewport {
-                        x: camera.0,
-                        y: camera.1,
-                        width: size.x as f64 / zoom as f64,
-                        height: size.y as f64 / zoom as f64,
+                        x: texture.camera.0,
+                        y: texture.camera.1,
+                        width: texture.size.x as f64 / zoom as f64,
+                        height: texture.size.y as f64 / zoom as f64,
                         zoom: (zoom * ctx.pixels_per_point()).clamp(MIN_ZOOM, MAX_ZOOM),
                     };
+                    let key = format!("{base}:{}:{}:{zoom}", camera.0, camera.1);
                     self.renderer.submit(crate::jobs::RenderJob {
                         key: key.clone(),
                         document: d.clone(),
@@ -2549,13 +2622,15 @@ impl ProcessCraft {
                         context: ctx.clone(),
                     });
                     self.render_failed = false;
-                    self.render_key = key.clone();
-                    self.canvas
-                        .pending
-                        .push((key.clone(), TextureView { camera, zoom, size }));
+                    self.render_key = base;
+                    self.canvas.pending.push((key.clone(), texture, now));
+                    self.canvas.submitted = Some((key, texture));
                     if self.canvas.pending.len() > 32 {
                         self.canvas.pending.remove(0);
                     }
+                } else if still < SETTLE && submitted.is_some_and(|v| v.request != (camera, zoom)) {
+                    // Pan/zoom is served by the GPU; re-raster at exact scale once input settles.
+                    ctx.request_repaint_after(SETTLE - still);
                 }
                 // Results arrive in submission order; any pending one is newer than what is shown.
                 while let Some(result) = self.renderer.poll() {
@@ -2563,14 +2638,16 @@ impl ProcessCraft {
                         .canvas
                         .pending
                         .iter()
-                        .position(|(pending, _)| *pending == result.key)
+                        .position(|(pending, ..)| *pending == result.key)
                     else {
                         continue;
                     };
-                    let view = self.canvas.pending[index].1;
+                    let (_, view, submitted_at) = self.canvas.pending[index];
                     self.canvas.pending.drain(..=index);
                     match result.result {
                         Ok((image, hits)) => {
+                            let started = std::time::Instant::now();
+                            let pixels = image.size;
                             match &mut self.texture {
                                 Some(texture) => texture.set(image, Default::default()),
                                 None => {
@@ -2578,13 +2655,24 @@ impl ProcessCraft {
                                         Some(ctx.load_texture("diagram", image, Default::default()))
                                 }
                             }
+                            if trace_canvas() {
+                                eprintln!(
+                                    "canvas: {}x{} px shown {:.1} ms after submit; texture update {:.2} ms on the UI thread",
+                                    pixels[0],
+                                    pixels[1],
+                                    (started - submitted_at).as_secs_f64() * 1000.0,
+                                    started.elapsed().as_secs_f64() * 1000.0
+                                );
+                            }
                             self.canvas.view = Some(view);
                             if interactive {
                                 self.hits = hits;
                             }
                         }
                         Err(e) => {
-                            if crate::jobs::is_current(&result.key, &key) {
+                            let current = self.canvas.submitted.as_ref().map(|(key, _)| key);
+                            if current.is_some_and(|key| crate::jobs::is_current(&result.key, key))
+                            {
                                 self.render_failed = true;
                                 self.ctl.error = e;
                             }
@@ -4679,11 +4767,62 @@ mod tests {
             camera: (0.0, 0.0),
             zoom: 1.0,
             size: Vec2::new(100.0, 50.0),
+            request: ((0.0, 0.0), 1.0),
         };
         assert_eq!(texture_rect(rect, view, (0.0, 0.0), 1.0), rect);
         let panned = texture_rect(rect, view, (5.0, 0.0), 2.0);
         assert_eq!(panned.min, Pos2::new(0.0, 10.0));
         assert_eq!(panned.size(), Vec2::new(200.0, 100.0));
+    }
+
+    #[test]
+    fn overscanned_texture_lands_on_the_canvas_and_stays_within_raster_limits() {
+        let rect = Rect::from_min_size(Pos2::new(10.0, 20.0), Vec2::new(1600.0, 900.0));
+        let view = raster_view((100.0, 50.0), 2.0, rect.size(), 1.0);
+        assert_eq!(view.size, Vec2::new(3200.0, 1800.0));
+        assert_eq!(view.camera, (100.0 - 400.0, 50.0 - 225.0));
+        // The canvas sits in the middle of the texture, pixel for pixel.
+        let shown = texture_rect(rect, view, (100.0, 50.0), 2.0);
+        assert_eq!(shown.min, rect.min - Vec2::new(800.0, 450.0));
+        assert_eq!(shown.size(), view.size);
+        // Drag previews sample the texture with UVs from the same origin and size.
+        let uv = |x: f64| (x - view.camera.0) as f32 * view.zoom / view.size.x;
+        assert_eq!(uv(100.0), 0.25);
+        // High DPI or huge canvases get less overscan, within 16384 px and 64 MiB.
+        for (size, ppp) in [
+            (Vec2::new(1600.0, 900.0), 2.0),
+            (Vec2::new(3840.0, 2160.0), 1.0),
+        ] {
+            let view = raster_view((0.0, 0.0), 1.0, size, ppp);
+            let (w, h) = (view.size.x * ppp, view.size.y * ppp);
+            assert!(
+                view.size.x > size.x
+                    && w <= 16384.0
+                    && w.ceil() * h.ceil() * 4.0 <= 64.0 * 1024.0 * 1024.0
+            );
+        }
+        let huge = raster_view((0.0, 0.0), 1.0, Vec2::new(9000.0, 9000.0), 1.0);
+        assert_eq!(huge.size, Vec2::new(9000.0, 9000.0));
+    }
+
+    #[test]
+    fn pan_and_zoom_reuse_the_texture_until_coverage_zoom_or_settling_ask_for_a_raster() {
+        let size = Vec2::new(1600.0, 900.0);
+        let view = Some(raster_view((0.0, 0.0), 1.0, size, 1.0));
+        assert!(needs_raster(None, (0.0, 0.0), 1.0, size, false));
+        // The exact view, settled: nothing to do.
+        assert!(!needs_raster(view, (0.0, 0.0), 1.0, size, true));
+        // Pans inside the overscan margin and small zooms move the texture on the GPU.
+        assert!(!needs_raster(view, (800.0, -450.0), 1.0, size, false));
+        assert!(!needs_raster(view, (-400.0, 0.0), 0.8, size, false));
+        assert!(!needs_raster(view, (100.0, 100.0), 1.25, size, false));
+        // Past the margin, or past the zoom band: a new raster now.
+        assert!(needs_raster(view, (801.0, 0.0), 1.0, size, false));
+        assert!(needs_raster(view, (0.0, 0.0), 1.3, size, false));
+        assert!(needs_raster(view, (0.0, 0.0), 0.75, size, false));
+        // Settled on another camera: re-raster at the exact scale.
+        assert!(needs_raster(view, (10.0, 0.0), 1.0, size, true));
+        assert!(needs_raster(view, (0.0, 0.0), 1.1, size, true));
     }
 
     #[test]
