@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Status - ProcessCraft</title>
 <meta name="author" content="Elio Benigni">
-<meta name="description" content="What has been verified in ProcessCraft 0.2.1, what has not, measured numbers, and the roadmap.">
+<meta name="description" content="What has been verified in ProcessCraft 0.2.2, what has not, measured numbers, and the roadmap.">
 <meta property="og:title" content="Status - ProcessCraft">
-<meta property="og:description" content="What has been verified in ProcessCraft 0.2.1, what has not, measured numbers, and the roadmap.">
+<meta property="og:description" content="What has been verified in ProcessCraft 0.2.2, what has not, measured numbers, and the roadmap.">
 <meta property="og:image" content="images/workbench-light.png">
 <link rel="icon" type="image/png" href="icon.png">
 <link rel="stylesheet" href="style.css">
@@ -34,9 +34,9 @@
 <div class="page-head">
   <p class="eyebrow">Status</p>
   <h1>What is verified, and what is not</h1>
-  <p class="lead">ProcessCraft 0.2.1 is pre-alpha. For trying it out and for modeling on Windows it works. It is not a finished product. This page follows the evidence files in the repository, which record what was run and what was measured. Last updated 14 November 2026; every change is in the <a href="https://github.com/eliobenigni7/ProcessCraft/blob/main/CHANGELOG.md">changelog</a>.</p>
+  <p class="lead">ProcessCraft 0.2.2 is pre-alpha. For trying it out and for modeling on Windows it works. It is not a finished product. This page follows the evidence files in the repository, which record what was run and what was measured. Last updated 14 November 2026; every change is in the <a href="https://github.com/eliobenigni7/ProcessCraft/blob/main/CHANGELOG.md">changelog</a>.</p>
   <ul class="plain">
-    <li><a href="#since">New in 0.2.1</a></li>
+    <li><a href="#since">New in 0.2.2</a></li>
     <li><a href="#verified">Verified</a></li>
     <li><a href="#measured">Measured</a></li>
     <li><a href="#not-verified">Not verified</a></li>
@@ -45,8 +45,13 @@
 </div>
 
 <section id="since" aria-labelledby="since-title">
-  <h2 id="since-title">New in 0.2.1</h2>
-  <p class="narrow">Released on 14 November 2026. The canvas and the auto-layout changed; the new canvas gestures are covered by automated GUI tests and have not been checked by hand in the running app.</p>
+  <h2 id="since-title">New in 0.2.2</h2>
+  <p class="narrow">Released on 14 November 2026, after 0.2.1 the same day. The new gestures are covered by automated GUI tests and have not been checked by hand in the running app.</p>
+  <ul class="plain">
+    <li><b>Attach points.</b> Drag an end handle of a selected flow near its shape to dock it on any side, on the outline of rectangles, events and gateways, with snapping; the end keeps its place on that side when the shape moves.</li>
+    <li><b>Auto-layout.</b> A 48-node, five-lane litigation process lays out with 1 crossing (forced by the lane order) instead of 6, and no shared channels or routes over labels. A 400-node, 500-edge model lays out in 5.6 ms (release build).</li>
+  </ul>
+  <h3>0.2.1</h3>
   <ul class="plain">
     <li><b>Connections.</b> Edge ends dock on the outline of events and gateways and move to the side facing their neighbour when a shape moves or is resized; dragging a bendpoint or segment keeps the route orthogonal; associations are straight; edges have rounded corners and continuous dashes.</li>
     <li><b>Resizing.</b> Every shape can be resized, events, gateways and data objects with fixed proportions; eight handles with snapping; a resized shape grows its lane, pool or subprocess; Fit to content sizes activities and annotations to their text.</li>
@@ -64,7 +69,7 @@
     <li><b>Quality gates.</b> At the M5 qualification run: formatting, Clippy with warnings as errors, and the full test suite, which passed 1,258 tests with 0 failures and 3 ignored.</li>
     <li><b>CLI workflow for the analyst layer.</b> A repeatable script drives attributes, conventions, RACI, the overlay and a BPMN round trip through the command line only; all 10 checks pass. For example, the saved file reopens with the same content identity, and the RACI export matches a pinned CSV byte for byte.</li>
     <li><b>Installer.</b> For the 0.1.0 package, which shares the installer definition of 0.2.0, the per-user install, upgrade from a lower version, refusal of a downgrade, a failed install that rolls back, uninstall, and the wizard pages were run on one Windows 11 machine, and a per-machine install from an elevated shell.</li>
-    <li><b>Release.</b> 0.2.1 was built by the release workflow and published with an MSI (56.8 MB) and a portable ZIP (66.7 MB).</li>
+    <li><b>Release.</b> 0.2.2 was built by the release workflow and published with an MSI (56.7 MB) and a portable ZIP (66.7 MB).</li>
     <li><b>Documentation.</b> The book and the site were built and checked locally in light and dark appearance and at phone width, with no broken internal links; the published pages respond. CI on <code>main</code> passes with the reference check included.</li>
     <li><b>Prompt pack.</b> Two rounds of runs by fresh agent sessions led to changes in the documents. The documents were changed again after the second round and have not been re-run by a fresh agent since.</li>
   </ul>
@@ -146,7 +151,7 @@
       <li><a href="index.html#author">Contact</a></li>
     </ul>
     <p>ProcessCraft is made by <a href="index.html#author">Elio Benigni</a>, MIT licensed, and built on egui and the libraries of the <a href="https://github.com/storytold">Crafting Apps</a>. Inter and JetBrains Mono are used under the SIL Open Font License. It is an independent project and is not made or endorsed by bpmn.io or the Object Management Group.</p>
-    <p>Pre-alpha software: version 0.2.1, Windows only, unsigned.</p>
+    <p>Pre-alpha software: version 0.2.2, Windows only, unsigned.</p>
   </div>
 </footer>
 </body>

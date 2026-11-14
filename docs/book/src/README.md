@@ -7,7 +7,7 @@ canvas.
 
 [Back to the ProcessCraft site](https://eliobenigni7.github.io/ProcessCraft/)
 
-These pages describe version 0.2.1, which is pre-alpha and runs on Windows 10 and 11.
+These pages describe version 0.2.2, which is pre-alpha and runs on Windows 10 and 11.
 [The status page](https://eliobenigni7.github.io/ProcessCraft/status.html) says what has been
 verified and what has not.
 

@@ -41,7 +41,7 @@
 </p>
 
 > [!NOTE]
-> **Pre-alpha (0.2).** ProcessCraft models and exchanges BPMN today. Version 0.2.1 is on the
+> **Pre-alpha (0.2).** ProcessCraft models and exchanges BPMN today. Version 0.2.2 is on the
 > [Releases](https://github.com/eliobenigni7/ProcessCraft/releases) page as an **unsigned** Windows
 > installer and portable ZIP; the project format may still change, and saving is so far qualified
 > only on Windows (local NTFS). [What works today](#what-works-today) says exactly what is and is not verified.

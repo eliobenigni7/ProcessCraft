@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Download - ProcessCraft</title>
 <meta name="author" content="Elio Benigni">
-<meta name="description" content="Download ProcessCraft 0.2.1 for Windows: installer or portable ZIP, checksums, what unsigned means, and how to build from source.">
+<meta name="description" content="Download ProcessCraft 0.2.2 for Windows: installer or portable ZIP, checksums, what unsigned means, and how to build from source.">
 <meta property="og:title" content="Download - ProcessCraft">
-<meta property="og:description" content="Download ProcessCraft 0.2.1 for Windows: installer or portable ZIP, checksums, what unsigned means, and how to build from source.">
+<meta property="og:description" content="Download ProcessCraft 0.2.2 for Windows: installer or portable ZIP, checksums, what unsigned means, and how to build from source.">
 <meta property="og:image" content="images/workbench-light.png">
 <link rel="icon" type="image/png" href="icon.png">
 <link rel="stylesheet" href="style.css">
@@ -33,9 +33,9 @@
 <main id="main" class="wrap">
 <div class="page-head">
   <p class="eyebrow">Download</p>
-  <h1>Get ProcessCraft 0.2.1</h1>
+  <h1>Get ProcessCraft 0.2.2</h1>
   <p class="lead">Two ways to get the same build: a per-user Windows installer, or a portable ZIP. Both are published on the release page, and neither is signed.</p>
-  <div class="actions"><a class="button" href="https://github.com/eliobenigni7/ProcessCraft/releases/tag/v0.2.1">Open the 0.2.1 release page</a></div>
+  <div class="actions"><a class="button" href="https://github.com/eliobenigni7/ProcessCraft/releases/tag/v0.2.2">Open the 0.2.2 release page</a></div>
   <p class="note">Windows 10 or 11, 64-bit (x64). Nothing else was tested.</p>
 </div>
 
@@ -46,8 +46,8 @@
     <caption>The two files on the release page</caption>
     <thead><tr><th scope="col">File</th><th scope="col">Size</th><th scope="col">What it is</th></tr></thead>
     <tbody>
-      <tr><th scope="row"><code>processcraft-0.2.1-windows-x64.msi</code></th><td>56.8 MB</td><td>Installer. Installs for your account by default, with no administrator prompt, into <code>%LOCALAPPDATA%\Programs\ProcessCraft</code>. Adds a Start menu shortcut, makes ProcessCraft the handler for <code>.processcraft</code> files, offers it under "Open with" for <code>.bpmn</code>, and lets Win+R <code>processcraft</code> start it. Upgrades replace the older version. The first wizard page also offers "Everyone", which needs administrator rights and installs into Program Files.</td></tr>
-      <tr><th scope="row"><code>processcraft-0.2.1-windows-x64-portable.zip</code></th><td>66.7 MB</td><td>The two programs, the licenses and a README in one folder: unzip and run <code>processcraft.exe</code>. Nothing is registered, so file associations and shortcuts are yours to make.</td></tr>
+      <tr><th scope="row"><code>processcraft-0.2.2-windows-x64.msi</code></th><td>56.7 MB</td><td>Installer. Installs for your account by default, with no administrator prompt, into <code>%LOCALAPPDATA%\Programs\ProcessCraft</code>. Adds a Start menu shortcut, makes ProcessCraft the handler for <code>.processcraft</code> files, offers it under "Open with" for <code>.bpmn</code>, and lets Win+R <code>processcraft</code> start it. Upgrades replace the older version. The first wizard page also offers "Everyone", which needs administrator rights and installs into Program Files.</td></tr>
+      <tr><th scope="row"><code>processcraft-0.2.2-windows-x64-portable.zip</code></th><td>66.7 MB</td><td>The two programs, the licenses and a README in one folder: unzip and run <code>processcraft.exe</code>. Nothing is registered, so file associations and shortcuts are yours to make.</td></tr>
     </tbody>
   </table>
   </div>
@@ -63,15 +63,15 @@
   <p class="narrow">These SHA-256 checksums were computed from the files downloaded from the release page and match the digests GitHub shows for the release assets. They are on this page, not in a signed file, so they confirm that your download is complete and matches the release, not who published it.</p>
   <div class="table-scroll">
   <table>
-    <caption>SHA-256 of the 0.2.1 release files</caption>
+    <caption>SHA-256 of the 0.2.2 release files</caption>
     <thead><tr><th scope="col">File</th><th scope="col">SHA-256</th></tr></thead>
     <tbody>
-      <tr><th scope="row"><code>processcraft-0.2.1-windows-x64.msi</code></th><td><code>efd90edcec769911da919761389da1ffe0c02b87370c3d24035450f12844f20a</code></td></tr>
-      <tr><th scope="row"><code>processcraft-0.2.1-windows-x64-portable.zip</code></th><td><code>05c089432d961e242b29476fd8036256aa11d95fe6f15e5ca83e84f96a970ff5</code></td></tr>
+      <tr><th scope="row"><code>processcraft-0.2.2-windows-x64.msi</code></th><td><code>2e31246d9039bfeca15af061744ce025caa44ed93f05dd879da98d7266587241</code></td></tr>
+      <tr><th scope="row"><code>processcraft-0.2.2-windows-x64-portable.zip</code></th><td><code>eb2ae06d9e21b91dabbea292c48149cdbf7ec9822f567587892ea2b036037ea3</code></td></tr>
     </tbody>
   </table>
   </div>
-<pre tabindex="0"><code>Get-FileHash .\processcraft-0.2.1-windows-x64.msi -Algorithm SHA256</code></pre>
+<pre tabindex="0"><code>Get-FileHash .\processcraft-0.2.2-windows-x64.msi -Algorithm SHA256</code></pre>
 </section>
 
 <section id="files" aria-labelledby="files-title">
@@ -104,7 +104,7 @@ cargo run --release -p processcraft-cli -- --help    <span class="c"># command-l
       <li><a href="index.html#author">Contact</a></li>
     </ul>
     <p>ProcessCraft is made by <a href="index.html#author">Elio Benigni</a>, MIT licensed, and built on egui and the libraries of the <a href="https://github.com/storytold">Crafting Apps</a>. Inter and JetBrains Mono are used under the SIL Open Font License. It is an independent project and is not made or endorsed by bpmn.io or the Object Management Group.</p>
-    <p>Pre-alpha software: version 0.2.1, Windows only, unsigned.</p>
+    <p>Pre-alpha software: version 0.2.2, Windows only, unsigned.</p>
   </div>
 </footer>
 </body>

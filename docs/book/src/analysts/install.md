@@ -2,13 +2,13 @@
 
 ## Get the app
 
-ProcessCraft 0.2.1 runs on Windows 10 and 11, 64-bit. The
-[release page](https://github.com/eliobenigni7/ProcessCraft/releases/tag/v0.2.1) has two files:
+ProcessCraft 0.2.2 runs on Windows 10 and 11, 64-bit. The
+[release page](https://github.com/eliobenigni7/ProcessCraft/releases/tag/v0.2.2) has two files:
 
 | File | What it is |
 |---|---|
-| `processcraft-0.2.1-windows-x64.msi` | Installer. Installs for your account, without an administrator prompt, adds a Start menu entry and opens `.processcraft` files. |
-| `processcraft-0.2.1-windows-x64-portable.zip` | The same programs in a folder. Unzip and run `processcraft.exe`. Nothing is registered. |
+| `processcraft-0.2.2-windows-x64.msi` | Installer. Installs for your account, without an administrator prompt, adds a Start menu entry and opens `.processcraft` files. |
+| `processcraft-0.2.2-windows-x64-portable.zip` | The same programs in a folder. Unzip and run `processcraft.exe`. Nothing is registered. |
 
 The files are not signed, so Windows SmartScreen may say "Windows protected your PC". That means
 nobody has vouched for the publisher, not that something is wrong with the file. Choose **More info**,
