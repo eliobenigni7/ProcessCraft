@@ -10,10 +10,12 @@ pub struct RenderJob {
     pub view: Viewport,
     /// Attribute overlay (view state, never saved); its spec is part of `key`.
     pub overlay: Option<Arc<processcraft_core::overlay::Overlay>>,
+    /// Woken when the result is ready, so it is shown without a polling loop.
+    pub context: egui::Context,
 }
 pub struct RenderResult {
     pub key: String,
-    pub result: Result<(Vec<u8>, usize, usize, Vec<HitRegion>), String>,
+    pub result: Result<(egui::ColorImage, Vec<HitRegion>), String>,
 }
 pub struct Renderer {
     pending: Arc<(Mutex<Option<RenderJob>>, Condvar)>,
@@ -46,18 +48,18 @@ impl Renderer {
                     job.overlay.as_deref(),
                 )
                 .map(|v| {
-                    (
-                        v.pixels.data().to_vec(),
-                        v.pixels.width() as usize,
-                        v.pixels.height() as usize,
-                        v.hits,
-                    )
+                    let size = [v.pixels.width() as usize, v.pixels.height() as usize];
+                    // tiny-skia pixels are premultiplied (and opaque here: the raster starts
+                    // white and paints opaque colors), so this is a plain copy off the UI thread.
+                    let image = egui::ColorImage::from_rgba_premultiplied(size, &v.pixels.take());
+                    (image, v.hits)
                 })
                 .map_err(|e| e.to_string());
-                let _ = tx.send(RenderResult {
+                let result = RenderResult {
                     key: job.key,
                     result,
-                });
+                };
+                publish(result, &tx, || job.context.request_repaint());
             }
         });
         Self { pending, results }
@@ -90,6 +92,26 @@ fn enqueue_latest<T>(slot: &(Mutex<Option<T>>, Condvar), value: T) {
     let (lock, ready) = slot;
     *lock.lock().unwrap() = Some(value);
     ready.notify_one();
+}
+/// Hand a worker result to the UI, then wake it: the next frame finds the result.
+fn publish<T>(value: T, tx: &mpsc::SyncSender<T>, wake: impl FnOnce()) {
+    if tx.send(value).is_ok() {
+        wake();
+    }
+}
+
+#[cfg(test)]
+mod render_wake_tests {
+    #[test]
+    fn render_result_is_published_before_waking_the_ui() {
+        let (tx, rx) = std::sync::mpsc::sync_channel(1);
+        let mut woken = false;
+        super::publish("frame", &tx, || {
+            assert_eq!(rx.try_recv().unwrap(), "frame");
+            woken = true;
+        });
+        assert!(woken);
+    }
 }
 fn publish_recovery_result(
     result: Result<(), String>,

@@ -2520,8 +2520,8 @@ impl ProcessCraft {
                 if self.canvas.scene != scene {
                     self.canvas.scene = scene;
                     self.canvas.pending.clear();
+                    // Hidden without `view`; the texture handle is reused for the next frame.
                     self.canvas.view = None;
-                    self.texture = None;
                     if interactive {
                         self.hits.clear();
                     }
@@ -2546,6 +2546,7 @@ impl ProcessCraft {
                         },
                         view,
                         overlay,
+                        context: ctx.clone(),
                     });
                     self.render_failed = false;
                     self.render_key = key.clone();
@@ -2569,10 +2570,14 @@ impl ProcessCraft {
                     let view = self.canvas.pending[index].1;
                     self.canvas.pending.drain(..=index);
                     match result.result {
-                        Ok((pixels, w, h, hits)) => {
-                            let image = egui::ColorImage::from_rgba_unmultiplied([w, h], &pixels);
-                            self.texture =
-                                Some(ctx.load_texture("diagram", image, Default::default()));
+                        Ok((image, hits)) => {
+                            match &mut self.texture {
+                                Some(texture) => texture.set(image, Default::default()),
+                                None => {
+                                    self.texture =
+                                        Some(ctx.load_texture("diagram", image, Default::default()))
+                                }
+                            }
                             self.canvas.view = Some(view);
                             if interactive {
                                 self.hits = hits;
@@ -2585,9 +2590,6 @@ impl ProcessCraft {
                             }
                         }
                     }
-                }
-                if !self.canvas.pending.is_empty() && !self.render_failed {
-                    ctx.request_repaint_after(std::time::Duration::from_millis(30));
                 }
                 match (&self.texture, self.canvas.view) {
                     (Some(t), Some(view)) => {
