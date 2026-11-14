@@ -6005,6 +6005,14 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
         } => {
             let d = doc(p, document_id, false)?;
             let old = d.clone();
+            let resized: Vec<ElementSelector> = d
+                .diagrams
+                .iter()
+                .filter(|g| g.id == diagram_id)
+                .flat_map(|g| &g.shapes)
+                .filter(|s| s.id == shape_id)
+                .map(|s| s.element.clone())
+                .collect();
             let batch = crate::manipulate::resize(d, &diagram_id, &shape_id, bounds)
                 .map_err(CommandError::InvalidParams)?;
             for m in batch {
@@ -6014,6 +6022,8 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             if d.capability.allows_structural_editing() && !d.blocks_structural_edits() {
                 crate::containers::sync_lanes(&old, d, &diagram_id);
             }
+            // Pools and expanded subprocesses grow around the resized shape, as on a move.
+            auto_resize(p, document_id, &diagram_id, resized, &old)?;
         }
         Mutation::Reconnect {
             document_id,

@@ -426,6 +426,30 @@ fn moving_past_a_pool_border_grows_the_pool_and_its_lanes_without_cutting_childr
 }
 
 #[test]
+fn resizing_a_task_past_its_lane_edge_grows_the_lane_and_pool() {
+    let mut s = session();
+    let (pool_id, pool) = create_pool(&mut s);
+    batch(&mut s, vec![split(&pool_id, 2)]).unwrap();
+    let order = bounds(&s, "order");
+    let bottom = pool.y + pool.height + 10.0;
+    run(&mut s, |s| {
+        resize(
+            "order",
+            s,
+            b(order.x, order.y, order.width, bottom - order.y),
+        )
+    })
+    .unwrap();
+    assert_eq!(bounds(&s, "order").y + bounds(&s, "order").height, bottom);
+    let grown = self::pool(&s).1;
+    assert_eq!(grown.y + grown.height, bottom + 60.0);
+    let last = lane_bounds(&s).last().unwrap().1.clone();
+    assert_eq!(last.y + last.height, bottom + 60.0);
+    undo(&mut s);
+    assert_eq!(self::pool(&s).1, pool);
+}
+
+#[test]
 fn collapsing_moves_content_to_the_subprocess_diagram_and_expanding_brings_it_back() {
     let mut s = session();
     let element = |id: &str, kind: &str, details: serde_json::Value| {
