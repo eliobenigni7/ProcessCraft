@@ -1315,12 +1315,34 @@ pub fn propose_layout(
         }
     }
     let bands = process.lanes.len() + 1;
+    let band_of = |i: usize| membership.get(&ids[i]).copied().unwrap_or(bands - 1);
+    let lay = Layered::new(
+        &graph,
+        &reverse,
+        &back,
+        rank,
+        (0..n).map(band_of).collect(),
+        cancel,
+    )?;
+    let rank = lay.layer[..n].to_vec();
+    // Components are stacked inside each band.
+    let mut block_rows = BTreeMap::<(usize, usize), usize>::new();
+    for v in 0..lay.layer.len() {
+        let rows = block_rows.entry((lay.band[v], lay.comp[v])).or_default();
+        *rows = (*rows).max(lay.row[v] + 1);
+    }
+    let mut offset = BTreeMap::new();
+    let mut used_rows = vec![0; bands];
+    for (&(band, comp), &rows) in &block_rows {
+        offset.insert((band, comp), used_rows[band]);
+        used_rows[band] += rows;
+    }
+    let row: Vec<_> = (0..n)
+        .map(|i| Some(offset[&(lay.band[i], lay.comp[i])] + lay.row[i]))
+        .collect();
     let mut cells: BTreeMap<(usize, usize), Vec<usize>> = BTreeMap::new();
-    for (i, id) in ids.iter().enumerate() {
-        cells
-            .entry((membership.get(id).copied().unwrap_or(bands - 1), rank[i]))
-            .or_default()
-            .push(i);
+    for (i, &layer) in rank.iter().enumerate() {
+        cells.entry((band_of(i), layer)).or_default().push(i);
     }
     let max_width = d
         .shapes
@@ -1328,69 +1350,17 @@ pub fn propose_layout(
         .filter(|s| nodes.contains_key(&s.element))
         .map(|s| s.bounds.width)
         .fold(0.0, f64::max);
-    // Nodes sit on fixed-height rows so equal rows align across columns. A node
-    // alone in its column takes the lower-median row of its laid-out same-band
-    // neighbours, which centres splits and joins between their branches.
     let max_height = d
         .shapes
         .iter()
         .filter(|s| nodes.contains_key(&s.element))
         .map(|s| s.bounds.height)
         .fold(0.0, f64::max);
-    let band_of = |i: usize| membership.get(&ids[i]).copied().unwrap_or(bands - 1);
-    let mut row = vec![None; n];
-    for cell in cells.values().filter(|cell| cell.len() > 1) {
-        for (slot, &i) in cell.iter().enumerate() {
-            row[i] = Some(slot);
-        }
-    }
-    let mut singles: Vec<_> = cells
-        .values()
-        .filter(|cell| cell.len() == 1)
-        .map(|cell| cell[0])
-        .collect();
-    for _ in 0..2 {
-        for &i in &singles {
-            if row[i].is_some() {
-                continue;
-            }
-            let mut known: Vec<usize> = graph[i]
-                .iter()
-                .chain(&reverse[i])
-                .filter(|&&j| band_of(j) == band_of(i))
-                .filter_map(|&j| row[j])
-                .collect();
-            known.sort_unstable();
-            if !known.is_empty() {
-                row[i] = Some(known[(known.len() - 1) / 2]);
-            }
-        }
-        singles.reverse();
-    }
-    // Back-edges run in a channel over the top of the higher band. When a node
-    // stacked in an endpoint's column blocks that vertical leg (and nothing blocks
-    // the way down), they run in a channel under the lower band instead. Channels
-    // are assigned innermost-first by column span so nested loops never cross,
-    // and each band's margins grow with its channel count.
+    // Back-edges run in a channel over the top of the higher band, or under the
+    // lower band when fewer vertices stand between the endpoints and that edge.
+    // Channels are assigned innermost-first by column span so nested loops never
+    // cross, and each band's margins grow with its channel count.
     let slot = |i: usize| row[i].unwrap_or(0);
-    let blocked = |e: usize, other: usize, above: bool| {
-        (0..n).any(|j| {
-            j != e
-                && j != other
-                && rank[j] == rank[e]
-                && if band_of(j) == band_of(e) {
-                    if above {
-                        slot(j) < slot(e)
-                    } else {
-                        slot(j) > slot(e)
-                    }
-                } else if above {
-                    band_of(j) < band_of(e) && band_of(j) >= band_of(other).min(band_of(e))
-                } else {
-                    band_of(j) > band_of(e) && band_of(j) <= band_of(other).max(band_of(e))
-                }
-        })
-    };
     let mut planned = Vec::new();
     for f in flows.values() {
         let (
@@ -1404,9 +1374,7 @@ pub fn propose_layout(
         if a == b || rank[a] < rank[b] {
             continue;
         }
-        let bottom = (blocked(a, b, true) || blocked(b, a, true))
-            && !blocked(a, b, false)
-            && !blocked(b, a, false);
+        let bottom = !lay.channel_top(a, b);
         let band = if bottom {
             band_of(a).max(band_of(b))
         } else {
@@ -1825,6 +1793,328 @@ pub fn propose_layout(
         warnings,
         metrics,
     })
+}
+
+/// Layered graph used for ordering and rows. Real vertices keep their indices
+/// `0..n`; each forward edge gets one dummy vertex per layer it crosses, in its
+/// source's band and component. Rows are numbered per (band, component) block.
+struct Layered {
+    real: usize,
+    layer: Vec<usize>,
+    band: Vec<usize>,
+    comp: Vec<usize>,
+    row: Vec<usize>,
+    order: Vec<Vec<usize>>,
+    pred: Vec<Vec<usize>>,
+    succ: Vec<Vec<usize>>,
+}
+const MAX_LAYERED_VERTICES: usize = 20_000;
+impl Layered {
+    fn new(
+        graph: &[Vec<usize>],
+        reverse: &[Vec<usize>],
+        back: &BTreeSet<(usize, usize)>,
+        mut layer: Vec<usize>,
+        mut band: Vec<usize>,
+        cancel: &AtomicBool,
+    ) -> Result<Self, LayoutError> {
+        let n = graph.len();
+        let forward = |v: usize, w: usize| v != w && !back.contains(&(v, w));
+        // Pull each source next to its nearest successor.
+        for v in 0..n {
+            if !reverse[v].iter().any(|&u| forward(u, v))
+                && let Some(m) = graph[v]
+                    .iter()
+                    .filter(|&&w| forward(v, w))
+                    .map(|&w| layer[w])
+                    .min()
+            {
+                layer[v] = m - 1;
+            }
+        }
+        // Weakly connected components, numbered by their smallest member.
+        let mut comp = vec![usize::MAX; n];
+        let mut count = 0;
+        for root in 0..n {
+            if comp[root] != usize::MAX
+                || graph[root].iter().chain(&reverse[root]).all(|&w| w == root)
+            {
+                continue;
+            }
+            comp[root] = count;
+            let mut stack = vec![root];
+            while let Some(v) = stack.pop() {
+                for &w in graph[v].iter().chain(&reverse[v]) {
+                    if comp[w] == usize::MAX {
+                        comp[w] = count;
+                        stack.push(w);
+                    }
+                }
+            }
+            count += 1;
+        }
+        // Unconnected nodes form a final pseudo-component packed in a square grid.
+        let isolated: Vec<_> = (0..n).filter(|&v| comp[v] == usize::MAX).collect();
+        let side = (1usize..).find(|k| k * k >= isolated.len()).unwrap_or(1);
+        for (k, &v) in isolated.iter().enumerate() {
+            comp[v] = count;
+            layer[v] = k % side;
+        }
+        let (mut pred, mut succ) = (vec![Vec::new(); n], vec![Vec::new(); n]);
+        for v in 0..n {
+            for &w in graph[v].iter().filter(|&&w| forward(v, w)) {
+                let mut chain = vec![v];
+                for l in layer[v] + 1..layer[w] {
+                    if layer.len() >= MAX_LAYERED_VERTICES {
+                        return Err(err("budget", "Layered graph exceeds the vertex limit"));
+                    }
+                    chain.push(layer.len());
+                    layer.push(l);
+                    band.push(band[v]);
+                    comp.push(comp[v]);
+                    pred.push(Vec::new());
+                    succ.push(Vec::new());
+                }
+                chain.push(w);
+                for pair in chain.windows(2) {
+                    succ[pair[0]].push(pair[1]);
+                    pred[pair[1]].push(pair[0]);
+                }
+            }
+        }
+        let layers = layer.iter().max().map_or(0, |m| m + 1);
+        let mut order = vec![Vec::new(); layers];
+        for (v, &l) in layer.iter().enumerate() {
+            order[l].push(v);
+        }
+        let mut lay = Layered {
+            real: n,
+            row: vec![0; layer.len()],
+            layer,
+            band,
+            comp,
+            order,
+            pred,
+            succ,
+        };
+        lay.sort_layers(cancel)?;
+        lay.align_rows();
+        Ok(lay)
+    }
+    fn group(&self, v: usize) -> (usize, usize) {
+        (self.band[v], self.comp[v])
+    }
+    /// Barycenter sweeps plus adjacent transpositions inside each (band,
+    /// component) group, keeping the order with the fewest crossings.
+    fn sort_layers(&mut self, cancel: &AtomicBool) -> Result<(), LayoutError> {
+        let mut pos = vec![0; self.layer.len()];
+        for list in &mut self.order {
+            list.sort_by_key(|&v| (self.band[v], self.comp[v], v));
+            for (i, &v) in list.iter().enumerate() {
+                pos[v] = i;
+            }
+        }
+        let mut best = (crossings(&self.order, &pos, &self.pred), self.order.clone());
+        let layers = self.order.len();
+        for _ in 0..4 {
+            cancelled(cancel)?;
+            for down in [true, false] {
+                let nbrs = if down { &self.pred } else { &self.succ };
+                let seq: Vec<usize> = if down {
+                    (1..layers).collect()
+                } else {
+                    (0..layers.saturating_sub(1)).rev().collect()
+                };
+                for l in seq {
+                    let mut keyed: Vec<_> = self.order[l]
+                        .iter()
+                        .map(|&v| {
+                            let bary = if nbrs[v].is_empty() {
+                                pos[v] as f64
+                            } else {
+                                nbrs[v].iter().map(|&u| pos[u] as f64).sum::<f64>()
+                                    / nbrs[v].len() as f64
+                            };
+                            (self.group(v), bary, v)
+                        })
+                        .collect();
+                    keyed.sort_by(|a, b| {
+                        a.0.cmp(&b.0).then(a.1.total_cmp(&b.1)).then(a.2.cmp(&b.2))
+                    });
+                    self.order[l] = keyed.into_iter().map(|(_, _, v)| v).collect();
+                    for (i, &v) in self.order[l].iter().enumerate() {
+                        pos[v] = i;
+                    }
+                }
+            }
+            for l in 0..layers {
+                for i in 1..self.order[l].len() {
+                    let (u, v) = (self.order[l][i - 1], self.order[l][i]);
+                    let pair = |a: usize, b: usize| -> usize {
+                        [&self.pred, &self.succ]
+                            .iter()
+                            .map(|nb| {
+                                nb[a]
+                                    .iter()
+                                    .map(|&x| nb[b].iter().filter(|&&y| pos[x] > pos[y]).count())
+                                    .sum::<usize>()
+                            })
+                            .sum()
+                    };
+                    if self.group(u) == self.group(v) && pair(v, u) < pair(u, v) {
+                        self.order[l].swap(i - 1, i);
+                        (pos[u], pos[v]) = (i, i - 1);
+                    }
+                }
+            }
+            let count = crossings(&self.order, &pos, &self.pred);
+            if count < best.0 {
+                best = (count, self.order.clone());
+            }
+        }
+        self.order = best.1;
+        Ok(())
+    }
+    /// Integer rows inside each (band, component) block: a left-to-right pass
+    /// towards the lower median of same-band predecessors, then a right-to-left
+    /// pass towards successors, so splits, upper branches and joins share a row.
+    /// Dummies follow their chain predecessor. Rows are then renumbered densely.
+    fn align_rows(&mut self) {
+        let mut row = vec![0i64; self.layer.len()];
+        for list in &self.order {
+            for group in list.chunk_by(|&a, &b| self.group(a) == self.group(b)) {
+                for (i, &v) in group.iter().enumerate() {
+                    row[v] = i as i64;
+                }
+            }
+        }
+        let layers = self.order.len();
+        for down in [true, false] {
+            let seq: Vec<usize> = if down {
+                (0..layers).collect()
+            } else {
+                (0..layers).rev().collect()
+            };
+            for l in seq {
+                for group in self.order[l].chunk_by(|&a, &b| self.group(a) == self.group(b)) {
+                    let desired: Vec<i64> = group
+                        .iter()
+                        .map(|&v| {
+                            let nbrs = if down || self.is_dummy(v) {
+                                &self.pred[v]
+                            } else {
+                                &self.succ[v]
+                            };
+                            let mut rows: Vec<i64> = nbrs
+                                .iter()
+                                .filter(|&&u| self.band[u] == self.band[v])
+                                .map(|&u| row[u])
+                                .collect();
+                            rows.sort_unstable();
+                            rows.get(rows.len().saturating_sub(1) / 2)
+                                .copied()
+                                .unwrap_or(row[v])
+                        })
+                        .collect();
+                    for (&v, r) in group.iter().zip(fit_rows(&desired)) {
+                        row[v] = r;
+                    }
+                }
+            }
+        }
+        let mut used = BTreeMap::<(usize, usize), BTreeSet<i64>>::new();
+        for (v, &r) in row.iter().enumerate() {
+            used.entry(self.group(v)).or_default().insert(r);
+        }
+        for (v, &r) in row.iter().enumerate() {
+            self.row[v] = used[&self.group(v)].range(..r).count();
+        }
+    }
+    fn is_dummy(&self, v: usize) -> bool {
+        v >= self.real
+    }
+    /// Vertices in an endpoint's layer between it and the top (or bottom) edge
+    /// of the channel's block in band `limit`.
+    fn between(&self, e: usize, top: bool, limit: usize) -> usize {
+        let key = |v: usize| (self.band[v], self.comp[v], self.row[v]);
+        self.order[self.layer[e]]
+            .iter()
+            .filter(|&&w| {
+                w != e
+                    && if top {
+                        key(w) < key(e) && key(w) >= (limit, self.comp[e], 0)
+                    } else {
+                        key(w) > key(e) && key(w) <= (limit, self.comp[e], usize::MAX)
+                    }
+            })
+            .count()
+    }
+    /// A back edge runs above unless fewer vertices block the way down (ties go up).
+    fn channel_top(&self, a: usize, b: usize) -> bool {
+        let (lo, hi) = (
+            self.band[a].min(self.band[b]),
+            self.band[a].max(self.band[b]),
+        );
+        self.between(a, true, lo) + self.between(b, true, lo)
+            <= self.between(a, false, hi) + self.between(b, false, hi)
+    }
+}
+/// Crossings between adjacent layers, counted as inversions with a Fenwick tree.
+fn crossings(order: &[Vec<usize>], pos: &[usize], pred: &[Vec<usize>]) -> usize {
+    let mut total = 0;
+    for list in order {
+        let mut pairs: Vec<(usize, usize)> = list
+            .iter()
+            .flat_map(|&v| pred[v].iter().map(move |&u| (pos[u], pos[v])))
+            .collect();
+        pairs.sort_unstable();
+        let mut tree = vec![0usize; list.len() + 1];
+        for (k, &(_, b)) in pairs.iter().enumerate() {
+            let (mut i, mut at_most) = (b + 1, 0);
+            while i > 0 {
+                at_most += tree[i];
+                i &= i - 1;
+            }
+            total += k - at_most;
+            let mut i = b + 1;
+            while i < tree.len() {
+                tree[i] += 1;
+                i += i.isolate_lowest_one();
+            }
+        }
+    }
+    total
+}
+/// Strictly increasing rows closest (in L1) to `desired`: pool adjacent
+/// violators of `desired[i] - i`, each pool taking its upper median.
+fn fit_rows(desired: &[i64]) -> Vec<i64> {
+    let mut pools: Vec<(Vec<i64>, i64)> = Vec::new();
+    for (i, &d) in desired.iter().enumerate() {
+        let mut values = vec![d - i as i64];
+        loop {
+            let mut sorted = values.clone();
+            sorted.sort_unstable();
+            let median = sorted[sorted.len() / 2];
+            match pools.last() {
+                Some((_, m)) if *m > median => {
+                    if let Some((previous, _)) = pools.pop() {
+                        values.extend(previous);
+                    }
+                }
+                _ => {
+                    pools.push((values, median));
+                    break;
+                }
+            }
+        }
+    }
+    let mut rows = Vec::with_capacity(desired.len());
+    for (values, median) in pools {
+        for _ in values {
+            rows.push(median + rows.len() as i64);
+        }
+    }
+    rows
 }
 
 /// Final proof of a computed layout. Invalid geometry and overlapping nodes refuse

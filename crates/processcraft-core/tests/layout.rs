@@ -1438,7 +1438,13 @@ fn loop_back_from_stacked_node_routes_around_the_node_above() {
             .find(|e| e.id == id::<ElementSelector>("di_t2_start"))
             .unwrap();
         assert!(edge.waypoints[0].y == t2.y + t2.height);
-        assert!(edge.waypoints.iter().all(|w| w.y >= t2.y));
+        // Nothing in t2's column runs above it (start keeps the upper row).
+        assert!(
+            edge.waypoints
+                .iter()
+                .filter(|w| w.x >= t2.x && w.x <= t2.x + t2.width)
+                .all(|w| w.y >= t2.y)
+        );
     }
 }
 #[test]
@@ -1495,6 +1501,224 @@ fn other_flow_node_kinds_are_laid_out() {
         .unwrap_or_else(|e| panic!("{}: {}", e.code, e.message));
     validate_proposal(&d, &p).unwrap();
     assert!(p.warnings.iter().all(|w| w.code == "route_over_node"));
+}
+fn add_lane(d: &mut BpmnDocument, name: &str, members: &[&str]) {
+    let mut shape = d.diagrams[0].shapes[0].clone();
+    shape.id = id(&format!("{name}_di"));
+    shape.element = id(name);
+    shape.label = None;
+    d.diagrams[0].shapes.push(shape);
+    d.processes[0].lanes.push(processcraft_core::model::Lane {
+        base: None,
+        child_lane_set_base: None,
+        child_lane_set_id: None,
+        child_lane_set_name: None,
+        partition_element: None,
+        partition_element_ref: None,
+        id: id(name),
+        name: Some(name.into()),
+        parent: None,
+        members: members.iter().map(|m| id(m)).collect(),
+    });
+}
+/// Shared layout properties: valid, deterministic, no node overlap, nodes inside
+/// their lanes, lanes indented in a pool, orthogonal routes of at most 16 points.
+fn assert_layout_properties(d: &BpmnDocument) -> processcraft_core::layout::LayoutProposal {
+    let p = propose_layout(d, &id("diagram"), "s", 0, &AtomicBool::new(false))
+        .unwrap_or_else(|e| panic!("{}: {}", e.code, e.message));
+    let again = propose_layout(d, &id("diagram"), "s", 0, &AtomicBool::new(false)).unwrap();
+    assert_eq!(
+        serde_json::to_value(&p.proposed).unwrap(),
+        serde_json::to_value(&again.proposed).unwrap()
+    );
+    validate_proposal(d, &p).unwrap();
+    let bounds = |element: &ElementSelector| {
+        let shape = d.diagrams[0]
+            .shapes
+            .iter()
+            .find(|s| &s.element == element)
+            .unwrap();
+        p.proposed
+            .shapes
+            .iter()
+            .find(|s| s.id == shape.id.selector())
+            .unwrap()
+            .bounds
+            .clone()
+    };
+    let inside = |a: &Bounds, b: &Bounds| {
+        a.x >= b.x
+            && a.y >= b.y
+            && a.x + a.width <= b.x + b.width
+            && a.y + a.height <= b.y + b.height
+    };
+    let nodes: Vec<_> = d.processes[0]
+        .nodes
+        .iter()
+        .map(|n| bounds(&n.id.selector()))
+        .collect();
+    for (i, a) in nodes.iter().enumerate() {
+        for b in &nodes[i + 1..] {
+            assert!(
+                a.x + a.width <= b.x
+                    || b.x + b.width <= a.x
+                    || a.y + a.height <= b.y
+                    || b.y + b.height <= a.y,
+                "{a:?} overlaps {b:?}"
+            );
+        }
+    }
+    let pool = d
+        .collaboration
+        .as_ref()
+        .map(|c| bounds(&c.participants[0].id.selector()));
+    for lane in &d.processes[0].lanes {
+        let lane_bounds = bounds(&lane.id.selector());
+        if let Some(pool) = &pool {
+            assert_eq!(lane_bounds.x, pool.x + 30.0);
+        }
+        for member in &lane.members {
+            assert!(
+                inside(&bounds(member), &lane_bounds),
+                "{member} leaves its lane"
+            );
+        }
+    }
+    for edge in &p.proposed.edges {
+        assert!(edge.waypoints.len() <= 16);
+        assert!(
+            edge.waypoints
+                .windows(2)
+                .all(|w| w[0].x == w[1].x || w[0].y == w[1].y),
+            "{:?}",
+            edge.waypoints
+        );
+    }
+    p
+}
+#[test]
+fn diamond_with_crossed_ids_is_untangled() {
+    use NodeKind::*;
+    let d = ordinary_process(
+        &[
+            ("s", Task),
+            ("a", Task),
+            ("b", Task),
+            ("x", Task),
+            ("y", Task),
+        ],
+        &[("s", "a"), ("s", "b"), ("a", "y"), ("b", "x")],
+        false,
+    );
+    let p = assert_layout_properties(&d);
+    assert_eq!(p.metrics.crossings, 0, "{:?}", p.warnings);
+}
+#[test]
+fn two_lane_ping_pong_has_no_crossings() {
+    use NodeKind::*;
+    let mut d = ordinary_process(
+        &[
+            ("a", Task),
+            ("b", Task),
+            ("c", Task),
+            ("d", Task),
+            ("e", Task),
+        ],
+        &[("a", "b"), ("b", "c"), ("c", "d"), ("d", "e")],
+        false,
+    );
+    add_lane(&mut d, "upper", &["a", "c", "e"]);
+    add_lane(&mut d, "lower", &["b", "d"]);
+    let p = assert_layout_properties(&d);
+    assert_eq!(p.metrics.crossings, 0, "{:?}", p.warnings);
+}
+#[test]
+fn loop_inside_a_branch_has_no_crossings_or_warnings() {
+    use NodeKind::*;
+    let d = ordinary_process(
+        &[
+            ("start", StartEvent),
+            ("split", ExclusiveGateway),
+            ("a", Task),
+            ("b", Task),
+            ("c", Task),
+            ("join", ExclusiveGateway),
+            ("end", EndEvent),
+        ],
+        &[
+            ("start", "split"),
+            ("split", "a"),
+            ("a", "b"),
+            ("b", "join"),
+            ("split", "c"),
+            ("c", "join"),
+            ("join", "end"),
+            ("b", "a"),
+        ],
+        false,
+    );
+    let p = assert_layout_properties(&d);
+    assert_eq!(p.metrics.crossings, 0);
+    assert!(p.warnings.is_empty(), "{:?}", p.warnings);
+}
+#[test]
+fn disconnected_components_are_stacked_apart() {
+    use NodeKind::*;
+    let d = ordinary_process(
+        &[("a", Task), ("b", Task), ("c", Task), ("d", Task)],
+        &[("a", "b"), ("c", "d")],
+        false,
+    );
+    let p = assert_layout_properties(&d);
+    assert_eq!(p.metrics.crossings, 0);
+    let extent = |names: [&str; 2]| {
+        let ys: Vec<_> = names
+            .iter()
+            .map(|n| {
+                p.proposed
+                    .shapes
+                    .iter()
+                    .find(|s| s.id == id::<ElementSelector>(&format!("shape_{n}")))
+                    .unwrap()
+                    .bounds
+                    .clone()
+            })
+            .collect();
+        (
+            ys.iter().map(|b| b.y).fold(f64::MAX, f64::min),
+            ys.iter().map(|b| b.y + b.height).fold(f64::MIN, f64::max),
+        )
+    };
+    let (first, second) = (extent(["a", "b"]), extent(["c", "d"]));
+    assert!(first.1 <= second.0 || second.1 <= first.0);
+}
+#[test]
+fn back_edge_blocked_above_and_below_is_laid_out() {
+    use NodeKind::*;
+    let d = ordinary_process(
+        &[
+            ("start", StartEvent),
+            ("split", ParallelGateway),
+            ("t1", Task),
+            ("t2", Task),
+            ("t3", Task),
+            ("join", ParallelGateway),
+            ("end", EndEvent),
+        ],
+        &[
+            ("start", "split"),
+            ("split", "t1"),
+            ("split", "t2"),
+            ("split", "t3"),
+            ("t1", "join"),
+            ("t2", "join"),
+            ("t3", "join"),
+            ("join", "end"),
+            ("t2", "start"),
+        ],
+        false,
+    );
+    assert_layout_properties(&d);
 }
 #[test]
 fn boundary_events_and_expanded_subprocesses_are_refused() {
