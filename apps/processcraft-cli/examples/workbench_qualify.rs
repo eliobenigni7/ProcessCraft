@@ -455,9 +455,16 @@ fn canvas_probe(out: &std::path::Path, medium: &ProjectData) -> Result<(), Box<d
     };
     let mut fonts = TextEngine::new();
     let mut report = serde_json::Map::new();
-    for ppp in [1.0f32, 1.5] {
+    // "overscan": the desktop's raster, the canvas plus half its size on every side.
+    for (ppp, grow, name) in [
+        (1.0f32, 1.0, "ppp_1"),
+        (1.5, 1.0, "ppp_1.5"),
+        (1.0, 2.0, "ppp_1_overscan"),
+        (1.5, 2.0, "ppp_1.5_overscan"),
+    ] {
         let mut pixels = 0;
         let mut build = |camera: (f64, f64), zoom: f32| -> Result<(f64, f64), Box<dyn Error>> {
+            let z = f64::from(zoom);
             let t = Instant::now();
             let view = BpmnViewport::build(
                 doc,
@@ -466,10 +473,10 @@ fn canvas_probe(out: &std::path::Path, medium: &ProjectData) -> Result<(), Box<d
                 &mut fonts,
                 "Noto Sans",
                 Viewport {
-                    x: camera.0,
-                    y: camera.1,
-                    width: w / f64::from(zoom),
-                    height: h / f64::from(zoom),
+                    x: camera.0 - w * (grow - 1.) / 2. / z,
+                    y: camera.1 - h * (grow - 1.) / 2. / z,
+                    width: w * grow / z,
+                    height: h * grow / z,
                     zoom: zoom * ppp,
                 },
             )?;
@@ -496,7 +503,7 @@ fn canvas_probe(out: &std::path::Path, medium: &ProjectData) -> Result<(), Box<d
             convert.push(c);
         }
         report.insert(
-            format!("ppp_{ppp}"),
+            name.into(),
             json!({"pan_100px_x30": stats(pan), "zoom_ramp_0_5_to_2_0_x30": stats(zoom_ramp), "rgba_to_texels": stats(convert), "pixels_per_raster": pixels}),
         );
     }

@@ -117,3 +117,41 @@ Baseline (before the canvas changes), p50 / p95 in ms:
 Every pan or zoom step needed one such build before the canvas showed the new view; the stale
 texture was shifted and scaled meanwhile, and the result waited up to 30 ms more for the next
 polled frame.
+
+Changes, in order: the render worker wakes the UI when a result is ready (no 30 ms poll), takes
+the pixmap buffer instead of copying it and converts it to an egui image off the UI thread; the UI
+updates one texture in place. `TextEngine` keeps a bounded layout cache (two generations of 4096
+layouts, keyed by every layout input); a viewport build clones only the active diagram and builds
+the semantic index once instead of cloning the document and indexing it twice. The canvas then asks
+for the viewport plus half its size on every side (less when 16384 px per axis or 64 MiB would be
+exceeded) and stops putting the camera in the render key: while the latest raster covers the canvas
+and the zoom stays within 0.8–1.25 of it, pan and zoom only move and scale the textured quad on the
+GPU. A new raster is asked for when coverage or the zoom band runs out, when the generation, theme,
+overlay, size or DPI change, and 100 ms after the last camera change, at the exact scale.
+
+After (same probe, release), p50 / p95 in ms:
+
+| Series | ppp 1.0 | ppp 1.5 |
+|---|---|---|
+| Pan, viewport only | 16.4 / 24.3 | 22.3 / 30.3 |
+| Zoom ramp, viewport only | 23.1 / 35.0 | 38.6 / 44.1 |
+| Pan, overscanned raster (what the desktop renders) | 44.7 / 49.8 | 58.9 / 65.9 |
+| Zoom ramp, overscanned raster | 51.1 / 57.3 | 74.0 / 98.1 |
+| Convert, overscanned (5.76 / 12.96 Mpx), now on the worker | 3.2 / 3.3 | 7.4 / 8.1 |
+
+The cache and the removed copy cut a viewport build by roughly a quarter (pan p95 30.0 → 24.3 ms at
+ppp 1.0). Overscan makes each raster about 2–2.5× slower, but it is no longer on the pan/zoom path:
+with an 800 px margin a 100 px-per-step pan needs a raster only every eighth step, the zoom ramp
+(×1.049 per step) every four to five steps, plus one settle raster when input stops; in between,
+frames cost the GPU quad only. The overscanned rasters stay under the 150 ms viewport target.
+
+`PROCESSCRAFT_CANVAS_TRACE=1` (stderr; run `processcraft.exe 2> trace.txt` for the release
+build) logs per shown raster its size, the submit-to-display latency and the UI-thread texture
+update time.
+
+Limits: no GUI frame-time probe; the GPU upload itself happens in the eframe painter and is not
+timed (the trace times only queuing the texture update); at ppp 1.5 an overscanned raster holds
+about 52 MB in the pixmap plus the same in the egui image while it is handed over; a pan faster
+than the margin per raster time shows canvas background at the leading edge until the raster
+arrives; very large or high-DPI canvases get a smaller margin (none beyond the raster limits, as
+before).

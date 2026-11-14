@@ -618,6 +618,8 @@ Use the same diagram primitives for the native canvas and exports. Selection han
 
 The initial canvas renderer is CPU-based, using tiny-skia for vector rasterization. The GUI uploads the result as a texture and paints transient overlays separately. This follows a proven suite pattern while avoiding an unnecessary second GPU compositor. tiny-skia provides raster primitives, not a text-layout engine or PDF writer. [tiny-skia](https://docs.rs/tiny-skia/0.12.0/tiny_skia/).
 
+The raster stays on the CPU; pan and zoom are a GPU transform of it. The canvas rasterizes the viewport plus an overscan margin (half the canvas size per side, reduced to fit the raster limits) on a latest-wins worker that wakes the UI when done. While that texture covers the canvas and the zoom is within 0.8–1.25 of its scale, the textured quad is only moved and scaled. A new raster is requested when coverage or the zoom band runs out, when the content generation, theme, overlay, size, or DPI change, and about 100 ms after the camera stops, at the exact scale, so a settled canvas shows unresampled pixels. Text layouts are cached in the text engine, bounded by count.
+
 ### 13.2 Text
 
 Use existing Rust shaping and font libraries rather than writing shaping code. Candidate stack: harfrust, skrifa, Unicode bidi/line-breaking support, and a bounded font catalog. harfrust shapes text to positioned glyphs; skrifa supplies outlines and metrics. The combined fallback and wrapping policy belongs to ProcessCraft's text module. [harfrust](https://docs.rs/harfrust/0.15.0/harfrust/), [skrifa](https://docs.rs/skrifa/0.50.0/skrifa/).
@@ -826,7 +828,7 @@ The targets are hypotheses to test on a declared Windows reference machine. M0 i
 | Scenario | Initial target |
 |---|---|
 | Property rename/link | p95 engine commit under 20 ms on medium fixture |
-| Pointer feedback | Smooth 60 Hz overlays using cached canvas; no synchronous full export during drag |
+| Pointer feedback | Smooth 60 Hz overlays using cached canvas; no synchronous full export during drag; pan/zoom move the cached overscanned raster on the GPU (§13.1) |
 | Hit testing | p95 under 2 ms for the visible medium scene |
 | Full viewport raster | p95 under 150 ms at declared DPI; coalesce updates |
 | Open/save medium project | Under 1 second on local SSD after warm start |
