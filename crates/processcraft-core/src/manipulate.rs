@@ -1059,14 +1059,27 @@ pub fn reconnect(
     ) else {
         return Err("Both elements must be shown in this diagram".into());
     };
-    let waypoints = modeling::route(
-        diagram,
-        kind,
-        queries::find_node(doc, source),
-        queries::find_node(doc, target).map(|n| n.kind),
-        a,
-        b,
-    );
+    // Keep the interior bendpoints when the new end docks on them cleanly; otherwise route anew.
+    let points = &edge.waypoints;
+    let kept = (points.len() > 2)
+        .then(|| {
+            let start = (old_source != *source).then(|| dock_toward(a, &points[1]));
+            let end = (old_target != *target).then(|| dock_toward(b, &points[points.len() - 2]));
+            geometry::repair_endpoints(points, start, end, &[a.clone(), b.clone()]).ok()
+        })
+        .flatten()
+        .filter(|r| r.warning.is_none())
+        .and_then(|r| r.waypoints);
+    let waypoints = kept.unwrap_or_else(|| {
+        modeling::route(
+            diagram,
+            kind,
+            queries::find_node(doc, source),
+            queries::find_node(doc, target).map(|n| n.kind),
+            a,
+            b,
+        )
+    });
     if old_source != *source
         && let Ok(node) = crate::commands::node_mut(doc, &old_source)
     {
@@ -1090,6 +1103,34 @@ pub fn reconnect(
         edge_id: edge.id.selector(),
         waypoints,
     }])
+}
+/// The border point of `b` facing `n`: straight across when `n` is level with a side (so the
+/// end segment stays orthogonal), else the middle of the side on the dominant axis.
+fn dock_toward(b: &Bounds, n: &Point) -> Point {
+    let (right, bottom) = (b.x + b.width, b.y + b.height);
+    let c = mid(b);
+    let (dx, dy) = (n.x - c.x, n.y - c.y);
+    if n.y > b.y && n.y < bottom && (n.x <= b.x || n.x >= right) {
+        Point {
+            x: if dx < 0.0 { b.x } else { right },
+            y: n.y,
+        }
+    } else if n.x > b.x && n.x < right && (n.y <= b.y || n.y >= bottom) {
+        Point {
+            x: n.x,
+            y: if dy < 0.0 { b.y } else { bottom },
+        }
+    } else if dx.abs() * b.height >= dy.abs() * b.width {
+        Point {
+            x: if dx < 0.0 { b.x } else { right },
+            y: c.y,
+        }
+    } else {
+        Point {
+            x: c.x,
+            y: if dy < 0.0 { b.y } else { bottom },
+        }
+    }
 }
 fn edge_in(doc: &BpmnDocument, diagram_id: &ElementSelector, edge: &Edge) -> bool {
     doc.diagrams

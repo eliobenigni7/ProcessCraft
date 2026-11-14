@@ -508,6 +508,29 @@ fn reconnect_keeps_the_flow_and_follows_the_rules() {
 }
 
 #[test]
+fn reconnect_keeps_the_interior_bendpoints() {
+    let mut s = session();
+    // decision -> end runs right then down; its new source sits level with the bend's row.
+    batch(
+        &mut s,
+        vec![Mutation::Reconnect {
+            document_id: docid(),
+            diagram_id: sel("procurement_diagram"),
+            flow_id: sel("flow_rejected"),
+            source_id: sel("review"),
+            target_id: sel("end"),
+        }],
+    )
+    .unwrap();
+    let points: Vec<(f64, f64)> = edge(&s, "flow_rejected")
+        .waypoints
+        .iter()
+        .map(|p| (p.x, p.y))
+        .collect();
+    assert_eq!(points, [(330.0, 128.0), (798.0, 128.0), (798.0, 292.0)]);
+}
+
+#[test]
 fn moving_into_a_lane_or_subprocess_updates_membership_and_scope() {
     let mut s = session();
     let sub = element(

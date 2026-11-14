@@ -47,6 +47,8 @@ enum Gesture {
         flow: ElementSelector,
         points: Vec<Point>,
         part: EdgePart,
+        /// Bounds of the source and target shapes.
+        ends: [Option<Bounds>; 2],
     },
 }
 
@@ -70,12 +72,57 @@ fn edge_handles(points: &[Pos2]) -> Vec<(EdgePart, Pos2)> {
     );
     handles
 }
-/// The route after dragging `part` by `(dx, dy)` (bpmn-js bendpoint move and segment move): a
-/// waypoint moves; an orthogonal segment moves across its axis; a diagonal segment gets a new
-/// bendpoint at its middle.
-fn edit_route(points: &[Point], part: EdgePart, dx: f64, dy: f64) -> Vec<Point> {
+/// The route after dragging `part` by `(dx, dy)` (bpmn-js bendpoint move and segment move).
+/// `ends` are the bounds of the source and target shapes. An interior bendpoint drags its two
+/// adjacent segments along, so an orthogonal route stays orthogonal; an orthogonal segment moves
+/// across its axis; an endpoint dragged that way slides along its shape's border, clamped to
+/// the shape's extent. A diagonal segment gets a new bendpoint at its middle; an endpoint itself
+/// moves freely (the caller reconnects or re-docks it). `grid` rounds the moved coordinates to 10.
+fn edit_route(
+    points: &[Point],
+    part: EdgePart,
+    dx: f64,
+    dy: f64,
+    ends: &[Option<Bounds>; 2],
+    grid: bool,
+) -> Vec<Point> {
+    let snap = |v: f64| if grid { (v / 10.0).round() * 10.0 } else { v };
+    let last = points.len().saturating_sub(1);
+    // Clamp `v` to the side extent of endpoint `j` along x (`along_x`) or y.
+    let clamp = |v: f64, j: usize, along_x: bool| {
+        let shape = match j {
+            0 => ends[0].as_ref(),
+            j if j == last => ends[1].as_ref(),
+            _ => None,
+        };
+        shape.map_or(v, |b| {
+            if along_x {
+                v.clamp(b.x, b.x + b.width)
+            } else {
+                v.clamp(b.y, b.y + b.height)
+            }
+        })
+    };
     let mut out = points.to_vec();
     match part {
+        EdgePart::Point(i) if i > 0 && i < last => {
+            let (mut x, mut y) = (snap(points[i].x + dx), snap(points[i].y + dy));
+            for j in [i - 1, i + 1] {
+                if points[j].y == points[i].y {
+                    y = clamp(y, j, false);
+                } else if points[j].x == points[i].x {
+                    x = clamp(x, j, true);
+                }
+            }
+            for j in [i - 1, i + 1] {
+                if points[j].y == points[i].y {
+                    out[j].y = y;
+                } else if points[j].x == points[i].x {
+                    out[j].x = x;
+                }
+            }
+            out[i] = Point { x, y };
+        }
         EdgePart::Point(i) => {
             if let Some(p) = out.get_mut(i) {
                 p.x += dx;
@@ -85,23 +132,72 @@ fn edit_route(points: &[Point], part: EdgePart, dx: f64, dy: f64) -> Vec<Point> 
         EdgePart::Segment(i) if i + 1 < out.len() => {
             let (a, b) = (out[i].clone(), out[i + 1].clone());
             if a.y == b.y {
-                out[i].y += dy;
-                out[i + 1].y += dy;
+                let y = clamp(clamp(snap(a.y + dy), i, false), i + 1, false);
+                out[i].y = y;
+                out[i + 1].y = y;
             } else if a.x == b.x {
-                out[i].x += dx;
-                out[i + 1].x += dx;
+                let x = clamp(clamp(snap(a.x + dx), i, true), i + 1, true);
+                out[i].x = x;
+                out[i + 1].x = x;
             } else {
                 out.insert(
                     i + 1,
                     Point {
-                        x: (a.x + b.x) / 2.0 + dx,
-                        y: (a.y + b.y) / 2.0 + dy,
+                        x: snap((a.x + b.x) / 2.0 + dx),
+                        y: snap((a.y + b.y) / 2.0 + dy),
                     },
                 );
             }
         }
         EdgePart::Segment(_) => {}
     }
+    out
+}
+/// The route with end `i` moved to the point of `b`'s border nearest to `(x, y)`. The end
+/// segment stays orthogonal: its interior neighbour follows along the segment's axis, or an
+/// elbow is added when the end moved to a side across that axis.
+fn redock_end(points: &[Point], i: usize, b: &Bounds, x: f64, y: f64) -> Vec<Point> {
+    let mut out = points.to_vec();
+    if out.len() < 2 {
+        return out;
+    }
+    let (right, bottom) = (b.x + b.width, b.y + b.height);
+    let nearest = [x - b.x, right - x, y - b.y, bottom - y]
+        .into_iter()
+        .enumerate()
+        .min_by(|a, b| a.1.total_cmp(&b.1))
+        .map_or(0, |(side, _)| side);
+    let end = match nearest {
+        0 => Point { x: b.x, y },
+        1 => Point { x: right, y },
+        2 => Point { x, y: b.y },
+        _ => Point { x, y: bottom },
+    };
+    let level = nearest < 2; // a left or right side: the end segment runs horizontally
+    let j = if i == 0 { 1 } else { out.len() - 2 };
+    let interior = j > 0 && j < out.len() - 1;
+    let was_level = points[i].y == points[j].y;
+    let was_upright = points[i].x == points[j].x;
+    if interior && level && was_level {
+        out[j].y = end.y;
+    } else if interior && !level && was_upright {
+        out[j].x = end.x;
+    } else if end.x != out[j].x && end.y != out[j].y {
+        let elbow = if level {
+            Point {
+                x: out[j].x,
+                y: end.y,
+            }
+        } else {
+            Point {
+                x: end.x,
+                y: out[j].y,
+            }
+        };
+        out.insert(if i == 0 { 1 } else { out.len() - 1 }, elbow);
+    }
+    let i = if i == 0 { 0 } else { out.len() - 1 };
+    out[i] = end;
     out
 }
 /// Snap correction for a drag (bpmn-js): the first dragged shape snaps to its siblings (shapes
@@ -1736,6 +1832,7 @@ impl ProcessCraft {
         let from = to_screen(rect, camera, zoom, bounds).center();
         let (x, y) = to_model(rect, camera, zoom, pos);
         let mut color = accent;
+        let mut route = None;
         if let Some(target) = self
             .connect_target_at(x, y, zoom, element)
             .and_then(|h| diagram.shapes.iter().find(|s| s.id == h.diagram_element_id))
@@ -1752,16 +1849,41 @@ impl ProcessCraft {
                 egui::Stroke::new(2.0, color),
                 egui::StrokeKind::Outside,
             );
-            if let Err(reason) = verdict {
-                response.clone().on_hover_text_at_pointer(reason);
+            match verdict {
+                // Preview the route the connection will get.
+                Ok(_) => {
+                    route = processcraft_core::modeling::route_between(
+                        d,
+                        diagram,
+                        element,
+                        &target.element,
+                    )
+                    .ok()
+                }
+                Err(reason) => {
+                    response.clone().on_hover_text_at_pointer(reason);
+                }
             }
         }
-        painter.extend(egui::Shape::dashed_line(
-            &[from, pos],
-            egui::Stroke::new(2.0, color),
-            6.0,
-            4.0,
-        ));
+        if let Some(points) = route {
+            let screen = points
+                .iter()
+                .map(|p| {
+                    Pos2::new(
+                        rect.left() + (p.x - camera.0) as f32 * zoom,
+                        rect.top() + (p.y - camera.1) as f32 * zoom,
+                    )
+                })
+                .collect();
+            painter.add(egui::Shape::line(screen, egui::Stroke::new(2.0, color)));
+        } else {
+            painter.extend(egui::Shape::dashed_line(
+                &[from, pos],
+                egui::Stroke::new(2.0, color),
+                6.0,
+                4.0,
+            ));
+        }
         response.ctx.set_cursor_icon(egui::CursorIcon::Crosshair);
     }
     /// End of a connect gesture at `pos`: connect to the shape there, or, on empty canvas,
@@ -2348,13 +2470,16 @@ impl ProcessCraft {
                             self.canvas.gesture = Some(Gesture::Space(pos));
                         } else if let Some(edge) = selected_edge
                             && let Some((part, _)) =
-                                bend_handles.iter().find(|(_, h)| h.distance(pos) <= 6.0)
+                                bend_handles.iter().find(|(_, h)| h.distance(pos) <= 8.0)
                         {
+                            let (from, to) =
+                                processcraft_core::modeling::edge_ends(d, diagram, edge);
                             self.canvas.gesture = Some(Gesture::Bendpoint {
                                 edge: edge.id.selector(),
                                 flow: edge.element.clone(),
                                 points: edge.waypoints.clone(),
                                 part: *part,
+                                ends: [from, to].map(|s| s.map(|s| s.bounds.clone())),
                             });
                         } else if let Some(shape) = single {
                             let screen = to_screen(rect, camera, zoom, &shape.bounds);
@@ -2539,7 +2664,7 @@ impl ProcessCraft {
                                 EdgePart::Point(i)
                                     if *i > 0
                                         && *i + 1 < edge.waypoints.len()
-                                        && h.distance(pos) <= 6.0 =>
+                                        && h.distance(pos) <= 8.0 =>
                                 {
                                     Some((edge, *i))
                                 }
@@ -2815,11 +2940,19 @@ impl ProcessCraft {
                                     );
                                 }
                             }
-                            Some(Gesture::Bendpoint { points, part, .. }) => {
+                            Some(Gesture::Bendpoint {
+                                points, part, ends, ..
+                            }) => {
                                 if let (Some(pos), Some(start)) = (pointer, origin) {
                                     let delta = (pos - start) / zoom;
-                                    let edited =
-                                        edit_route(points, *part, delta.x as f64, delta.y as f64);
+                                    let edited = edit_route(
+                                        points,
+                                        *part,
+                                        delta.x as f64,
+                                        delta.y as f64,
+                                        ends,
+                                        self.canvas.grid_snap,
+                                    );
                                     let screen: Vec<Pos2> = edited
                                         .iter()
                                         .map(|p| {
@@ -2977,13 +3110,25 @@ impl ProcessCraft {
                                 flow,
                                 points,
                                 part,
+                                ends,
                             } => {
                                 if let (Some(pos), Some(start)) = (pointer, origin) {
                                     let delta = (pos - start) / zoom;
                                     let last = points.len().saturating_sub(1);
                                     let (x, y) = to_model(rect, camera, zoom, pos);
-                                    let ends = processcraft_core::queries::find_flow(d, &flow)
+                                    let flow_ends = processcraft_core::queries::find_flow(d, &flow)
                                         .map(|f| (f.source.clone(), f.target.clone()));
+                                    let own = match part {
+                                        EdgePart::Point(0) => ends[0].as_ref(),
+                                        EdgePart::Point(i) if i == last => ends[1].as_ref(),
+                                        _ => None,
+                                    }
+                                    .filter(|b| {
+                                        x >= b.x
+                                            && x <= b.x + b.width
+                                            && y >= b.y
+                                            && y <= b.y + b.height
+                                    });
                                     let local = |r: &Option<
                                         processcraft_core::bpmn_activity::ModelReference,
                                     >| match r {
@@ -2994,13 +3139,25 @@ impl ProcessCraft {
                                         ) => Some(id.clone()),
                                         _ => None,
                                     };
-                                    match (part, ends) {
-                                        // Dragging an end onto another shape reconnects the flow.
-                                        (EdgePart::Point(i), Some((source, target)))
+                                    match (part, flow_ends, own) {
+                                        // An end released inside its own shape re-docks on
+                                        // the nearest border point.
+                                        (EdgePart::Point(i), _, Some(b)) => {
+                                            self.ctl.mutate(vec![Mutation::Reroute {
+                                                document_id: d.id,
+                                                diagram_id: diagram_id.clone(),
+                                                edge_id: edge,
+                                                waypoints: redock_end(&points, i, b, x, y),
+                                            }]);
+                                        }
+                                        // Dragging an end onto another shape reconnects the flow;
+                                        // released anywhere else, the end stays.
+                                        (EdgePart::Point(i), flow_ends, _)
                                             if i == 0 || i == last =>
                                         {
-                                            if let (Some(source), Some(target)) =
-                                                (local(&source), local(&target))
+                                            if let Some((source, target)) = flow_ends
+                                                && let (Some(source), Some(target)) =
+                                                    (local(&source), local(&target))
                                                 && let Some(hit) = self.connect_target_at(
                                                     x,
                                                     y,
@@ -3033,6 +3190,8 @@ impl ProcessCraft {
                                                     part,
                                                     delta.x as f64,
                                                     delta.y as f64,
+                                                    &ends,
+                                                    self.canvas.grid_snap,
                                                 ),
                                             }]);
                                         }
@@ -4001,22 +4160,48 @@ mod tests {
     #[test]
     fn bendpoint_and_segment_drags_edit_the_route() {
         let p = |x: f64, y: f64| Point { x, y };
+        // Source shape left of the route, target shape at its end.
+        let ends = [
+            Some(b(-40.0, -20.0, 40.0, 40.0)),
+            Some(b(100.0, 20.0, 40.0, 40.0)),
+        ];
+        let edit = |route: &[Point], part, dx, dy| edit_route(route, part, dx, dy, &ends, false);
         let route = vec![p(0.0, 0.0), p(50.0, 0.0), p(50.0, 40.0), p(100.0, 40.0)];
-        // A waypoint moves freely.
+        // A corner drags its two segments along: the route stays orthogonal and the source end
+        // slides along its border.
         assert_eq!(
-            edit_route(&route, EdgePart::Point(1), 5.0, 5.0)[1],
-            p(55.0, 5.0)
+            edit(&route, EdgePart::Point(1), 5.0, 5.0),
+            vec![p(0.0, 5.0), p(55.0, 5.0), p(55.0, 40.0), p(100.0, 40.0)]
         );
         // A vertical segment moves sideways only; a horizontal one up or down only.
-        let moved = edit_route(&route, EdgePart::Segment(1), 10.0, 99.0);
+        let moved = edit(&route, EdgePart::Segment(1), 10.0, 99.0);
         assert_eq!((moved[1].x, moved[2].x, moved[1].y), (60.0, 60.0, 0.0));
-        let moved = edit_route(&route, EdgePart::Segment(2), 99.0, -10.0);
+        let moved = edit(&route, EdgePart::Segment(2), 99.0, -10.0);
         assert_eq!((moved[2].y, moved[3].y, moved[3].x), (30.0, 30.0, 100.0));
+        // The first segment slides its end along the source border, never past the shape.
+        let moved = edit(&route, EdgePart::Segment(0), 0.0, 50.0);
+        assert_eq!((moved[0].clone(), moved[1].y), (p(0.0, 20.0), 20.0));
+        // The grid rounds the moved corner.
+        assert_eq!(
+            edit_route(&route, EdgePart::Point(1), 3.0, 4.0, &ends, true),
+            route
+        );
         // A diagonal segment gets a new bendpoint in its middle.
         let diagonal = vec![p(0.0, 0.0), p(100.0, 100.0)];
         assert_eq!(
-            edit_route(&diagonal, EdgePart::Segment(0), 0.0, 10.0),
+            edit(&diagonal, EdgePart::Segment(0), 0.0, 10.0),
             vec![p(0.0, 0.0), p(50.0, 60.0), p(100.0, 100.0)]
+        );
+        // An end released inside its shape docks on the nearest side with an elbow.
+        assert_eq!(
+            redock_end(&route, 3, ends[1].as_ref().unwrap(), 130.0, 58.0),
+            vec![
+                p(0.0, 0.0),
+                p(50.0, 0.0),
+                p(50.0, 40.0),
+                p(130.0, 40.0),
+                p(130.0, 60.0)
+            ]
         );
     }
 
