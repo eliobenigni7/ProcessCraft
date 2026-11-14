@@ -2020,6 +2020,38 @@ pub fn prepare_move(
         if start.is_none() && end.is_none() {
             continue;
         }
+        // bpmn-js keeps plain and data associations straight: a two-point one is cropped again
+        // on both outlines instead of gaining an elbow (compensation associations stay orthogonal).
+        let kind = |id: &ElementSelector| crate::queries::find_node(document, id).map(|n| n.kind);
+        let straight = match crate::queries::find_flow(document, &edge.element).or_else(|| {
+            artifact_flows
+                .iter()
+                .copied()
+                .find(|f| f.id == edge.element)
+        }) {
+            Some(flow) => {
+                flow.kind == crate::model::FlowKind::Association
+                    && kind(source) != Some(crate::model::NodeKind::BoundaryEvent)
+            }
+            None => scopes
+                .iter()
+                .flat_map(|scope| scope.data_associations.iter())
+                .any(|a| a.id.as_ref().is_some_and(|id| edge.element == *id)),
+        };
+        if n == 2
+            && straight
+            && let (Some(a), Some(b)) = (&source_shape, &target_shape)
+        {
+            routes.push((
+                diagram_id.clone(),
+                edge.id.selector(),
+                vec![
+                    outline_point(kind(source), a, &centre(b)),
+                    outline_point(kind(target), b, &centre(a)),
+                ],
+            ));
+            continue;
+        }
         let obstacles: Vec<_> = diagram
             .shapes
             .iter()

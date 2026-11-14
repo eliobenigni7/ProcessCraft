@@ -101,15 +101,6 @@ fn node_kind_label(kind: NodeKind) -> &'static str {
         NodeKind::CallActivity => "Call activity",
     }
 }
-/// New-connection route from the shared core router, avoiding the diagram's other shapes.
-fn connection_route(
-    a: &processcraft_core::model::Bounds,
-    b: &processcraft_core::model::Bounds,
-    diagram: &Diagram,
-) -> Vec<processcraft_core::model::Point> {
-    let shapes: Vec<_> = diagram.shapes.iter().map(|s| s.bounds.clone()).collect();
-    processcraft_core::geometry::connection_route(a, b, &shapes)
-}
 fn diagram_extents(diagram: &Diagram) -> Option<(f64, f64, f64, f64)> {
     let mut result: Option<(f64, f64, f64, f64)> = None;
     let mut include = |x: f64, y: f64| {
@@ -2233,36 +2224,34 @@ impl ProcessCraft {
         let Some(d) = snap.project.documents.get(self.doc) else {
             return;
         };
-        let (Some(p), Some(diagram)) = (
-            processcraft_core::queries::scopes(d)
-                .into_iter()
-                .find(|p| self.process_id.as_ref().is_none_or(|id| p.id == id)),
-            d.diagrams
-                .iter()
-                .find(|d| self.diagram_id.as_ref().is_none_or(|id| &d.id == id)),
-        ) else {
+        let Some(diagram) = d
+            .diagrams
+            .iter()
+            .find(|d| self.diagram_id.as_ref().is_none_or(|id| &d.id == id))
+        else {
             return;
         };
-        let Some(flow) = p.flows.iter().find(|f| {
-            self.selected
-                .as_ref()
-                .is_some_and(|id| f.id.selector() == *id)
-        }) else {
+        let Some(edge) = diagram
+            .edges
+            .iter()
+            .find(|e| self.selected.as_ref() == Some(&e.element))
+        else {
             return;
         };
-        let (Some(a), Some(b), Some(edge)) = (
-            diagram.shapes.iter().find(|s| matches!(&flow.source, Some(processcraft_core::bpmn_activity::ModelReference::Local(id)) if s.element == *id)),
-            diagram.shapes.iter().find(|s| matches!(&flow.target, Some(processcraft_core::bpmn_activity::ModelReference::Local(id)) if s.element == *id)),
-            diagram.edges.iter().find(|e| e.element == flow.id),
-        ) else {
+        let (Some(a), Some(b)) = processcraft_core::modeling::edge_ends(d, diagram, edge) else {
             return;
         };
-        self.ctl.mutate(vec![Mutation::Reroute {
-            document_id: d.id,
-            diagram_id: diagram.id.selector(),
-            edge_id: edge.id.selector(),
-            waypoints: connection_route(&a.bounds, &b.bounds, diagram),
-        }]);
+        match processcraft_core::modeling::route_between(d, diagram, &a.element, &b.element) {
+            Ok(waypoints) => {
+                self.ctl.mutate(vec![Mutation::Reroute {
+                    document_id: d.id,
+                    diagram_id: diagram.id.selector(),
+                    edge_id: edge.id.selector(),
+                    waypoints,
+                }]);
+            }
+            Err(reason) => self.ctl.error = reason,
+        }
     }
     fn connect(&mut self) {
         let (Some(a), Some(b)) = (self.source.clone(), self.target.clone()) else {

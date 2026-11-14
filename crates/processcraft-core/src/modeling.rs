@@ -488,6 +488,22 @@ pub(crate) fn route_from(
     b: &Bounds,
     loop_side: Side,
 ) -> Vec<Point> {
+    // bpmn-js draws plain and data associations straight, cropped on both outlines.
+    if a != b
+        && matches!(
+            kind,
+            ConnectionKind::Association | ConnectionKind::DataInput | ConnectionKind::DataOutput
+        )
+    {
+        let centre = |b: &Bounds| {
+            let (x, y) = mid(b);
+            Point { x, y }
+        };
+        return vec![
+            crate::geometry::outline_point(source.map(|n| n.kind), a, &centre(b)),
+            crate::geometry::outline_point(target_kind, b, &centre(a)),
+        ];
+    }
     let layout = match kind {
         _ if a == b => RouteLayout::Loop(loop_side),
         ConnectionKind::Message => RouteLayout::Message,
@@ -807,6 +823,24 @@ fn compensation_handler(
     Ok(batch)
 }
 
+/// The route of a connection `source -> target` in `diagram`, laid out for the connection
+/// [`rules::can_connect`] picks: the single routing entry point for new and rerouted edges.
+pub fn route_between(
+    doc: &BpmnDocument,
+    diagram: &Diagram,
+    source: &ElementSelector,
+    target: &ElementSelector,
+) -> Result<Vec<Point>, String> {
+    let kind = rules::can_connect(doc, source, target)?;
+    let (Some(a), Some(b)) = (shape_bounds(diagram, source), shape_bounds(diagram, target)) else {
+        return Err("Both elements must be shown in this diagram".into());
+    };
+    let (Some(s), Some(t)) = (rules::locate(doc, source), rules::locate(doc, target)) else {
+        return Err("element not found".into());
+    };
+    Ok(route(diagram, kind, s.node, t.node.map(|n| n.kind), a, b))
+}
+
 /// Connect `source` to `target` with the connection [`rules::can_connect`] picks: a sequence
 /// flow or association in their scope, a message flow in the collaboration root, or a data
 /// association bound to a new port of the activity/event. The edge is routed in `diagram_id`.
@@ -820,13 +854,10 @@ pub fn connect(
 ) -> Result<Vec<Mutation>, String> {
     let kind = rules::can_connect(doc, source, target)?;
     let diagram = find_diagram(doc, diagram_id)?;
-    let (Some(a), Some(b)) = (shape_bounds(diagram, source), shape_bounds(diagram, target)) else {
-        return Err("Both elements must be shown in this diagram".into());
-    };
+    let waypoints = route_between(doc, diagram, source, target)?;
     let (Some(s), Some(t)) = (rules::locate(doc, source), rules::locate(doc, target)) else {
         return Err("element not found".into());
     };
-    let waypoints = route(diagram, kind, s.node, t.node.map(|n| n.kind), a, b);
     let mut batch = Vec::new();
     match kind {
         ConnectionKind::Sequence => {

@@ -732,8 +732,10 @@ fn assert_geometry_history(
     new_bounds: Bounds,
     edge_id: &str,
     expected_first: bool,
+    straight: bool,
 ) {
     use processcraft_core::commands::{Request, ShapeBounds};
+    let moved = new_bounds.clone();
     let before = session.snapshot();
     before.project.validate().unwrap();
     let document = &before.project.documents[0];
@@ -787,10 +789,23 @@ fn assert_geometry_history(
     } else {
         old_points.len() - 1
     };
-    assert_eq!(
-        points[i],
-        (old_points[old_i].0 + dx, old_points[old_i].1 + dy)
-    );
+    if straight {
+        // A two-point (data) association is cropped again on the moved outline, still straight.
+        let (x, y) = points[i];
+        let b = &moved;
+        assert_eq!(points.len(), 2);
+        assert!(
+            (x == b.x || x == b.x + b.width || y == b.y || y == b.y + b.height)
+                && (b.x..=b.x + b.width).contains(&x)
+                && (b.y..=b.y + b.height).contains(&y),
+            "{points:?}"
+        );
+    } else {
+        assert_eq!(
+            points[i],
+            (old_points[old_i].0 + dx, old_points[old_i].1 + dy)
+        );
+    }
     let expected_label = old_label.map(|mut label| {
         label.bounds = label
             .bounds
@@ -985,7 +1000,7 @@ fn valid_data_association_endpoints_move_undo_and_redo() {
             false,
         ),
     ] {
-        assert_geometry_history(data_geometry_session(), shape, bounds, edge, first);
+        assert_geometry_history(data_geometry_session(), shape, bounds, edge, first, true);
     }
 }
 
@@ -1100,12 +1115,14 @@ fn valid_conversation_link_endpoints_move_undo_and_redo() {
         rect(2.0, 3.0, 10.0, 10.0),
         "link_edge",
         true,
+        false,
     );
     assert_geometry_history(
         conversation_geometry_session(),
         "conversation_shape",
         rect(32.0, 3.0, 10.0, 10.0),
         "link_edge",
+        false,
         false,
     );
 }
@@ -1254,7 +1271,8 @@ fn moving_activity_translates_visible_port_and_repairs_association() {
                 .waypoints
         )
         .last(),
-        Some(&(54.0, 8.0))
+        // Cropped straight toward the data object, on the moved port's right side.
+        Some(&(54.0, 7.0625))
     );
     apply_session(&mut session, Request::Undo);
     assert_eq!(session.snapshot().content_id, before.content_id);
@@ -1293,6 +1311,7 @@ fn global_data_store_association_moves_and_restores_route() {
         "shape_data",
         rect(62.0, 3.0, 10.0, 10.0),
         "input_edge",
+        true,
         true,
     );
 }
