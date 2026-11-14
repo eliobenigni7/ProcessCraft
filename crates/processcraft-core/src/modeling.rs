@@ -200,6 +200,59 @@ fn all_flows(doc: &BpmnDocument) -> Vec<&Flow> {
         .chain(doc.collaborations().flat_map(|c| &c.flows))
         .collect()
 }
+/// The shapes `edge` connects in `diagram`, for every edge kind (sequence and message flows,
+/// associations, data associations): an explicit DI source/target wins, else the first shape of
+/// the semantic end; a data port without a shape resolves to its activity.
+pub fn edge_ends<'a>(
+    doc: &BpmnDocument,
+    diagram: &'a Diagram,
+    edge: &Edge,
+) -> (Option<&'a Shape>, Option<&'a Shape>) {
+    let artifacts = doc
+        .collaborations()
+        .filter_map(|c| c.extras.as_ref())
+        .flat_map(|extras| &extras.artifacts)
+        .filter_map(|artifact| match artifact {
+            crate::bpmn_collaboration::CollaborationArtifact::Association(f) => Some(f.as_ref()),
+            _ => None,
+        });
+    let (source, target, owner) = if let Some(f) = all_flows(doc)
+        .into_iter()
+        .chain(artifacts)
+        .find(|f| f.id == edge.element)
+    {
+        (
+            endpoint(&f.source).cloned(),
+            endpoint(&f.target).cloned(),
+            None,
+        )
+    } else if let Some(a) = crate::queries::scopes(doc)
+        .into_iter()
+        .flat_map(|s| s.data_associations)
+        .find(|a| a.id.as_ref().is_some_and(|id| edge.element == *id))
+    {
+        (
+            a.sources.first().cloned(),
+            Some(a.target.clone()),
+            Some(a.owner.clone()),
+        )
+    } else {
+        (None, None, None)
+    };
+    let shape = |representation: Option<&ElementSelector>, element: Option<ElementSelector>| {
+        match representation {
+            Some(id) => diagram.shapes.iter().find(|s| s.id == *id),
+            None => element
+                .iter()
+                .chain(owner.as_ref())
+                .find_map(|e| diagram.shapes.iter().find(|s| s.element == *e)),
+        }
+    };
+    (
+        shape(edge.source_element.as_ref(), source),
+        shape(edge.target_element.as_ref(), target),
+    )
+}
 pub(crate) fn shape_bounds<'a>(diagram: &'a Diagram, id: &ElementSelector) -> Option<&'a Bounds> {
     diagram
         .shapes
@@ -435,6 +488,22 @@ pub(crate) fn route_from(
     b: &Bounds,
     loop_side: Side,
 ) -> Vec<Point> {
+    // bpmn-js draws plain and data associations straight, cropped on both outlines.
+    if a != b
+        && matches!(
+            kind,
+            ConnectionKind::Association | ConnectionKind::DataInput | ConnectionKind::DataOutput
+        )
+    {
+        let centre = |b: &Bounds| {
+            let (x, y) = mid(b);
+            Point { x, y }
+        };
+        return vec![
+            crate::geometry::outline_point(source.map(|n| n.kind), a, &centre(b)),
+            crate::geometry::outline_point(target_kind, b, &centre(a)),
+        ];
+    }
     let layout = match kind {
         _ if a == b => RouteLayout::Loop(loop_side),
         ConnectionKind::Message => RouteLayout::Message,
@@ -754,6 +823,24 @@ fn compensation_handler(
     Ok(batch)
 }
 
+/// The route of a connection `source -> target` in `diagram`, laid out for the connection
+/// [`rules::can_connect`] picks: the single routing entry point for new and rerouted edges.
+pub fn route_between(
+    doc: &BpmnDocument,
+    diagram: &Diagram,
+    source: &ElementSelector,
+    target: &ElementSelector,
+) -> Result<Vec<Point>, String> {
+    let kind = rules::can_connect(doc, source, target)?;
+    let (Some(a), Some(b)) = (shape_bounds(diagram, source), shape_bounds(diagram, target)) else {
+        return Err("Both elements must be shown in this diagram".into());
+    };
+    let (Some(s), Some(t)) = (rules::locate(doc, source), rules::locate(doc, target)) else {
+        return Err("element not found".into());
+    };
+    Ok(route(diagram, kind, s.node, t.node.map(|n| n.kind), a, b))
+}
+
 /// Connect `source` to `target` with the connection [`rules::can_connect`] picks: a sequence
 /// flow or association in their scope, a message flow in the collaboration root, or a data
 /// association bound to a new port of the activity/event. The edge is routed in `diagram_id`.
@@ -767,13 +854,10 @@ pub fn connect(
 ) -> Result<Vec<Mutation>, String> {
     let kind = rules::can_connect(doc, source, target)?;
     let diagram = find_diagram(doc, diagram_id)?;
-    let (Some(a), Some(b)) = (shape_bounds(diagram, source), shape_bounds(diagram, target)) else {
-        return Err("Both elements must be shown in this diagram".into());
-    };
+    let waypoints = route_between(doc, diagram, source, target)?;
     let (Some(s), Some(t)) = (rules::locate(doc, source), rules::locate(doc, target)) else {
         return Err("element not found".into());
     };
-    let waypoints = route(diagram, kind, s.node, t.node.map(|n| n.kind), a, b);
     let mut batch = Vec::new();
     match kind {
         ConnectionKind::Sequence => {

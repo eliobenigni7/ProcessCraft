@@ -2923,7 +2923,7 @@ impl BpmnScene {
                     .iter()
                     .map(|p| ((p.x - origin.0) as f32, (p.y - origin.1) as f32))
                     .collect();
-                dashed_lines(&mut scene, &points, stroke, 2.0)?;
+                stroke_polyline(&mut scene, &points, stroke, EDGE_RADIUS, Some(2.0), 0.0)?;
                 open_arrow(&mut scene, &points, stroke)?;
                 hits.push(HitRegion {
                     key: ElementKey {
@@ -3019,20 +3019,12 @@ impl BpmnScene {
                 .iter()
                 .map(|p| ((p.x - origin.0) as f32, (p.y - origin.1) as f32))
                 .collect();
-            if matches!(flow.kind, FlowKind::Sequence) {
-                lines(&mut scene, &pts, stroke, 1.5)?;
-            } else {
-                dashed_lines(
-                    &mut scene,
-                    &pts,
-                    stroke,
-                    if matches!(flow.kind, FlowKind::Message) {
-                        7.0
-                    } else {
-                        2.0
-                    },
-                )?;
-            }
+            let dash = match flow.kind {
+                FlowKind::Sequence => None,
+                FlowKind::Message => Some(7.0),
+                _ => Some(2.0),
+            };
+            stroke_polyline(&mut scene, &pts, stroke, EDGE_RADIUS, dash, 0.0)?;
             if matches!(flow.kind, FlowKind::Sequence) && semantics.is_default_flow(flow) {
                 draw_default_slash(&mut scene, &pts, stroke)?;
             }
@@ -4282,38 +4274,112 @@ fn dashed_lines(
     color: [u8; 3],
     dash: f32,
 ) -> Result<(), RenderError> {
+    stroke_polyline(scene, points, color, 0.0, Some(dash), 0.0)
+}
+
+/// Corner radius of edge polylines.
+const EDGE_RADIUS: f32 = 5.0;
+
+/// One path along `points` whose corners are rounded by `radius`, at most half of each
+/// adjacent segment; repeated points are skipped.
+fn polyline_path(points: &[(f32, f32)], radius: f32) -> Option<tiny_skia::Path> {
+    let mut points = points.to_vec();
+    points.dedup();
+    let (first, last) = (*points.first()?, *points.last()?);
     let mut path = PathBuilder::new();
-    let mut count = 0usize;
-    for pair in points.windows(2) {
-        let (a, b) = (pair[0], pair[1]);
-        let length = (b.0 - a.0).hypot(b.1 - a.1);
-        if length == 0.0 {
-            continue;
-        }
-        let mut at = 0.0;
-        while at < length {
-            let end = (at + dash).min(length);
-            let p = |t: f32| {
-                (
-                    a.0 + (b.0 - a.0) * t / length,
-                    a.1 + (b.1 - a.1) * t / length,
-                )
-            };
-            count += 1;
-            if count > 100_000 {
-                return Err(RenderError("Dashed edge exceeds complexity limit"));
-            }
-            let a = p(at);
-            let b = p(end);
-            path.move_to(a.0, a.1);
+    path.move_to(first.0, first.1);
+    for w in points.windows(3) {
+        let (a, b, c) = (w[0], w[1], w[2]);
+        let (l1, l2) = ((b.0 - a.0).hypot(b.1 - a.1), (c.0 - b.0).hypot(c.1 - b.1));
+        let r = radius.min(l1 / 2.0).min(l2 / 2.0);
+        if r > 0.0 {
+            path.line_to(b.0 - (b.0 - a.0) * r / l1, b.1 - (b.1 - a.1) * r / l1);
+            path.quad_to(
+                b.0,
+                b.1,
+                b.0 + (c.0 - b.0) * r / l2,
+                b.1 + (c.1 - b.1) * r / l2,
+            );
+        } else {
             path.line_to(b.0, b.1);
-            at += dash * 2.0;
         }
     }
-    if let Some(path) = path.finish() {
-        outline(scene, &path, color, 1.5)?;
+    path.line_to(last.0, last.1);
+    path.finish()
+}
+
+/// Stroke [`polyline_path`] 1.5 wide with round joins, optionally dashed (`dash` on, `dash`
+/// off) continuously along the whole line, the pattern starting `offset` units in.
+fn stroke_polyline(
+    scene: &mut DiagramScene,
+    points: &[(f32, f32)],
+    color: [u8; 3],
+    radius: f32,
+    dash: Option<f32>,
+    offset: f32,
+) -> Result<(), RenderError> {
+    let Some(mut path) = polyline_path(points, radius) else {
+        return Ok(());
+    };
+    if let Some(dash) = dash {
+        // At most 100 000 dashes per line keeps the stroked outline within the scene budget.
+        let length: f32 = points
+            .windows(2)
+            .map(|w| (w[1].0 - w[0].0).hypot(w[1].1 - w[0].1))
+            .sum();
+        if length.is_nan() || length / (dash * 2.0) > 100_000.0 {
+            return Err(RenderError("Dashed edge exceeds complexity limit"));
+        }
+        let pattern = tiny_skia::StrokeDash::new(vec![dash, dash], offset)
+            .ok_or(RenderError("Invalid dash"))?;
+        let Some(dashed) = path.dash(&pattern, 1.0) else {
+            return Ok(());
+        };
+        path = dashed;
     }
-    Ok(())
+    let stroke = tiny_skia::Stroke {
+        width: 1.5,
+        line_join: tiny_skia::LineJoin::Round,
+        ..Default::default()
+    };
+    let p = path
+        .stroke(&stroke, 1.0)
+        .ok_or(RenderError("Invalid stroke"))?;
+    scene.add_path(p, color)
+}
+
+/// The parts of `waypoints` inside `view`, in scene coordinates, each with the route distance
+/// where it starts (the dash phase). A new run starts only where clipping breaks the route.
+fn clipped_runs(
+    waypoints: &[Point],
+    view: Viewport,
+    origin: (f64, f64),
+) -> Vec<(Vec<(f32, f32)>, f32)> {
+    let local = |(x, y): (f64, f64)| {
+        (
+            (x - view.x - origin.0) as f32,
+            (y - view.y - origin.1) as f32,
+        )
+    };
+    let mut runs: Vec<(Vec<(f32, f32)>, f32)> = Vec::new();
+    let (mut travelled, mut open) = (0.0f64, false);
+    for pair in waypoints.windows(2) {
+        let (s, e) = ((pair[0].x, pair[0].y), (pair[1].x, pair[1].y));
+        if let Some((a, b)) = clip_segment(&pair[0], &pair[1], view) {
+            match runs.last_mut() {
+                Some((run, _)) if open && a == s => run.push(local(b)),
+                _ => runs.push((
+                    vec![local(a), local(b)],
+                    (travelled + (a.0 - s.0).hypot(a.1 - s.1)) as f32,
+                )),
+            }
+            open = b == e;
+        } else {
+            open = false;
+        }
+        travelled += (e.0 - s.0).hypot(e.1 - s.1);
+    }
+    runs
 }
 
 fn rounded(p: &mut PathBuilder, x: f32, y: f32, w: f32, h: f32) {
@@ -4837,22 +4903,17 @@ impl BpmnViewport {
             }
             if semantics.data_association(&edge.element).is_some() {
                 let stroke = color(edge.style.as_ref().and_then(|s| s.stroke.as_deref()), fg);
-                let mut visible = false;
-                for pair in edge.waypoints.windows(2) {
-                    if let Some((a, b)) = clip_segment(&pair[0], &pair[1], view) {
-                        let points = [
-                            (
-                                (a.0 - view.x - built.origin.0) as f32,
-                                (a.1 - view.y - built.origin.1) as f32,
-                            ),
-                            (
-                                (b.0 - view.x - built.origin.0) as f32,
-                                (b.1 - view.y - built.origin.1) as f32,
-                            ),
-                        ];
-                        dashed_lines(&mut built.scene, &points, stroke, 2.0)?;
-                        visible = true;
-                    }
+                let runs = clipped_runs(&edge.waypoints, view, built.origin);
+                let visible = !runs.is_empty();
+                for (points, offset) in &runs {
+                    stroke_polyline(
+                        &mut built.scene,
+                        points,
+                        stroke,
+                        EDGE_RADIUS,
+                        Some(2.0),
+                        *offset,
+                    )?;
                 }
                 if let Some(end) = edge.waypoints.last()
                     && end.x >= view.x
@@ -4984,49 +5045,15 @@ impl BpmnViewport {
                 ));
             }
             let stroke = color(edge.style.as_ref().and_then(|s| s.stroke.as_deref()), fg);
-            let mut path = PathBuilder::new();
-            let mut segments = 0usize;
-            for pair in edge.waypoints.windows(2) {
-                if let Some((a, b)) = clip_segment(&pair[0], &pair[1], view) {
-                    let a = (
-                        (a.0 - view.x - built.origin.0) as f32,
-                        (a.1 - view.y - built.origin.1) as f32,
-                    );
-                    let b = (
-                        (b.0 - view.x - built.origin.0) as f32,
-                        (b.1 - view.y - built.origin.1) as f32,
-                    );
-                    if matches!(flow.kind, FlowKind::Sequence) {
-                        path.move_to(a.0, a.1);
-                        path.line_to(b.0, b.1);
-                        segments += 1;
-                    } else {
-                        let dash = if matches!(flow.kind, FlowKind::Message) {
-                            7.0
-                        } else {
-                            2.0
-                        };
-                        let len = (b.0 - a.0).hypot(b.1 - a.1);
-                        let mut at = 0.0;
-                        while at < len {
-                            segments += 1;
-                            if segments > 100_000 {
-                                return Err(RenderError("Dashed edge exceeds complexity limit"));
-                            }
-                            let end = (at + dash).min(len);
-                            let pos =
-                                |t: f32| (a.0 + (b.0 - a.0) * t / len, a.1 + (b.1 - a.1) * t / len);
-                            let p = pos(at);
-                            let q = pos(end);
-                            path.move_to(p.0, p.1);
-                            path.line_to(q.0, q.1);
-                            at += dash * 2.0;
-                        }
-                    }
-                }
-            }
-            if let Some(path) = path.finish() {
-                outline(&mut built.scene, &path, stroke, 1.5)?;
+            let dash = match flow.kind {
+                FlowKind::Sequence => None,
+                FlowKind::Message => Some(7.0),
+                _ => Some(2.0),
+            };
+            let runs = clipped_runs(&edge.waypoints, view, built.origin);
+            let segments = runs.len();
+            for (points, offset) in &runs {
+                stroke_polyline(&mut built.scene, points, stroke, EDGE_RADIUS, dash, *offset)?;
             }
             if matches!(flow.kind, FlowKind::Message)
                 && let Some(visible) = edge.message_visible_kind

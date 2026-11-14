@@ -264,7 +264,7 @@ impl ProcessCraft {
                         fit = widgets::icon_button_sized(
                             ui,
                             Icon::Maximize,
-                            "Fit diagram",
+                            "Fit diagram (Shift+1)",
                             false,
                             30.0,
                         )

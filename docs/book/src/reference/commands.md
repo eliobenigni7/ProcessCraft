@@ -92,7 +92,7 @@ The full JSON Schema of the request protocol is [commands.json](commands.json), 
 | `replaceDocumentation` | Replace ordered documentation | **`document_id`** (DocumentId), **`element_id`** (ElementSelector), **`documentation`** (DocumentationSet) |
 | `replaceElement` | Replace an element with another BPMN type | **`document_id`** (DocumentId), **`element_id`** (ElementSelector), **`target`** (ReplaceTarget) |
 | `replaceFlowCondition` | Replace flow expression | **`document_id`** (DocumentId), **`flow_id`** (ElementSelector), **`condition`** (Expression or null) |
-| `reroute` | Reroute edge | **`document_id`** (DocumentId), **`diagram_id`** (ElementSelector), **`edge_id`** (ElementSelector), **`waypoints`** (Point[]) |
+| `reroute` | Reroute edge (the route is normalized: near-orthogonal segments straightened, duplicate and collinear points dropped, ends on a shape's border docked on its outline; an explicit label follows the route) | **`document_id`** (DocumentId), **`diagram_id`** (ElementSelector), **`edge_id`** (ElementSelector), **`waypoints`** (Point[]) |
 | `resizeShape` | Resize a shape under the BPMN resize rules | **`document_id`** (DocumentId), **`diagram_id`** (ElementSelector), **`shape_id`** (ElementSelector), **`bounds`** (Bounds) |
 | `restoreCheckpoint` | Restore checkpoint | **`id`** (CheckpointId) |
 | `setActivityProperties` | Set activity properties | **`document_id`** (DocumentId), **`element_id`** (ElementSelector), **`activity`** (ActivityProperties or null) |

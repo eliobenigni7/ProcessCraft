@@ -17,7 +17,7 @@ use crate::{
 /// Distance (diagram units) within which a dropped shape's centre lies on a flow.
 pub const FLOW_HIT: f64 = 5.0;
 /// Children keep this distance from the border of a resized container (bpmn-js).
-const CHILD_PADDING: f64 = 20.0;
+pub const CHILD_PADDING: f64 = 20.0;
 
 fn mid(b: &Bounds) -> Point {
     Point {
@@ -779,7 +779,8 @@ pub fn move_elements(
     Ok(batch)
 }
 
-/// The resize rule for a shape: its minimum size, or `None` when it keeps its size.
+/// The resize rule for a shape: its minimum size, or `None` when the shape shows no known
+/// element. A node without `isExpanded` counts as collapsed.
 pub fn resize_rule(doc: &BpmnDocument, shape: &Shape) -> Option<rules::MinSize> {
     let horizontal = shape.is_horizontal != Some(false);
     let element = &shape.element;
@@ -807,10 +808,10 @@ pub fn resize_rule(doc: &BpmnDocument, shape: &Shape) -> Option<rules::MinSize> 
     } else {
         return None;
     };
-    rules::can_resize(resized)
+    Some(rules::can_resize(resized))
 }
 /// Shapes a resize must keep inside: subprocess content, a pool's process nodes, lane members.
-fn children<'a>(
+pub fn children<'a>(
     doc: &BpmnDocument,
     diagram: &'a Diagram,
     element: &ElementSelector,
@@ -839,15 +840,16 @@ fn children<'a>(
         .map(|s| &s.bounds)
         .collect()
 }
-/// Resize a shape under the bpmn-js rules: only resizable elements, not below their minimum
-/// size, east/west only for text annotations, and never cutting off contained elements (20 px
-/// padding). Attached boundary events keep their place on the outline and docked edge ends
-/// move with it.
+/// Resize a shape under the bpmn-js rules: not below its minimum size, keeping the proportions
+/// of events, gateways and data references, and never cutting off contained elements (20 px
+/// padding). A boundary event keeps its centre on the host's border; an external label stays
+/// centred below its shape. Attached boundary events keep their place on the outline and
+/// docked edge ends move with it.
 pub fn resize(
     doc: &BpmnDocument,
     diagram_id: &ElementSelector,
     shape_id: &ElementSelector,
-    bounds: Bounds,
+    mut bounds: Bounds,
 ) -> Result<Vec<Mutation>, String> {
     let diagram = modeling::find_diagram(doc, diagram_id)?;
     let shape = diagram
@@ -859,15 +861,24 @@ pub fn resize(
     if !geometry::valid_bounds(&bounds) {
         return Err("invalid bounds".into());
     }
-    let rule = resize_rule(doc, shape).ok_or("This element keeps its size")?;
-    if rule.east_west_only && (bounds.y != old.y || bounds.height != old.height) {
-        return Err("This element only resizes horizontally".into());
-    }
-    if bounds.width < rule.width || (!rule.east_west_only && bounds.height < rule.height) {
+    let rule = resize_rule(doc, shape).ok_or("This element cannot be resized")?;
+    if bounds.width < rule.width || bounds.height < rule.height {
         return Err(format!(
             "The minimum size is {} x {}",
             rule.width, rule.height
         ));
+    }
+    if rule.keep_aspect
+        && old.width > 0.0
+        && (bounds.width * old.height / old.width - bounds.height).abs() > 1.0
+    {
+        return Err("This element keeps its proportions".into());
+    }
+    let node = queries::find_node(doc, &shape.element);
+    if node.is_some_and(|n| rules::attached_to(n).is_some()) {
+        let c = mid(old);
+        bounds.x = c.x - bounds.width / 2.0;
+        bounds.y = c.y - bounds.height / 2.0;
     }
     let inside = children(doc, diagram, &shape.element)
         .into_iter()
@@ -943,15 +954,26 @@ pub fn resize(
             bounds: b.clone(),
         });
     }
+    if node.is_some_and(|n| modeling::has_external_label(n.kind))
+        && let Some(label) = shape.label.as_ref().and_then(|l| l.bounds.as_ref())
+    {
+        batch.push(Mutation::SetLabelBounds {
+            document_id: doc.id,
+            diagram_id: diagram_id.clone(),
+            representation_id: shape.id.selector(),
+            bounds: Bounds {
+                x: bounds.x + bounds.width / 2.0 - label.width / 2.0,
+                y: label.y + bounds.y + bounds.height - (old.y + old.height),
+                ..label.clone()
+            },
+        });
+    }
     for edge in &diagram.edges {
-        let Some(flow) = all_flows(doc).find(|f| f.id == edge.element) else {
-            continue;
-        };
+        let (from, to) = modeling::edge_ends(doc, diagram, edge);
         let mut points = edge.waypoints.clone();
         let mut touched = false;
         for (s, b) in &changed {
-            let ends = [local(&flow.source), local(&flow.target)];
-            if ends.contains(&Some(&s.element))
+            if [from, to].into_iter().flatten().any(|e| e.id == s.id)
                 && let Some(p) = geometry::redock(&points, &s.bounds, b)
             {
                 points = p;
@@ -1037,14 +1059,27 @@ pub fn reconnect(
     ) else {
         return Err("Both elements must be shown in this diagram".into());
     };
-    let waypoints = modeling::route(
-        diagram,
-        kind,
-        queries::find_node(doc, source),
-        queries::find_node(doc, target).map(|n| n.kind),
-        a,
-        b,
-    );
+    // Keep the interior bendpoints when the new end docks on them cleanly; otherwise route anew.
+    let points = &edge.waypoints;
+    let kept = (points.len() > 2)
+        .then(|| {
+            let start = (old_source != *source).then(|| dock_toward(a, &points[1]));
+            let end = (old_target != *target).then(|| dock_toward(b, &points[points.len() - 2]));
+            geometry::repair_endpoints(points, start, end, &[a.clone(), b.clone()]).ok()
+        })
+        .flatten()
+        .filter(|r| r.warning.is_none())
+        .and_then(|r| r.waypoints);
+    let waypoints = kept.unwrap_or_else(|| {
+        modeling::route(
+            diagram,
+            kind,
+            queries::find_node(doc, source),
+            queries::find_node(doc, target).map(|n| n.kind),
+            a,
+            b,
+        )
+    });
     if old_source != *source
         && let Ok(node) = crate::commands::node_mut(doc, &old_source)
     {
@@ -1068,6 +1103,34 @@ pub fn reconnect(
         edge_id: edge.id.selector(),
         waypoints,
     }])
+}
+/// The border point of `b` facing `n`: straight across when `n` is level with a side (so the
+/// end segment stays orthogonal), else the middle of the side on the dominant axis.
+fn dock_toward(b: &Bounds, n: &Point) -> Point {
+    let (right, bottom) = (b.x + b.width, b.y + b.height);
+    let c = mid(b);
+    let (dx, dy) = (n.x - c.x, n.y - c.y);
+    if n.y > b.y && n.y < bottom && (n.x <= b.x || n.x >= right) {
+        Point {
+            x: if dx < 0.0 { b.x } else { right },
+            y: n.y,
+        }
+    } else if n.x > b.x && n.x < right && (n.y <= b.y || n.y >= bottom) {
+        Point {
+            x: n.x,
+            y: if dy < 0.0 { b.y } else { bottom },
+        }
+    } else if dx.abs() * b.height >= dy.abs() * b.width {
+        Point {
+            x: if dx < 0.0 { b.x } else { right },
+            y: c.y,
+        }
+    } else {
+        Point {
+            x: c.x,
+            y: if dy < 0.0 { b.y } else { bottom },
+        }
+    }
 }
 fn edge_in(doc: &BpmnDocument, diagram_id: &ElementSelector, edge: &Edge) -> bool {
     doc.diagrams

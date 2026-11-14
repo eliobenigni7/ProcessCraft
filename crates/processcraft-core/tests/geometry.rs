@@ -16,6 +16,16 @@ fn rect(x: f64, y: f64, width: f64, height: f64) -> Bounds {
 fn coords(points: &[Point]) -> Vec<(f64, f64)> {
     points.iter().map(|p| (p.x, p.y)).collect()
 }
+/// An explicit edge label after a reroute: shifted by the route midpoint's delta.
+fn followed(label: &Bounds, old: &[Point], new: &[Point]) -> Bounds {
+    let (a, b) = (midpoint(old).unwrap(), midpoint(new).unwrap());
+    rect(
+        label.x + b.x - a.x,
+        label.y + b.y - a.y,
+        label.width,
+        label.height,
+    )
+}
 #[test]
 fn connection_route_faces_shapes_and_avoids_obstacles() {
     let a = rect(0.0, 0.0, 100.0, 80.0);
@@ -357,15 +367,10 @@ fn prepared_move_repairs_connected_edge_in_one_undo() {
         .iter()
         .find(|d| d.id == diagram_id)
         .unwrap();
+    // The repaired route doubled back over the kept bends; normalization drops the spike.
     assert_eq!(
         coords(&diagram.edges[0].waypoints),
-        vec![
-            (12.0, 8.0),
-            (20.0, 8.0),
-            (20.0, 5.0),
-            (20.0, 8.0),
-            (30.0, 8.0)
-        ]
+        vec![(12.0, 8.0), (30.0, 8.0)]
     );
     assert_eq!(diagram.shapes[1].bounds.x, 30.0);
     assert_eq!(
@@ -404,7 +409,11 @@ fn prepared_group_move_keeps_manual_bends_and_undoes_together() {
     let path = coords(&diagram.edges[0].waypoints);
     assert_eq!(path.first(), Some(&(12.0, 8.0)));
     assert_eq!(path.last(), Some(&(32.0, 11.0)));
-    assert!(path.contains(&(20.0, 5.0)) && path.contains(&(20.0, 8.0)));
+    // The kept bend column x = 20 stays; the spike back to y = 5 is normalized away.
+    assert_eq!(
+        path,
+        vec![(12.0, 8.0), (20.0, 8.0), (20.0, 11.0), (32.0, 11.0)]
+    );
     assert_eq!(after.undo_count, before.undo_count + 1);
     apply_session(&mut s, Request::Undo);
     assert_eq!(s.snapshot().content_id, before.content_id);
@@ -523,6 +532,144 @@ fn nested_parent_move_translates_children_internal_route_and_label_in_one_undo()
     assert_eq!(session.snapshot().content_id, after.content_id);
 }
 #[test]
+fn reroute_tidies_the_route_and_its_label_follows() {
+    use processcraft_core::commands::{Mutation, Request};
+    // Endpoints stay; near-axis segments straighten from both ends; collinear points drop.
+    assert_eq!(
+        coords(&tidy(vec![
+            p(0.0, 0.0),
+            p(50.0, 1.0),
+            p(50.0, 40.0),
+            p(51.0, 80.0)
+        ])),
+        vec![(0.0, 0.0), (51.0, 0.0), (51.0, 80.0)]
+    );
+    let mut session = nested_session();
+    let document_id = session.snapshot().project.documents[0].id;
+    apply_session(
+        &mut session,
+        Request::Batch {
+            mutations: vec![Mutation::Reroute {
+                document_id,
+                diagram_id: "diagram".parse().unwrap(),
+                edge_id: "edge".parse().unwrap(),
+                waypoints: vec![
+                    p(10.0, 5.0),
+                    p(14.0, 5.0),
+                    p(26.0, 6.0),
+                    p(26.0, 8.0),
+                    p(30.0, 8.0),
+                ],
+            }],
+        },
+    );
+    let after = session.snapshot();
+    let edge = &after.project.documents[0]
+        .diagrams
+        .iter()
+        .find(|d| d.id.to_string() == "diagram")
+        .unwrap()
+        .edges[0];
+    assert_eq!(
+        coords(&edge.waypoints),
+        vec![(10.0, 5.0), (26.0, 5.0), (26.0, 8.0), (30.0, 8.0)]
+    );
+    // The midpoint moved from (20, 6.5) to (21.5, 5): the explicit label moved with it.
+    let label = edge.label.as_ref().unwrap().bounds.as_ref().unwrap();
+    assert_eq!((label.x, label.y), (15.5, 10.5));
+}
+#[test]
+fn reroute_docks_ends_on_the_true_outline() {
+    use processcraft_core::commands::{Mutation, Request};
+    let b = rect(0.0, 0.0, 40.0, 20.0);
+    let toward = p(40.0, 30.0);
+    assert_eq!(outline_point(None, &b, &toward), p(30.0, 20.0));
+    assert_eq!(
+        outline_point(Some(NodeKind::ExclusiveGateway), &b, &toward),
+        p(80.0 / 3.0, 50.0 / 3.0)
+    );
+    let on_circle = outline_point(Some(NodeKind::EndEvent), &b, &toward);
+    assert!((((on_circle.x - 20.0) / 20.0).hypot((on_circle.y - 10.0) / 10.0) - 1.0).abs() < 1e-12);
+    let (mut session, document_id) = session_fixture();
+    // The start event is the circle in (0, 0, 10, 10): an off-centre vertical end at its
+    // bounding-box bottom moves up onto the circle; the task end stays on its rectangle.
+    apply_session(
+        &mut session,
+        Request::Batch {
+            mutations: vec![Mutation::Reroute {
+                document_id,
+                diagram_id: "diagram".parse().unwrap(),
+                edge_id: "edge".parse().unwrap(),
+                waypoints: vec![p(3.0, 10.0), p(3.0, 20.0), p(35.0, 20.0), p(35.0, 10.0)],
+            }],
+        },
+    );
+    let after = session.snapshot();
+    let route = &after.project.documents[0]
+        .diagrams
+        .iter()
+        .find(|d| d.id.to_string() == "diagram")
+        .unwrap()
+        .edges[0]
+        .waypoints;
+    assert_eq!(route[0].x, 3.0);
+    assert!(((route[0].x - 5.0).hypot(route[0].y - 5.0) - 5.0).abs() < 1e-12);
+    assert!(route[0].y > 9.5 && route[0].y < 10.0);
+    assert_eq!(
+        coords(&route[1..]),
+        vec![(3.0, 20.0), (35.0, 20.0), (35.0, 10.0)]
+    );
+}
+#[test]
+fn moved_end_redocks_on_the_side_facing_its_neighbour() {
+    use processcraft_core::commands::ShapeBounds;
+    // A kept end stays when its neighbour is still beyond its side.
+    let b = rect(0.0, 0.0, 100.0, 80.0);
+    assert_eq!(
+        redock_side(&p(100.0, 20.0), &b, &p(150.0, 20.0)),
+        p(100.0, 20.0)
+    );
+    // Otherwise it moves to the middle of the side facing the neighbour.
+    assert_eq!(
+        redock_side(&p(100.0, 20.0), &b, &p(40.0, 200.0)),
+        p(50.0, 80.0)
+    );
+    assert_eq!(
+        redock_side(&p(100.0, 20.0), &b, &p(-90.0, 30.0)),
+        p(0.0, 40.0)
+    );
+    let (mut session, _) = session_fixture();
+    let before = session.snapshot();
+    let diagram_id: processcraft_core::ids::ElementSelector = "diagram".parse().unwrap();
+    // The task moves above the bend column: its left-side end re-docks on its bottom.
+    let prepared = prepare_move(
+        &before.project.documents[0],
+        &diagram_id,
+        vec![ShapeBounds {
+            diagram_id: diagram_id.clone(),
+            shape_id: "shape_review".parse().unwrap(),
+            bounds: rect(15.0, -60.0, 10.0, 10.0),
+        }],
+    )
+    .unwrap();
+    apply_session(&mut session, prepared.request);
+    let after = session.snapshot();
+    let route = &after.project.documents[0]
+        .diagrams
+        .iter()
+        .find(|d| d.id == diagram_id)
+        .unwrap()
+        .edges[0]
+        .waypoints;
+    assert_eq!(route.last(), Some(&p(20.0, -50.0)));
+    assert!(route.contains(&p(20.0, 5.0)));
+    assert!(
+        route
+            .windows(2)
+            .all(|w| w[0].x == w[1].x || w[0].y == w[1].y)
+    );
+}
+#[test]
 fn conflicting_nested_moves_are_refused_without_mutation() {
     use processcraft_core::commands::ShapeBounds;
     let session = nested_session();
@@ -585,8 +732,10 @@ fn assert_geometry_history(
     new_bounds: Bounds,
     edge_id: &str,
     expected_first: bool,
+    straight: bool,
 ) {
     use processcraft_core::commands::{Request, ShapeBounds};
+    let moved = new_bounds.clone();
     let before = session.snapshot();
     before.project.validate().unwrap();
     let document = &before.project.documents[0];
@@ -599,8 +748,9 @@ fn assert_geometry_history(
         .iter()
         .find(|e| e.id.to_string() == edge_id)
         .unwrap();
+    let old_route = edge.waypoints.clone();
     let old_points = coords(&edge.waypoints);
-    let old_label = serde_json::to_value(&edge.label).unwrap();
+    let old_label = edge.label.clone();
     let shape = document
         .diagrams
         .last()
@@ -639,11 +789,33 @@ fn assert_geometry_history(
     } else {
         old_points.len() - 1
     };
+    if straight {
+        // A two-point (data) association is cropped again on the moved outline, still straight.
+        let (x, y) = points[i];
+        let b = &moved;
+        assert_eq!(points.len(), 2);
+        assert!(
+            (x == b.x || x == b.x + b.width || y == b.y || y == b.y + b.height)
+                && (b.x..=b.x + b.width).contains(&x)
+                && (b.y..=b.y + b.height).contains(&y),
+            "{points:?}"
+        );
+    } else {
+        assert_eq!(
+            points[i],
+            (old_points[old_i].0 + dx, old_points[old_i].1 + dy)
+        );
+    }
+    let expected_label = old_label.map(|mut label| {
+        label.bounds = label
+            .bounds
+            .map(|b| followed(&b, &old_route, &edge.waypoints));
+        label
+    });
     assert_eq!(
-        points[i],
-        (old_points[old_i].0 + dx, old_points[old_i].1 + dy)
+        serde_json::to_value(&edge.label).unwrap(),
+        serde_json::to_value(&expected_label).unwrap()
     );
-    assert_eq!(serde_json::to_value(&edge.label).unwrap(), old_label);
     assert_eq!(after.undo_count, before.undo_count + 1);
     apply_session(&mut session, Request::Undo);
     assert_eq!(session.snapshot().content_id, before.content_id);
@@ -828,7 +1000,7 @@ fn valid_data_association_endpoints_move_undo_and_redo() {
             false,
         ),
     ] {
-        assert_geometry_history(data_geometry_session(), shape, bounds, edge, first);
+        assert_geometry_history(data_geometry_session(), shape, bounds, edge, first, true);
     }
 }
 
@@ -943,12 +1115,14 @@ fn valid_conversation_link_endpoints_move_undo_and_redo() {
         rect(2.0, 3.0, 10.0, 10.0),
         "link_edge",
         true,
+        false,
     );
     assert_geometry_history(
         conversation_geometry_session(),
         "conversation_shape",
         rect(32.0, 3.0, 10.0, 10.0),
         "link_edge",
+        false,
         false,
     );
 }
@@ -1097,7 +1271,8 @@ fn moving_activity_translates_visible_port_and_repairs_association() {
                 .waypoints
         )
         .last(),
-        Some(&(54.0, 8.0))
+        // Cropped straight toward the data object, on the moved port's right side.
+        Some(&(54.0, 7.0625))
     );
     apply_session(&mut session, Request::Undo);
     assert_eq!(session.snapshot().content_id, before.content_id);
@@ -1136,6 +1311,7 @@ fn global_data_store_association_moves_and_restores_route() {
         "shape_data",
         rect(62.0, 3.0, 10.0, 10.0),
         "input_edge",
+        true,
         true,
     );
 }
@@ -1528,9 +1704,22 @@ fn association_edge_attachment_follows_rerouted_sequence_with_undo() {
             })
         );
         assert_ne!(attachment, Some(&(20.0, 5.0)));
+        let old_link = before.project.documents[0]
+            .diagrams
+            .iter()
+            .find(|d| d.id == diagram_id)
+            .unwrap()
+            .edges
+            .iter()
+            .find(|e| e.id.to_string() == "association_edge")
+            .unwrap();
         assert_eq!(
             link.label.as_ref().unwrap().bounds,
-            Some(rect(22.0, 20.0, 10.0, 5.0))
+            Some(followed(
+                &rect(22.0, 20.0, 10.0, 5.0),
+                &old_link.waypoints,
+                &link.waypoints
+            ))
         );
         apply_session(&mut session, Request::Undo);
         assert_eq!(session.snapshot().content_id, before.content_id);
@@ -2191,8 +2380,9 @@ fn moving_event_or_gateway_keeps_route_outside_endpoint_owners_and_undoes() {
             .iter_mut()
             .find(|d| d.id == diagram_id)
             .unwrap();
-        diagram.edges[0].waypoints[0].x -= 1.0;
-        diagram.edges[0].waypoints[0].y -= 1.0;
+        // Off the border band (an endpoint 1 unit off the border is now re-docked instead).
+        diagram.edges[0].waypoints[0].x -= 40.0;
+        diagram.edges[0].waypoints[0].y -= 40.0;
         assert!(
             prepare_move(
                 &unproven,
@@ -2224,9 +2414,15 @@ fn moving_event_or_gateway_keeps_route_outside_endpoint_owners_and_undoes() {
             .find(|d| d.id == diagram_id)
             .unwrap();
         let repaired = &diagram.edges[0].waypoints;
-        for bend in &waypoints[1..waypoints.len() - 1] {
-            assert!(repaired.contains(bend));
-        }
+        // The bend next to the unmoved end stays on the route (as a DI point unless left
+        // collinear); the moved end re-docks on the side facing its neighbour, which may drop
+        // a bend the new route no longer doubles back to.
+        let kept = if moved_id == "shape_start" {
+            &waypoints[waypoints.len() - 2]
+        } else {
+            &waypoints[1]
+        };
+        assert_eq!(distance_to_path(kept, repaired), 0.0);
         for pair in repaired.windows(2) {
             assert!(pair[0].x == pair[1].x || pair[0].y == pair[1].y);
             for shape in &diagram.shapes {

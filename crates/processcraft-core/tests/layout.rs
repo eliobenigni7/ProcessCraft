@@ -555,7 +555,7 @@ fn one_pool_contains_lanes_and_unlaned_band() {
             style: None,
         });
     }
-    let p = layout(&d);
+    let p = assert_layout_properties(&d);
     let pool = &p
         .proposed
         .shapes
@@ -580,7 +580,7 @@ fn one_pool_contains_lanes_and_unlaned_band() {
     }
 }
 #[test]
-fn impossible_long_labels_are_refused_without_changes() {
+fn impossible_long_labels_are_laid_out_with_a_warning_without_changes() {
     use processcraft_core::model::Label;
     let mut d = fixture();
     for shape in &mut d.diagrams[0].shapes {
@@ -598,8 +598,10 @@ fn impossible_long_labels_are_refused_without_changes() {
         });
     }
     let before = serde_json::to_vec(&d).unwrap();
-    let result = propose_layout(&d, &id("diagram"), "s", 0, &AtomicBool::new(false));
-    assert_eq!(result.unwrap_err().code, "collision");
+    let p = propose_layout(&d, &id("diagram"), "s", 0, &AtomicBool::new(false)).unwrap();
+    assert!(p.warnings.iter().any(|w| w.code == "label_overlap"));
+    assert!(p.metrics.overlaps > 0);
+    validate_proposal(&d, &p).unwrap();
     assert_eq!(before, serde_json::to_vec(&d).unwrap());
 }
 #[test]
@@ -670,21 +672,16 @@ fn four_hundred_connected_nodes_fit_bounded_straight_route_profile() {
         );
     }
     let before = serde_json::to_vec(&d).unwrap();
-    let result = propose_layout(&d, &id("diagram"), "s", 0, &AtomicBool::new(false));
+    let started = std::time::Instant::now();
+    let p = propose_layout(&d, &id("diagram"), "s", 0, &AtomicBool::new(false))
+        .unwrap_or_else(|e| panic!("{}: {}", e.code, e.message));
     println!(
-        "500-edge connected fixture: {}",
-        match &result {
-            Ok(_) => "accepted".to_owned(),
-            Err(error) => format!("refused: {}", error.code),
-        }
+        "500-edge connected fixture: {:?}, {} crossings, {:?}",
+        started.elapsed(),
+        p.metrics.crossings,
+        p.warnings
     );
-    assert!(
-        result.is_ok()
-            || matches!(
-                result.unwrap_err().code.as_str(),
-                "budget" | "routing" | "collision"
-            )
-    );
+    assert!(p.proposed.edges.iter().all(|e| e.waypoints.len() <= 16));
     assert_eq!(before, serde_json::to_vec(&d).unwrap());
 }
 #[test]
@@ -1301,6 +1298,7 @@ fn assert_layout_succeeds(d: &BpmnDocument) {
     let p = propose_layout(d, &id("diagram"), "s", 0, &AtomicBool::new(false))
         .unwrap_or_else(|e| panic!("{}: {}", e.code, e.message));
     validate_proposal(d, &p).unwrap();
+    assert!(p.warnings.is_empty(), "{:?}", p.warnings);
     let container = p
         .proposed
         .shapes
@@ -1441,6 +1439,304 @@ fn loop_back_from_stacked_node_routes_around_the_node_above() {
             .find(|e| e.id == id::<ElementSelector>("di_t2_start"))
             .unwrap();
         assert!(edge.waypoints[0].y == t2.y + t2.height);
-        assert!(edge.waypoints.iter().all(|w| w.y >= t2.y));
+        // Nothing in t2's column runs above it (start keeps the upper row).
+        assert!(
+            edge.waypoints
+                .iter()
+                .filter(|w| w.x >= t2.x && w.x <= t2.x + t2.width)
+                .all(|w| w.y >= t2.y)
+        );
+    }
+}
+#[test]
+fn unavoidable_crossings_are_returned_with_a_warning() {
+    use NodeKind::*;
+    let gates = ["x1", "x2", "x3"];
+    let tasks = ["t1", "t2", "t3"];
+    let mut nodes = vec![("start", StartEvent), ("split", ParallelGateway)];
+    nodes.extend(gates.iter().map(|g| (*g, ExclusiveGateway)));
+    nodes.extend(tasks.iter().map(|t| (*t, Task)));
+    let mut flows = vec![("start", "split")];
+    for g in gates {
+        flows.push(("split", g));
+        flows.extend(tasks.iter().map(|t| (g, *t)));
+    }
+    // K3,3 between the gateways and the tasks is not planar.
+    let d = ordinary_process(&nodes, &flows, false);
+    let p = propose_layout(&d, &id("diagram"), "s", 0, &AtomicBool::new(false))
+        .unwrap_or_else(|e| panic!("{}: {}", e.code, e.message));
+    assert!(p.metrics.crossings >= 1);
+    assert!(p.warnings.iter().any(|w| w.code == "crossings"));
+    validate_proposal(&d, &p).unwrap();
+}
+#[test]
+fn other_flow_node_kinds_are_laid_out() {
+    use NodeKind::*;
+    let mut d = ordinary_process(
+        &[
+            ("start", StartEvent),
+            ("service", ServiceTask),
+            ("wait", IntermediateCatchEvent),
+            ("or", InclusiveGateway),
+            ("sub", SubProcess),
+            ("end", EndEvent),
+        ],
+        &[
+            ("start", "service"),
+            ("service", "wait"),
+            ("wait", "or"),
+            ("or", "sub"),
+            ("or", "end"),
+            ("sub", "end"),
+        ],
+        false,
+    );
+    d.diagrams[0]
+        .shapes
+        .iter_mut()
+        .find(|s| s.id == id::<ElementSelector>("shape_sub"))
+        .unwrap()
+        .is_expanded = Some(false);
+    let p = assert_layout_properties(&d);
+    assert!(p.warnings.is_empty(), "{:?}", p.warnings);
+}
+fn add_lane(d: &mut BpmnDocument, name: &str, members: &[&str]) {
+    let mut shape = d.diagrams[0].shapes[0].clone();
+    shape.id = id(&format!("{name}_di"));
+    shape.element = id(name);
+    shape.label = None;
+    d.diagrams[0].shapes.push(shape);
+    d.processes[0].lanes.push(processcraft_core::model::Lane {
+        base: None,
+        child_lane_set_base: None,
+        child_lane_set_id: None,
+        child_lane_set_name: None,
+        partition_element: None,
+        partition_element_ref: None,
+        id: id(name),
+        name: Some(name.into()),
+        parent: None,
+        members: members.iter().map(|m| id(m)).collect(),
+    });
+}
+/// Shared layout properties: valid, deterministic, no node overlap, nodes inside
+/// their lanes, lanes indented in a pool, orthogonal routes of at most 16 points.
+fn assert_layout_properties(d: &BpmnDocument) -> processcraft_core::layout::LayoutProposal {
+    let p = propose_layout(d, &id("diagram"), "s", 0, &AtomicBool::new(false))
+        .unwrap_or_else(|e| panic!("{}: {}", e.code, e.message));
+    let again = propose_layout(d, &id("diagram"), "s", 0, &AtomicBool::new(false)).unwrap();
+    assert_eq!(
+        serde_json::to_value(&p.proposed).unwrap(),
+        serde_json::to_value(&again.proposed).unwrap()
+    );
+    validate_proposal(d, &p).unwrap();
+    let bounds = |element: &ElementSelector| {
+        let shape = d.diagrams[0]
+            .shapes
+            .iter()
+            .find(|s| &s.element == element)
+            .unwrap();
+        p.proposed
+            .shapes
+            .iter()
+            .find(|s| s.id == shape.id.selector())
+            .unwrap()
+            .bounds
+            .clone()
+    };
+    let inside = |a: &Bounds, b: &Bounds| {
+        a.x >= b.x
+            && a.y >= b.y
+            && a.x + a.width <= b.x + b.width
+            && a.y + a.height <= b.y + b.height
+    };
+    let nodes: Vec<_> = d.processes[0]
+        .nodes
+        .iter()
+        .map(|n| bounds(&n.id.selector()))
+        .collect();
+    for (i, a) in nodes.iter().enumerate() {
+        for b in &nodes[i + 1..] {
+            assert!(
+                a.x + a.width <= b.x
+                    || b.x + b.width <= a.x
+                    || a.y + a.height <= b.y
+                    || b.y + b.height <= a.y,
+                "{a:?} overlaps {b:?}"
+            );
+        }
+    }
+    let pool = d
+        .collaboration
+        .as_ref()
+        .map(|c| bounds(&c.participants[0].id.selector()));
+    for lane in &d.processes[0].lanes {
+        let lane_bounds = bounds(&lane.id.selector());
+        if let Some(pool) = &pool {
+            assert_eq!(lane_bounds.x, pool.x + 30.0);
+        }
+        for member in &lane.members {
+            assert!(
+                inside(&bounds(member), &lane_bounds),
+                "{member} leaves its lane"
+            );
+        }
+    }
+    for edge in &p.proposed.edges {
+        assert!(edge.waypoints.len() <= 16);
+        assert!(
+            edge.waypoints
+                .windows(2)
+                .all(|w| w[0].x == w[1].x || w[0].y == w[1].y),
+            "{:?}",
+            edge.waypoints
+        );
+    }
+    p
+}
+#[test]
+fn diamond_with_crossed_ids_is_untangled() {
+    use NodeKind::*;
+    let d = ordinary_process(
+        &[
+            ("s", Task),
+            ("a", Task),
+            ("b", Task),
+            ("x", Task),
+            ("y", Task),
+        ],
+        &[("s", "a"), ("s", "b"), ("a", "y"), ("b", "x")],
+        false,
+    );
+    let p = assert_layout_properties(&d);
+    assert_eq!(p.metrics.crossings, 0, "{:?}", p.warnings);
+}
+#[test]
+fn two_lane_ping_pong_has_no_crossings() {
+    use NodeKind::*;
+    let mut d = ordinary_process(
+        &[
+            ("a", Task),
+            ("b", Task),
+            ("c", Task),
+            ("d", Task),
+            ("e", Task),
+        ],
+        &[("a", "b"), ("b", "c"), ("c", "d"), ("d", "e")],
+        false,
+    );
+    add_lane(&mut d, "upper", &["a", "c", "e"]);
+    add_lane(&mut d, "lower", &["b", "d"]);
+    let p = assert_layout_properties(&d);
+    assert_eq!(p.metrics.crossings, 0, "{:?}", p.warnings);
+}
+#[test]
+fn loop_inside_a_branch_has_no_crossings_or_warnings() {
+    use NodeKind::*;
+    let d = ordinary_process(
+        &[
+            ("start", StartEvent),
+            ("split", ExclusiveGateway),
+            ("a", Task),
+            ("b", Task),
+            ("c", Task),
+            ("join", ExclusiveGateway),
+            ("end", EndEvent),
+        ],
+        &[
+            ("start", "split"),
+            ("split", "a"),
+            ("a", "b"),
+            ("b", "join"),
+            ("split", "c"),
+            ("c", "join"),
+            ("join", "end"),
+            ("b", "a"),
+        ],
+        false,
+    );
+    let p = assert_layout_properties(&d);
+    assert_eq!(p.metrics.crossings, 0);
+    assert!(p.warnings.is_empty(), "{:?}", p.warnings);
+}
+#[test]
+fn disconnected_components_are_stacked_apart() {
+    use NodeKind::*;
+    let d = ordinary_process(
+        &[("a", Task), ("b", Task), ("c", Task), ("d", Task)],
+        &[("a", "b"), ("c", "d")],
+        false,
+    );
+    let p = assert_layout_properties(&d);
+    assert_eq!(p.metrics.crossings, 0);
+    let extent = |names: [&str; 2]| {
+        let ys: Vec<_> = names
+            .iter()
+            .map(|n| {
+                p.proposed
+                    .shapes
+                    .iter()
+                    .find(|s| s.id == id::<ElementSelector>(&format!("shape_{n}")))
+                    .unwrap()
+                    .bounds
+                    .clone()
+            })
+            .collect();
+        (
+            ys.iter().map(|b| b.y).fold(f64::MAX, f64::min),
+            ys.iter().map(|b| b.y + b.height).fold(f64::MIN, f64::max),
+        )
+    };
+    let (first, second) = (extent(["a", "b"]), extent(["c", "d"]));
+    assert!(first.1 <= second.0 || second.1 <= first.0);
+}
+#[test]
+fn back_edge_blocked_above_and_below_is_laid_out() {
+    use NodeKind::*;
+    let d = ordinary_process(
+        &[
+            ("start", StartEvent),
+            ("split", ParallelGateway),
+            ("t1", Task),
+            ("t2", Task),
+            ("t3", Task),
+            ("join", ParallelGateway),
+            ("end", EndEvent),
+        ],
+        &[
+            ("start", "split"),
+            ("split", "t1"),
+            ("split", "t2"),
+            ("split", "t3"),
+            ("t1", "join"),
+            ("t2", "join"),
+            ("t3", "join"),
+            ("join", "end"),
+            ("t2", "start"),
+        ],
+        false,
+    );
+    assert_layout_properties(&d);
+}
+#[test]
+fn boundary_events_and_expanded_subprocesses_are_refused() {
+    use NodeKind::*;
+    let boundary = ordinary_process(
+        &[("t", Task), ("b", BoundaryEvent), ("end", EndEvent)],
+        &[("t", "end"), ("b", "end")],
+        false,
+    );
+    let mut expanded = ordinary_process(
+        &[("start", StartEvent), ("sub", SubProcess)],
+        &[("start", "sub")],
+        false,
+    );
+    expanded.diagrams[0].shapes[1].is_expanded = Some(true);
+    for d in [boundary, expanded] {
+        let before = serde_json::to_vec(&d).unwrap();
+        let error =
+            propose_layout(&d, &id("diagram"), "s", 0, &AtomicBool::new(false)).unwrap_err();
+        assert_eq!(error.code, "unsupported");
+        assert_eq!(before, serde_json::to_vec(&d).unwrap());
     }
 }

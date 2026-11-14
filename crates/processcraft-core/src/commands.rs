@@ -5792,11 +5792,44 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             edge_id,
             waypoints,
         } => {
-            let e = diagram(doc(p, document_id, false)?, &diagram_id)?
+            let d = doc(p, document_id, false)?;
+            // Every route change is normalized here (ends docked on the true outline), and an
+            // explicit label follows the route's midpoint, so moves, resizes, reconnects and
+            // manual edits all keep it in place.
+            let waypoints = if waypoints.iter().all(crate::geometry::valid_point) {
+                let dg = d
+                    .diagrams
+                    .iter()
+                    .find(|g| g.id == diagram_id)
+                    .ok_or_else(|| invalid("diagram not found"))?;
+                let edge = dg
+                    .edges
+                    .iter()
+                    .find(|s| s.id == edge_id)
+                    .ok_or_else(|| invalid("edge not found"))?;
+                crate::geometry::dock_ends(d, dg, edge, crate::geometry::tidy(waypoints))
+            } else {
+                waypoints
+            };
+            let e = diagram(d, &diagram_id)?
                 .edges
                 .iter_mut()
                 .find(|s| s.id == edge_id)
                 .ok_or_else(|| invalid("edge not found"))?;
+            if let (Some(old), Some(new)) = (
+                crate::geometry::midpoint(&e.waypoints),
+                crate::geometry::midpoint(&waypoints),
+            ) && let Some(b) = e.label.as_mut().and_then(|l| l.bounds.as_mut())
+            {
+                let shifted = Bounds {
+                    x: b.x + new.x - old.x,
+                    y: b.y + new.y - old.y,
+                    ..b.clone()
+                };
+                if crate::geometry::valid_bounds(&shifted) {
+                    *b = shifted;
+                }
+            }
             e.waypoints = waypoints;
         }
         Mutation::AssignLane {
@@ -5972,6 +6005,14 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
         } => {
             let d = doc(p, document_id, false)?;
             let old = d.clone();
+            let resized: Vec<ElementSelector> = d
+                .diagrams
+                .iter()
+                .filter(|g| g.id == diagram_id)
+                .flat_map(|g| &g.shapes)
+                .filter(|s| s.id == shape_id)
+                .map(|s| s.element.clone())
+                .collect();
             let batch = crate::manipulate::resize(d, &diagram_id, &shape_id, bounds)
                 .map_err(CommandError::InvalidParams)?;
             for m in batch {
@@ -5981,6 +6022,8 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             if d.capability.allows_structural_editing() && !d.blocks_structural_edits() {
                 crate::containers::sync_lanes(&old, d, &diagram_id);
             }
+            // Pools and expanded subprocesses grow around the resized shape, as on a move.
+            auto_resize(p, document_id, &diagram_id, resized, &old)?;
         }
         Mutation::Reconnect {
             document_id,
@@ -6445,7 +6488,7 @@ static COMMAND_DESCRIPTORS: &[CommandDescriptor] = &[
     descriptor!("documentation","Set documentation","document_id":"DocumentId","element_id":"ElementSelector","documentation":"string"),
     descriptor!("delete","Delete element with its connected flows","document_id":"DocumentId","element_id":"ElementSelector"),
     descriptor!("moveShape","Move shape","document_id":"DocumentId","diagram_id":"ElementSelector","shape_id":"ElementSelector","bounds":"Bounds"),
-    descriptor!("reroute","Reroute edge","document_id":"DocumentId","diagram_id":"ElementSelector","edge_id":"ElementSelector","waypoints":"Point[]"),
+    descriptor!("reroute","Reroute edge (the route is normalized: near-orthogonal segments straightened, duplicate and collinear points dropped, ends on a shape's border docked on its outline; an explicit label follows the route)","document_id":"DocumentId","diagram_id":"ElementSelector","edge_id":"ElementSelector","waypoints":"Point[]"),
     descriptor!("assignLane","Assign lane","document_id":"DocumentId","process_id":"ElementSelector","element_id":"ElementSelector","lane_id":"ElementSelector|null","bounds":"ShapeBounds[]"),
     descriptor!("setFlowCondition","Set flow condition","document_id":"DocumentId","flow_id":"ElementSelector","condition":"string|null"),
     descriptor!("setNodeOwnerContact","Set node owner and contact","document_id":"DocumentId","element_id":"ElementSelector","owner":"string","contact":"string"),

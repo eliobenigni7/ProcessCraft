@@ -305,6 +305,59 @@ fn many_dashed_edges_fit_path_budget() {
     assert_eq!(build(&d, Appearance::Light).hits.len(), 252);
 }
 #[test]
+fn bent_sequence_flow_is_one_path_with_rounded_corners() {
+    use processcraft_core::model::{Edge, Flow, FlowKind, Point};
+    let mut d = fixture();
+    let local = |s: &str| {
+        Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+            s,
+        )))
+    };
+    d.processes[0].flows.push(Flow {
+        message_ref: None,
+        flow_metadata: None,
+        association_direction: None,
+        id: id("flow"),
+        kind: FlowKind::Sequence,
+        source: local("task"),
+        target: local("task"),
+        name: None,
+        documentation: String::new().into(),
+        base_extras: None,
+        condition: None,
+    });
+    d.diagrams[0].edges.push(Edge {
+        di_metadata: None,
+        message_visible_kind: None,
+        id: id("edge"),
+        element: id("flow"),
+        source_element: None,
+        label_visibility: None,
+        target_element: None,
+        waypoints: vec![
+            Point { x: 95., y: 50. },
+            Point { x: 200., y: 50. },
+            Point { x: 200., y: 150. },
+        ],
+        label: None,
+        style: Some(Style {
+            fill: None,
+            stroke: Some("#ff0000".into()),
+            font: None,
+        }),
+    });
+    let s = build(&d, Appearance::Light);
+    let red: Vec<_> = s.scene.paths().filter(|p| p.color == [255, 0, 0]).collect();
+    // One stroked polyline (no per-segment subpaths) and the filled arrowhead.
+    assert_eq!(red.len(), 2);
+    let starts = |p: &tiny_skia::Path| {
+        p.segments()
+            .filter(|s| matches!(s, tiny_skia::PathSegment::MoveTo(_)))
+            .count()
+    };
+    assert_eq!(starts(red[0].path), 1);
+}
+#[test]
 fn viewport_rebases_far_coordinates_before_float_conversion() {
     use processcraft_render::{BpmnViewport, Viewport};
     let mut d = fixture();

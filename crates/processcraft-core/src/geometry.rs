@@ -152,6 +152,142 @@ fn compact(path: Vec<Point>) -> Vec<Point> {
     }
     out
 }
+/// Route normalization: a segment within 2 units of horizontal or vertical is straightened by
+/// moving its interior end onto the other end's axis (a pass from the start, then one from the
+/// end), then duplicate and collinear points are dropped. The endpoints never move.
+pub fn tidy(mut points: Vec<Point>) -> Vec<Point> {
+    fn straighten(points: &mut [Point], fixed: usize, moving: usize) {
+        const SNAP: f64 = 2.0;
+        let (fx, fy) = (points[fixed].x, points[fixed].y);
+        let q = &mut points[moving];
+        if q.x == fx || q.y == fy {
+            return;
+        }
+        if (q.x - fx).abs() <= SNAP {
+            q.x = fx;
+        } else if (q.y - fy).abs() <= SNAP {
+            q.y = fy;
+        }
+    }
+    if points.len() < 3 {
+        return points;
+    }
+    let last = points.len() - 1;
+    for i in 1..last {
+        straighten(&mut points, i - 1, i);
+    }
+    for i in (1..last).rev() {
+        straighten(&mut points, i + 1, i);
+    }
+    compact(points)
+}
+fn is_event(kind: Option<NodeKind>) -> bool {
+    matches!(
+        kind,
+        Some(
+            NodeKind::StartEvent
+                | NodeKind::EndEvent
+                | NodeKind::IntermediateCatchEvent
+                | NodeKind::IntermediateThrowEvent
+                | NodeKind::BoundaryEvent
+        )
+    )
+}
+/// Where the ray from the centre of `bounds` towards `toward` leaves the outline of a `kind`
+/// shape: an ellipse for events, a diamond for gateways, the rectangle otherwise (data object
+/// folds and data store arcs use their bounding box).
+pub fn outline_point(kind: Option<NodeKind>, bounds: &Bounds, toward: &Point) -> Point {
+    let (rx, ry) = (bounds.width / 2.0, bounds.height / 2.0);
+    let (cx, cy) = (bounds.x + rx, bounds.y + ry);
+    let (dx, dy) = (toward.x - cx, toward.y - cy);
+    if rx <= 0.0 || ry <= 0.0 || (dx == 0.0 && dy == 0.0) {
+        return toward.clone();
+    }
+    let (u, v) = ((dx / rx).abs(), (dy / ry).abs());
+    let reach = if is_event(kind) {
+        u.hypot(v)
+    } else if kind.is_some_and(crate::rules::is_gateway) {
+        u + v
+    } else {
+        u.max(v)
+    };
+    p(cx + dx / reach, cy + dy / reach)
+}
+/// Endpoints lying on the border band of their shape (see [`on_border`]) are moved onto its
+/// true outline: along the end segment's axis when it is horizontal or vertical, so the segment
+/// stays orthogonal, else radially. Endpoints away from the border (deliberately detached
+/// imported routes) are kept.
+pub(crate) fn dock_ends(
+    doc: &crate::model::BpmnDocument,
+    diagram: &crate::model::Diagram,
+    edge: &crate::model::Edge,
+    mut points: Vec<Point>,
+) -> Vec<Point> {
+    if points.len() < 2 {
+        return points;
+    }
+    let (source, target) = crate::modeling::edge_ends(doc, diagram, edge);
+    let last = points.len() - 1;
+    for (end, next, shape) in [(0, 1, source), (last, last - 1, target)] {
+        let Some(shape) = shape else { continue };
+        let (b, q, n) = (&shape.bounds, &points[end], &points[next]);
+        if !valid_bounds(b) || !on_border(q, b) {
+            continue;
+        }
+        let kind = crate::queries::find_node(doc, &shape.element).map(|node| node.kind);
+        let (rx, ry) = (b.width / 2.0, b.height / 2.0);
+        let (cx, cy) = (b.x + rx, b.y + ry);
+        // Half the outline's extent across the line at offset `o` from the centre.
+        let half = |r: f64, o: f64, ro: f64| {
+            let t = (o / ro).abs();
+            if is_event(kind) {
+                r * (1.0 - t * t).max(0.0).sqrt()
+            } else if kind.is_some_and(crate::rules::is_gateway) {
+                r * (1.0 - t)
+            } else {
+                r
+            }
+        };
+        let sign = |v: f64, fallback: f64| {
+            if v != 0.0 {
+                v.signum()
+            } else {
+                fallback.signum()
+            }
+        };
+        // A segment running along (or beyond) a side does not enter the shape: keep it.
+        let docked = if q.y == n.y && q.x != n.x && (q.y - cy).abs() < ry {
+            p(cx + sign(q.x - cx, n.x - cx) * half(rx, q.y - cy, ry), q.y)
+        } else if q.x == n.x && q.y != n.y && (q.x - cx).abs() < rx {
+            p(q.x, cy + sign(q.y - cy, n.y - cy) * half(ry, q.x - cx, rx))
+        } else if q.x != n.x && q.y != n.y {
+            outline_point(kind, b, q)
+        } else {
+            continue;
+        };
+        if valid_point(&docked) {
+            points[end] = docked;
+        }
+    }
+    points
+}
+/// The point halfway along the polyline `points`.
+pub fn midpoint(points: &[Point]) -> Option<Point> {
+    let length = |w: &[Point]| (w[1].x - w[0].x).hypot(w[1].y - w[0].y);
+    let mut remaining = points.windows(2).map(length).sum::<f64>() / 2.0;
+    for w in points.windows(2) {
+        let segment = length(w);
+        if segment > 0.0 && remaining <= segment {
+            let t = remaining / segment;
+            return Some(p(
+                w[0].x + (w[1].x - w[0].x) * t,
+                w[0].y + (w[1].y - w[0].y) * t,
+            ));
+        }
+        remaining -= segment;
+    }
+    points.first().cloned()
+}
 /// Side of a shape.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Side {
@@ -768,8 +904,40 @@ pub fn distance_to_path(point: &Point, points: &[Point]) -> f64 {
         .fold(f64::INFINITY, f64::min)
 }
 
+/// Re-dock a moved endpoint on `bounds`: it stays when `neighbour` (the next waypoint, or the
+/// other shape's centre) still lies beyond the side it is on; otherwise it moves to the middle
+/// of the side facing `neighbour` (the dominant axis when diagonal).
+pub fn redock_side(endpoint: &Point, bounds: &Bounds, neighbour: &Point) -> Point {
+    let (left, top) = (bounds.x, bounds.y);
+    let (right, bottom) = (left + bounds.width, top + bounds.height);
+    let beyond = |side: Side| match side {
+        Side::Top => neighbour.y <= top,
+        Side::Bottom => neighbour.y >= bottom,
+        Side::Left => neighbour.x <= left,
+        Side::Right => neighbour.x >= right,
+    };
+    if beyond(side_of(endpoint, bounds)) {
+        return endpoint.clone();
+    }
+    let (cx, cy) = (left + bounds.width / 2.0, top + bounds.height / 2.0);
+    let outside_x = neighbour.x < left || neighbour.x > right;
+    let outside_y = neighbour.y < top || neighbour.y > bottom;
+    let (dx, dy) = (neighbour.x - cx, neighbour.y - cy);
+    let horizontal = if outside_x != outside_y {
+        outside_x
+    } else {
+        dx.abs() >= dy.abs()
+    };
+    match (horizontal, dx >= 0.0, dy >= 0.0) {
+        (true, true, _) => p(right, cy),
+        (true, false, _) => p(left, cy),
+        (false, _, true) => p(cx, bottom),
+        (false, _, false) => p(cx, top),
+    }
+}
 /// Endpoints of `points` docked on `old` move proportionally onto `new` (centre-relative
-/// scaling), keeping interior points and orthogonal ends. `None` when nothing is docked there.
+/// scaling), keeping interior points and orthogonal ends, then re-dock on the side facing their
+/// neighbour ([`redock_side`]). `None` when nothing is docked there.
 pub fn redock(points: &[Point], old: &Bounds, new: &Bounds) -> Option<Vec<Point>> {
     let (first, last) = (points.first()?, points.last()?);
     let near = |p: &Point| {
@@ -790,6 +958,24 @@ pub fn redock(points: &[Point], old: &Bounds, new: &Bounds) -> Option<Vec<Point>
     if start.is_none() && end.is_none() {
         return None;
     }
+    // A two-point route's neighbour is its other (possibly re-docked) end.
+    let n = points.len();
+    let start = start.map(|s| {
+        let next = if n > 2 {
+            &points[1]
+        } else {
+            end.as_ref().unwrap_or(last)
+        };
+        redock_side(&s, new, next)
+    });
+    let end = end.map(|e| {
+        let previous = if n > 2 {
+            &points[n - 2]
+        } else {
+            start.as_ref().unwrap_or(first)
+        };
+        redock_side(&e, new, previous)
+    });
     repair_endpoints(points, start, end, &[]).ok()?.waypoints
 }
 
@@ -1759,6 +1945,47 @@ pub fn prepare_move(
         };
         let start = move_endpoint(&edge.waypoints[0], source_delta);
         let end = move_endpoint(&edge.waypoints[edge.waypoints.len() - 1], target_delta);
+        // A moved end re-docks on the side facing its neighbour: the next kept waypoint, or the
+        // other end's shape centre on a two-point route.
+        let end_bounds = |semantic: &ElementSelector, representation: Option<&ElementSelector>| {
+            let mut shapes = diagram.shapes.iter().filter(|s| match representation {
+                Some(id) => s.id == *id,
+                None => s.element == *semantic,
+            });
+            let shape = shapes.next()?;
+            if shapes.next().is_some() {
+                return None;
+            }
+            Some(
+                bounds
+                    .iter()
+                    .find(|b| b.shape_id == shape.id)
+                    .map_or_else(|| shape.bounds.clone(), |b| b.bounds.clone()),
+            )
+        };
+        let (source_shape, target_shape) = (
+            end_bounds(source, edge.source_element.as_ref()),
+            end_bounds(target, edge.target_element.as_ref()),
+        );
+        let centre = |b: &Bounds| p(b.x + b.width / 2.0, b.y + b.height / 2.0);
+        let n = edge.waypoints.len();
+        let redocked =
+            |point: Option<Point>, own: &Option<Bounds>, inner: usize, other: &Option<Bounds>| {
+                let point = point?;
+                let Some(own) = own.as_ref().filter(|b| on_border(&point, b)) else {
+                    return Some(point);
+                };
+                let neighbour = if n > 2 {
+                    edge.waypoints[inner].clone()
+                } else if let Some(other) = other {
+                    centre(other)
+                } else {
+                    return Some(point);
+                };
+                Some(redock_side(&point, own, &neighbour))
+            };
+        let start = redocked(start, &source_shape, 1, &target_shape);
+        let end = redocked(end, &target_shape, n - 2, &source_shape);
         if let (Some((dx, dy)), Some(other)) = (source_delta, target_delta)
             && (dx, dy) == other
             && (dx != 0.0 || dy != 0.0)
@@ -1791,6 +2018,38 @@ pub fn prepare_move(
             continue;
         }
         if start.is_none() && end.is_none() {
+            continue;
+        }
+        // bpmn-js keeps plain and data associations straight: a two-point one is cropped again
+        // on both outlines instead of gaining an elbow (compensation associations stay orthogonal).
+        let kind = |id: &ElementSelector| crate::queries::find_node(document, id).map(|n| n.kind);
+        let straight = match crate::queries::find_flow(document, &edge.element).or_else(|| {
+            artifact_flows
+                .iter()
+                .copied()
+                .find(|f| f.id == edge.element)
+        }) {
+            Some(flow) => {
+                flow.kind == crate::model::FlowKind::Association
+                    && kind(source) != Some(crate::model::NodeKind::BoundaryEvent)
+            }
+            None => scopes
+                .iter()
+                .flat_map(|scope| scope.data_associations.iter())
+                .any(|a| a.id.as_ref().is_some_and(|id| edge.element == *id)),
+        };
+        if n == 2
+            && straight
+            && let (Some(a), Some(b)) = (&source_shape, &target_shape)
+        {
+            routes.push((
+                diagram_id.clone(),
+                edge.id.selector(),
+                vec![
+                    outline_point(kind(source), a, &centre(b)),
+                    outline_point(kind(target), b, &centre(a)),
+                ],
+            ));
             continue;
         }
         let obstacles: Vec<_> = diagram
@@ -1916,11 +2175,21 @@ pub fn prepare_move(
                         "edge {}: {reason}; the route was laid out again",
                         edge.id
                     ));
-                    layout_route(
+                    // The connection's own layout (gateway, boundary, vertical pool) on the
+                    // diagram as it will be after the move.
+                    let mut after = diagram.clone();
+                    for shape in &mut after.shapes {
+                        if let Some(b) = bounds.iter().find(|b| b.shape_id == shape.id) {
+                            shape.bounds = b.bounds.clone();
+                        }
+                    }
+                    crate::modeling::route(
+                        &after,
+                        crate::rules::ConnectionKind::Sequence,
+                        crate::queries::find_node(document, source),
+                        crate::queries::find_node(document, target).map(|node| node.kind),
                         &source_bounds,
                         &target_bounds,
-                        &obstacles,
-                        RouteLayout::Sequence,
                     )
                 }
                 Err(reason) => return Err(reason),

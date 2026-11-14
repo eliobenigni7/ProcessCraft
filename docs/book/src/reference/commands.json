@@ -3091,7 +3091,7 @@
   },
   {
    "id": "reroute",
-   "label": "Reroute edge",
+   "label": "Reroute edge (the route is normalized: near-orthogonal segments straightened, duplicate and collinear points dropped, ends on a shape's border docked on its outline; an explicit label follows the route)",
    "params": [
     {
      "name": "document_id",
@@ -9152,6 +9152,43 @@
     ],
     "type": "object"
    },
+   "LayoutMetrics": {
+    "additionalProperties": false,
+    "description": "Measured quality of the proposed geometry. `overlaps` counts labels touching\nlabels or nodes and route segments passing over labels or nodes.",
+    "properties": {
+     "area": {
+      "format": "double",
+      "type": "number"
+     },
+     "bends": {
+      "format": "uint",
+      "minimum": 0,
+      "type": "integer"
+     },
+     "crossings": {
+      "format": "uint",
+      "minimum": 0,
+      "type": "integer"
+     },
+     "edge_length": {
+      "format": "double",
+      "type": "number"
+     },
+     "overlaps": {
+      "format": "uint",
+      "minimum": 0,
+      "type": "integer"
+     }
+    },
+    "required": [
+     "crossings",
+     "overlaps",
+     "bends",
+     "edge_length",
+     "area"
+    ],
+    "type": "object"
+   },
    "LayoutProposal": {
     "additionalProperties": false,
     "properties": {
@@ -9176,6 +9213,16 @@
       "minimum": 0,
       "type": "integer"
      },
+     "metrics": {
+      "$ref": "#/$defs/LayoutMetrics",
+      "default": {
+       "area": 0.0,
+       "bends": 0,
+       "crossings": 0,
+       "edge_length": 0.0,
+       "overlaps": 0
+      }
+     },
      "original": {
       "$ref": "#/$defs/LayoutGeometry"
      },
@@ -9184,6 +9231,13 @@
      },
      "session_id": {
       "type": "string"
+     },
+     "warnings": {
+      "description": "Counted quality defects of an otherwise valid proposal (one per code).",
+      "items": {
+       "$ref": "#/$defs/LayoutWarning"
+      },
+      "type": "array"
      }
     },
     "required": [
@@ -9193,6 +9247,21 @@
      "diagram_id",
      "original",
      "proposed"
+    ],
+    "type": "object"
+   },
+   "LayoutWarning": {
+    "properties": {
+     "code": {
+      "type": "string"
+     },
+     "message": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "code",
+     "message"
     ],
     "type": "object"
    },

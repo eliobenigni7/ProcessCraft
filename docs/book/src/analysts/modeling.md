@@ -17,15 +17,23 @@ while you sketch. An operation that would break the model is refused with a reas
 
 New elements are placed and their flows routed for you.
 
+Every shape can be resized from the handles of the selection: four corners and four edge midpoints
+(corners only for events, gateways and data references, which keep their proportions and keep their
+labels centred below them). Dragged edges snap to neighbouring shapes and the grid. Hold `Shift` to
+keep the proportions, `Alt` to resize around the centre, and `Ctrl` to resize without snapping. A
+container never shrinks past the elements inside it. **Edit > Fit to content**, or a double-click on a
+resize handle, sets the height of a task, sub-process or annotation to fit its text.
+
 ## Shortcuts
 
 | Action | How |
 |---|---|
 | Connect, change type, delete | `C`, `R`, `Del`, or the context pad |
-| Rename, edit annotation text | Double-click or `E`; `Ctrl+Enter` finishes multi-line text |
+| Rename, edit annotation text | Double-click, `E` or `F2`; `Ctrl+Enter` finishes multi-line text |
 | Pan and zoom | Drag empty canvas, middle mouse or `Space`+drag; `Ctrl`+wheel; `Ctrl` `+` `−` `0` |
-| Select | Click; `Shift`+click toggles; `Shift`+drag draws a box; `Ctrl+A` |
-| Move precisely | Arrow keys (1 px), `Shift`+arrows (10 px); hold `Alt` to drag without snapping |
+| Fit | `Shift+1` fits the diagram, `Shift+2` zooms to the selection |
+| Select | Click; `Shift`+click toggles; `Ctrl+A`; `Shift`+drag draws a box that adds to the selection: left to right takes what is fully inside, right to left whatever it touches; flows count when they lie fully inside |
+| Move precisely | Arrow keys (1 px), `Shift`+arrows (10 px); hold `Shift` while dragging to keep one axis, `Alt` or `Ctrl` to drag without snapping |
 | Clipboard | `Ctrl+C` `Ctrl+X` `Ctrl+V` `Ctrl+D`; pasting BPMN XML from another tool imports it |
 | Find, space tool | `Ctrl+F`, `S` |
 | Undo, redo | `Ctrl+Z`, `Ctrl+Y` |
@@ -43,7 +51,7 @@ pointer.
 - Snapping guides and a 10 px grid help placement.
 - Bendpoints and segments of a flow can be dragged, and either end of a flow can be reconnected.
 - **Align** and **distribute** work on a selection.
-- **Auto layout…** proposes a layout for the whole diagram and shows a preview before you accept it.
+- **Auto layout…** proposes a layout for the whole diagram and shows a preview before you accept it. Nodes stay in their lanes, branches and loops are untangled where possible, and the preview bar shows how many flow crossings and other warnings (overlapping labels or routes) remain, so you can decide whether to apply it.
 
 Every edit, including an auto-layout, is one undo step.
 

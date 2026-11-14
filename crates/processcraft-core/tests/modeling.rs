@@ -148,6 +148,34 @@ fn append_annotation_goes_above_right_with_an_association() {
 }
 
 #[test]
+fn new_association_is_straight_between_both_outlines() {
+    let mut s = session();
+    batch(
+        &mut s,
+        vec![append("review", NodeKind::TextAnnotation, "note")],
+    )
+    .unwrap();
+    let points = edge_points(&s, "note_flow");
+    assert_eq!(points.len(), 2, "{points:?}");
+    let on_outline = |(x, y): (f64, f64), b: &Bounds| {
+        let near = |a: f64, c: f64| (a - c).abs() < 1e-9;
+        (near(x, b.x) || near(x, b.x + b.width) || near(y, b.y) || near(y, b.y + b.height))
+            && (b.x..=b.x + b.width).contains(&x)
+            && (b.y..=b.y + b.height).contains(&y)
+    };
+    let (note, review) = (shape(&s, "note"), shape(&s, "review"));
+    // Appended from the task: the association runs task -> annotation.
+    assert!(on_outline(points[0], &review), "{points:?}");
+    assert!(on_outline(points[1], &note), "{points:?}");
+    // On the line between the two centres.
+    let centre = |b: &Bounds| (b.x + b.width / 2.0, b.y + b.height / 2.0);
+    let ((ax, ay), (bx, by)) = (centre(&note), centre(&review));
+    for (x, y) in points {
+        assert!(((bx - ax) * (y - ay) - (by - ay) * (x - ax)).abs() < 1e-6);
+    }
+}
+
+#[test]
 fn appended_annotation_name_becomes_its_text() {
     let mut s = session();
     let mut mutation = append("review", NodeKind::TextAnnotation, "note");
