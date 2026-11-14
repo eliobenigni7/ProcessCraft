@@ -580,6 +580,51 @@ fn label_edit(
         height: height.max(60.0),
     })
 }
+/// Whether "Fit to content" applies: activities (not expanded subprocesses) and annotations.
+fn fits_content(d: &processcraft_core::model::BpmnDocument, shape: &Shape) -> bool {
+    processcraft_core::queries::find_node(d, &shape.element).is_some_and(|n| {
+        n.kind == NodeKind::TextAnnotation
+            || (n.kind.is_activity() && shape.is_expanded != Some(true))
+    })
+}
+/// `shape` with the height its label needs, measured like the renderer's label (12 px text in
+/// the width minus 8, 4 px padding above and below, plus the icon row of typed activities and
+/// the loop marker row). Width and top-left stay; never below the rule minimum.
+fn fitted_bounds(
+    d: &processcraft_core::model::BpmnDocument,
+    diagram: &processcraft_core::model::Diagram,
+    shape: &Shape,
+) -> Option<Bounds> {
+    if !fits_content(d, shape) {
+        return None;
+    }
+    let node = processcraft_core::queries::find_node(d, &shape.element)?;
+    let text = label_edit(d, diagram, &shape.element, None).ok()?.text;
+    let width = ((shape.bounds.width as f32) - 8.0).clamp(4.0, 16384.0);
+    let text_height = if text.is_empty() {
+        0.0
+    } else {
+        processcraft_render::TextEngine::new()
+            .layout(processcraft_render::TextRequest::new(&text, 12.0, width))
+            .ok()?
+            .height()
+    };
+    let icon = if matches!(node.kind, NodeKind::Task | NodeKind::TextAnnotation) {
+        0.0
+    } else {
+        20.0
+    };
+    let markers = if node.loop_characteristics.is_some() {
+        18.0
+    } else {
+        0.0
+    };
+    let min = processcraft_core::manipulate::resize_rule(d, shape)?.height;
+    Some(Bounds {
+        height: (f64::from(text_height).ceil() + 8.0 + icon + markers).max(min),
+        ..shape.bounds.clone()
+    })
+}
 /// Popup offering elements to create where a connection was dropped on empty canvas.
 struct AppendMenu {
     source: ElementSelector,
@@ -2702,8 +2747,15 @@ impl ProcessCraft {
                     if !click_consumed && (response.clicked() || response.drag_started()) {
                         self.canvas.append_menu = None;
                     }
+                    // A click on a resize handle keeps the selection (double-click fits it).
+                    let on_handle = (response.clicked() || response.double_clicked())
+                        && response
+                            .interact_pointer_pos()
+                            .and_then(|pos| handle_at(&handles, pos))
+                            .is_some();
                     if !click_consumed
                         && pad_pressed.is_none()
+                        && !on_handle
                         && ((response.drag_started() && self.canvas.gesture.is_none())
                             || response.clicked())
                         && self.commit_draft()
@@ -2855,6 +2907,12 @@ impl ProcessCraft {
                             edge_id: edge.id.selector(),
                             waypoints,
                         }]);
+                    } else if on_handle && response.double_clicked() {
+                        if let Some(shape) = single
+                            && fits_content(d, shape)
+                        {
+                            self.fit_to_content(&shape.element);
+                        }
                     } else if editable
                         && response.double_clicked()
                         && self.canvas.label_edit.is_none()
@@ -4056,6 +4114,42 @@ impl ProcessCraft {
             }
         });
     }
+    /// Resize the shape of `element` to fit its label (see `fitted_bounds`) with an ordinary
+    /// `resizeShape`.
+    pub(super) fn fit_to_content(&mut self, element: &ElementSelector) {
+        let snap = self.ctl.session.snapshot();
+        let Some(d) = snap.project.documents.get(self.doc) else {
+            return;
+        };
+        let Some(diagram) = self.current_diagram(d) else {
+            return;
+        };
+        let Some(shape) = diagram.shapes.iter().find(|s| s.element == *element) else {
+            return;
+        };
+        if let Some(bounds) = fitted_bounds(d, diagram, shape)
+            && bounds != shape.bounds
+        {
+            self.ctl.mutate(vec![Mutation::ResizeShape {
+                document_id: d.id,
+                diagram_id: diagram.id.selector(),
+                shape_id: shape.id.selector(),
+                bounds,
+            }]);
+        }
+    }
+    /// The single selected shape's element when "Fit to content" applies to it.
+    fn fit_target(&self) -> Option<ElementSelector> {
+        let snap = self.ctl.session.snapshot();
+        let d = snap.project.documents.get(self.doc)?;
+        let element = self.selected.clone().filter(|_| self.multi.len() == 1)?;
+        self.current_diagram(d)?
+            .shapes
+            .iter()
+            .find(|s| s.element == element)
+            .filter(|s| d.capability.allows_structural_editing() && fits_content(d, s))
+            .map(|_| element)
+    }
     /// Clipboard, selection, search, and arrange entries of the Edit menu.
     pub(super) fn edit_menu_items(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
@@ -4087,6 +4181,13 @@ impl ProcessCraft {
         }
         if item(ui, true, "Find element…", "Ctrl+F") {
             self.open_search();
+            ui.close();
+        }
+        let fit = self.fit_target();
+        if item(ui, fit.is_some(), "Fit to content", "Double-click a handle")
+            && let Some(element) = fit
+        {
+            self.fit_to_content(&element);
             ui.close();
         }
         ui.label(
@@ -4325,6 +4426,34 @@ mod tests {
             ),
             b(30.0, 0.0, 70.0, 50.0)
         );
+    }
+
+    #[test]
+    fn fit_to_content_grows_a_long_name_and_keeps_the_minimum() {
+        let mut app = ProcessCraft::default();
+        app.add(NodeKind::Task);
+        let task = app.selected.clone().unwrap();
+        let before = shape_bounds(&app, &task);
+        let rename = |app: &mut ProcessCraft, name: &str| {
+            let document_id = app.ctl.session.snapshot().project.documents[0].id;
+            assert!(app.ctl.mutate(vec![Mutation::Rename {
+                document_id,
+                element_id: task.clone(),
+                name: Some(name.into()),
+            }]));
+        };
+        rename(&mut app, &"Review the supplier invoice ".repeat(6));
+        app.fit_to_content(&task);
+        let grown = shape_bounds(&app, &task);
+        assert!(grown.height > before.height, "{grown:?}");
+        assert_eq!(
+            (grown.x, grown.y, grown.width),
+            (before.x, before.y, before.width)
+        );
+        assert_eq!(grown.height, grown.height.round());
+        rename(&mut app, "Pay");
+        app.fit_to_content(&task);
+        assert_eq!(shape_bounds(&app, &task).height, 40.0);
     }
 
     #[test]
