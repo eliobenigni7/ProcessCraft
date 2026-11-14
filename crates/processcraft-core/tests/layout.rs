@@ -1718,6 +1718,234 @@ fn back_edge_blocked_above_and_below_is_laid_out() {
     );
     assert_layout_properties(&d);
 }
+/// A 48-node commercial litigation matter over five lanes (no pool): loops,
+/// an event-based gateway, inclusive split and join, and flows jumping lanes
+/// both ways. The one remaining crossing is forced by the fixed lane order:
+/// the path start, intake, conflict check, "no conflict", engagement runs left
+/// to right through the Client and Risk lanes, with "Waiver granted?" (Partner
+/// lane) below it and "Send declination letter" (Client lane) above it.
+#[test]
+fn litigation_matter_over_five_lanes_has_one_forced_crossing() {
+    use NodeKind::*;
+    let nodes = [
+        ("start", StartEvent),
+        ("intake", UserTask),
+        ("kyc", ServiceTask),
+        ("conflict", BusinessRuleTask),
+        ("g_conflict", ExclusiveGateway),
+        ("waiver", UserTask),
+        ("g_waiver", ExclusiveGateway),
+        ("decline", SendTask),
+        ("end_declined", EndEvent),
+        ("j_accept", ExclusiveGateway),
+        ("engage", SendTask),
+        ("signed", ReceiveTask),
+        ("retainer", UserTask),
+        ("p_split", ParallelGateway),
+        ("hold", SendTask),
+        ("facts", UserTask),
+        ("budget", UserTask),
+        ("p_join", ParallelGateway),
+        ("merits", UserTask),
+        ("g_strategy", ExclusiveGateway),
+        ("offer", SendTask),
+        ("eb_reply", EventBasedGateway),
+        ("counter", IntermediateCatchEvent),
+        ("deadline", IntermediateCatchEvent),
+        ("g_terms", ExclusiveGateway),
+        ("pleadings", UserTask),
+        ("discovery", Task),
+        ("privilege", UserTask),
+        ("g_more", ExclusiveGateway),
+        ("i_motions", InclusiveGateway),
+        ("msj", UserTask),
+        ("experts", UserTask),
+        ("mediation", UserTask),
+        ("i_join", InclusiveGateway),
+        ("g_mediated", ExclusiveGateway),
+        ("trial", UserTask),
+        ("judgment", IntermediateCatchEvent),
+        ("g_appeal", ExclusiveGateway),
+        ("appeal", Task),
+        ("settle", UserTask),
+        ("client_ok", UserTask),
+        ("j_close", ExclusiveGateway),
+        ("final_bill", UserTask),
+        ("g_paid", ExclusiveGateway),
+        ("collect", UserTask),
+        ("archive", UserTask),
+        ("notify", IntermediateThrowEvent),
+        ("end", EndEvent),
+    ];
+    let flows = [
+        ("start", "intake"),
+        ("intake", "kyc"),
+        ("kyc", "conflict"),
+        ("conflict", "g_conflict"),
+        ("g_conflict", "waiver"),
+        ("g_conflict", "j_accept"),
+        ("waiver", "g_waiver"),
+        ("g_waiver", "j_accept"),
+        ("g_waiver", "decline"),
+        ("decline", "end_declined"),
+        ("j_accept", "engage"),
+        ("engage", "signed"),
+        ("signed", "retainer"),
+        ("retainer", "p_split"),
+        ("p_split", "hold"),
+        ("p_split", "facts"),
+        ("p_split", "budget"),
+        ("hold", "p_join"),
+        ("facts", "p_join"),
+        ("budget", "p_join"),
+        ("p_join", "merits"),
+        ("merits", "g_strategy"),
+        ("g_strategy", "offer"),
+        ("g_strategy", "pleadings"),
+        ("offer", "eb_reply"),
+        ("eb_reply", "counter"),
+        ("eb_reply", "deadline"),
+        ("counter", "g_terms"),
+        ("g_terms", "settle"),
+        ("g_terms", "offer"),
+        ("deadline", "pleadings"),
+        ("pleadings", "discovery"),
+        ("discovery", "privilege"),
+        ("privilege", "g_more"),
+        ("g_more", "discovery"),
+        ("g_more", "i_motions"),
+        ("i_motions", "msj"),
+        ("i_motions", "experts"),
+        ("i_motions", "mediation"),
+        ("msj", "i_join"),
+        ("experts", "i_join"),
+        ("mediation", "i_join"),
+        ("i_join", "g_mediated"),
+        ("g_mediated", "settle"),
+        ("g_mediated", "trial"),
+        ("trial", "judgment"),
+        ("judgment", "g_appeal"),
+        ("g_appeal", "appeal"),
+        ("g_appeal", "j_close"),
+        ("appeal", "j_close"),
+        ("settle", "client_ok"),
+        ("client_ok", "j_close"),
+        ("j_close", "final_bill"),
+        ("final_bill", "g_paid"),
+        ("g_paid", "archive"),
+        ("g_paid", "collect"),
+        ("collect", "archive"),
+        ("archive", "notify"),
+        ("notify", "end"),
+    ];
+    let mut d = ordinary_process(&nodes, &flows, false);
+    // Modeler sizes, with a 90 x 40 external label under every event and gateway.
+    for (shape, (_, kind)) in d.diagrams[0].shapes.iter_mut().zip(&nodes) {
+        let size = if kind.is_activity() {
+            (100.0, 80.0)
+        } else if format!("{kind:?}").ends_with("Gateway") {
+            (50.0, 50.0)
+        } else {
+            (36.0, 36.0)
+        };
+        (shape.bounds.width, shape.bounds.height) = size;
+        if !kind.is_activity() {
+            shape.label = Some(processcraft_core::model::Label {
+                di_metadata: None,
+                id: None,
+                style: None,
+                style_ref: None,
+                bounds: Some(Bounds {
+                    x: shape.bounds.x + size.0 / 2.0 - 45.0,
+                    y: shape.bounds.y + size.1 + 5.0,
+                    width: 90.0,
+                    height: 40.0,
+                }),
+            });
+        }
+    }
+    add_lane(
+        &mut d,
+        "lane_client",
+        &[
+            "start",
+            "intake",
+            "decline",
+            "end_declined",
+            "engage",
+            "signed",
+            "client_ok",
+            "notify",
+            "end",
+        ],
+    );
+    add_lane(
+        &mut d,
+        "lane_risk",
+        &["kyc", "conflict", "g_conflict", "j_accept"],
+    );
+    add_lane(
+        &mut d,
+        "lane_partner",
+        &[
+            "waiver",
+            "g_waiver",
+            "merits",
+            "g_strategy",
+            "g_terms",
+            "mediation",
+            "g_mediated",
+            "g_appeal",
+        ],
+    );
+    add_lane(
+        &mut d,
+        "lane_lit",
+        &[
+            "p_split",
+            "hold",
+            "facts",
+            "p_join",
+            "offer",
+            "eb_reply",
+            "counter",
+            "deadline",
+            "pleadings",
+            "discovery",
+            "privilege",
+            "g_more",
+            "i_motions",
+            "msj",
+            "experts",
+            "i_join",
+            "trial",
+            "judgment",
+            "appeal",
+            "settle",
+            "archive",
+        ],
+    );
+    add_lane(
+        &mut d,
+        "lane_fin",
+        &[
+            "retainer",
+            "budget",
+            "j_close",
+            "final_bill",
+            "g_paid",
+            "collect",
+        ],
+    );
+    let p = assert_layout_properties(&d);
+    assert_eq!(p.metrics.crossings, 1, "{:?}", p.warnings);
+    assert_eq!(p.metrics.overlaps, 0, "{:?}", p.warnings);
+    assert!(
+        p.warnings.iter().all(|w| w.code == "crossings"),
+        "{:?}",
+        p.warnings
+    );
+}
 #[test]
 fn boundary_events_and_expanded_subprocesses_are_refused() {
     use NodeKind::*;

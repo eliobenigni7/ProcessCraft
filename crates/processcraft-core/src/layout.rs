@@ -1364,14 +1364,39 @@ pub fn propose_layout(
     }
     let bands = process.lanes.len() + 1;
     let band_of = |i: usize| membership.get(&ids[i]).copied().unwrap_or(bands - 1);
-    let lay = Layered::new(
-        &graph,
-        &reverse,
-        &back,
-        rank,
-        (0..n).map(band_of).collect(),
-        cancel,
-    )?;
+    let build = |lift: &BTreeSet<(usize, usize)>| {
+        Layered::new(
+            &graph,
+            &reverse,
+            &back,
+            rank.clone(),
+            (0..n).map(band_of).collect(),
+            lift,
+            cancel,
+        )
+    };
+    // A long edge between lanes runs on dummies in its source lane unless moving
+    // them to its target lane lowers the crossing score (one greedy pass, skipped
+    // when it would cost more than a bounded amount of work).
+    let mut lift = BTreeSet::new();
+    let mut lay = build(&lift)?;
+    let candidates: Vec<_> = lay
+        .chains
+        .iter()
+        .filter(|((v, w), chain)| chain.len() > 2 && lay.band[*v] != lay.band[*w])
+        .map(|(&pair, _)| pair)
+        .collect();
+    if candidates.len() * lay.layer.len() <= 200_000 {
+        for pair in candidates {
+            lift.insert(pair);
+            let trial = build(&lift)?;
+            if trial.score < lay.score {
+                lay = trial;
+            } else {
+                lift.remove(&pair);
+            }
+        }
+    }
     let rank = lay.layer[..n].to_vec();
     let layers = lay.order.len();
     let key = |v: usize| (lay.band[v], lay.comp[v], lay.row[v]);
@@ -1637,94 +1662,156 @@ pub fn propose_layout(
             2
         }
     };
+    let preferred = |f: usize, end: usize, own: usize| -> u8 {
+        let (_, a, b) = flow_ends[f];
+        let horizontal = if end == 0 { 1 } else { 3 };
+        match channel[f] {
+            _ if a == b => [1, 0][end],
+            Some((bottom, _, band)) => {
+                if lay.between(own, !bottom, band) > 0 {
+                    horizontal
+                } else if bottom {
+                    2
+                } else {
+                    0
+                }
+            }
+            None if is_task(own) => horizontal,
+            None => {
+                let (ko, kp) = (key(own), key(partner(a, b, end == 0)));
+                let blocked = lay.order[lay.layer[own]].iter().any(|&w| {
+                    let kw = key(w);
+                    w != own && ((ko < kw && kw <= kp) || (kp <= kw && kw < ko))
+                });
+                if ko == kp || blocked {
+                    horizontal
+                } else if kp > ko {
+                    2
+                } else {
+                    0
+                }
+            }
+        }
+    };
+    // Of the forward flows that could leave an event or gateway vertically, the
+    // one whose partner lies farthest that way takes the vertex; the nearer ones
+    // use the horizontal side, so they never cross it.
+    let mut farthest = BTreeMap::new();
+    for (f, &(_, a, b)) in flow_ends.iter().enumerate() {
+        for (end, own) in [(0, a), (1, b)] {
+            let s = preferred(f, end, own);
+            if pass_of(f) == 2 && s % 2 == 0 {
+                let k = key(partner(a, b, end == 0));
+                match farthest.get(&(own, s)) {
+                    Some(&(best, _)) if (s == 0 && best <= k) || (s == 2 && best >= k) => {}
+                    _ => {
+                        farthest.insert((own, s), (k, f));
+                    }
+                }
+            }
+        }
+    }
     for pass in 0..3 {
         for f in (0..flow_ends.len()).filter(|&f| pass_of(f) == pass) {
             let (_, a, b) = flow_ends[f];
             for (end, own) in [(0, a), (1, b)] {
                 let horizontal = if end == 0 { 1 } else { 3 };
-                let preferred = match channel[f] {
-                    _ if pass == 0 => [1, 0][end],
-                    Some((bottom, _, band)) => {
-                        if lay.between(own, !bottom, band) > 0 {
-                            horizontal
-                        } else if bottom {
-                            2
-                        } else {
-                            0
-                        }
-                    }
-                    None => {
-                        let (ko, kp) = (key(own), key(partner(a, b, end == 0)));
-                        let blocked = lay.order[lay.layer[own]].iter().any(|&w| {
-                            let kw = key(w);
-                            w != own && ((ko < kw && kw <= kp) || (kp <= kw && kw < ko))
-                        });
-                        if ko == kp || blocked {
-                            horizontal
-                        } else if kp > ko {
-                            2
-                        } else {
-                            0
-                        }
-                    }
-                };
-                side[f][end] = if is_task(own) {
-                    if pass == 2 { horizontal } else { preferred }
-                } else {
-                    let t = &mut taken[own];
-                    let s = [preferred, horizontal]
-                        .into_iter()
-                        .find(|s| !t.contains(s))
-                        .unwrap_or(preferred);
-                    t.push(s);
-                    s
-                };
+                let mut s = preferred(f, end, own);
+                if pass == 2 && s % 2 == 0 && farthest[&(own, s)].1 != f {
+                    s = horizontal;
+                }
+                if !is_task(own) && taken[own].contains(&s) {
+                    s = horizontal;
+                }
+                if s % 2 == 0 {
+                    taken[own].push(s);
+                }
+                side[f][end] = s;
             }
         }
     }
-    // Port points: side centres, except that the flows on one side of a task
-    // spread over it at (k + 1) / (m + 1), sorted by the y of their partner.
-    let mut port = Vec::with_capacity(flow_ends.len());
+    // Port points: side centres, or spread when several flows share a side. On
+    // left and right sides they sort by partner y and the flow whose partner is
+    // nearest the centre row keeps the centre, so straight runs stay straight; on
+    // top and bottom they sort by descending partner x (nested loops). Ports sit
+    // on the shape outline: rectangle, diamond for gateways, ellipse for events.
+    let gateway = |i: usize| {
+        matches!(
+            nodes[&ids[i]].kind,
+            NodeKind::ExclusiveGateway
+                | NodeKind::ParallelGateway
+                | NodeKind::InclusiveGateway
+                | NodeKind::ComplexGateway
+                | NodeKind::EventBasedGateway
+        )
+    };
     let mut spread = BTreeMap::<(usize, u8), Vec<(f64, usize, usize)>>::new();
     for (f, &(_, a, b)) in flow_ends.iter().enumerate() {
-        let mut ends = Vec::with_capacity(2);
         for (end, own) in [(0, a), (1, b)] {
-            let bounds = &node_bounds[own];
-            let (cx, cy) = (
-                bounds.x + bounds.width / 2.0,
-                bounds.y + bounds.height / 2.0,
-            );
-            ends.push(match side[f][end] {
-                0 => Point { x: cx, y: bounds.y },
-                1 => Point {
-                    x: bounds.x + bounds.width,
-                    y: cy,
-                },
-                2 => Point {
-                    x: cx,
-                    y: bounds.y + bounds.height,
-                },
-                _ => Point { x: bounds.x, y: cy },
-            });
-            if is_task(own) && side[f][end] % 2 == 1 {
-                let partner_y = match channel[f] {
+            let s = side[f][end];
+            let along = if s % 2 == 1 {
+                match channel[f] {
                     _ if a == b => f64::MIN,
                     Some((_, y, _)) => y,
                     None => vy(partner(a, b, end == 0)),
-                };
-                spread
-                    .entry((own, side[f][end]))
-                    .or_default()
-                    .push((partner_y, f, end));
-            }
+                }
+            } else {
+                let other = if end == 0 { b } else { a };
+                -(node_bounds[other].x + node_bounds[other].width / 2.0)
+            };
+            spread.entry((own, s)).or_default().push((along, f, end));
         }
-        port.push(ends);
     }
-    for ((own, _), mut list) in spread {
+    let mut port = vec![vec![Point { x: 0.0, y: 0.0 }; 2]; flow_ends.len()];
+    for ((own, s), mut list) in spread {
         list.sort_by(|x, y| x.0.total_cmp(&y.0).then(x.1.cmp(&y.1)));
-        let (b, m) = (&node_bounds[own], list.len() as f64);
+        let b = &node_bounds[own];
+        let (cx, cy, rx, ry) = (
+            b.x + b.width / 2.0,
+            b.y + b.height / 2.0,
+            b.width / 2.0,
+            b.height / 2.0,
+        );
+        let m = list.len();
+        let centre = if s % 2 == 1 {
+            (0..m)
+                .min_by(|&i, &j| (list[i].0 - cy).abs().total_cmp(&(list[j].0 - cy).abs()))
+                .unwrap_or(0)
+        } else {
+            (m - 1) / 2
+        };
         for (k, &(_, f, end)) in list.iter().enumerate() {
-            port[f][end].y = b.y + b.height * (k + 1) as f64 / (m + 1.0);
+            // Offset along the side, within (m - 1) / (2m) of the half extent.
+            let t = (k as f64 - centre as f64) / m as f64;
+            let (along, across) = if s % 2 == 1 { (ry, rx) } else { (rx, ry) };
+            let offset = t * along;
+            let r = offset.abs() / along;
+            let depth = across
+                * if is_task(own) {
+                    1.0
+                } else if gateway(own) {
+                    1.0 - r
+                } else {
+                    (1.0 - r * r).sqrt()
+                };
+            port[f][end] = match s {
+                0 => Point {
+                    x: cx + offset,
+                    y: cy - depth,
+                },
+                1 => Point {
+                    x: cx + depth,
+                    y: cy + offset,
+                },
+                2 => Point {
+                    x: cx + offset,
+                    y: cy + depth,
+                },
+                _ => Point {
+                    x: cx - depth,
+                    y: cy + offset,
+                },
+            };
         }
     }
     // Routes are planned as points and vertical legs in a gap (0 before the
@@ -1794,16 +1881,18 @@ pub fn propose_layout(
         plans.push(steps);
     }
     cancelled(cancel)?;
-    // Each leg gets its own 8 px track, centred in its gap: upward legs from the
-    // left and downward legs from the right, both by ascending start y.
-    let mut gap_legs = BTreeMap::<usize, Vec<(bool, f64, usize, usize)>>::new();
+    // Each leg gets its own 8 px track, centred in its gap: upward legs left of
+    // downward ones. Upward legs that start higher run further left, downward
+    // legs that start higher further right, so legs whose spans do not nest never
+    // cross.
+    let mut gap_legs = BTreeMap::<usize, Vec<(bool, f64, usize, usize, f64)>>::new();
     for (f, steps) in plans.iter().enumerate() {
         for (s, step) in steps.iter().enumerate() {
             if let Step::Leg(gap, from, to) = step {
                 gap_legs
                     .entry(*gap)
                     .or_default()
-                    .push((to > from, *from, f, s));
+                    .push((to > from, *from, f, s, *to));
             }
         }
     }
@@ -1820,16 +1909,13 @@ pub fn propose_layout(
             left + 80.0
         };
         list.sort_by(|x, y| {
+            let by_y = x.1.total_cmp(&y.1).then(x.4.total_cmp(&y.4));
             x.0.cmp(&y.0)
-                .then(if x.0 {
-                    y.1.total_cmp(&x.1)
-                } else {
-                    x.1.total_cmp(&y.1)
-                })
+                .then(if x.0 { by_y.reverse() } else { by_y })
                 .then((x.2, x.3).cmp(&(y.2, y.3)))
         });
         let first = (left + right) / 2.0 - 4.0 * (list.len() - 1) as f64;
-        for (k, &(_, _, f, s)) in list.iter().enumerate() {
+        for (k, &(_, _, f, s, _)) in list.iter().enumerate() {
             track_x.insert((f, s), first + 8.0 * k as f64);
         }
     }
@@ -1942,6 +2028,8 @@ struct Layered {
     succ: Vec<Vec<usize>>,
     /// Vertex chain `[source, dummies.., target]` of every forward node pair.
     chains: BTreeMap<(usize, usize), Vec<usize>>,
+    /// Layer crossings plus the vertices back edges must pass to reach a channel.
+    score: usize,
 }
 const MAX_LAYERED_VERTICES: usize = 20_000;
 impl Layered {
@@ -1951,6 +2039,7 @@ impl Layered {
         back: &BTreeSet<(usize, usize)>,
         mut layer: Vec<usize>,
         mut band: Vec<usize>,
+        lift: &BTreeSet<(usize, usize)>,
         cancel: &AtomicBool,
     ) -> Result<Self, LayoutError> {
         let n = graph.len();
@@ -2006,7 +2095,7 @@ impl Layered {
                     }
                     chain.push(layer.len());
                     layer.push(l);
-                    band.push(band[v]);
+                    band.push(band[if lift.contains(&(v, w)) { w } else { v }]);
                     comp.push(comp[v]);
                     pred.push(Vec::new());
                     succ.push(Vec::new());
@@ -2034,9 +2123,14 @@ impl Layered {
             pred,
             succ,
             chains,
+            score: 0,
         };
-        lay.sort_layers(cancel)?;
+        lay.score = lay.sort_layers(cancel)?;
         lay.align_rows();
+        for &(a, b) in back.iter().filter(|(a, b)| a != b) {
+            let (top, bottom) = lay.channel_costs(a, b);
+            lay.score += top.min(bottom);
+        }
         Ok(lay)
     }
     fn group(&self, v: usize) -> (usize, usize) {
@@ -2044,7 +2138,7 @@ impl Layered {
     }
     /// Barycenter sweeps plus adjacent transpositions inside each (band,
     /// component) group, keeping the order with the fewest crossings.
-    fn sort_layers(&mut self, cancel: &AtomicBool) -> Result<(), LayoutError> {
+    fn sort_layers(&mut self, cancel: &AtomicBool) -> Result<usize, LayoutError> {
         let mut pos = vec![0; self.layer.len()];
         for list in &mut self.order {
             list.sort_by_key(|&v| (self.band[v], self.comp[v], v));
@@ -2111,7 +2205,7 @@ impl Layered {
             }
         }
         self.order = best.1;
-        Ok(())
+        Ok(best.0)
     }
     /// Integer rows inside each (band, component) block: a left-to-right pass
     /// towards the lower median of same-band predecessors, then a right-to-left
@@ -2189,12 +2283,19 @@ impl Layered {
     }
     /// A back edge runs above unless fewer vertices block the way down (ties go up).
     fn channel_top(&self, a: usize, b: usize) -> bool {
+        let (top, bottom) = self.channel_costs(a, b);
+        top <= bottom
+    }
+    /// Vertices blocking a back edge's way to its top and to its bottom channel.
+    fn channel_costs(&self, a: usize, b: usize) -> (usize, usize) {
         let (lo, hi) = (
             self.band[a].min(self.band[b]),
             self.band[a].max(self.band[b]),
         );
-        self.between(a, true, lo) + self.between(b, true, lo)
-            <= self.between(a, false, hi) + self.between(b, false, hi)
+        (
+            self.between(a, true, lo) + self.between(b, true, lo),
+            self.between(a, false, hi) + self.between(b, false, hi),
+        )
     }
 }
 /// Crossings between adjacent layers, counted as inversions with a Fenwick tree.

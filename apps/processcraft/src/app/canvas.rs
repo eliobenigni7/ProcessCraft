@@ -39,8 +39,9 @@ enum Gesture {
         flow: ElementSelector,
         points: Vec<Point>,
         part: EdgePart,
-        /// Bounds of the source and target shapes.
+        /// Bounds and kinds of the source and target shapes.
         ends: [Option<Bounds>; 2],
+        kinds: [Option<NodeKind>; 2],
         /// Model point where the drag started (auto-scroll safe).
         start: (f64, f64),
     },
@@ -235,51 +236,142 @@ fn edit_route(
     }
     out
 }
-/// The route with end `i` moved to the point of `b`'s border nearest to `(x, y)`. The end
-/// segment stays orthogonal: its interior neighbour follows along the segment's axis, or an
-/// elbow is added when the end moved to a side across that axis.
-fn redock_end(points: &[Point], i: usize, b: &Bounds, x: f64, y: f64) -> Vec<Point> {
+/// The route of a dragged end handle (`part`) when the pointer `at` is on or near (12 screen px)
+/// its own shape: the end re-docked there by [`redock_end`]. `None` for other parts, or away
+/// from the shape (the caller then reconnects or leaves the route).
+fn end_dock(
+    points: &[Point],
+    part: EdgePart,
+    ends: &[Option<Bounds>; 2],
+    kinds: &[Option<NodeKind>; 2],
+    at: (f64, f64),
+    zoom: f32,
+) -> Option<Vec<Point>> {
+    let last = points.len().checked_sub(1)?;
+    let (i, own) = match part {
+        EdgePart::Point(0) => (0, 0),
+        EdgePart::Point(i) if i == last => (i, 1),
+        _ => return None,
+    };
+    let b = ends[own].as_ref()?;
+    let margin = 12.0 / zoom as f64;
+    let near = at.0 >= b.x - margin
+        && at.0 <= b.x + b.width + margin
+        && at.1 >= b.y - margin
+        && at.1 <= b.y + b.height + margin;
+    near.then(|| {
+        redock_end(
+            points,
+            i,
+            (b, kinds[own]),
+            ends[1 - own].as_ref(),
+            at,
+            7.0 / zoom as f64,
+        )
+    })
+}
+/// The route with end `i` docked on the outline of its shape `own` (bounds and kind), on the
+/// side nearest to `at` (any side), at the pointer's position along that side, snapped within
+/// `tolerance` to the side's middle, the neighbouring waypoint, or the far end (a straight
+/// segment). The end segment stays orthogonal: an interior neighbour beyond the new side
+/// follows along the segment's axis or gains an elbow; otherwise the end leaves through a short
+/// stub and the bounded orthogonal router joins it to the neighbour (or to a stub off the far
+/// shape `far` on a two-point route), around both shapes.
+fn redock_end(
+    points: &[Point],
+    i: usize,
+    own: (&Bounds, Option<NodeKind>),
+    far: Option<&Bounds>,
+    at: (f64, f64),
+    tolerance: f64,
+) -> Vec<Point> {
+    use processcraft_core::geometry::{self, Side};
+    const STUB: f64 = 20.0;
     let mut out = points.to_vec();
     if out.len() < 2 {
         return out;
     }
-    let (right, bottom) = (b.x + b.width, b.y + b.height);
-    let nearest = [x - b.x, right - x, y - b.y, bottom - y]
-        .into_iter()
-        .enumerate()
-        .min_by(|a, b| a.1.total_cmp(&b.1))
-        .map_or(0, |(side, _)| side);
-    let end = match nearest {
-        0 => Point { x: b.x, y },
-        1 => Point { x: right, y },
-        2 => Point { x, y: b.y },
-        _ => Point { x, y: bottom },
-    };
-    let level = nearest < 2; // a left or right side: the end segment runs horizontally
-    let j = if i == 0 { 1 } else { out.len() - 2 };
-    let interior = j > 0 && j < out.len() - 1;
-    let was_level = points[i].y == points[j].y;
-    let was_upright = points[i].x == points[j].x;
-    if interior && level && was_level {
-        out[j].y = end.y;
-    } else if interior && !level && was_upright {
-        out[j].x = end.x;
-    } else if end.x != out[j].x && end.y != out[j].y {
-        let elbow = if level {
-            Point {
-                x: out[j].x,
-                y: end.y,
-            }
-        } else {
-            Point {
-                x: end.x,
-                y: out[j].y,
-            }
-        };
-        out.insert(if i == 0 { 1 } else { out.len() - 1 }, elbow);
+    // Work with the dragged end last.
+    if i == 0 {
+        out.reverse();
     }
-    let i = if i == 0 { 0 } else { out.len() - 1 };
-    out[i] = end;
+    let (b, kind) = own;
+    let last = out.len() - 1;
+    let side = geometry::side_of(&Point { x: at.0, y: at.1 }, b);
+    let level = matches!(side, Side::Left | Side::Right);
+    let (n, far_end, old) = (out[last - 1].clone(), out[0].clone(), out[last].clone());
+    let axis = |q: &Point| if level { q.y } else { q.x };
+    let mid = if level {
+        b.y + b.height / 2.0
+    } else {
+        b.x + b.width / 2.0
+    };
+    let pointer = if level { at.1 } else { at.0 };
+    let along = [mid, axis(&n), axis(&far_end)]
+        .into_iter()
+        .filter(|c| (c - pointer).abs() <= tolerance)
+        .min_by(|a, c| (a - pointer).abs().total_cmp(&(c - pointer).abs()))
+        .unwrap_or(pointer);
+    let end = geometry::side_point(kind, b, side, along);
+    let outward = |side: Side| match side {
+        Side::Left => (-1.0, 0.0),
+        Side::Right => (1.0, 0.0),
+        Side::Top => (0.0, -1.0),
+        Side::Bottom => (0.0, 1.0),
+    };
+    let dir = outward(side);
+    let beyond = (n.x - end.x) * dir.0 + (n.y - end.y) * dir.1 > 0.0;
+    let aligned = axis(&n) == axis(&end);
+    let interior = last > 1;
+    if beyond && (interior || aligned) {
+        if !aligned {
+            if level && n.y == old.y {
+                out[last - 1].y = end.y;
+            } else if !level && n.x == old.x {
+                out[last - 1].x = end.x;
+            } else {
+                let elbow = if level {
+                    Point { x: n.x, y: end.y }
+                } else {
+                    Point { x: end.x, y: n.y }
+                };
+                out.insert(last, elbow);
+            }
+        }
+        *out.last_mut().unwrap() = end;
+    } else {
+        let stub = |q: &Point, d: (f64, f64)| Point {
+            x: q.x + d.0 * STUB,
+            y: q.y + d.1 * STUB,
+        };
+        let s = stub(&end, dir);
+        let mut obstacles = vec![b.clone()];
+        let (mut path, from) = match far.filter(|_| !interior) {
+            Some(fb) => {
+                obstacles.push(fb.clone());
+                let fs = stub(&far_end, outward(geometry::side_of(&far_end, fb)));
+                (vec![far_end.clone()], fs)
+            }
+            None => (out[..last - 1].to_vec(), n.clone()),
+        };
+        let joined = geometry::route(from.clone(), s.clone(), &obstacles, 0.0, 256)
+            .ok()
+            .and_then(|r| r.waypoints)
+            .unwrap_or_else(|| {
+                let elbow = if level {
+                    Point { x: s.x, y: from.y }
+                } else {
+                    Point { x: from.x, y: s.y }
+                };
+                vec![from.clone(), elbow, s.clone()]
+            });
+        path.extend(joined);
+        path.push(end);
+        out = path;
+    }
+    if i == 0 {
+        out.reverse();
+    }
     out
 }
 /// Snap correction for a drag (bpmn-js): the first dragged shape snaps to its siblings (shapes
@@ -2667,6 +2759,14 @@ impl ProcessCraft {
                         }
                     }
                     let hover = response.hover_pos();
+                    // Edge handles (ends included) win over the shape under them.
+                    if self.canvas.gesture.is_none()
+                        && hover.is_some_and(|pos| {
+                            bend_handles.iter().any(|(_, h)| h.distance(pos) <= 8.0)
+                        })
+                    {
+                        ctx.set_cursor_icon(egui::CursorIcon::Grab);
+                    }
                     let mut pad = Vec::new();
                     let handles = single
                         .zip(rule)
@@ -2851,6 +2951,12 @@ impl ProcessCraft {
                                 points: edge.waypoints.clone(),
                                 part: *part,
                                 ends: [from, to].map(|s| s.map(|s| s.bounds.clone())),
+                                kinds: [from, to].map(|s| {
+                                    s.and_then(|s| {
+                                        processcraft_core::queries::find_node(d, &s.element)
+                                    })
+                                    .map(|n| n.kind)
+                                }),
                                 start: to_model(rect, camera, zoom, pos),
                             });
                         } else if let Some(shape) = single {
@@ -3348,19 +3454,38 @@ impl ProcessCraft {
                                 points,
                                 part,
                                 ends,
+                                kinds,
                                 start,
                                 ..
                             }) => {
                                 if let Some(pos) = pointer {
                                     let (x, y) = to_model(rect, camera, zoom, pos);
-                                    let edited = edit_route(
-                                        points,
-                                        *part,
-                                        x - start.0,
-                                        y - start.1,
-                                        ends,
-                                        self.canvas.grid_snap,
-                                    );
+                                    // An end over its own shape previews its new dock.
+                                    let docked = end_dock(points, *part, ends, kinds, (x, y), zoom);
+                                    if let EdgePart::Point(i) = part
+                                        && let Some(end) = docked.as_ref().and_then(|route| {
+                                            if *i == 0 { route.first() } else { route.last() }
+                                        })
+                                    {
+                                        painter.circle_filled(
+                                            Pos2::new(
+                                                rect.left() + (end.x - camera.0) as f32 * zoom,
+                                                rect.top() + (end.y - camera.1) as f32 * zoom,
+                                            ),
+                                            4.0,
+                                            accent,
+                                        );
+                                    }
+                                    let edited = docked.unwrap_or_else(|| {
+                                        edit_route(
+                                            points,
+                                            *part,
+                                            x - start.0,
+                                            y - start.1,
+                                            ends,
+                                            self.canvas.grid_snap,
+                                        )
+                                    });
                                     let screen: Vec<Pos2> = edited
                                         .iter()
                                         .map(|p| {
@@ -3501,6 +3626,7 @@ impl ProcessCraft {
                                 points,
                                 part,
                                 ends,
+                                kinds,
                                 start,
                             } => {
                                 if let Some(pos) = pointer {
@@ -3510,17 +3636,7 @@ impl ProcessCraft {
                                         Vec2::new((x - start.0) as f32, (y - start.1) as f32);
                                     let flow_ends = processcraft_core::queries::find_flow(d, &flow)
                                         .map(|f| (f.source.clone(), f.target.clone()));
-                                    let own = match part {
-                                        EdgePart::Point(0) => ends[0].as_ref(),
-                                        EdgePart::Point(i) if i == last => ends[1].as_ref(),
-                                        _ => None,
-                                    }
-                                    .filter(|b| {
-                                        x >= b.x
-                                            && x <= b.x + b.width
-                                            && y >= b.y
-                                            && y <= b.y + b.height
-                                    });
+                                    let own = end_dock(&points, part, &ends, &kinds, (x, y), zoom);
                                     let local = |r: &Option<
                                         processcraft_core::bpmn_activity::ModelReference,
                                     >| match r {
@@ -3532,15 +3648,17 @@ impl ProcessCraft {
                                         _ => None,
                                     };
                                     match (part, flow_ends, own) {
-                                        // An end released inside its own shape re-docks on
-                                        // the nearest border point.
-                                        (EdgePart::Point(i), _, Some(b)) => {
-                                            self.ctl.mutate(vec![Mutation::Reroute {
-                                                document_id: d.id,
-                                                diagram_id: diagram_id.clone(),
-                                                edge_id: edge,
-                                                waypoints: redock_end(&points, i, b, x, y),
-                                            }]);
+                                        // An end released on or near its own shape re-docks
+                                        // where the preview showed it.
+                                        (_, _, Some(waypoints)) => {
+                                            if waypoints != points {
+                                                self.ctl.mutate(vec![Mutation::Reroute {
+                                                    document_id: d.id,
+                                                    diagram_id: diagram_id.clone(),
+                                                    edge_id: edge,
+                                                    waypoints,
+                                                }]);
+                                            }
                                         }
                                         // Dragging an end onto another shape reconnects the flow;
                                         // released anywhere else, the end stays.
@@ -4740,16 +4858,39 @@ mod tests {
             edit(&diagonal, EdgePart::Segment(0), 0.0, 10.0),
             vec![p(0.0, 0.0), p(50.0, 60.0), p(100.0, 100.0)]
         );
-        // An end released inside its shape docks on the nearest side with an elbow.
+        // An end docks on the side nearest to the pointer: on the side facing its neighbour the
+        // neighbour follows; on the far side a stub is routed around the shape.
+        let dock = |at, tolerance| {
+            let own = (ends[1].as_ref().unwrap(), Some(NodeKind::Task));
+            redock_end(&route, 3, own, ends[0].as_ref(), at, tolerance)
+        };
         assert_eq!(
-            redock_end(&route, 3, ends[1].as_ref().unwrap(), 130.0, 58.0),
+            dock((100.0, 30.0), 0.0),
+            vec![p(0.0, 0.0), p(50.0, 0.0), p(50.0, 30.0), p(100.0, 30.0)]
+        );
+        assert_eq!(dock((97.0, 37.0), 5.0), route, "snaps to the side middle");
+        assert_eq!(
+            dock((130.0, 58.0), 0.0),
             vec![
                 p(0.0, 0.0),
                 p(50.0, 0.0),
                 p(50.0, 40.0),
-                p(130.0, 40.0),
+                p(50.0, 80.0),
+                p(130.0, 80.0),
                 p(130.0, 60.0)
             ]
+        );
+        // The source end of a two-point route moved to its top side: stubs off both shapes.
+        let straight = vec![p(0.0, 0.0), p(100.0, 0.0)];
+        let own = (ends[0].as_ref().unwrap(), None);
+        let docked = redock_end(&straight, 0, own, ends[1].as_ref(), (-10.0, -25.0), 0.0);
+        assert_eq!(docked.first(), Some(&p(-10.0, -20.0)), "{docked:?}");
+        assert_eq!(docked.last(), straight.last());
+        assert!(
+            docked
+                .windows(2)
+                .all(|w| w[0].x == w[1].x || w[0].y == w[1].y),
+            "{docked:?}"
         );
     }
 
@@ -4980,6 +5121,101 @@ mod tests {
             .unwrap()
             .bounds
             .clone()
+    }
+
+    /// A start event connected to a task, with the flow selected; returns the task id.
+    fn selected_flow_to_task(app: &mut ProcessCraft) -> ElementSelector {
+        app.add(NodeKind::StartEvent);
+        app.add(NodeKind::Task);
+        let task = app.selected.clone().unwrap();
+        let flow = app.ctl.session.snapshot().project.documents[0].processes[0].flows[0]
+            .id
+            .selector();
+        app.select(Some(flow));
+        task
+    }
+    fn route(app: &ProcessCraft) -> Vec<Point> {
+        app.ctl.session.snapshot().project.documents[0].diagrams[0].edges[0]
+            .waypoints
+            .clone()
+    }
+    fn model_to_screen(app: &ProcessCraft, p: &Point) -> Pos2 {
+        to_screen(
+            app.canvas.rect.unwrap(),
+            app.camera,
+            app.zoom,
+            &b(p.x, p.y, 0.0, 0.0),
+        )
+        .min
+    }
+    fn orthogonal(points: &[Point]) -> bool {
+        points
+            .windows(2)
+            .all(|w| w[0].x == w[1].x || w[0].y == w[1].y)
+    }
+
+    #[test]
+    fn dragging_an_edge_end_docks_it_on_another_side_of_its_shape() {
+        let mut app = ProcessCraft::default();
+        let task = selected_flow_to_task(&mut app);
+        let mut run = canvas_runner(&mut app);
+        let t = shape_bounds(&app, &task);
+        let before = route(&app);
+        let undo = app.ctl.session.snapshot().undo_count;
+        // Released just above the task's top side, three quarters along it.
+        let from = model_to_screen(&app, before.last().unwrap());
+        let target = model_to_screen(
+            &app,
+            &Point {
+                x: t.x + t.width * 0.75,
+                y: t.y,
+            },
+        ) - Vec2::new(0.0, 4.0);
+        drag_on(&mut app, &mut run, from, target);
+        let after = route(&app);
+        let last = after.last().unwrap();
+        assert_eq!(last.y, t.y, "{after:?} {}", app.ctl.error);
+        assert!((last.x - (t.x + t.width * 0.75)).abs() <= 1.5, "{after:?}");
+        assert!(orthogonal(&after), "{after:?}");
+        assert_eq!(after[0], before[0]);
+        assert_eq!(app.ctl.session.snapshot().undo_count, undo + 1);
+    }
+
+    #[test]
+    fn an_end_slid_along_its_side_keeps_its_place_when_the_shape_moves() {
+        let mut app = ProcessCraft::default();
+        let task = selected_flow_to_task(&mut app);
+        let mut run = canvas_runner(&mut app);
+        let t = shape_bounds(&app, &task);
+        let end = route(&app).last().unwrap().clone();
+        let from = model_to_screen(&app, &end);
+        let to = model_to_screen(
+            &app,
+            &Point {
+                x: end.x - 2.0,
+                y: end.y + 12.0,
+            },
+        );
+        drag_on(&mut app, &mut run, from, to);
+        let docked = route(&app).last().unwrap().clone();
+        let offset = docked.y - (t.y + t.height / 2.0);
+        assert_eq!(docked.x, t.x, "{:?}", route(&app));
+        assert!(offset >= 10.0, "{:?}", route(&app));
+        // Move the task down: the end keeps its offset on the left side.
+        app.select(Some(task.clone()));
+        run(&mut app, vec![]);
+        let (screen, _) = on_screen(&app, &task, PadAction::Delete);
+        let grab = screen.center() + Vec2::new(10.0, -10.0);
+        let down = Vec2::new(0.0, 40.0 * app.zoom);
+        drag_on(&mut app, &mut run, grab, grab + down);
+        let moved = shape_bounds(&app, &task);
+        assert_ne!(moved, t, "{}", app.ctl.error);
+        let after = route(&app);
+        let last = after.last().unwrap();
+        assert_eq!(last.x, moved.x, "{after:?}");
+        let kept = last.y - (moved.y + moved.height / 2.0);
+        assert!((kept - offset).abs() < 1e-6, "{after:?}");
+        assert!(orthogonal(&after), "{after:?}");
     }
 
     #[test]
