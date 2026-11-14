@@ -579,6 +579,48 @@ fn reroute_tidies_the_route_and_its_label_follows() {
     assert_eq!((label.x, label.y), (15.5, 10.5));
 }
 #[test]
+fn reroute_docks_ends_on_the_true_outline() {
+    use processcraft_core::commands::{Mutation, Request};
+    let b = rect(0.0, 0.0, 40.0, 20.0);
+    let toward = p(40.0, 30.0);
+    assert_eq!(outline_point(None, &b, &toward), p(30.0, 20.0));
+    assert_eq!(
+        outline_point(Some(NodeKind::ExclusiveGateway), &b, &toward),
+        p(80.0 / 3.0, 50.0 / 3.0)
+    );
+    let on_circle = outline_point(Some(NodeKind::EndEvent), &b, &toward);
+    assert!((((on_circle.x - 20.0) / 20.0).hypot((on_circle.y - 10.0) / 10.0) - 1.0).abs() < 1e-12);
+    let (mut session, document_id) = session_fixture();
+    // The start event is the circle in (0, 0, 10, 10): an off-centre vertical end at its
+    // bounding-box bottom moves up onto the circle; the task end stays on its rectangle.
+    apply_session(
+        &mut session,
+        Request::Batch {
+            mutations: vec![Mutation::Reroute {
+                document_id,
+                diagram_id: "diagram".parse().unwrap(),
+                edge_id: "edge".parse().unwrap(),
+                waypoints: vec![p(3.0, 10.0), p(3.0, 20.0), p(35.0, 20.0), p(35.0, 10.0)],
+            }],
+        },
+    );
+    let after = session.snapshot();
+    let route = &after.project.documents[0]
+        .diagrams
+        .iter()
+        .find(|d| d.id.to_string() == "diagram")
+        .unwrap()
+        .edges[0]
+        .waypoints;
+    assert_eq!(route[0].x, 3.0);
+    assert!(((route[0].x - 5.0).hypot(route[0].y - 5.0) - 5.0).abs() < 1e-12);
+    assert!(route[0].y > 9.5 && route[0].y < 10.0);
+    assert_eq!(
+        coords(&route[1..]),
+        vec![(3.0, 20.0), (35.0, 20.0), (35.0, 10.0)]
+    );
+}
+#[test]
 fn conflicting_nested_moves_are_refused_without_mutation() {
     use processcraft_core::commands::ShapeBounds;
     let session = nested_session();

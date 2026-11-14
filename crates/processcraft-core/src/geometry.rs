@@ -181,6 +181,96 @@ pub fn tidy(mut points: Vec<Point>) -> Vec<Point> {
     }
     compact(points)
 }
+fn is_event(kind: Option<NodeKind>) -> bool {
+    matches!(
+        kind,
+        Some(
+            NodeKind::StartEvent
+                | NodeKind::EndEvent
+                | NodeKind::IntermediateCatchEvent
+                | NodeKind::IntermediateThrowEvent
+                | NodeKind::BoundaryEvent
+        )
+    )
+}
+/// Where the ray from the centre of `bounds` towards `toward` leaves the outline of a `kind`
+/// shape: an ellipse for events, a diamond for gateways, the rectangle otherwise (data object
+/// folds and data store arcs use their bounding box).
+pub fn outline_point(kind: Option<NodeKind>, bounds: &Bounds, toward: &Point) -> Point {
+    let (rx, ry) = (bounds.width / 2.0, bounds.height / 2.0);
+    let (cx, cy) = (bounds.x + rx, bounds.y + ry);
+    let (dx, dy) = (toward.x - cx, toward.y - cy);
+    if rx <= 0.0 || ry <= 0.0 || (dx == 0.0 && dy == 0.0) {
+        return toward.clone();
+    }
+    let (u, v) = ((dx / rx).abs(), (dy / ry).abs());
+    let reach = if is_event(kind) {
+        u.hypot(v)
+    } else if kind.is_some_and(crate::rules::is_gateway) {
+        u + v
+    } else {
+        u.max(v)
+    };
+    p(cx + dx / reach, cy + dy / reach)
+}
+/// Endpoints lying on the border band of their shape (see [`on_border`]) are moved onto its
+/// true outline: along the end segment's axis when it is horizontal or vertical, so the segment
+/// stays orthogonal, else radially. Endpoints away from the border (deliberately detached
+/// imported routes) are kept.
+pub(crate) fn dock_ends(
+    doc: &crate::model::BpmnDocument,
+    diagram: &crate::model::Diagram,
+    edge: &crate::model::Edge,
+    mut points: Vec<Point>,
+) -> Vec<Point> {
+    if points.len() < 2 {
+        return points;
+    }
+    let (source, target) = crate::modeling::edge_ends(doc, diagram, edge);
+    let last = points.len() - 1;
+    for (end, next, shape) in [(0, 1, source), (last, last - 1, target)] {
+        let Some(shape) = shape else { continue };
+        let (b, q, n) = (&shape.bounds, &points[end], &points[next]);
+        if !valid_bounds(b) || !on_border(q, b) {
+            continue;
+        }
+        let kind = crate::queries::find_node(doc, &shape.element).map(|node| node.kind);
+        let (rx, ry) = (b.width / 2.0, b.height / 2.0);
+        let (cx, cy) = (b.x + rx, b.y + ry);
+        // Half the outline's extent across the line at offset `o` from the centre.
+        let half = |r: f64, o: f64, ro: f64| {
+            let t = (o / ro).abs();
+            if is_event(kind) {
+                r * (1.0 - t * t).max(0.0).sqrt()
+            } else if kind.is_some_and(crate::rules::is_gateway) {
+                r * (1.0 - t)
+            } else {
+                r
+            }
+        };
+        let sign = |v: f64, fallback: f64| {
+            if v != 0.0 {
+                v.signum()
+            } else {
+                fallback.signum()
+            }
+        };
+        // A segment running along (or beyond) a side does not enter the shape: keep it.
+        let docked = if q.y == n.y && q.x != n.x && (q.y - cy).abs() < ry {
+            p(cx + sign(q.x - cx, n.x - cx) * half(rx, q.y - cy, ry), q.y)
+        } else if q.x == n.x && q.y != n.y && (q.x - cx).abs() < rx {
+            p(q.x, cy + sign(q.y - cy, n.y - cy) * half(ry, q.x - cx, rx))
+        } else if q.x != n.x && q.y != n.y {
+            outline_point(kind, b, q)
+        } else {
+            continue;
+        };
+        if valid_point(&docked) {
+            points[end] = docked;
+        }
+    }
+    points
+}
 /// The point halfway along the polyline `points`.
 pub fn midpoint(points: &[Point]) -> Option<Point> {
     let length = |w: &[Point]| (w[1].x - w[0].x).hypot(w[1].y - w[0].y);

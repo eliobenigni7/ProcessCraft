@@ -3091,7 +3091,7 @@
   },
   {
    "id": "reroute",
-   "label": "Reroute edge (the route is normalized: near-orthogonal segments straightened, duplicate and collinear points dropped; an explicit label follows the route)",
+   "label": "Reroute edge (the route is normalized: near-orthogonal segments straightened, duplicate and collinear points dropped, ends on a shape's border docked on its outline; an explicit label follows the route)",
    "params": [
     {
      "name": "document_id",
