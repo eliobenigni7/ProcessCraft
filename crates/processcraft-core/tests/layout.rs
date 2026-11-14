@@ -1462,3 +1462,59 @@ fn unavoidable_crossings_are_returned_with_a_warning() {
     assert!(p.warnings.iter().any(|w| w.code == "crossings"));
     validate_proposal(&d, &p).unwrap();
 }
+#[test]
+fn other_flow_node_kinds_are_laid_out() {
+    use NodeKind::*;
+    let mut d = ordinary_process(
+        &[
+            ("start", StartEvent),
+            ("service", ServiceTask),
+            ("wait", IntermediateCatchEvent),
+            ("or", InclusiveGateway),
+            ("sub", SubProcess),
+            ("end", EndEvent),
+        ],
+        &[
+            ("start", "service"),
+            ("service", "wait"),
+            ("wait", "or"),
+            ("or", "sub"),
+            ("or", "end"),
+            ("sub", "end"),
+        ],
+        false,
+    );
+    d.diagrams[0]
+        .shapes
+        .iter_mut()
+        .find(|s| s.id == id::<ElementSelector>("shape_sub"))
+        .unwrap()
+        .is_expanded = Some(false);
+    // The current router reports one route segment over a node here (L5 target).
+    let p = propose_layout(&d, &id("diagram"), "s", 0, &AtomicBool::new(false))
+        .unwrap_or_else(|e| panic!("{}: {}", e.code, e.message));
+    validate_proposal(&d, &p).unwrap();
+    assert!(p.warnings.iter().all(|w| w.code == "route_over_node"));
+}
+#[test]
+fn boundary_events_and_expanded_subprocesses_are_refused() {
+    use NodeKind::*;
+    let boundary = ordinary_process(
+        &[("t", Task), ("b", BoundaryEvent), ("end", EndEvent)],
+        &[("t", "end"), ("b", "end")],
+        false,
+    );
+    let mut expanded = ordinary_process(
+        &[("start", StartEvent), ("sub", SubProcess)],
+        &[("start", "sub")],
+        false,
+    );
+    expanded.diagrams[0].shapes[1].is_expanded = Some(true);
+    for d in [boundary, expanded] {
+        let before = serde_json::to_vec(&d).unwrap();
+        let error =
+            propose_layout(&d, &id("diagram"), "s", 0, &AtomicBool::new(false)).unwrap_err();
+        assert_eq!(error.code, "unsupported");
+        assert_eq!(before, serde_json::to_vec(&d).unwrap());
+    }
+}

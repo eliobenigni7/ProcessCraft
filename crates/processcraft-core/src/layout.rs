@@ -1078,18 +1078,25 @@ pub fn propose_layout(
     if process.lanes.len() > 64 || process.lanes.iter().any(|l| l.parent.is_some()) {
         return Err(err("unsupported", "Nested or too many lanes"));
     }
+    // Every flow node is accepted except artifacts, data references and attached
+    // events; expanded subprocesses are refused once their shapes are known.
     if process.nodes.iter().any(|n| {
-        n.details.is_some()
-            || !matches!(
-                n.kind,
-                NodeKind::Task
-                    | NodeKind::UserTask
-                    | NodeKind::ManualTask
-                    | NodeKind::StartEvent
-                    | NodeKind::EndEvent
-                    | NodeKind::ExclusiveGateway
-                    | NodeKind::ParallelGateway
+        matches!(
+            n.kind,
+            NodeKind::TextAnnotation
+                | NodeKind::DataObjectReference
+                | NodeKind::DataStoreReference
+                | NodeKind::BoundaryEvent
+        ) || matches!(
+            n.details,
+            Some(
+                crate::bpmn_model::NodeDetails::BoundaryEvent { .. }
+                    | crate::bpmn_model::NodeDetails::Event {
+                        attached_to: Some(_),
+                        ..
+                    }
             )
+        )
     }) || process.flows.iter().any(|f| f.kind != FlowKind::Sequence)
     {
         return Err(err("unsupported", "Unsupported node or flow"));
@@ -1179,6 +1186,17 @@ pub fn propose_layout(
             .is_some_and(|id| !shape_by_element.contains_key(id))
     {
         return Err(err("invalid_di", "Missing shape mapping"));
+    }
+    if process.nodes.iter().any(|n| {
+        matches!(
+            n.kind,
+            NodeKind::SubProcess | NodeKind::AdHocSubProcess | NodeKind::Transaction
+        ) && d.shapes[shape_by_element[&n.id.selector()]].is_expanded == Some(true)
+    }) {
+        return Err(err(
+            "unsupported",
+            "Expanded subprocesses are outside the layout profile",
+        ));
     }
     let mut lane_ids = BTreeSet::new();
     if process.lanes.iter().any(|lane| {
@@ -1534,12 +1552,7 @@ pub fn propose_layout(
             .bounds
             .clone()
     };
-    let is_task = |id: &ElementSelector| {
-        matches!(
-            nodes[id].kind,
-            NodeKind::Task | NodeKind::UserTask | NodeKind::ManualTask
-        )
-    };
+    let is_task = |id: &ElementSelector| nodes[id].kind.is_activity();
     let is_back = |s: &ElementSelector, t: &ElementSelector| rank[indices[s]] >= rank[indices[t]];
     let mut sides = BTreeMap::<(ElementSelector, bool), Point>::new();
     let mut used = BTreeMap::<ElementSelector, Vec<u8>>::new();
@@ -1626,10 +1639,7 @@ pub fn propose_layout(
         let target =
             &result.shapes[index[&d.shapes[shape_by_element[target_id]].id.selector()]].bounds;
         let port_y = |id: &ElementSelector, bounds: &Bounds, list: &[ElementSelector]| {
-            if matches!(
-                nodes[id].kind,
-                NodeKind::Task | NodeKind::UserTask | NodeKind::ManualTask
-            ) {
+            if nodes[id].kind.is_activity() {
                 let position = list
                     .iter()
                     .position(|edge| edge == &flow.id.selector())
@@ -1641,10 +1651,7 @@ pub fn propose_layout(
         };
         let port =
             |id: &ElementSelector, bounds: &Bounds, list: &[ElementSelector], source: bool| {
-                if matches!(
-                    nodes[id].kind,
-                    NodeKind::Task | NodeKind::UserTask | NodeKind::ManualTask
-                ) {
+                if nodes[id].kind.is_activity() {
                     Point {
                         x: if source {
                             bounds.x + bounds.width
