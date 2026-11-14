@@ -621,6 +621,55 @@ fn reroute_docks_ends_on_the_true_outline() {
     );
 }
 #[test]
+fn moved_end_redocks_on_the_side_facing_its_neighbour() {
+    use processcraft_core::commands::ShapeBounds;
+    // A kept end stays when its neighbour is still beyond its side.
+    let b = rect(0.0, 0.0, 100.0, 80.0);
+    assert_eq!(
+        redock_side(&p(100.0, 20.0), &b, &p(150.0, 20.0)),
+        p(100.0, 20.0)
+    );
+    // Otherwise it moves to the middle of the side facing the neighbour.
+    assert_eq!(
+        redock_side(&p(100.0, 20.0), &b, &p(40.0, 200.0)),
+        p(50.0, 80.0)
+    );
+    assert_eq!(
+        redock_side(&p(100.0, 20.0), &b, &p(-90.0, 30.0)),
+        p(0.0, 40.0)
+    );
+    let (mut session, _) = session_fixture();
+    let before = session.snapshot();
+    let diagram_id: processcraft_core::ids::ElementSelector = "diagram".parse().unwrap();
+    // The task moves above the bend column: its left-side end re-docks on its bottom.
+    let prepared = prepare_move(
+        &before.project.documents[0],
+        &diagram_id,
+        vec![ShapeBounds {
+            diagram_id: diagram_id.clone(),
+            shape_id: "shape_review".parse().unwrap(),
+            bounds: rect(15.0, -60.0, 10.0, 10.0),
+        }],
+    )
+    .unwrap();
+    apply_session(&mut session, prepared.request);
+    let after = session.snapshot();
+    let route = &after.project.documents[0]
+        .diagrams
+        .iter()
+        .find(|d| d.id == diagram_id)
+        .unwrap()
+        .edges[0]
+        .waypoints;
+    assert_eq!(route.last(), Some(&p(20.0, -50.0)));
+    assert!(route.contains(&p(20.0, 5.0)));
+    assert!(
+        route
+            .windows(2)
+            .all(|w| w[0].x == w[1].x || w[0].y == w[1].y)
+    );
+}
+#[test]
 fn conflicting_nested_moves_are_refused_without_mutation() {
     use processcraft_core::commands::ShapeBounds;
     let session = nested_session();
@@ -2312,8 +2361,9 @@ fn moving_event_or_gateway_keeps_route_outside_endpoint_owners_and_undoes() {
             .iter_mut()
             .find(|d| d.id == diagram_id)
             .unwrap();
-        diagram.edges[0].waypoints[0].x -= 1.0;
-        diagram.edges[0].waypoints[0].y -= 1.0;
+        // Off the border band (an endpoint 1 unit off the border is now re-docked instead).
+        diagram.edges[0].waypoints[0].x -= 40.0;
+        diagram.edges[0].waypoints[0].y -= 40.0;
         assert!(
             prepare_move(
                 &unproven,
@@ -2345,10 +2395,15 @@ fn moving_event_or_gateway_keeps_route_outside_endpoint_owners_and_undoes() {
             .find(|d| d.id == diagram_id)
             .unwrap();
         let repaired = &diagram.edges[0].waypoints;
-        // Kept bends stay on the route; one left collinear is dropped as a DI point.
-        for bend in &waypoints[1..waypoints.len() - 1] {
-            assert_eq!(distance_to_path(bend, repaired), 0.0);
-        }
+        // The bend next to the unmoved end stays on the route (as a DI point unless left
+        // collinear); the moved end re-docks on the side facing its neighbour, which may drop
+        // a bend the new route no longer doubles back to.
+        let kept = if moved_id == "shape_start" {
+            &waypoints[waypoints.len() - 2]
+        } else {
+            &waypoints[1]
+        };
+        assert_eq!(distance_to_path(kept, repaired), 0.0);
         for pair in repaired.windows(2) {
             assert!(pair[0].x == pair[1].x || pair[0].y == pair[1].y);
             for shape in &diagram.shapes {

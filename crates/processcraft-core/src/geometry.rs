@@ -904,8 +904,40 @@ pub fn distance_to_path(point: &Point, points: &[Point]) -> f64 {
         .fold(f64::INFINITY, f64::min)
 }
 
+/// Re-dock a moved endpoint on `bounds`: it stays when `neighbour` (the next waypoint, or the
+/// other shape's centre) still lies beyond the side it is on; otherwise it moves to the middle
+/// of the side facing `neighbour` (the dominant axis when diagonal).
+pub fn redock_side(endpoint: &Point, bounds: &Bounds, neighbour: &Point) -> Point {
+    let (left, top) = (bounds.x, bounds.y);
+    let (right, bottom) = (left + bounds.width, top + bounds.height);
+    let beyond = |side: Side| match side {
+        Side::Top => neighbour.y <= top,
+        Side::Bottom => neighbour.y >= bottom,
+        Side::Left => neighbour.x <= left,
+        Side::Right => neighbour.x >= right,
+    };
+    if beyond(side_of(endpoint, bounds)) {
+        return endpoint.clone();
+    }
+    let (cx, cy) = (left + bounds.width / 2.0, top + bounds.height / 2.0);
+    let outside_x = neighbour.x < left || neighbour.x > right;
+    let outside_y = neighbour.y < top || neighbour.y > bottom;
+    let (dx, dy) = (neighbour.x - cx, neighbour.y - cy);
+    let horizontal = if outside_x != outside_y {
+        outside_x
+    } else {
+        dx.abs() >= dy.abs()
+    };
+    match (horizontal, dx >= 0.0, dy >= 0.0) {
+        (true, true, _) => p(right, cy),
+        (true, false, _) => p(left, cy),
+        (false, _, true) => p(cx, bottom),
+        (false, _, false) => p(cx, top),
+    }
+}
 /// Endpoints of `points` docked on `old` move proportionally onto `new` (centre-relative
-/// scaling), keeping interior points and orthogonal ends. `None` when nothing is docked there.
+/// scaling), keeping interior points and orthogonal ends, then re-dock on the side facing their
+/// neighbour ([`redock_side`]). `None` when nothing is docked there.
 pub fn redock(points: &[Point], old: &Bounds, new: &Bounds) -> Option<Vec<Point>> {
     let (first, last) = (points.first()?, points.last()?);
     let near = |p: &Point| {
@@ -926,6 +958,24 @@ pub fn redock(points: &[Point], old: &Bounds, new: &Bounds) -> Option<Vec<Point>
     if start.is_none() && end.is_none() {
         return None;
     }
+    // A two-point route's neighbour is its other (possibly re-docked) end.
+    let n = points.len();
+    let start = start.map(|s| {
+        let next = if n > 2 {
+            &points[1]
+        } else {
+            end.as_ref().unwrap_or(last)
+        };
+        redock_side(&s, new, next)
+    });
+    let end = end.map(|e| {
+        let previous = if n > 2 {
+            &points[n - 2]
+        } else {
+            start.as_ref().unwrap_or(first)
+        };
+        redock_side(&e, new, previous)
+    });
     repair_endpoints(points, start, end, &[]).ok()?.waypoints
 }
 
@@ -1895,6 +1945,47 @@ pub fn prepare_move(
         };
         let start = move_endpoint(&edge.waypoints[0], source_delta);
         let end = move_endpoint(&edge.waypoints[edge.waypoints.len() - 1], target_delta);
+        // A moved end re-docks on the side facing its neighbour: the next kept waypoint, or the
+        // other end's shape centre on a two-point route.
+        let end_bounds = |semantic: &ElementSelector, representation: Option<&ElementSelector>| {
+            let mut shapes = diagram.shapes.iter().filter(|s| match representation {
+                Some(id) => s.id == *id,
+                None => s.element == *semantic,
+            });
+            let shape = shapes.next()?;
+            if shapes.next().is_some() {
+                return None;
+            }
+            Some(
+                bounds
+                    .iter()
+                    .find(|b| b.shape_id == shape.id)
+                    .map_or_else(|| shape.bounds.clone(), |b| b.bounds.clone()),
+            )
+        };
+        let (source_shape, target_shape) = (
+            end_bounds(source, edge.source_element.as_ref()),
+            end_bounds(target, edge.target_element.as_ref()),
+        );
+        let centre = |b: &Bounds| p(b.x + b.width / 2.0, b.y + b.height / 2.0);
+        let n = edge.waypoints.len();
+        let redocked =
+            |point: Option<Point>, own: &Option<Bounds>, inner: usize, other: &Option<Bounds>| {
+                let point = point?;
+                let Some(own) = own.as_ref().filter(|b| on_border(&point, b)) else {
+                    return Some(point);
+                };
+                let neighbour = if n > 2 {
+                    edge.waypoints[inner].clone()
+                } else if let Some(other) = other {
+                    centre(other)
+                } else {
+                    return Some(point);
+                };
+                Some(redock_side(&point, own, &neighbour))
+            };
+        let start = redocked(start, &source_shape, 1, &target_shape);
+        let end = redocked(end, &target_shape, n - 2, &source_shape);
         if let (Some((dx, dy)), Some(other)) = (source_delta, target_delta)
             && (dx, dy) == other
             && (dx != 0.0 || dy != 0.0)
@@ -2052,11 +2143,21 @@ pub fn prepare_move(
                         "edge {}: {reason}; the route was laid out again",
                         edge.id
                     ));
-                    layout_route(
+                    // The connection's own layout (gateway, boundary, vertical pool) on the
+                    // diagram as it will be after the move.
+                    let mut after = diagram.clone();
+                    for shape in &mut after.shapes {
+                        if let Some(b) = bounds.iter().find(|b| b.shape_id == shape.id) {
+                            shape.bounds = b.bounds.clone();
+                        }
+                    }
+                    crate::modeling::route(
+                        &after,
+                        crate::rules::ConnectionKind::Sequence,
+                        crate::queries::find_node(document, source),
+                        crate::queries::find_node(document, target).map(|node| node.kind),
                         &source_bounds,
                         &target_bounds,
-                        &obstacles,
-                        RouteLayout::Sequence,
                     )
                 }
                 Err(reason) => return Err(reason),

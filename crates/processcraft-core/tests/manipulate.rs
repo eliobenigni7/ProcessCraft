@@ -250,6 +250,53 @@ fn resize_follows_the_rules_and_never_cuts_off_children() {
 }
 
 #[test]
+fn resize_redocks_data_associations() {
+    let mut s = session();
+    let sub = element(
+        "sub",
+        "SubProcess",
+        json!({"type": "subProcess", "content": {"nodes": [], "lanes": [], "flows": []}}),
+    );
+    batch(
+        &mut s,
+        create(sub, [100.0, 450.0, 350.0, 200.0], "procurement"),
+    )
+    .unwrap();
+    batch(
+        &mut s,
+        mutations(json!([
+            {"type": "createAt", "document_id": docid(), "diagram_id": "procurement_diagram",
+             "kind": "DataObjectReference", "name": null, "center": {"x": 560, "y": 550},
+             "node_id": "doc_ref", "shape_id": "doc_ref_di", "flow_id": null, "edge_id": null},
+            {"type": "connect", "document_id": docid(), "diagram_id": "procurement_diagram",
+             "source_id": "doc_ref", "target_id": "sub", "flow_id": "doc_in", "edge_id": "doc_in_di"}
+        ])),
+    )
+    .unwrap();
+    let before = edge(&s, "doc_in").waypoints;
+    assert_eq!(before.last().unwrap().x, 450.0);
+    batch(
+        &mut s,
+        vec![Mutation::ResizeShape {
+            document_id: docid(),
+            diagram_id: sel("procurement_diagram"),
+            shape_id: sel("sub_di"),
+            bounds: b(100.0, 450.0, 300.0, 200.0),
+        }],
+    )
+    .unwrap();
+    // The association's end follows the subprocess's right side.
+    let after = edge(&s, "doc_in").waypoints;
+    assert_eq!(after.last().unwrap().x, 400.0);
+    assert_eq!(after[0], before[0]);
+    assert!(
+        after
+            .windows(2)
+            .all(|w| w[0].x == w[1].x || w[0].y == w[1].y)
+    );
+}
+
+#[test]
 fn snapping_matches_mid_and_corners_within_tolerance() {
     let moved = b(103.0, 50.0, 100.0, 80.0);
     let sibling = b(100.0, 300.0, 100.0, 80.0);
