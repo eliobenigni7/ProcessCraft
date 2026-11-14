@@ -7,8 +7,24 @@ versions; such changes are listed here.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-14
+
+Unsigned Windows build (x64): MSI installer and portable ZIP.
+
 ### Added
 
+- **Resize every shape:** tasks, call activities, collapsed subprocesses, events, gateways, data
+  objects and stores can be resized; events, gateways and data objects and stores keep their
+  proportions. Eight handles with resize cursors, snapping to neighbours and the grid, Shift to keep
+  proportions, Alt to resize around the centre, Ctrl to resize without snapping. A resized shape
+  grows its lane, pool or subprocess.
+- **Fit to content** (Edit menu, or double-click a resize handle) fits an activity's or annotation's
+  height to its text.
+- Hover outline, Shift to keep a move on one axis, a right-to-left selection box that takes the
+  shapes it touches, Shift+1 to fit the diagram, Shift+2 to zoom to the selection, F2 to edit a
+  label.
+- Auto-layout previews report the crossings and conflicts that remain as `warnings` and `metrics`
+  (CLI, MCP and the preview bar) instead of refusing the layout.
 - Documentation book at <https://eliobenigni7.github.io/ProcessCraft/docs/> with paths for analysts,
   developers and AI agents, a procurement tutorial, a CLI and batch-command reference generated from
   `processcraft-cli`, and `llms.txt` / `llms-full.txt` for agents.
@@ -17,8 +33,24 @@ versions; such changes are listed here.
 
 ### Changed
 
+- **Connections:** rerouted edges are cleaned up, explicit labels follow their edge, ends dock on the
+  outline of events and gateways and move to the side facing their neighbour when a shape moves or
+  is resized, and manual bendpoints are kept. Dragging a bendpoint or segment keeps the route
+  orthogonal and the ends on the shape border; reconnecting keeps bendpoints; the connect preview
+  shows the real route.
+- Associations and data associations are drawn straight. Edges are drawn as one path with small
+  rounded corners and continuous dashes, on the canvas and in SVG, PNG and PDF exports.
+- **Auto-layout:** a layered layout with crossing reduction, rows and columns sized to their
+  content, lanes indented inside the pool and flows routed on separate tracks. It now accepts every
+  flow node; boundary events, expanded subprocesses, artifacts, several pools and message flows are
+  still refused.
 - The website follows the app's visual identity and is built around images of the app and its
   exports.
+
+### Known limits
+
+- The new canvas gestures have not been checked by hand in the running app. Measured limits are in
+  `docs/implementation/m3-evidence.md`.
 
 ## [0.2.0] - 2026-11-13
 
@@ -71,6 +103,7 @@ First public prerelease: an unsigned Windows build (MSI installer and portable Z
   server, standalone or attached to the open desktop session.
 - Per-user Windows installer with file association.
 
-[Unreleased]: https://github.com/eliobenigni7/ProcessCraft/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/eliobenigni7/ProcessCraft/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/eliobenigni7/ProcessCraft/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/eliobenigni7/ProcessCraft/compare/v0.1.0-rc.1...v0.2.0
 [0.1.0-rc.1]: https://github.com/eliobenigni7/ProcessCraft/releases/tag/v0.1.0-rc.1
