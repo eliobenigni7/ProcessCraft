@@ -16,6 +16,8 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/eliobenigni7/ProcessCraft/actions/workflows/ci.yml"><img alt="CI status" src="https://img.shields.io/github/actions/workflow/status/eliobenigni7/ProcessCraft/ci.yml?branch=main&style=flat-square&label=CI"></a>
+  <a href="https://eliobenigni7.github.io/ProcessCraft/docs/"><img alt="Documentation" src="https://img.shields.io/badge/docs-read-9a6400?style=flat-square&logo=mdbook&logoColor=white"></a>
   <img alt="Written in Rust" src="https://img.shields.io/badge/written%20in-Rust-9a6400?style=flat-square&logo=rust&logoColor=white">
   <img alt="Runs on Windows" src="https://img.shields.io/badge/runs%20on-Windows-f2a516?style=flat-square&logo=windows&logoColor=white">
   <img alt="BPMN 2.0" src="https://img.shields.io/badge/BPMN-2.0-9a6400?style=flat-square">
