@@ -438,6 +438,76 @@ fn m5_probe(out: &std::path::Path, mut medium: ProjectData) -> Result<(), Box<dy
     println!("{}", serde_json::to_string_pretty(&report)?);
     Ok(())
 }
+/// Canvas probe: viewport rasters as the desktop canvas requests them (1600x900 logical, canvas
+/// appearance) on the medium fixture's active diagram, with one long-lived text engine like the
+/// render worker. Conversion is the per-pixel copy into 4-byte texels that
+/// `egui::ColorImage::from_rgba_premultiplied` performs on an opaque pixmap.
+fn canvas_probe(out: &std::path::Path, medium: &ProjectData) -> Result<(), Box<dyn Error>> {
+    use processcraft_render::{BpmnViewport, Viewport};
+    let doc = &medium.documents[0];
+    let diagram = id("diagram");
+    let (w, h) = (1600.0, 900.0);
+    let ms = |t: Instant| t.elapsed().as_secs_f64() * 1000.;
+    let stats = |mut v: Vec<f64>| {
+        v.sort_by(f64::total_cmp);
+        let p95 = v[(v.len() * 95).div_ceil(100) - 1];
+        json!({"samples": v.len(), "p50_ms": v[v.len() / 2], "p95_ms": p95, "max_ms": v[v.len() - 1]})
+    };
+    let mut fonts = TextEngine::new();
+    let mut report = serde_json::Map::new();
+    for ppp in [1.0f32, 1.5] {
+        let mut pixels = 0;
+        let mut build = |camera: (f64, f64), zoom: f32| -> Result<(f64, f64), Box<dyn Error>> {
+            let t = Instant::now();
+            let view = BpmnViewport::build(
+                doc,
+                &diagram,
+                Appearance::CanvasLight,
+                &mut fonts,
+                "Noto Sans",
+                Viewport {
+                    x: camera.0,
+                    y: camera.1,
+                    width: w / f64::from(zoom),
+                    height: h / f64::from(zoom),
+                    zoom: zoom * ppp,
+                },
+            )?;
+            let built = ms(t);
+            let t = Instant::now();
+            let texels: Vec<[u8; 4]> = view.pixels.data().as_chunks::<4>().0.to_vec();
+            pixels = black_box(texels).len();
+            Ok((built, ms(t)))
+        };
+        for _ in 0..3 {
+            build((0., 0.), 1.)?;
+        }
+        let (mut pan, mut zoom_ramp, mut convert) = (vec![], vec![], vec![]);
+        for i in 0..30 {
+            let (b, c) = build((-1000. + 100. * f64::from(i), -100.), 1.)?;
+            pan.push(b);
+            convert.push(c);
+        }
+        for i in 0..30 {
+            let zoom = 0.5 * 4f32.powf(i as f32 / 29.);
+            let z = f64::from(zoom);
+            let (b, c) = build((1000. - 800. / z, 500. - 450. / z), zoom)?;
+            zoom_ramp.push(b);
+            convert.push(c);
+        }
+        report.insert(
+            format!("ppp_{ppp}"),
+            json!({"pan_100px_x30": stats(pan), "zoom_ramp_0_5_to_2_0_x30": stats(zoom_ramp), "rgba_to_texels": stats(convert), "pixels_per_raster": pixels}),
+        );
+    }
+    let report = json!({"fixture": "M1 medium, active diagram (500 shapes)", "viewport_logical": [w, h], "appearance": "CanvasLight", "warmups": 3, "method": "Instant wall time per BpmnViewport::build (scene build, culling, label layout, raster); one TextEngine reused", "results": report});
+    fs::write(
+        out.join("canvas-probe.json"),
+        serde_json::to_vec_pretty(&report)?,
+    )?;
+    println!("{}", serde_json::to_string_pretty(&report)?);
+    Ok(())
+}
 fn run() -> Result<(), Box<dyn Error>> {
     let mut args = std::env::args_os().skip(1);
     if args.next().as_deref() != Some(std::ffi::OsStr::new("--out")) {
@@ -499,6 +569,9 @@ fn run() -> Result<(), Box<dyn Error>> {
     }
     if std::env::var_os("M5_PROBE").is_some() {
         return m5_probe(&out, medium);
+    }
+    if std::env::var_os("CANVAS_PROBE").is_some() {
+        return canvas_probe(&out, &medium);
     }
     let near = fixture(1, 2000, 2000, 0);
     for (name, p) in [

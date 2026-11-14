@@ -94,3 +94,26 @@ A first build with `Scope="perUser"` failed with error 1303: without `ALLUSERS=2
 - On the Completed page the "Launch ProcessCraft" checkbox draws a grey band over the white panel
   (stock WixUI `ExitDialog` behaviour); cosmetic, left as is.
 - The interactive checks are not in CI; `check-install-policy.ps1` is run by hand.
+
+## Canvas rendering performance
+
+Probe: `CANVAS_PROBE=1 cargo run --release -p processcraft-cli --example workbench_qualify -- --out DIR`
+writes `canvas-probe.json`. It times `BpmnViewport::build` (culling, scene build, label layout,
+tiny-skia raster) on the medium fixture's active diagram (500 shapes) at 1600×900 logical pixels,
+canvas light appearance, one long-lived `TextEngine` like the render worker, 3 warm-ups: 30 pans of
+100 px and a 30-step zoom ramp 0.5→2.0, at 1.0 and 1.5 pixels per point. "Convert" copies the
+RGBA bytes into 4-byte texels, the work of `ColorImage::from_rgba_premultiplied` on an opaque
+pixmap. Release build, development PC (Windows 11), wall time; repeated runs differ by up to ~30%
+at p95.
+
+Baseline (before the canvas changes), p50 / p95 in ms:
+
+| Series | ppp 1.0 | ppp 1.5 |
+|---|---|---|
+| Pan, 100 px steps | 21.7 / 30.0 | 26.3 / 38.3 |
+| Zoom ramp 0.5→2.0 | 31.7 / 45.0 | 46.8 / 53.8 |
+| Convert (1.44 / 3.24 Mpx) | 0.8 / 0.8 | 1.8 / 2.0 |
+
+Every pan or zoom step needed one such build before the canvas showed the new view; the stale
+texture was shifted and scaled meanwhile, and the result waited up to 30 ms more for the next
+polled frame.
