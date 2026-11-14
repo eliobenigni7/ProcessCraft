@@ -1,10 +1,11 @@
 name: Pages
 
-# Publishes site/ (pages, style.css, images) with the README screenshots and the app icon to GitHub Pages.
+# Publishes site/ (pages, style.css, images) with the README screenshots, the app icon and the Inter
+# and JetBrains Mono fonts to GitHub Pages.
 on:
   push:
     branches: [main]
-    paths: ["site/**", "docs/images/**", "assets/app-icon/processcraft-256.png", ".github/workflows/pages.yml"]
+    paths: ["site/**", "docs/images/**", "assets/fonts/**", "assets/app-icon/processcraft-256.png", ".github/workflows/pages.yml"]
   workflow_dispatch:
 
 permissions:
@@ -26,10 +27,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: Assemble site
         run: |
-          mkdir -p _site/images
+          mkdir -p _site/images _site/fonts
           cp site/*.html site/style.css _site/
           cp site/images/* _site/images/
           cp docs/images/*.png _site/images/
+          cp assets/fonts/Inter-*.ttf assets/fonts/JetBrainsMono-Regular.ttf assets/fonts/OFL-Inter.txt assets/fonts/OFL-JetBrainsMono.txt _site/fonts/
           cp assets/app-icon/processcraft-256.png _site/icon.png
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

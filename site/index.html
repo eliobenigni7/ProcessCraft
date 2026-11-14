@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ProcessCraft</title>
 <meta name="author" content="Elio Benigni">
-<meta name="description" content="ProcessCraft is a desktop app for drawing BPMN 2.0 process diagrams. Offline, open source, written in Rust.">
+<meta name="description" content="ProcessCraft is a desktop app to model, document and analyse BPMN processes, in one file on your own computer. Offline and open source.">
 <meta property="og:title" content="ProcessCraft">
-<meta property="og:description" content="ProcessCraft is a desktop app for drawing BPMN 2.0 process diagrams. Offline, open source, written in Rust.">
+<meta property="og:description" content="Model, document and analyse BPMN processes, in one file on your own computer. Offline and open source.">
 <meta property="og:image" content="images/workbench-light.png">
 <link rel="icon" type="image/png" href="icon.png">
 <link rel="stylesheet" href="style.css">
@@ -16,7 +16,7 @@
 <a class="skip" href="#main">Skip to content</a>
 <header class="site-head">
   <div class="wrap">
-    <a class="wordmark" href="index.html"><img src="icon.png" alt="" width="34" height="34">ProcessCraft</a>
+    <a class="wordmark" href="index.html"><img src="icon.png" alt="" width="30" height="30">ProcessCraft</a>
     <nav aria-label="Main">
       <ul>
         <li><a href="index.html" aria-current="page">Home</a></li>
@@ -29,65 +29,167 @@
     </nav>
   </div>
 </header>
-<main id="main" class="wrap">
-<section class="page-head" aria-labelledby="title" style="border-top:0;margin-top:0">
-  <p class="eyebrow">Version 0.2.0 &middot; pre-alpha &middot; Windows &middot; MIT license</p>
-  <h1 id="title">A desktop app for drawing BPMN process diagrams.</h1>
-  <p class="lead">ProcessCraft is offline and open source, written in Rust. A project is one file on your disk, and scripts or AI agents can make the same edits you make on the canvas.</p>
-  <div class="actions">
-    <a class="button" href="https://github.com/eliobenigni7/ProcessCraft/releases/tag/v0.2.0">Download 0.2.0</a>
-    <a href="features.html">See features</a>
+<main id="main">
+<div class="hero">
+  <div class="wrap">
+    <p class="eyebrow">Version 0.2.0 &middot; free and open source &middot; Windows</p>
+    <h1>Model, document and analyse your processes.</h1>
+    <p class="lead">ProcessCraft is a BPMN workbench that runs on your computer. Draw a process, give every step its cost, owner and risk, check it against your house rules, and share it as BPMN, PDF or an image. Everything stays in one file on your disk.</p>
+    <div class="actions">
+      <a class="button" href="download.html">Download for Windows</a>
+      <a class="button ghost" href="features.html">See what it does</a>
+    </div>
+    <p class="note">Pre-alpha. Windows 10 or 11, 64-bit, unsigned: <a href="download.html#unsigned">what the warning means</a>.</p>
+    <div class="window">
+      <picture><source srcset="images/workbench-dark.png" media="(prefers-color-scheme: dark)"><img src="images/workbench-light.png" width="1544" height="952" alt="The ProcessCraft window: a project sidebar, a procurement process with two lanes on the canvas with a floating element palette, and a properties panel"></picture>
+    </div>
   </div>
-  <p class="note">Windows 10 or 11, 64-bit. The installer is not signed, so Windows will warn you; <a href="download.html#unsigned">here is what that means</a>.</p>
-  <div class="screen">
-    <picture><source srcset="images/workbench-dark.png" media="(prefers-color-scheme: dark)"><img src="images/workbench-light.png" width="1544" height="952" alt="The ProcessCraft window: a project sidebar, a procurement process with two lanes on the canvas with a floating element palette, and a properties panel"></picture>
-  </div>
-</section>
+</div>
 
 <section aria-labelledby="local-title">
-  <h2 id="local-title">Local by design</h2>
-  <ul class="facts">
-    <li><b>Offline</b><span>It never needs a network connection to model, save or export.</span></li>
-    <li><b>One file per project</b><span>A <code>.processcraft</code> file holds your documents, dictionary, comments and checkpoints.</span></li>
-    <li><b>No account</b><span>Nothing to sign up for or sign in to.</span></li>
-    <li><b>No telemetry</b><span>No listener starts by default; the optional MCP attachment is switched on by you.</span></li>
-  </ul>
+  <div class="wrap">
+    <div class="section-head center">
+      <p class="kicker">Local by design</p>
+      <h2 id="local-title">Your processes stay on your computer.</h2>
+    </div>
+    <ul class="tiles">
+      <li><span class="dot"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 2l20 20M8.5 16.5a5 5 0 0 1 7 0M5 13a10 10 0 0 1 5.2-2.8M19 13a10 10 0 0 0-2.3-1.6M2 8.8a15 15 0 0 1 4.2-2.6M22 8.8A15 15 0 0 0 11 5.1M12 20h.01"/></svg></span><b>Offline</b><span>Modeling, saving and exporting never need a network connection.</span></li>
+      <li><span class="dot"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></span><b>One file per project</b><span>Documents, dictionary, comments and checkpoints in one <code>.processcraft</code> file.</span></li>
+      <li><span class="dot"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="4"/><path d="M2 21a7 7 0 0 1 14 0M17 8l5 5M22 8l-5 5"/></svg></span><b>No account</b><span>Nothing to sign up for or sign in to.</span></li>
+      <li><span class="dot"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span><b>No telemetry</b><span>No listener starts by default. Automation is switched on by you.</span></li>
+    </ul>
+  </div>
 </section>
 
-<section aria-labelledby="more-title">
-  <h2 id="more-title">Where to go next</h2>
-  <ul class="cards">
-    <li>
-      <h3>Features</h3>
-      <p>The modeling canvas, BPMN file exchange, and the analyst layer: attributes, conventions, RACI and heatmaps.</p>
-      <a class="more" href="features.html">Read about features</a>
-    </li>
-    <li>
-      <h3>Automation</h3>
-      <p>A command-line tool and a local MCP server that run the same commands as the canvas, with examples that were run.</p>
-      <a class="more" href="automation.html">See the commands</a>
-    </li>
-    <li>
-      <h3>Download</h3>
-      <p>The Windows installer or a portable ZIP, how to check the files, and how to build from source.</p>
-      <a class="more" href="download.html">Get ProcessCraft</a>
-    </li>
-    <li>
-      <h3>Status</h3>
-      <p>What has been verified, with measured numbers, what has not, and what comes next.</p>
-      <a class="more" href="status.html">Read the status</a>
-    </li>
-  </ul>
+<section aria-labelledby="pillars-title">
+  <div class="wrap">
+    <div class="section-head center">
+      <p class="kicker">From sketch to analysis</p>
+      <h2 id="pillars-title">One workbench for the whole job.</h2>
+    </div>
+
+    <div class="split">
+      <div>
+        <h2>Draw processes that stay valid.</h2>
+        <p>Pick a step and append the next task, gateway or event from the context pad. ProcessCraft places it, routes the flow and refuses connections BPMN does not allow, with a reason.</p>
+        <ul class="checks">
+          <li>Pools, lanes and sub-processes that grow with their content</li>
+          <li>Single keys for common elements, <code>R</code> to change a type, <code>E</code> to rename</li>
+          <li>Auto-layout with a preview; every edit is one undo step</li>
+        </ul>
+      </div>
+      <figure class="frame"><img src="images/onboarding.png" width="1562" height="804" loading="lazy" alt="An employee onboarding process in an HR pool with two lanes and a rework loop through Request missing documents"></figure>
+    </div>
+
+    <div class="split flip">
+      <div>
+        <h2>See where the time and money go.</h2>
+        <p>Give activities typed attributes such as cost, duration, SLA, risk or owner. Then colour the diagram by any of them, or show the value as a badge on each step.</p>
+        <ul class="checks">
+          <li>Number, currency, duration, enum, date, URL and dictionary attributes</li>
+          <li>An editable activity table with one column per attribute</li>
+          <li>Heatmaps and badges on screen, and in image or PDF exports when you ask</li>
+        </ul>
+      </div>
+      <figure class="frame"><picture><source srcset="images/cost-heatmap-dark.png" media="(prefers-color-scheme: dark)"><img src="images/cost-heatmap.png" width="1108" height="338" loading="lazy" alt="An onboarding process with each activity shaded by its Cost attribute in five steps, darkest for Hold onboarding day at 240 EUR, and a legend below"></picture><figcaption>A Cost heatmap, rendered by ProcessCraft. The values are made up for the example.</figcaption></figure>
+    </div>
+
+    <div class="split">
+      <div>
+        <h2>Check every model against your house rules.</h2>
+        <p>Store a conventions profile in the project and ProcessCraft lists what breaks it: missing labels, unlabelled gateway branches, implicit joins, required attributes left empty, free text where a dictionary term belongs.</p>
+        <ul class="checks">
+          <li>You choose which rules apply and how severe each one is</li>
+          <li>Roles, systems and documents in a shared dictionary</li>
+          <li>A RACI matrix from lanes and roles, exported to CSV</li>
+        </ul>
+      </div>
+      <div class="stack">
+        <figure class="frame" style="margin:0"><picture><source srcset="images/procurement-dark.png" media="(prefers-color-scheme: dark)"><img src="images/procurement.png" width="1764" height="784" loading="lazy" alt="A procurement process in two lanes: Request received, Review request, an Approved? gateway, Place order, and a Complete end event reached by both the Approved and the Rejected branch"></picture></figure>
+        <div>
+          <ul class="problems" aria-label="Findings for the procurement process">
+            <li class="problems-head" aria-hidden="true"><span>Problems</span><span>0 errors &middot; 4 warnings</span></li>
+            <li><span class="sev"></span><span>Element has several incoming flows; use a gateway to join.</span><code>end</code></li>
+            <li><span class="sev"></span><span>Required attribute &ldquo;Cost&rdquo; has no value.</span><code>review</code></li>
+            <li><span class="sev"></span><span>Required attribute &ldquo;Cost&rdquo; has no value.</span><code>order</code></li>
+            <li><span class="sev"></span><span>A dictionary reference is free text instead of a dictionary entry.</span><code>review</code></li>
+          </ul>
+          <p class="note" style="margin-top:10px">The findings <code>processcraft-cli validate</code> reports for this process, with the conventions example from the test fixtures.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="split flip">
+      <div>
+        <h2>Work with the tools around you.</h2>
+        <p>Open BPMN 2.0 files from Camunda Modeler, bpmn.io and other tools, edit them, and save them back. Export SVG, PNG and PDF for your documents, or draw.io for your wiki.</p>
+        <ul class="checks">
+          <li>Vendor extensions are kept through export</li>
+          <li>What ProcessCraft cannot edit is kept byte for byte or refused with a reason, never dropped</li>
+          <li>Light and dark appearance for every export</li>
+        </ul>
+      </div>
+      <figure class="frame"><picture><source srcset="images/claims-camunda-dark.png" media="(prefers-color-scheme: dark)"><img src="images/claims-camunda.png" width="1864" height="1086" loading="lazy" alt="A claim handling collaboration imported from Camunda Modeler, with Customer and Insurance company pools, message flows, lanes and a timer boundary event"></picture><figcaption>A collaboration made in Camunda Modeler, opened for editing in ProcessCraft.</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<div class="band" aria-labelledby="numbers-title">
+  <div class="wrap">
+    <h2 id="numbers-title" class="kicker" style="font-size:13px;letter-spacing:0.08em">Measured, not promised</h2>
+    <ul class="numbers">
+      <li><b>5,000 <small>nodes</small></b><span>in the test project used for the measurements, with 10,000 attribute values</span></li>
+      <li><b>0.9 <small>ms</small></b><span>to compute a heatmap over 500 activities</span></li>
+      <li><b>30 <small>ms</small></b><span>to check the whole project against a conventions profile</span></li>
+      <li><b>0.3 <small>s</small></b><span>to open that project from memory</span></li>
+    </ul>
+    <p class="note" style="margin-top:24px">Release build on one machine, 95th percentile of two runs. Saving the same project to disk took 1 to 2 s and misses its budget. <a href="status.html#measured">All measurements and what is not verified</a>.</p>
+  </div>
+</div>
+
+<section aria-labelledby="auto-title">
+  <div class="wrap">
+    <div class="callout">
+      <div>
+        <p class="kicker">For teams that automate</p>
+        <h2 id="auto-title">Your scripts and AI assistant make the same edits you do.</h2>
+        <p>A command-line tool and a local MCP server run the same commands as the canvas: build a model from a batch, validate it in CI, export RACI or images. An assistant such as Claude can draft a process from a text description.</p>
+        <a href="automation.html">See the automation examples</a>
+      </div>
+<pre tabindex="0"><code><span class="c"># fail the build on any convention warning</span>
+processcraft-cli validate project.processcraft --fail-on warning
+
+<span class="c"># RACI matrix as CSV</span>
+processcraft-cli export-raci project.processcraft &lt;doc&gt; procurement --out raci.csv
+
+<span class="c"># heatmap image of the Cost attribute</span>
+processcraft-cli export-image project.processcraft --document-id &lt;doc&gt; \
+  --diagram-id &lt;diagram&gt; --overlay-attribute &lt;cost&gt; --format png --out cost.png</code></pre>
+    </div>
+  </div>
+</section>
+
+<section class="cta" aria-labelledby="cta-title" style="border-top:0">
+  <div class="wrap">
+    <h2 id="cta-title">Try it on one of your own processes.</h2>
+    <p class="lead center">Free, MIT licensed, and it never leaves your machine.</p>
+    <div class="actions">
+      <a class="button" href="download.html">Download 0.2.0</a>
+      <a class="button ghost" href="https://github.com/eliobenigni7/ProcessCraft">Source on GitHub</a>
+    </div>
+  </div>
 </section>
 
 <section id="author" aria-labelledby="author-title">
-  <h2 id="author-title">Made by Elio Benigni</h2>
-  <p><b>AI Engineer.</b> I build ProcessCraft in the open. Write to me about the project, about trying it on your own processes, or about AI engineering work.</p>
-  <ul class="contact">
-    <li><span>Email</span><a href="mailto:eliobenigni7@gmail.com">eliobenigni7@gmail.com</a></li>
-    <li><span>LinkedIn</span><a href="https://www.linkedin.com/in/eliobenigni">in/eliobenigni</a></li>
-    <li><span>GitHub</span><a href="https://github.com/eliobenigni7">eliobenigni7</a></li>
-  </ul>
+  <div class="wrap">
+    <h2 id="author-title">Made by Elio Benigni</h2>
+    <p class="narrow"><b>AI Engineer.</b> I build ProcessCraft in the open. Write to me about the project, about trying it on your own processes, or about AI engineering work.</p>
+    <ul class="contact">
+      <li><a href="mailto:eliobenigni7@gmail.com"><span>Email</span>eliobenigni7@gmail.com</a></li>
+      <li><a href="https://www.linkedin.com/in/eliobenigni"><span>LinkedIn</span>in/eliobenigni</a></li>
+      <li><a href="https://github.com/eliobenigni7"><span>GitHub</span>eliobenigni7</a></li>
+    </ul>
+  </div>
 </section>
 </main>
 <footer class="site-foot">
@@ -98,7 +200,7 @@
       <li><a href="https://github.com/eliobenigni7/ProcessCraft/issues">Issue tracker</a></li>
       <li><a href="index.html#author">Contact</a></li>
     </ul>
-    <p>ProcessCraft is made by <a href="index.html#author">Elio Benigni</a>, MIT licensed, and built on egui and the libraries of the <a href="https://github.com/storytold">Crafting Apps</a>. It is an independent project and is not made or endorsed by bpmn.io or the Object Management Group.</p>
+    <p>ProcessCraft is made by <a href="index.html#author">Elio Benigni</a>, MIT licensed, and built on egui and the libraries of the <a href="https://github.com/storytold">Crafting Apps</a>. Inter and JetBrains Mono are used under the SIL Open Font License. It is an independent project and is not made or endorsed by bpmn.io or the Object Management Group.</p>
     <p>Pre-alpha software: version 0.2.0, Windows only, unsigned.</p>
   </div>
 </footer>
