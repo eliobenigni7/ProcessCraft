@@ -1356,13 +1356,17 @@ impl BpmnScene {
         overlay: Option<&Overlay>,
     ) -> Result<Self, RenderError> {
         Self::build_internal(
-            document, diagram_id, appearance, fonts, family, true, overlay, true,
+            document, diagram_id, None, None, appearance, fonts, family, true, overlay, true,
         )
     }
+    /// `culled` replaces the stored diagram `diagram_id` and `index` is a prebuilt index of
+    /// `document` (the viewport passes both, so it needs no document copy or second index).
     #[allow(clippy::too_many_arguments)]
-    fn build_internal(
-        document: &BpmnDocument,
+    fn build_internal<'d>(
+        document: &'d BpmnDocument,
         diagram_id: &ElementSelector,
+        culled: Option<&processcraft_core::model::Diagram>,
+        index: Option<&SemanticIndex<'d>>,
         appearance: Appearance,
         fonts: &mut TextEngine,
         family: &str,
@@ -1381,12 +1385,22 @@ impl BpmnScene {
                 capability: document.capability.clone(),
             });
         }
-        let diagram = document
-            .diagrams
-            .iter()
-            .find(|d| &d.id == diagram_id)
-            .ok_or(RenderError("Diagram not found"))?;
-        let semantics = SemanticIndex::new(document)?;
+        let diagram = match culled {
+            Some(diagram) => diagram,
+            None => document
+                .diagrams
+                .iter()
+                .find(|d| &d.id == diagram_id)
+                .ok_or(RenderError("Diagram not found"))?,
+        };
+        let owned;
+        let semantics = match index {
+            Some(index) => index,
+            None => {
+                owned = SemanticIndex::new(document)?;
+                &owned
+            }
+        };
         let mut extents: Option<(f64, f64, f64, f64)> = None;
         let mut include = |x: f64, y: f64| -> Result<(), RenderError> {
             if !x.is_finite() || !y.is_finite() || x.abs() > 1_000_000.0 || y.abs() > 1_000_000.0 {
@@ -1432,7 +1446,7 @@ impl BpmnScene {
                     .or(store.map(|_| NodeKind::DataStoreReference));
                 let named = match (node, port, store) {
                     (Some(node), ..) => {
-                        !data_label(Some(node), &node_display_name(node, document).0, &semantics)
+                        !data_label(Some(node), &node_display_name(node, document).0, semantics)
                             .is_empty()
                     }
                     (_, Some(port), _) => port.name.as_deref().is_some_and(|n| !n.is_empty()),
@@ -1584,7 +1598,7 @@ impl BpmnScene {
                                 activity
                                     .participant_refs
                                     .iter()
-                                    .any(|r| self_reference_resolves(&semantics, r, &shape.element))
+                                    .any(|r| self_reference_resolves(semantics, r, &shape.element))
                             })
                     })
                 });
@@ -1844,7 +1858,7 @@ impl BpmnScene {
                         .as_ref()
                         .and_then(|l| l.bounds.as_ref())
                         .unwrap_or(&fallback);
-                    if group_label_collision(bounds, &shape.id.selector(), diagram, &semantics) {
+                    if group_label_collision(bounds, &shape.id.selector(), diagram, semantics) {
                         diagnostics.push(format!(
                             "Group {} label overlaps another shape",
                             shape.element
@@ -1979,7 +1993,7 @@ impl BpmnScene {
                     None => name.to_owned(),
                 }
             } else {
-                data_label(node, name, &semantics)
+                data_label(node, name, semantics)
             };
             let name = display_name.as_str();
             if matches!(kind, Some(NodeKind::BoundaryEvent)) {
@@ -4518,13 +4532,10 @@ impl BpmnViewport {
             .iter()
             .find(|d| &d.id == diagram_id)
             .ok_or(RenderError("Diagram not found"))?;
-        let visibility = SemanticIndex::new(document)?;
-        let mut copy = document.clone();
-        let diagram = copy
-            .diagrams
-            .iter_mut()
-            .find(|d| &d.id == diagram_id)
-            .ok_or(RenderError("Diagram not found"))?;
+        let index = SemanticIndex::new(document)?;
+        let (semantics, visibility) = (&index, &index);
+        // Only the active diagram is culled and rebased; the semantic model is shared.
+        let mut diagram = original_diagram.clone();
         let inside = |b: &Bounds| {
             b.x <= view.x + view.width
                 && b.y <= view.y + view.height
@@ -4590,7 +4601,16 @@ impl BpmnViewport {
         }
         diagram.edges.clear();
         let mut built = BpmnScene::build_internal(
-            &copy, diagram_id, appearance, fonts, family, false, overlay, false,
+            document,
+            diagram_id,
+            Some(&diagram),
+            Some(semantics),
+            appearance,
+            fonts,
+            family,
+            false,
+            overlay,
+            false,
         )?;
         built.diagnostics.extend(viewport_diagnostics);
         let original = document
@@ -4619,7 +4639,6 @@ impl BpmnViewport {
             Appearance::CanvasLight => [42, 46, 54],
             Appearance::CanvasDark => [201, 206, 214],
         };
-        let semantics = SemanticIndex::new(document)?;
         let overlay_view = overlay.map(OverlayView::new);
         // Labels are culled independently of their owning shape.
         for shape in &original.shapes {
@@ -4660,7 +4679,7 @@ impl BpmnViewport {
                             && activity
                                 .participant_refs
                                 .iter()
-                                .any(|r| self_reference_resolves(&semantics, r, &shape.element))
+                                .any(|r| self_reference_resolves(semantics, r, &shape.element))
                     });
                 if !valid {
                     continue;
@@ -4743,7 +4762,7 @@ impl BpmnViewport {
                     None => name.to_owned(),
                 }
             } else {
-                data_label(node, name, &semantics)
+                data_label(node, name, semantics)
             };
             let name = display_name.as_str();
             if shape.label.is_none() && !built.hits.iter().any(|h| h.diagram_element_id == shape.id)
@@ -4788,7 +4807,7 @@ impl BpmnViewport {
                 continue;
             }
             if semantics.groups.iter().any(|g| g.id == shape.element)
-                && group_label_collision(bounds, &shape.id.selector(), original, &semantics)
+                && group_label_collision(bounds, &shape.id.selector(), original, semantics)
             {
                 built.diagnostics.push(format!(
                     "Group {} label overlaps another shape",

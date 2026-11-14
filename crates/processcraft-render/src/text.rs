@@ -209,8 +209,17 @@ impl TextLayout {
     }
 }
 
+/// Every [`TextRequest`] input: text, family, size and width bits, center, bold, italic.
+type LayoutKey = (String, String, u32, u32, bool, bool, bool);
+/// Entries per cache generation; at most twice this many layouts are kept.
+const LAYOUT_CACHE: usize = 4096;
+
 pub struct TextEngine {
     fonts: FontSystem,
+    /// Two-generation layout cache: hits are kept in `recent`; when it is full it becomes
+    /// `older` and the previous `older` is dropped. A hit returns exactly what layout computes.
+    recent: std::collections::HashMap<LayoutKey, TextLayout>,
+    older: std::collections::HashMap<LayoutKey, TextLayout>,
 }
 impl Default for TextEngine {
     fn default() -> Self {
@@ -230,12 +239,41 @@ impl TextEngine {
                 db,
                 BundledFallback,
             ),
+            recent: Default::default(),
+            older: Default::default(),
         }
     }
 
     /// At most 16 KiB UTF-8; 4..=256 px fonts; 4..=16384 logical-pixel width.
     /// Word-or-glyph wrapping and advanced shaping are identical for every sink.
     pub fn layout(&mut self, request: TextRequest<'_>) -> Result<TextLayout, RenderError> {
+        if request.text.len() > 16 * 1024 || request.family.len() > 128 {
+            return self.shape(request);
+        }
+        let key = (
+            request.text.to_owned(),
+            request.family.to_owned(),
+            request.font_size.to_bits(),
+            request.width.to_bits(),
+            request.center,
+            request.bold,
+            request.italic,
+        );
+        if let Some(hit) = self.recent.get(&key) {
+            return Ok(hit.clone());
+        }
+        let layout = match self.older.remove(&key) {
+            Some(hit) => hit,
+            None => self.shape(request)?,
+        };
+        if self.recent.len() >= LAYOUT_CACHE {
+            self.older = std::mem::take(&mut self.recent);
+        }
+        self.recent.insert(key, layout.clone());
+        Ok(layout)
+    }
+
+    fn shape(&mut self, request: TextRequest<'_>) -> Result<TextLayout, RenderError> {
         if request.text.len() > 16 * 1024 || request.family.len() > 128 {
             return Err(RenderError(
                 "Text exceeds the 16 KiB label or 128-byte family limit",
@@ -425,5 +463,39 @@ impl OutlinePen for Pen {
     }
     fn close(&mut self) {
         self.path.close();
+    }
+}
+
+#[cfg(test)]
+mod layout_cache_tests {
+    use super::*;
+    #[test]
+    fn cached_layouts_match_fresh_ones_and_the_cache_stays_bounded() {
+        let mut cached = TextEngine::new();
+        let request = TextRequest {
+            bold: true,
+            ..TextRequest::new("Approve purchase order", 12.0, 60.0)
+        };
+        let first = cached.layout(request).unwrap();
+        let hit = cached.layout(request).unwrap();
+        let fresh = TextEngine::new().shape(request).unwrap();
+        for layout in [&first, &hit] {
+            assert_eq!(layout.glyphs(), fresh.glyphs());
+            assert_eq!(layout.diagnostics(), fresh.diagnostics());
+            assert_eq!(
+                (layout.height(), layout.line_count()),
+                (fresh.height(), fresh.line_count())
+            );
+        }
+        // A different width is a different layout, not a hit.
+        let wide = cached.layout(TextRequest::new("Approve purchase order", 12.0, 400.0));
+        assert_eq!(wide.unwrap().line_count(), 1);
+        assert!(first.line_count() > 1);
+        for i in 0..LAYOUT_CACHE * 2 + 1 {
+            cached
+                .layout(TextRequest::new(&i.to_string(), 12.0, 60.0))
+                .unwrap();
+        }
+        assert!(cached.recent.len() + cached.older.len() <= LAYOUT_CACHE * 2);
     }
 }
