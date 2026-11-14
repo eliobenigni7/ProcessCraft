@@ -944,14 +944,11 @@ pub fn resize(
         });
     }
     for edge in &diagram.edges {
-        let Some(flow) = all_flows(doc).find(|f| f.id == edge.element) else {
-            continue;
-        };
+        let (from, to) = modeling::edge_ends(doc, diagram, edge);
         let mut points = edge.waypoints.clone();
         let mut touched = false;
         for (s, b) in &changed {
-            let ends = [local(&flow.source), local(&flow.target)];
-            if ends.contains(&Some(&s.element))
+            if [from, to].into_iter().flatten().any(|e| e.id == s.id)
                 && let Some(p) = geometry::redock(&points, &s.bounds, b)
             {
                 points = p;

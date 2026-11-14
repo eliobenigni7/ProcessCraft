@@ -200,6 +200,59 @@ fn all_flows(doc: &BpmnDocument) -> Vec<&Flow> {
         .chain(doc.collaborations().flat_map(|c| &c.flows))
         .collect()
 }
+/// The shapes `edge` connects in `diagram`, for every edge kind (sequence and message flows,
+/// associations, data associations): an explicit DI source/target wins, else the first shape of
+/// the semantic end; a data port without a shape resolves to its activity.
+pub fn edge_ends<'a>(
+    doc: &BpmnDocument,
+    diagram: &'a Diagram,
+    edge: &Edge,
+) -> (Option<&'a Shape>, Option<&'a Shape>) {
+    let artifacts = doc
+        .collaborations()
+        .filter_map(|c| c.extras.as_ref())
+        .flat_map(|extras| &extras.artifacts)
+        .filter_map(|artifact| match artifact {
+            crate::bpmn_collaboration::CollaborationArtifact::Association(f) => Some(f.as_ref()),
+            _ => None,
+        });
+    let (source, target, owner) = if let Some(f) = all_flows(doc)
+        .into_iter()
+        .chain(artifacts)
+        .find(|f| f.id == edge.element)
+    {
+        (
+            endpoint(&f.source).cloned(),
+            endpoint(&f.target).cloned(),
+            None,
+        )
+    } else if let Some(a) = crate::queries::scopes(doc)
+        .into_iter()
+        .flat_map(|s| s.data_associations)
+        .find(|a| a.id.as_ref().is_some_and(|id| edge.element == *id))
+    {
+        (
+            a.sources.first().cloned(),
+            Some(a.target.clone()),
+            Some(a.owner.clone()),
+        )
+    } else {
+        (None, None, None)
+    };
+    let shape = |representation: Option<&ElementSelector>, element: Option<ElementSelector>| {
+        match representation {
+            Some(id) => diagram.shapes.iter().find(|s| s.id == *id),
+            None => element
+                .iter()
+                .chain(owner.as_ref())
+                .find_map(|e| diagram.shapes.iter().find(|s| s.element == *e)),
+        }
+    };
+    (
+        shape(edge.source_element.as_ref(), source),
+        shape(edge.target_element.as_ref(), target),
+    )
+}
 pub(crate) fn shape_bounds<'a>(diagram: &'a Diagram, id: &ElementSelector) -> Option<&'a Bounds> {
     diagram
         .shapes

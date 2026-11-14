@@ -152,6 +152,52 @@ fn compact(path: Vec<Point>) -> Vec<Point> {
     }
     out
 }
+/// Route normalization: a segment within 2 units of horizontal or vertical is straightened by
+/// moving its interior end onto the other end's axis (a pass from the start, then one from the
+/// end), then duplicate and collinear points are dropped. The endpoints never move.
+pub fn tidy(mut points: Vec<Point>) -> Vec<Point> {
+    fn straighten(points: &mut [Point], fixed: usize, moving: usize) {
+        const SNAP: f64 = 2.0;
+        let (fx, fy) = (points[fixed].x, points[fixed].y);
+        let q = &mut points[moving];
+        if q.x == fx || q.y == fy {
+            return;
+        }
+        if (q.x - fx).abs() <= SNAP {
+            q.x = fx;
+        } else if (q.y - fy).abs() <= SNAP {
+            q.y = fy;
+        }
+    }
+    if points.len() < 3 {
+        return points;
+    }
+    let last = points.len() - 1;
+    for i in 1..last {
+        straighten(&mut points, i - 1, i);
+    }
+    for i in (1..last).rev() {
+        straighten(&mut points, i + 1, i);
+    }
+    compact(points)
+}
+/// The point halfway along the polyline `points`.
+pub fn midpoint(points: &[Point]) -> Option<Point> {
+    let length = |w: &[Point]| (w[1].x - w[0].x).hypot(w[1].y - w[0].y);
+    let mut remaining = points.windows(2).map(length).sum::<f64>() / 2.0;
+    for w in points.windows(2) {
+        let segment = length(w);
+        if segment > 0.0 && remaining <= segment {
+            let t = remaining / segment;
+            return Some(p(
+                w[0].x + (w[1].x - w[0].x) * t,
+                w[0].y + (w[1].y - w[0].y) * t,
+            ));
+        }
+        remaining -= segment;
+    }
+    points.first().cloned()
+}
 /// Side of a shape.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Side {

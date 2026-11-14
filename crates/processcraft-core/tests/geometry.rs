@@ -16,6 +16,16 @@ fn rect(x: f64, y: f64, width: f64, height: f64) -> Bounds {
 fn coords(points: &[Point]) -> Vec<(f64, f64)> {
     points.iter().map(|p| (p.x, p.y)).collect()
 }
+/// An explicit edge label after a reroute: shifted by the route midpoint's delta.
+fn followed(label: &Bounds, old: &[Point], new: &[Point]) -> Bounds {
+    let (a, b) = (midpoint(old).unwrap(), midpoint(new).unwrap());
+    rect(
+        label.x + b.x - a.x,
+        label.y + b.y - a.y,
+        label.width,
+        label.height,
+    )
+}
 #[test]
 fn connection_route_faces_shapes_and_avoids_obstacles() {
     let a = rect(0.0, 0.0, 100.0, 80.0);
@@ -357,15 +367,10 @@ fn prepared_move_repairs_connected_edge_in_one_undo() {
         .iter()
         .find(|d| d.id == diagram_id)
         .unwrap();
+    // The repaired route doubled back over the kept bends; normalization drops the spike.
     assert_eq!(
         coords(&diagram.edges[0].waypoints),
-        vec![
-            (12.0, 8.0),
-            (20.0, 8.0),
-            (20.0, 5.0),
-            (20.0, 8.0),
-            (30.0, 8.0)
-        ]
+        vec![(12.0, 8.0), (30.0, 8.0)]
     );
     assert_eq!(diagram.shapes[1].bounds.x, 30.0);
     assert_eq!(
@@ -404,7 +409,11 @@ fn prepared_group_move_keeps_manual_bends_and_undoes_together() {
     let path = coords(&diagram.edges[0].waypoints);
     assert_eq!(path.first(), Some(&(12.0, 8.0)));
     assert_eq!(path.last(), Some(&(32.0, 11.0)));
-    assert!(path.contains(&(20.0, 5.0)) && path.contains(&(20.0, 8.0)));
+    // The kept bend column x = 20 stays; the spike back to y = 5 is normalized away.
+    assert_eq!(
+        path,
+        vec![(12.0, 8.0), (20.0, 8.0), (20.0, 11.0), (32.0, 11.0)]
+    );
     assert_eq!(after.undo_count, before.undo_count + 1);
     apply_session(&mut s, Request::Undo);
     assert_eq!(s.snapshot().content_id, before.content_id);
@@ -523,6 +532,53 @@ fn nested_parent_move_translates_children_internal_route_and_label_in_one_undo()
     assert_eq!(session.snapshot().content_id, after.content_id);
 }
 #[test]
+fn reroute_tidies_the_route_and_its_label_follows() {
+    use processcraft_core::commands::{Mutation, Request};
+    // Endpoints stay; near-axis segments straighten from both ends; collinear points drop.
+    assert_eq!(
+        coords(&tidy(vec![
+            p(0.0, 0.0),
+            p(50.0, 1.0),
+            p(50.0, 40.0),
+            p(51.0, 80.0)
+        ])),
+        vec![(0.0, 0.0), (51.0, 0.0), (51.0, 80.0)]
+    );
+    let mut session = nested_session();
+    let document_id = session.snapshot().project.documents[0].id;
+    apply_session(
+        &mut session,
+        Request::Batch {
+            mutations: vec![Mutation::Reroute {
+                document_id,
+                diagram_id: "diagram".parse().unwrap(),
+                edge_id: "edge".parse().unwrap(),
+                waypoints: vec![
+                    p(10.0, 5.0),
+                    p(14.0, 5.0),
+                    p(26.0, 6.0),
+                    p(26.0, 8.0),
+                    p(30.0, 8.0),
+                ],
+            }],
+        },
+    );
+    let after = session.snapshot();
+    let edge = &after.project.documents[0]
+        .diagrams
+        .iter()
+        .find(|d| d.id.to_string() == "diagram")
+        .unwrap()
+        .edges[0];
+    assert_eq!(
+        coords(&edge.waypoints),
+        vec![(10.0, 5.0), (26.0, 5.0), (26.0, 8.0), (30.0, 8.0)]
+    );
+    // The midpoint moved from (20, 6.5) to (21.5, 5): the explicit label moved with it.
+    let label = edge.label.as_ref().unwrap().bounds.as_ref().unwrap();
+    assert_eq!((label.x, label.y), (15.5, 10.5));
+}
+#[test]
 fn conflicting_nested_moves_are_refused_without_mutation() {
     use processcraft_core::commands::ShapeBounds;
     let session = nested_session();
@@ -599,8 +655,9 @@ fn assert_geometry_history(
         .iter()
         .find(|e| e.id.to_string() == edge_id)
         .unwrap();
+    let old_route = edge.waypoints.clone();
     let old_points = coords(&edge.waypoints);
-    let old_label = serde_json::to_value(&edge.label).unwrap();
+    let old_label = edge.label.clone();
     let shape = document
         .diagrams
         .last()
@@ -643,7 +700,16 @@ fn assert_geometry_history(
         points[i],
         (old_points[old_i].0 + dx, old_points[old_i].1 + dy)
     );
-    assert_eq!(serde_json::to_value(&edge.label).unwrap(), old_label);
+    let expected_label = old_label.map(|mut label| {
+        label.bounds = label
+            .bounds
+            .map(|b| followed(&b, &old_route, &edge.waypoints));
+        label
+    });
+    assert_eq!(
+        serde_json::to_value(&edge.label).unwrap(),
+        serde_json::to_value(&expected_label).unwrap()
+    );
     assert_eq!(after.undo_count, before.undo_count + 1);
     apply_session(&mut session, Request::Undo);
     assert_eq!(session.snapshot().content_id, before.content_id);
@@ -1528,9 +1594,22 @@ fn association_edge_attachment_follows_rerouted_sequence_with_undo() {
             })
         );
         assert_ne!(attachment, Some(&(20.0, 5.0)));
+        let old_link = before.project.documents[0]
+            .diagrams
+            .iter()
+            .find(|d| d.id == diagram_id)
+            .unwrap()
+            .edges
+            .iter()
+            .find(|e| e.id.to_string() == "association_edge")
+            .unwrap();
         assert_eq!(
             link.label.as_ref().unwrap().bounds,
-            Some(rect(22.0, 20.0, 10.0, 5.0))
+            Some(followed(
+                &rect(22.0, 20.0, 10.0, 5.0),
+                &old_link.waypoints,
+                &link.waypoints
+            ))
         );
         apply_session(&mut session, Request::Undo);
         assert_eq!(session.snapshot().content_id, before.content_id);
@@ -2224,8 +2303,9 @@ fn moving_event_or_gateway_keeps_route_outside_endpoint_owners_and_undoes() {
             .find(|d| d.id == diagram_id)
             .unwrap();
         let repaired = &diagram.edges[0].waypoints;
+        // Kept bends stay on the route; one left collinear is dropped as a DI point.
         for bend in &waypoints[1..waypoints.len() - 1] {
-            assert!(repaired.contains(bend));
+            assert_eq!(distance_to_path(bend, repaired), 0.0);
         }
         for pair in repaired.windows(2) {
             assert!(pair[0].x == pair[1].x || pair[0].y == pair[1].y);
