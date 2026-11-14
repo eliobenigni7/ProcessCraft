@@ -17,8 +17,11 @@ while you sketch. An operation that would break the model is refused with a reas
 
 New elements are placed and their flows routed for you.
 
-Every shape can be resized from the corner handles of the selection. Events, gateways and data
-references keep their proportions, and their labels stay centred below them.
+Every shape can be resized from the handles of the selection: four corners and four edge midpoints
+(corners only for events, gateways and data references, which keep their proportions and keep their
+labels centred below them). Dragged edges snap to neighbouring shapes and the grid. Hold `Shift` to
+keep the proportions, `Alt` to resize around the centre, and `Ctrl` to resize without snapping. A
+container never shrinks past the elements inside it.
 
 ## Shortcuts
 

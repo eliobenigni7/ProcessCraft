@@ -30,15 +30,7 @@ enum Gesture {
         element: ElementSelector,
         bounds: Bounds,
     },
-    Resize {
-        shape: ElementSelector,
-        bounds: Bounds,
-        /// Handle direction per axis (-1 west/north, 0 none, 1 east/south).
-        handle: (i8, i8),
-        min: (f64, f64),
-        /// Keep the width/height ratio (events, gateways, data references).
-        aspect: bool,
-    },
+    Resize(ResizeDrag),
     /// Space tool drag from this screen point.
     Space(Pos2),
     /// Dragging a waypoint or segment of the selected edge (`edge` is its DI id).
@@ -50,6 +42,94 @@ enum Gesture {
         /// Bounds of the source and target shapes.
         ends: [Option<Bounds>; 2],
     },
+}
+
+struct ResizeDrag {
+    shape: ElementSelector,
+    bounds: Bounds,
+    /// Handle direction per axis (-1 west/north, 0 none, 1 east/south).
+    handle: (i8, i8),
+    min: (f64, f64),
+    /// Keep the width/height ratio (events, gateways, data references).
+    aspect: bool,
+    /// Model point where the drag started, so panning or auto-scroll mid-drag does not skew it.
+    start: (f64, f64),
+    /// Extent the shape must keep covering: contained shapes plus the core's child padding.
+    keep: Option<Bounds>,
+}
+impl ResizeDrag {
+    /// Bounds with the pointer at model point `at`, and the snap used for guide lines. Shift
+    /// locks the ratio, Alt resizes around the centre, Ctrl turns snapping off; only the
+    /// dragged edges snap (to siblings like a move, then to the optional grid).
+    fn preview(
+        &self,
+        d: &processcraft_core::model::BpmnDocument,
+        diagram: &processcraft_core::model::Diagram,
+        at: (f64, f64),
+        modifiers: egui::Modifiers,
+        tolerance: f64,
+        grid: bool,
+    ) -> (Bounds, processcraft_core::geometry::Snap) {
+        let aspect = self.aspect || modifiers.shift;
+        let resize = |dx: f64, dy: f64| {
+            resize_bounds(
+                &self.bounds,
+                self.handle,
+                (dx, dy),
+                self.min,
+                aspect,
+                modifiers.alt,
+                self.keep.as_ref(),
+            )
+        };
+        let (mut dx, mut dy) = (at.0 - self.start.0, at.1 - self.start.1);
+        let mut snap = processcraft_core::geometry::Snap::default();
+        if !aspect && !modifiers.ctrl {
+            let r = resize(dx, dy);
+            let (hx, hy) = self.handle;
+            let corner = Bounds {
+                x: if hx < 0 { r.x } else { r.x + r.width },
+                y: if hy < 0 { r.y } else { r.y + r.height },
+                width: 0.0,
+                height: 0.0,
+            };
+            let items = [(self.shape.clone(), self.bounds.clone())];
+            snap = snap_drag(d, diagram, &items, &corner, tolerance, grid);
+            if hx == 0 {
+                (snap.dx, snap.guide_x) = (0.0, None);
+            }
+            if hy == 0 {
+                (snap.dy, snap.guide_y) = (0.0, None);
+            }
+            dx += snap.dx;
+            dy += snap.dy;
+        }
+        (resize(dx, dy), snap)
+    }
+}
+/// Snap guide lines across the canvas.
+fn paint_guides(
+    painter: &egui::Painter,
+    rect: Rect,
+    camera: (f64, f64),
+    zoom: f32,
+    snap: &processcraft_core::geometry::Snap,
+    stroke: egui::Stroke,
+) {
+    if let Some(x) = snap.guide_x {
+        let x = rect.left() + (x - camera.0) as f32 * zoom;
+        painter.line_segment(
+            [Pos2::new(x, rect.top()), Pos2::new(x, rect.bottom())],
+            stroke,
+        );
+    }
+    if let Some(y) = snap.guide_y {
+        let y = rect.top() + (y - camera.1) as f32 * zoom;
+        painter.line_segment(
+            [Pos2::new(rect.left(), y), Pos2::new(rect.right(), y)],
+            stroke,
+        );
+    }
 }
 
 /// A handle on a selected edge: a waypoint or the middle of a segment.
@@ -203,23 +283,19 @@ fn redock_end(points: &[Point], i: usize, b: &Bounds, x: f64, y: f64) -> Vec<Poi
 /// Snap correction for a drag (bpmn-js): the first dragged shape snaps to its siblings (shapes
 /// of elements in the same scope; for pools, lanes, and artifacts every shape that does not
 /// contain it) and its mid to the mids of the elements it is connected to, then the optional
-/// 10 px grid on free axes.
+/// 10 px grid on free axes. `moved` is where the first shape would land (a resize passes the
+/// dragged corner as an empty box, so only that point snaps).
 fn snap_drag(
     d: &processcraft_core::model::BpmnDocument,
     diagram: &processcraft_core::model::Diagram,
     items: &[(ElementSelector, Bounds)],
-    offset: (f64, f64),
+    moved: &Bounds,
     tolerance: f64,
     grid: bool,
 ) -> processcraft_core::geometry::Snap {
     use processcraft_core::{bpmn_activity::ModelReference, queries, rules};
-    let Some((first_id, first)) = items.first() else {
+    let Some((first_id, _)) = items.first() else {
         return Default::default();
-    };
-    let moved = Bounds {
-        x: first.x + offset.0,
-        y: first.y + offset.1,
-        ..first.clone()
     };
     let contains = |b: &Bounds| {
         b.x <= moved.x
@@ -275,7 +351,7 @@ fn snap_drag(
         .filter(|s| partners.contains(&s.element))
         .map(|s| s.bounds.clone())
         .collect();
-    let mut snap = processcraft_core::geometry::snap(&moved, &siblings, &connected, tolerance);
+    let mut snap = processcraft_core::geometry::snap(moved, &siblings, &connected, tolerance);
     if grid {
         let (cx, cy) = (moved.x + moved.width / 2.0, moved.y + moved.height / 2.0);
         if snap.guide_x.is_none() {
@@ -324,10 +400,14 @@ fn drop_feedback(
         ));
     }
 }
-/// Resize handles of a screen rectangle: its four corners.
-fn resize_handles(r: Rect) -> Vec<((i8, i8), Pos2)> {
-    [(-1, -1), (1, -1), (1, 1), (-1, 1)]
+/// Resize handles of a screen rectangle: its four corners, plus the four edge midpoints unless
+/// the shape keeps its proportions.
+fn resize_handles(r: Rect, aspect: bool) -> Vec<((i8, i8), Pos2)> {
+    let corners = [(-1, -1), (1, -1), (1, 1), (-1, 1)];
+    let edges = [(0, -1), (1, 0), (0, 1), (-1, 0)];
+    corners
         .iter()
+        .chain(if aspect { &[][..] } else { &edges[..] })
         .map(|&(x, y)| {
             (
                 (x, y),
@@ -335,6 +415,25 @@ fn resize_handles(r: Rect) -> Vec<((i8, i8), Pos2)> {
             )
         })
         .collect()
+}
+/// Pick radius of a resize handle, in screen pixels.
+const RESIZE_PICK: f32 = 9.0;
+/// The resize handle nearest to `pos` within the pick radius.
+fn handle_at(handles: &[((i8, i8), Pos2)], pos: Pos2) -> Option<(i8, i8)> {
+    handles
+        .iter()
+        .map(|(h, c)| (*h, c.distance(pos)))
+        .filter(|(_, d)| *d <= RESIZE_PICK)
+        .min_by(|a, b| a.1.total_cmp(&b.1))
+        .map(|(h, _)| h)
+}
+fn resize_cursor((hx, hy): (i8, i8)) -> egui::CursorIcon {
+    match (hx, hy) {
+        (0, _) => egui::CursorIcon::ResizeVertical,
+        (_, 0) => egui::CursorIcon::ResizeHorizontal,
+        _ if hx == hy => egui::CursorIcon::ResizeNwSe,
+        _ => egui::CursorIcon::ResizeNeSw,
+    }
 }
 
 struct LabelEdit {
@@ -712,35 +811,95 @@ fn texture_rect(rect: Rect, view: TextureView, camera: (f64, f64), zoom: f32) ->
     )
 }
 
-/// `resized` scaled up to the ratio of `b`, anchored at the corner opposite the handle.
-fn keep_aspect(b: &Bounds, (hx, hy): (i8, i8), resized: Bounds) -> Bounds {
-    let scale = (resized.width / b.width).max(resized.height / b.height);
-    let (width, height) = (b.width * scale, b.height * scale);
-    Bounds {
-        x: if hx < 0 { b.x + b.width - width } else { b.x },
-        y: if hy < 0 { b.y + b.height - height } else { b.y },
-        width,
-        height,
+/// The extent a resized `shape` must keep covering: the shapes it fully contains (as the core
+/// checks them) plus the core's child padding.
+fn child_extent(
+    d: &processcraft_core::model::BpmnDocument,
+    diagram: &processcraft_core::model::Diagram,
+    shape: &Shape,
+) -> Option<Bounds> {
+    use processcraft_core::manipulate::{CHILD_PADDING, children};
+    let o = &shape.bounds;
+    let (mut lo, mut hi) = ((f64::MAX, f64::MAX), (f64::MIN, f64::MIN));
+    for c in children(d, diagram, &shape.element)
+        .into_iter()
+        .filter(|c| {
+            c.x >= o.x
+                && c.y >= o.y
+                && c.x + c.width <= o.x + o.width
+                && c.y + c.height <= o.y + o.height
+        })
+    {
+        lo = (lo.0.min(c.x), lo.1.min(c.y));
+        hi = (hi.0.max(c.x + c.width), hi.1.max(c.y + c.height));
     }
+    (lo.0 <= hi.0).then_some(Bounds {
+        x: lo.0 - CHILD_PADDING,
+        y: lo.1 - CHILD_PADDING,
+        width: hi.0 - lo.0 + 2.0 * CHILD_PADDING,
+        height: hi.1 - lo.1 + 2.0 * CHILD_PADDING,
+    })
 }
-/// Bounds after dragging the resize handle `(hx, hy)` by `(dx, dy)`, never below `min`.
-fn resize_bounds(b: &Bounds, (hx, hy): (i8, i8), dx: f64, dy: f64, min: (f64, f64)) -> Bounds {
-    let (mut left, mut top, mut right, mut bottom) = (b.x, b.y, b.x + b.width, b.y + b.height);
-    match hx {
-        -1 => left = (left + dx).min(right - min.0),
-        1 => right = (right + dx).max(left + min.0),
-        _ => {}
+/// Bounds after dragging the resize handle `(hx, hy)` by `(dx, dy)`, in whole units. `centred`
+/// moves the opposite side the other way; `aspect` keeps the ratio, scaling from the opposite
+/// corner (or the centre on an axis without a handle). The size never drops below `min` nor
+/// uncovers `keep`, the extent contained shapes need, so the core accepts the result.
+fn resize_bounds(
+    b: &Bounds,
+    (hx, hy): (i8, i8),
+    (dx, dy): (f64, f64),
+    min: (f64, f64),
+    aspect: bool,
+    centred: bool,
+    keep: Option<&Bounds>,
+) -> Bounds {
+    let k = if centred { 2.0 } else { 1.0 };
+    let (mut w, h) = (
+        b.width + f64::from(hx) * dx * k,
+        b.height + f64::from(hy) * dy * k,
+    );
+    // The smallest length along an axis: the minimum, and the room `keep` needs on the
+    // moving sides.
+    let need = |dir: i8, start: f64, len: f64, lo: f64, hi: f64, min: f64| {
+        let centre = start + len / 2.0;
+        min.max(match dir {
+            0 => 0.0,
+            _ if centred => 2.0 * (centre - lo).max(hi - centre),
+            1 => hi - start,
+            _ => start + len - lo,
+        })
+    };
+    let (mut min_w, mut min_h) = min;
+    if let Some(c) = keep {
+        min_w = need(hx, b.x, b.width, c.x, c.x + c.width, min_w);
+        min_h = need(hy, b.y, b.height, c.y, c.y + c.height, min_h);
     }
-    match hy {
-        -1 => top = (top + dy).min(bottom - min.1),
-        1 => bottom = (bottom + dy).max(top + min.1),
-        _ => {}
+    let ratio = b.height / b.width;
+    if aspect {
+        let scale = match (hx, hy) {
+            (0, _) => h / b.height,
+            (_, 0) => w / b.width,
+            _ => (w / b.width).max(h / b.height),
+        };
+        w = (b.width * scale).max(min_w).max(min_h / ratio);
     }
+    let w = w.round().max(min_w.ceil());
+    let h = if aspect {
+        (w * ratio).round()
+    } else {
+        h.round()
+    }
+    .max(min_h.ceil());
+    let place = |dir: i8, start: f64, old: f64, len: f64| match dir {
+        _ if centred || dir == 0 => start + (old - len) / 2.0,
+        -1 => start + old - len,
+        _ => start,
+    };
     Bounds {
-        x: left,
-        y: top,
-        width: right - left,
-        height: bottom - top,
+        x: place(hx, b.x, b.width, w).round(),
+        y: place(hy, b.y, b.height, h).round(),
+        width: w,
+        height: h,
     }
 }
 
@@ -2360,18 +2519,35 @@ impl ProcessCraft {
                     }
                     let hover = response.hover_pos();
                     let mut pad = Vec::new();
-                    if let Some(shape) = single {
-                        let screen = to_screen(rect, camera, zoom, &shape.bounds);
-                        for (_, pos) in rule.map(|_| resize_handles(screen)).unwrap_or_default() {
-                            let handle = Rect::from_center_size(pos, Vec2::splat(8.0));
-                            painter.rect_filled(handle, 2.0, palette.base);
-                            painter.rect_stroke(
-                                handle,
-                                2.0,
-                                egui::Stroke::new(1.5, accent),
-                                egui::StrokeKind::Inside,
-                            );
-                        }
+                    let handles = single
+                        .zip(rule)
+                        .map(|(shape, rule)| {
+                            resize_handles(
+                                to_screen(rect, camera, zoom, &shape.bounds),
+                                rule.keep_aspect,
+                            )
+                        })
+                        .unwrap_or_default();
+                    let hovered_handle = hover
+                        .filter(|_| self.canvas.gesture.is_none())
+                        .and_then(|pos| handle_at(&handles, pos));
+                    if let Some(h) = hovered_handle {
+                        ctx.set_cursor_icon(resize_cursor(h));
+                    }
+                    for (h, pos) in &handles {
+                        let handle = Rect::from_center_size(*pos, Vec2::splat(8.0));
+                        let fill = if hovered_handle == Some(*h) {
+                            accent
+                        } else {
+                            palette.base
+                        };
+                        painter.rect_filled(handle, 2.0, fill);
+                        painter.rect_stroke(
+                            handle,
+                            2.0,
+                            egui::Stroke::new(1.5, accent),
+                            egui::StrokeKind::Inside,
+                        );
                     }
                     let pad_idle = self.canvas.gesture.is_none()
                         && self.canvas.label_edit.is_none()
@@ -2482,19 +2658,18 @@ impl ProcessCraft {
                                 ends: [from, to].map(|s| s.map(|s| s.bounds.clone())),
                             });
                         } else if let Some(shape) = single {
-                            let screen = to_screen(rect, camera, zoom, &shape.bounds);
                             if let Some(rule) = rule
-                                && let Some((handle, _)) = resize_handles(screen)
-                                    .into_iter()
-                                    .find(|(_, c)| c.distance(pos) <= 6.0)
+                                && let Some(handle) = handle_at(&handles, pos)
                             {
-                                self.canvas.gesture = Some(Gesture::Resize {
+                                self.canvas.gesture = Some(Gesture::Resize(ResizeDrag {
                                     shape: shape.id.selector(),
                                     bounds: shape.bounds.clone(),
                                     handle,
                                     min: (rule.width, rule.height),
                                     aspect: rule.keep_aspect,
-                                });
+                                    start: to_model(rect, camera, zoom, pos),
+                                    keep: child_extent(d, diagram, shape),
+                                }));
                             } else if pad_at(pos) == Some(PadAction::Connect) {
                                 self.canvas.gesture = Some(Gesture::Connect {
                                     element: shape.element.clone(),
@@ -2730,17 +2905,23 @@ impl ProcessCraft {
                         && let Some(drag) = &mut self.drag
                         && !drag.label
                     {
-                        drag.snap = if free {
-                            Default::default()
-                        } else {
-                            snap_drag(
-                                d,
-                                diagram,
-                                &drag.items,
-                                ((drag.offset.x / zoom) as f64, (drag.offset.y / zoom) as f64),
-                                7.0 / zoom as f64,
-                                self.canvas.grid_snap,
-                            )
+                        drag.snap = match drag.items.first() {
+                            Some((_, first)) if !free => {
+                                let moved = Bounds {
+                                    x: first.x + (drag.offset.x / zoom) as f64,
+                                    y: first.y + (drag.offset.y / zoom) as f64,
+                                    ..first.clone()
+                                };
+                                snap_drag(
+                                    d,
+                                    diagram,
+                                    &drag.items,
+                                    &moved,
+                                    7.0 / zoom as f64,
+                                    self.canvas.grid_snap,
+                                )
+                            }
+                            _ => Default::default(),
                         };
                     }
                     if response.dragged()
@@ -2749,20 +2930,7 @@ impl ProcessCraft {
                         let offset = drag.offset
                             + Vec2::new(drag.snap.dx as f32, drag.snap.dy as f32) * zoom;
                         let guide = egui::Stroke::new(1.0, palette.selection.gamma_multiply(0.6));
-                        if let Some(x) = drag.snap.guide_x {
-                            let x = rect.left() + (x - camera.0) as f32 * zoom;
-                            painter.line_segment(
-                                [Pos2::new(x, rect.top()), Pos2::new(x, rect.bottom())],
-                                guide,
-                            );
-                        }
-                        if let Some(y) = drag.snap.guide_y {
-                            let y = rect.top() + (y - camera.1) as f32 * zoom;
-                            painter.line_segment(
-                                [Pos2::new(rect.left(), y), Pos2::new(rect.right(), y)],
-                                guide,
-                            );
-                        }
+                        paint_guides(&painter, rect, camera, zoom, &drag.snap, guide);
                         // Attach and drop-on-flow feedback for a single dragged element.
                         if let [(shape_id, bounds)] = drag.items.as_slice()
                             && !drag.label
@@ -2969,31 +3137,25 @@ impl ProcessCraft {
                                     ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
                                 }
                             }
-                            Some(Gesture::Resize {
-                                bounds,
-                                handle,
-                                min,
-                                aspect,
-                                ..
-                            }) => {
-                                if let (Some(pos), Some(start)) = (pointer, origin) {
-                                    let delta = (pos - start) / zoom;
-                                    let mut resized = resize_bounds(
-                                        bounds,
-                                        *handle,
-                                        delta.x as f64,
-                                        delta.y as f64,
-                                        *min,
+                            Some(Gesture::Resize(resize)) => {
+                                if let Some(pos) = pointer {
+                                    let (resized, snap) = resize.preview(
+                                        d,
+                                        diagram,
+                                        to_model(rect, camera, zoom, pos),
+                                        ctx.input(|i| i.modifiers),
+                                        7.0 / zoom as f64,
+                                        self.canvas.grid_snap,
                                     );
-                                    if *aspect {
-                                        resized = keep_aspect(bounds, *handle, resized);
-                                    }
+                                    let guide = egui::Stroke::new(1.0, accent.gamma_multiply(0.6));
+                                    paint_guides(&painter, rect, camera, zoom, &snap, guide);
                                     painter.rect_stroke(
                                         to_screen(rect, camera, zoom, &resized),
                                         0.0,
                                         egui::Stroke::new(2.0, accent),
                                         egui::StrokeKind::Inside,
                                     );
+                                    ctx.set_cursor_icon(resize_cursor(resize.handle));
                                 }
                             }
                             None => {}
@@ -3076,30 +3238,21 @@ impl ProcessCraft {
                                     self.finish_connect(element, pos, rect, camera, zoom);
                                 }
                             }
-                            Gesture::Resize {
-                                shape,
-                                bounds,
-                                handle,
-                                min,
-                                aspect,
-                            } => {
-                                if let (Some(pos), Some(start)) = (pointer, origin) {
-                                    let delta = (pos - start) / zoom;
-                                    let mut resized = resize_bounds(
-                                        &bounds,
-                                        handle,
-                                        delta.x as f64,
-                                        delta.y as f64,
-                                        min,
+                            Gesture::Resize(resize) => {
+                                if let Some(pos) = pointer {
+                                    let (resized, _) = resize.preview(
+                                        d,
+                                        diagram,
+                                        to_model(rect, camera, zoom, pos),
+                                        ctx.input(|i| i.modifiers),
+                                        7.0 / zoom as f64,
+                                        self.canvas.grid_snap,
                                     );
-                                    if aspect {
-                                        resized = keep_aspect(&bounds, handle, resized);
-                                    }
-                                    if resized != bounds {
+                                    if resized != resize.bounds {
                                         self.ctl.mutate(vec![Mutation::ResizeShape {
                                             document_id: d.id,
                                             diagram_id: diagram_id.clone(),
-                                            shape_id: shape,
+                                            shape_id: resize.shape,
                                             bounds: resized,
                                         }]);
                                     }
@@ -3950,7 +4103,7 @@ impl ProcessCraft {
         let active = self.drag.is_some()
             || matches!(
                 self.canvas.gesture,
-                Some(Gesture::BoxSelect(_) | Gesture::Connect { .. })
+                Some(Gesture::BoxSelect(_) | Gesture::Connect { .. } | Gesture::Resize(_))
             );
         let (Some(rect), Some(pos)) = (self.canvas.rect, ctx.input(|i| i.pointer.latest_pos()))
         else {
@@ -4127,33 +4280,50 @@ mod tests {
     fn resize_moves_only_the_dragged_corner_and_keeps_a_minimum() {
         let start = b(0.0, 0.0, 100.0, 80.0);
         let min = (20.0, 20.0);
-        assert_eq!(
-            resize_bounds(&start, (1, 1), 20.0, 10.0, min),
-            b(0.0, 0.0, 120.0, 90.0)
-        );
-        assert_eq!(
-            resize_bounds(&start, (-1, -1), 10.0, 10.0, min),
-            b(10.0, 10.0, 90.0, 70.0)
-        );
-        assert_eq!(
-            resize_bounds(&start, (1, -1), -500.0, 0.0, min),
-            b(0.0, 0.0, 20.0, 80.0)
-        );
-        assert_eq!(
-            resize_bounds(&start, (-1, 1), 0.0, -500.0, min),
-            b(0.0, 0.0, 100.0, 20.0)
-        );
-        // East/west handles leave the height alone.
-        assert_eq!(
-            resize_bounds(&start, (1, 0), 30.0, 50.0, (100.0, 40.0)),
-            b(0.0, 0.0, 130.0, 80.0)
-        );
-        // Locked proportions scale from the opposite corner.
+        let free = |h, d| resize_bounds(&start, h, d, min, false, false, None);
+        assert_eq!(free((1, 1), (20.0, 10.0)), b(0.0, 0.0, 120.0, 90.0));
+        assert_eq!(free((-1, -1), (10.0, 10.0)), b(10.0, 10.0, 90.0, 70.0));
+        assert_eq!(free((1, -1), (-500.0, 0.0)), b(0.0, 0.0, 20.0, 80.0));
+        assert_eq!(free((-1, 1), (0.0, -500.0)), b(0.0, 0.0, 100.0, 20.0));
+        // Edge handles change one axis only; results are whole units.
+        assert_eq!(free((1, 0), (30.4, 50.0)), b(0.0, 0.0, 130.0, 80.0));
+        assert_eq!(free((0, -1), (9.0, -10.6)), b(0.0, -11.0, 100.0, 91.0));
+        // Locked proportions (or Shift) scale from the opposite corner.
         let event = b(0.0, 0.0, 36.0, 36.0);
-        let dragged = resize_bounds(&event, (-1, -1), -12.0, -4.0, (24.0, 24.0));
         assert_eq!(
-            keep_aspect(&event, (-1, -1), dragged),
+            resize_bounds(
+                &event,
+                (-1, -1),
+                (-12.0, -4.0),
+                (24.0, 24.0),
+                true,
+                false,
+                None
+            ),
             b(-12.0, -12.0, 48.0, 48.0)
+        );
+        assert_eq!(
+            resize_bounds(&start, (1, 1), (50.0, 0.0), min, true, false, None),
+            b(0.0, 0.0, 150.0, 120.0)
+        );
+        // Alt resizes around the centre.
+        assert_eq!(
+            resize_bounds(&start, (1, 0), (10.0, 0.0), min, false, true, None),
+            b(-10.0, 0.0, 120.0, 80.0)
+        );
+        // Contained shapes (plus padding) stop the shrink where the core would refuse it.
+        let keep = b(30.0, 10.0, 50.0, 40.0);
+        assert_eq!(
+            resize_bounds(
+                &start,
+                (-1, 1),
+                (60.0, -60.0),
+                min,
+                false,
+                false,
+                Some(&keep)
+            ),
+            b(30.0, 0.0, 70.0, 50.0)
         );
     }
 
@@ -5061,11 +5231,16 @@ mod tests {
         // Mid 2 below the inner task's mid (another scope): no snap.
         let dx = s.x - 1000.0 - a.x;
         let dy = s.y + 62.0 - (a.y + a.height / 2.0);
-        let free = snap_drag(d, diagram, &items, (dx, dy), 7.0, false);
+        let at = |dx: f64, dy: f64| Bounds {
+            x: a.x + dx,
+            y: a.y + dy,
+            ..a.clone()
+        };
+        let free = snap_drag(d, diagram, &items, &at(dx, dy), 7.0, false);
         assert_eq!((free.dy, free.guide_y), (0.0, None));
         // Mid 3 below the subprocess mid (a sibling): snaps.
         let dy = s.y + 103.0 - (a.y + a.height / 2.0);
-        let snapped = snap_drag(d, diagram, &items, (dx, dy), 7.0, false);
+        let snapped = snap_drag(d, diagram, &items, &at(dx, dy), 7.0, false);
         assert_eq!(snapped.dy, -3.0);
     }
 

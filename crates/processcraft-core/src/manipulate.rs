@@ -17,7 +17,7 @@ use crate::{
 /// Distance (diagram units) within which a dropped shape's centre lies on a flow.
 pub const FLOW_HIT: f64 = 5.0;
 /// Children keep this distance from the border of a resized container (bpmn-js).
-const CHILD_PADDING: f64 = 20.0;
+pub const CHILD_PADDING: f64 = 20.0;
 
 fn mid(b: &Bounds) -> Point {
     Point {
@@ -811,7 +811,7 @@ pub fn resize_rule(doc: &BpmnDocument, shape: &Shape) -> Option<rules::MinSize> 
     Some(rules::can_resize(resized))
 }
 /// Shapes a resize must keep inside: subprocess content, a pool's process nodes, lane members.
-fn children<'a>(
+pub fn children<'a>(
     doc: &BpmnDocument,
     diagram: &'a Diagram,
     element: &ElementSelector,
