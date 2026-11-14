@@ -1325,42 +1325,15 @@ pub fn propose_layout(
         cancel,
     )?;
     let rank = lay.layer[..n].to_vec();
-    // Components are stacked inside each band.
-    let mut block_rows = BTreeMap::<(usize, usize), usize>::new();
-    for v in 0..lay.layer.len() {
-        let rows = block_rows.entry((lay.band[v], lay.comp[v])).or_default();
-        *rows = (*rows).max(lay.row[v] + 1);
-    }
-    let mut offset = BTreeMap::new();
-    let mut used_rows = vec![0; bands];
-    for (&(band, comp), &rows) in &block_rows {
-        offset.insert((band, comp), used_rows[band]);
-        used_rows[band] += rows;
-    }
-    let row: Vec<_> = (0..n)
-        .map(|i| Some(offset[&(lay.band[i], lay.comp[i])] + lay.row[i]))
-        .collect();
-    let mut cells: BTreeMap<(usize, usize), Vec<usize>> = BTreeMap::new();
-    for (i, &layer) in rank.iter().enumerate() {
-        cells.entry((band_of(i), layer)).or_default().push(i);
-    }
-    let max_width = d
-        .shapes
-        .iter()
-        .filter(|s| nodes.contains_key(&s.element))
-        .map(|s| s.bounds.width)
-        .fold(0.0, f64::max);
-    let max_height = d
-        .shapes
-        .iter()
-        .filter(|s| nodes.contains_key(&s.element))
-        .map(|s| s.bounds.height)
-        .fold(0.0, f64::max);
-    // Back-edges run in a channel over the top of the higher band, or under the
-    // lower band when fewer vertices stand between the endpoints and that edge.
-    // Channels are assigned innermost-first by column span so nested loops never
-    // cross, and each band's margins grow with its channel count.
-    let slot = |i: usize| row[i].unwrap_or(0);
+    let layers = lay.order.len();
+    let key = |v: usize| (lay.band[v], lay.comp[v], lay.row[v]);
+    let shape_of = |i: usize| &d.shapes[shape_by_element[&ids[i]]];
+    // Back-edges run in a channel over the top of their component block in the
+    // upper band, or under it in the lower band when fewer vertices stand in the
+    // way. Channels are assigned innermost-first by column span so nested loops
+    // never cross, and each block's margins grow with its channel count. Every
+    // inter-layer segment or back-edge end may need a vertical leg in a gap.
+    let mut legs = vec![0usize; layers];
     let mut planned = Vec::new();
     for f in flows.values() {
         let (
@@ -1371,8 +1344,20 @@ pub fn propose_layout(
             continue;
         };
         let (a, b) = (indices[s], indices[t]);
-        if a == b || rank[a] < rank[b] {
+        if a == b {
             continue;
+        }
+        if rank[a] < rank[b] {
+            for pair in lay.chains[&(a, b)].windows(2) {
+                if key(pair[0]) != key(pair[1]) || pair[0] < n || pair[1] < n {
+                    legs[lay.layer[pair[0]]] += 1;
+                }
+            }
+            continue;
+        }
+        legs[rank[a]] += 1;
+        if rank[b] > 0 {
+            legs[rank[b] - 1] += 1;
         }
         let bottom = !lay.channel_top(a, b);
         let band = if bottom {
@@ -1380,51 +1365,100 @@ pub fn propose_layout(
         } else {
             band_of(a).min(band_of(b))
         };
-        planned.push((bottom, band, rank[a] - rank[b], f.id.selector()));
+        planned.push((
+            bottom,
+            (band, lay.comp[a]),
+            rank[a] - rank[b],
+            f.id.selector(),
+        ));
     }
-    planned.sort_by_key(|(bottom, band, span, _)| (*bottom, *band, *span));
-    let mut channel_count = vec![[0usize; 2]; bands];
+    planned.sort_by_key(|(bottom, block, span, _)| (*bottom, *block, *span));
+    let mut channel_count = BTreeMap::<(usize, usize), [usize; 2]>::new();
     let mut loop_plan = BTreeMap::new();
-    for (bottom, band, _, flow) in planned {
-        let count = &mut channel_count[band][usize::from(bottom)];
-        loop_plan.insert(flow, (bottom, band, *count));
+    for (bottom, block, _, flow) in planned {
+        let count = &mut channel_count.entry(block).or_default()[usize::from(bottom)];
+        loop_plan.insert(flow, (bottom, block, *count));
         *count += 1;
     }
-    // Nodes start `top` below their band edge; top channel k sits 12 + 8k above them.
-    let top: Vec<f64> = channel_count
-        .iter()
-        .map(|c| (12.0 + 8.0 * c[0] as f64).max(60.0))
-        .collect();
-    // Bottom channels sit 12 + 8k below the lowest node or external label of the band.
-    let mut lowest = vec![0.0_f64; bands];
-    for (i, id) in ids.iter().enumerate() {
-        let shape = &d.shapes[shape_by_element[id]];
-        let y = top[band_of(i)]
-            + slot(i) as f64 * (max_height + 80.0)
-            + (max_height - shape.bounds.height) / 2.0;
-        let label = shape
-            .label
-            .as_ref()
-            .and_then(|l| l.bounds.as_ref())
-            .map_or(0.0, |l| l.y - shape.bounds.y + l.height);
-        lowest[band_of(i)] = lowest[band_of(i)].max(y + shape.bounds.height.max(label));
+    // Each node with its external label spans (left, right, up, down) around its
+    // centre. Columns and rows take the widest and tallest of their members;
+    // dummy-only columns are empty and dummy-only rows 16 high.
+    let mut column = vec![[0.0_f64; 2]; layers];
+    let mut row_extent = BTreeMap::<(usize, usize, usize), [f64; 2]>::new();
+    for v in 0..lay.layer.len() {
+        let e = if v < n {
+            let b = &shape_of(v).bounds;
+            let (cx, cy) = (b.x + b.width / 2.0, b.y + b.height / 2.0);
+            let half = [b.width / 2.0, b.width / 2.0, b.height / 2.0, b.height / 2.0];
+            match shape_of(v).label.as_ref().and_then(|l| l.bounds.as_ref()) {
+                Some(l) => [
+                    half[0].max(cx - l.x),
+                    half[1].max(l.x + l.width - cx),
+                    half[2].max(cy - l.y),
+                    half[3].max(l.y + l.height - cy),
+                ],
+                None => half,
+            }
+        } else {
+            [0.0, 0.0, 8.0, 8.0]
+        };
+        let c = &mut column[lay.layer[v]];
+        (c[0], c[1]) = (c[0].max(e[0]), c[1].max(e[1]));
+        let r = row_extent.entry(key(v)).or_default();
+        (r[0], r[1]) = (r[0].max(e[2]), r[1].max(e[3]));
     }
-    let mut band_heights = vec![120.0_f64; bands];
-    for (i, slot) in row.iter().enumerate() {
-        let h =
-            (slot.unwrap_or(0) + 1) as f64 * (max_height + 80.0) + 40.0 + top[band_of(i)] - 60.0;
-        band_heights[band_of(i)] = band_heights[band_of(i)].max(h);
+    // Inside a pool, lanes start after the pool header and nodes move with them.
+    let lane_x = if pool.is_some() {
+        crate::containers::LANE_INDENTATION
+    } else {
+        0.0
+    };
+    let mut col_x = vec![80.0 + lane_x; layers];
+    for l in 1..layers {
+        col_x[l] = col_x[l - 1]
+            + column[l - 1][0]
+            + column[l - 1][1]
+            + (24.0 + 8.0 * legs[l - 1] as f64).max(60.0);
     }
-    for (band, count) in channel_count.iter().enumerate() {
-        if count[1] > 0 {
-            band_heights[band] =
-                band_heights[band].max(lowest[band] + 16.0 + 8.0 * count[1] as f64);
+    let width = layers
+        .checked_sub(1)
+        .map_or(80.0 + lane_x, |l| col_x[l] + column[l][0] + column[l][1])
+        + 80.0;
+    // Bands stack their component blocks; a block's margins hold its channels
+    // (top channel k sits 12 + 8k above its rows, bottom channel k as far below).
+    let mut row_y = BTreeMap::new();
+    let mut block_rows = BTreeMap::new();
+    let mut band_y = Vec::with_capacity(bands + 1);
+    let mut y = 0.0_f64;
+    for band in 0..bands {
+        let start = y;
+        band_y.push(start);
+        let comps: BTreeSet<_> = row_extent
+            .keys()
+            .filter(|k| k.0 == band)
+            .map(|k| k.1)
+            .collect();
+        for &comp in &comps {
+            let [top, bottom] = channel_count
+                .get(&(band, comp))
+                .copied()
+                .unwrap_or_default();
+            y += (20.0 + 8.0 * top as f64).max(60.0);
+            let rows_top = y;
+            for (&k, e) in row_extent.range((band, comp, 0)..=(band, comp, usize::MAX)) {
+                row_y.insert(k, y + e[0]);
+                y += e[0] + e[1] + 40.0;
+            }
+            y -= 40.0;
+            block_rows.insert((band, comp), (rows_top, y));
+            y += (20.0 + 8.0 * bottom as f64).max(40.0);
+        }
+        // An empty unlaned band beside lanes takes no room.
+        if !comps.is_empty() || bands == 1 || band + 1 < bands {
+            y = y.max(start + 120.0);
         }
     }
-    let mut band_y = vec![0.0; bands];
-    for i in 1..bands {
-        band_y[i] = band_y[i - 1] + band_heights[i - 1];
-    }
+    band_y.push(y);
     let mut result = original.clone();
     let index: BTreeMap<_, _> = result
         .shapes
@@ -1432,36 +1466,29 @@ pub fn propose_layout(
         .enumerate()
         .map(|(i, s)| (s.id.clone(), i))
         .collect();
-    for (&(band, layer), cell) in &cells {
-        for &i in cell {
-            let shape = &d.shapes[shape_by_element[&ids[i]]];
-            let out = &mut result.shapes[index[&shape.id.selector()]];
-            let x = 80.0 + layer as f64 * (max_width + 160.0);
-            let y = band_y[band]
-                + top[band]
-                + row[i].unwrap_or(0) as f64 * (max_height + 80.0)
-                + (max_height - out.bounds.height) / 2.0;
-            let dx = x - out.bounds.x;
-            let dy = y - out.bounds.y;
-            out.bounds.x = x;
-            out.bounds.y = y;
-            if let Some(label) = &mut out.label_bounds {
-                label.x += dx;
-                label.y += dy;
-            }
+    for i in 0..n {
+        let out = &mut result.shapes[index[&shape_of(i).id.selector()]];
+        let x = col_x[rank[i]] + column[rank[i]][0] - out.bounds.width / 2.0;
+        let y = row_y[&key(i)] - out.bounds.height / 2.0;
+        let dx = x - out.bounds.x;
+        let dy = y - out.bounds.y;
+        out.bounds.x = x;
+        out.bounds.y = y;
+        if let Some(label) = &mut out.label_bounds {
+            label.x += dx;
+            label.y += dy;
         }
     }
-    let width = 160.0 + (rank.iter().copied().max().unwrap_or(0) + 1) as f64 * (max_width + 160.0);
     for (i, lane) in process.lanes.iter().enumerate() {
         let shape = &d.shapes[shape_by_element[&lane.id.selector()]];
         let out = &mut result.shapes[index[&shape.id.selector()]];
-        let dx = -out.bounds.x;
+        let dx = lane_x - out.bounds.x;
         let dy = band_y[i] - out.bounds.y;
         out.bounds = Bounds {
-            x: 0.0,
+            x: lane_x,
             y: band_y[i],
-            width,
-            height: band_heights[i],
+            width: width - lane_x,
+            height: band_y[i + 1] - band_y[i],
         };
         if let Some(label) = &mut out.label_bounds {
             label.x += dx;
@@ -1477,7 +1504,7 @@ pub fn propose_layout(
             x: 0.0,
             y: 0.0,
             width,
-            height: band_heights.iter().sum(),
+            height: band_y[bands],
         };
         if let Some(label) = &mut out.label_bounds {
             label.x += dx;
@@ -1675,11 +1702,12 @@ pub fn propose_layout(
                 end.clone(),
             ]
         } else if back {
-            let (bottom, band, k) = loop_plan[&flow.id.selector()];
+            let (bottom, block, k) = loop_plan[&flow.id.selector()];
+            let (rows_top, rows_bottom) = block_rows[&block];
             let channel_y = if bottom {
-                band_y[band] + lowest[band] + 12.0 + 8.0 * k as f64
+                rows_bottom + 12.0 + 8.0 * k as f64
             } else {
-                band_y[band] + top[band] - 12.0 - 8.0 * k as f64
+                rows_top - 12.0 - 8.0 * k as f64
             };
             vec![
                 start.clone(),
@@ -1807,6 +1835,8 @@ struct Layered {
     order: Vec<Vec<usize>>,
     pred: Vec<Vec<usize>>,
     succ: Vec<Vec<usize>>,
+    /// Vertex chain `[source, dummies.., target]` of every forward node pair.
+    chains: BTreeMap<(usize, usize), Vec<usize>>,
 }
 const MAX_LAYERED_VERTICES: usize = 20_000;
 impl Layered {
@@ -1861,6 +1891,7 @@ impl Layered {
             layer[v] = k % side;
         }
         let (mut pred, mut succ) = (vec![Vec::new(); n], vec![Vec::new(); n]);
+        let mut chains = BTreeMap::new();
         for v in 0..n {
             for &w in graph[v].iter().filter(|&&w| forward(v, w)) {
                 let mut chain = vec![v];
@@ -1880,6 +1911,7 @@ impl Layered {
                     succ[pair[0]].push(pair[1]);
                     pred[pair[1]].push(pair[0]);
                 }
+                chains.insert((v, w), chain);
             }
         }
         let layers = layer.iter().max().map_or(0, |m| m + 1);
@@ -1896,6 +1928,7 @@ impl Layered {
             order,
             pred,
             succ,
+            chains,
         };
         lay.sort_layers(cancel)?;
         lay.align_rows();

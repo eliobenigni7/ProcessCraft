@@ -555,7 +555,7 @@ fn one_pool_contains_lanes_and_unlaned_band() {
             style: None,
         });
     }
-    let p = layout(&d);
+    let p = assert_layout_properties(&d);
     let pool = &p
         .proposed
         .shapes
