@@ -51,7 +51,7 @@ pointer.
 - Snapping guides and a 10 px grid help placement.
 - Bendpoints and segments of a flow can be dragged, and either end of a flow can be reconnected.
 - **Align** and **distribute** work on a selection.
-- **Auto layout…** proposes a layout for the whole diagram and shows a preview before you accept it.
+- **Auto layout…** proposes a layout for the whole diagram and shows a preview before you accept it. Nodes stay in their lanes, branches and loops are untangled where possible, and the preview bar shows how many flow crossings and other warnings (overlapping labels or routes) remain, so you can decide whether to apply it.
 
 Every edit, including an auto-layout, is one undo step.
 

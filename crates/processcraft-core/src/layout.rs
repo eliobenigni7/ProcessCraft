@@ -41,6 +41,27 @@ pub struct LayoutProposal {
     pub choreography_scope_shape: Option<ElementSelector>,
     pub original: LayoutGeometry,
     pub proposed: LayoutGeometry,
+    /// Counted quality defects of an otherwise valid proposal (one per code).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<LayoutWarning>,
+    #[serde(default)]
+    pub metrics: LayoutMetrics,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct LayoutWarning {
+    pub code: String,
+    pub message: String,
+}
+/// Measured quality of the proposed geometry. `overlaps` counts labels touching
+/// labels or nodes and route segments passing over labels or nodes.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct LayoutMetrics {
+    pub crossings: usize,
+    pub overlaps: usize,
+    pub bends: usize,
+    pub edge_length: f64,
+    pub area: f64,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct LayoutError {
@@ -449,6 +470,8 @@ fn propose_choreography_layout(
         choreography_scope_shape: None,
         original,
         proposed,
+        warnings: computed.warnings,
+        metrics: computed.metrics,
     })
 }
 
@@ -991,6 +1014,8 @@ fn propose_choreography_scope_impl(
         choreography_scope_shape: scope_shape_id.cloned(),
         original,
         proposed,
+        warnings: computed.warnings,
+        metrics: computed.metrics,
     })
 }
 
@@ -1004,6 +1029,54 @@ fn segment_hits(a: &Point, b: &Point, r: &Bounds) -> bool {
         a.y > r.y && a.y < r.y + r.height && a.x.max(b.x) > r.x && a.x.min(b.x) < r.x + r.width
     } else {
         true
+    }
+}
+/// Drop repeated points and the middle of collinear runs.
+fn simplify(points: Vec<Point>) -> Vec<Point> {
+    let mut out: Vec<Point> = Vec::with_capacity(points.len());
+    for p in points {
+        if out.last().is_some_and(|q| q.x == p.x && q.y == p.y) {
+            continue;
+        }
+        if let [.., a, b] = out.as_slice()
+            && ((a.x == b.x && b.x == p.x) || (a.y == b.y && b.y == p.y))
+        {
+            out.pop();
+        }
+        out.push(p);
+    }
+    out
+}
+/// Put an edge label beside its route: above, then below, each horizontal
+/// segment (longest first), then right of each vertical one. The first spot
+/// clear of nodes and placed labels wins; otherwise the first spot is kept and
+/// `measure` reports the overlap.
+fn place_label(label: &mut Bounds, points: &[Point], nodes: &[Bounds], placed: &[Bounds]) {
+    let length = |s: &&[Point]| (s[0].x - s[1].x).abs() + (s[0].y - s[1].y).abs();
+    let mut segments: Vec<&[Point]> = points.windows(2).collect();
+    segments.sort_by(|x, y| length(y).total_cmp(&length(x)));
+    let (w, h) = (label.width, label.height);
+    let spot = |x: f64, y: f64| Bounds {
+        x,
+        y,
+        width: w,
+        height: h,
+    };
+    let mut candidates = Vec::new();
+    for s in segments.iter().filter(|s| s[0].y == s[1].y) {
+        let x = (s[0].x + s[1].x - w) / 2.0;
+        candidates.push(spot(x, s[0].y - h - 4.0));
+        candidates.push(spot(x, s[0].y + 4.0));
+    }
+    for s in segments.iter().filter(|s| s[0].x == s[1].x) {
+        candidates.push(spot(s[0].x + 4.0, (s[0].y + s[1].y - h) / 2.0));
+    }
+    if let Some(best) = candidates
+        .iter()
+        .find(|c| !nodes.iter().chain(placed).any(|o| overlap(c, o)))
+        .or(candidates.first())
+    {
+        *label = best.clone();
     }
 }
 /// Build a deterministic proposal without changing the document. Unsupported diagrams fail closed.
@@ -1053,18 +1126,25 @@ pub fn propose_layout(
     if process.lanes.len() > 64 || process.lanes.iter().any(|l| l.parent.is_some()) {
         return Err(err("unsupported", "Nested or too many lanes"));
     }
+    // Every flow node is accepted except artifacts, data references and attached
+    // events; expanded subprocesses are refused once their shapes are known.
     if process.nodes.iter().any(|n| {
-        n.details.is_some()
-            || !matches!(
-                n.kind,
-                NodeKind::Task
-                    | NodeKind::UserTask
-                    | NodeKind::ManualTask
-                    | NodeKind::StartEvent
-                    | NodeKind::EndEvent
-                    | NodeKind::ExclusiveGateway
-                    | NodeKind::ParallelGateway
+        matches!(
+            n.kind,
+            NodeKind::TextAnnotation
+                | NodeKind::DataObjectReference
+                | NodeKind::DataStoreReference
+                | NodeKind::BoundaryEvent
+        ) || matches!(
+            n.details,
+            Some(
+                crate::bpmn_model::NodeDetails::BoundaryEvent { .. }
+                    | crate::bpmn_model::NodeDetails::Event {
+                        attached_to: Some(_),
+                        ..
+                    }
             )
+        )
     }) || process.flows.iter().any(|f| f.kind != FlowKind::Sequence)
     {
         return Err(err("unsupported", "Unsupported node or flow"));
@@ -1154,6 +1234,17 @@ pub fn propose_layout(
             .is_some_and(|id| !shape_by_element.contains_key(id))
     {
         return Err(err("invalid_di", "Missing shape mapping"));
+    }
+    if process.nodes.iter().any(|n| {
+        matches!(
+            n.kind,
+            NodeKind::SubProcess | NodeKind::AdHocSubProcess | NodeKind::Transaction
+        ) && d.shapes[shape_by_element[&n.id.selector()]].is_expanded == Some(true)
+    }) {
+        return Err(err(
+            "unsupported",
+            "Expanded subprocesses are outside the layout profile",
+        ));
     }
     let mut lane_ids = BTreeSet::new();
     if process.lanes.iter().any(|lane| {
@@ -1272,82 +1363,25 @@ pub fn propose_layout(
         }
     }
     let bands = process.lanes.len() + 1;
-    let mut cells: BTreeMap<(usize, usize), Vec<usize>> = BTreeMap::new();
-    for (i, id) in ids.iter().enumerate() {
-        cells
-            .entry((membership.get(id).copied().unwrap_or(bands - 1), rank[i]))
-            .or_default()
-            .push(i);
-    }
-    let max_width = d
-        .shapes
-        .iter()
-        .filter(|s| nodes.contains_key(&s.element))
-        .map(|s| s.bounds.width)
-        .fold(0.0, f64::max);
-    // Nodes sit on fixed-height rows so equal rows align across columns. A node
-    // alone in its column takes the lower-median row of its laid-out same-band
-    // neighbours, which centres splits and joins between their branches.
-    let max_height = d
-        .shapes
-        .iter()
-        .filter(|s| nodes.contains_key(&s.element))
-        .map(|s| s.bounds.height)
-        .fold(0.0, f64::max);
     let band_of = |i: usize| membership.get(&ids[i]).copied().unwrap_or(bands - 1);
-    let mut row = vec![None; n];
-    for cell in cells.values().filter(|cell| cell.len() > 1) {
-        for (slot, &i) in cell.iter().enumerate() {
-            row[i] = Some(slot);
-        }
-    }
-    let mut singles: Vec<_> = cells
-        .values()
-        .filter(|cell| cell.len() == 1)
-        .map(|cell| cell[0])
-        .collect();
-    for _ in 0..2 {
-        for &i in &singles {
-            if row[i].is_some() {
-                continue;
-            }
-            let mut known: Vec<usize> = graph[i]
-                .iter()
-                .chain(&reverse[i])
-                .filter(|&&j| band_of(j) == band_of(i))
-                .filter_map(|&j| row[j])
-                .collect();
-            known.sort_unstable();
-            if !known.is_empty() {
-                row[i] = Some(known[(known.len() - 1) / 2]);
-            }
-        }
-        singles.reverse();
-    }
-    // Back-edges run in a channel over the top of the higher band. When a node
-    // stacked in an endpoint's column blocks that vertical leg (and nothing blocks
-    // the way down), they run in a channel under the lower band instead. Channels
-    // are assigned innermost-first by column span so nested loops never cross,
-    // and each band's margins grow with its channel count.
-    let slot = |i: usize| row[i].unwrap_or(0);
-    let blocked = |e: usize, other: usize, above: bool| {
-        (0..n).any(|j| {
-            j != e
-                && j != other
-                && rank[j] == rank[e]
-                && if band_of(j) == band_of(e) {
-                    if above {
-                        slot(j) < slot(e)
-                    } else {
-                        slot(j) > slot(e)
-                    }
-                } else if above {
-                    band_of(j) < band_of(e) && band_of(j) >= band_of(other).min(band_of(e))
-                } else {
-                    band_of(j) > band_of(e) && band_of(j) <= band_of(other).max(band_of(e))
-                }
-        })
-    };
+    let lay = Layered::new(
+        &graph,
+        &reverse,
+        &back,
+        rank,
+        (0..n).map(band_of).collect(),
+        cancel,
+    )?;
+    let rank = lay.layer[..n].to_vec();
+    let layers = lay.order.len();
+    let key = |v: usize| (lay.band[v], lay.comp[v], lay.row[v]);
+    let shape_of = |i: usize| &d.shapes[shape_by_element[&ids[i]]];
+    // Back-edges run in a channel over the top of their component block in the
+    // upper band, or under it in the lower band when fewer vertices stand in the
+    // way. Channels are assigned innermost-first by column span so nested loops
+    // never cross, and each block's margins grow with its channel count. Every
+    // inter-layer segment or back-edge end may need a vertical leg in a gap.
+    let mut legs = vec![0usize; layers];
     let mut planned = Vec::new();
     for f in flows.values() {
         let (
@@ -1358,62 +1392,121 @@ pub fn propose_layout(
             continue;
         };
         let (a, b) = (indices[s], indices[t]);
-        if a == b || rank[a] < rank[b] {
+        if a == b {
             continue;
         }
-        let bottom = (blocked(a, b, true) || blocked(b, a, true))
-            && !blocked(a, b, false)
-            && !blocked(b, a, false);
+        if rank[a] < rank[b] {
+            for pair in lay.chains[&(a, b)].windows(2) {
+                if key(pair[0]) != key(pair[1]) || pair[0] < n || pair[1] < n {
+                    legs[lay.layer[pair[0]]] += 1;
+                }
+            }
+            continue;
+        }
+        legs[rank[a]] += 1;
+        if rank[b] > 0 {
+            legs[rank[b] - 1] += 1;
+        }
+        let bottom = !lay.channel_top(a, b);
         let band = if bottom {
             band_of(a).max(band_of(b))
         } else {
             band_of(a).min(band_of(b))
         };
-        planned.push((bottom, band, rank[a] - rank[b], f.id.selector()));
+        planned.push((
+            bottom,
+            (band, lay.comp[a]),
+            rank[a] - rank[b],
+            f.id.selector(),
+        ));
     }
-    planned.sort_by_key(|(bottom, band, span, _)| (*bottom, *band, *span));
-    let mut channel_count = vec![[0usize; 2]; bands];
+    planned.sort_by_key(|(bottom, block, span, _)| (*bottom, *block, *span));
+    let mut channel_count = BTreeMap::<(usize, usize), [usize; 2]>::new();
     let mut loop_plan = BTreeMap::new();
-    for (bottom, band, _, flow) in planned {
-        let count = &mut channel_count[band][usize::from(bottom)];
-        loop_plan.insert(flow, (bottom, band, *count));
+    for (bottom, block, _, flow) in planned {
+        let count = &mut channel_count.entry(block).or_default()[usize::from(bottom)];
+        loop_plan.insert(flow, (bottom, block, *count));
         *count += 1;
     }
-    // Nodes start `top` below their band edge; top channel k sits 12 + 8k above them.
-    let top: Vec<f64> = channel_count
-        .iter()
-        .map(|c| (12.0 + 8.0 * c[0] as f64).max(60.0))
-        .collect();
-    // Bottom channels sit 12 + 8k below the lowest node or external label of the band.
-    let mut lowest = vec![0.0_f64; bands];
-    for (i, id) in ids.iter().enumerate() {
-        let shape = &d.shapes[shape_by_element[id]];
-        let y = top[band_of(i)]
-            + slot(i) as f64 * (max_height + 80.0)
-            + (max_height - shape.bounds.height) / 2.0;
-        let label = shape
-            .label
-            .as_ref()
-            .and_then(|l| l.bounds.as_ref())
-            .map_or(0.0, |l| l.y - shape.bounds.y + l.height);
-        lowest[band_of(i)] = lowest[band_of(i)].max(y + shape.bounds.height.max(label));
+    // Each node with its external label spans (left, right, up, down) around its
+    // centre. Columns and rows take the widest and tallest of their members;
+    // dummy-only columns are empty and dummy-only rows 16 high.
+    let mut column = vec![[0.0_f64; 2]; layers];
+    let mut row_extent = BTreeMap::<(usize, usize, usize), [f64; 2]>::new();
+    for v in 0..lay.layer.len() {
+        let e = if v < n {
+            let b = &shape_of(v).bounds;
+            let (cx, cy) = (b.x + b.width / 2.0, b.y + b.height / 2.0);
+            let half = [b.width / 2.0, b.width / 2.0, b.height / 2.0, b.height / 2.0];
+            match shape_of(v).label.as_ref().and_then(|l| l.bounds.as_ref()) {
+                Some(l) => [
+                    half[0].max(cx - l.x),
+                    half[1].max(l.x + l.width - cx),
+                    half[2].max(cy - l.y),
+                    half[3].max(l.y + l.height - cy),
+                ],
+                None => half,
+            }
+        } else {
+            [0.0, 0.0, 8.0, 8.0]
+        };
+        let c = &mut column[lay.layer[v]];
+        (c[0], c[1]) = (c[0].max(e[0]), c[1].max(e[1]));
+        let r = row_extent.entry(key(v)).or_default();
+        (r[0], r[1]) = (r[0].max(e[2]), r[1].max(e[3]));
     }
-    let mut band_heights = vec![120.0_f64; bands];
-    for (i, slot) in row.iter().enumerate() {
-        let h =
-            (slot.unwrap_or(0) + 1) as f64 * (max_height + 80.0) + 40.0 + top[band_of(i)] - 60.0;
-        band_heights[band_of(i)] = band_heights[band_of(i)].max(h);
+    // Inside a pool, lanes start after the pool header and nodes move with them.
+    let lane_x = if pool.is_some() {
+        crate::containers::LANE_INDENTATION
+    } else {
+        0.0
+    };
+    let mut col_x = vec![80.0 + lane_x; layers];
+    for l in 1..layers {
+        col_x[l] = col_x[l - 1]
+            + column[l - 1][0]
+            + column[l - 1][1]
+            + (24.0 + 8.0 * legs[l - 1] as f64).max(60.0);
     }
-    for (band, count) in channel_count.iter().enumerate() {
-        if count[1] > 0 {
-            band_heights[band] =
-                band_heights[band].max(lowest[band] + 16.0 + 8.0 * count[1] as f64);
+    let width = layers
+        .checked_sub(1)
+        .map_or(80.0 + lane_x, |l| col_x[l] + column[l][0] + column[l][1])
+        + 80.0;
+    // Bands stack their component blocks; a block's margins hold its channels
+    // (top channel k sits 12 + 8k above its rows, bottom channel k as far below).
+    let mut row_y = BTreeMap::new();
+    let mut block_rows = BTreeMap::new();
+    let mut band_y = Vec::with_capacity(bands + 1);
+    let mut y = 0.0_f64;
+    for band in 0..bands {
+        let start = y;
+        band_y.push(start);
+        let comps: BTreeSet<_> = row_extent
+            .keys()
+            .filter(|k| k.0 == band)
+            .map(|k| k.1)
+            .collect();
+        for &comp in &comps {
+            let [top, bottom] = channel_count
+                .get(&(band, comp))
+                .copied()
+                .unwrap_or_default();
+            y += (20.0 + 8.0 * top as f64).max(60.0);
+            let rows_top = y;
+            for (&k, e) in row_extent.range((band, comp, 0)..=(band, comp, usize::MAX)) {
+                row_y.insert(k, y + e[0]);
+                y += e[0] + e[1] + 40.0;
+            }
+            y -= 40.0;
+            block_rows.insert((band, comp), (rows_top, y));
+            y += (20.0 + 8.0 * bottom as f64).max(40.0);
+        }
+        // An empty unlaned band beside lanes takes no room.
+        if !comps.is_empty() || bands == 1 || band + 1 < bands {
+            y = y.max(start + 120.0);
         }
     }
-    let mut band_y = vec![0.0; bands];
-    for i in 1..bands {
-        band_y[i] = band_y[i - 1] + band_heights[i - 1];
-    }
+    band_y.push(y);
     let mut result = original.clone();
     let index: BTreeMap<_, _> = result
         .shapes
@@ -1421,36 +1514,29 @@ pub fn propose_layout(
         .enumerate()
         .map(|(i, s)| (s.id.clone(), i))
         .collect();
-    for (&(band, layer), cell) in &cells {
-        for &i in cell {
-            let shape = &d.shapes[shape_by_element[&ids[i]]];
-            let out = &mut result.shapes[index[&shape.id.selector()]];
-            let x = 80.0 + layer as f64 * (max_width + 160.0);
-            let y = band_y[band]
-                + top[band]
-                + row[i].unwrap_or(0) as f64 * (max_height + 80.0)
-                + (max_height - out.bounds.height) / 2.0;
-            let dx = x - out.bounds.x;
-            let dy = y - out.bounds.y;
-            out.bounds.x = x;
-            out.bounds.y = y;
-            if let Some(label) = &mut out.label_bounds {
-                label.x += dx;
-                label.y += dy;
-            }
+    for i in 0..n {
+        let out = &mut result.shapes[index[&shape_of(i).id.selector()]];
+        let x = col_x[rank[i]] + column[rank[i]][0] - out.bounds.width / 2.0;
+        let y = row_y[&key(i)] - out.bounds.height / 2.0;
+        let dx = x - out.bounds.x;
+        let dy = y - out.bounds.y;
+        out.bounds.x = x;
+        out.bounds.y = y;
+        if let Some(label) = &mut out.label_bounds {
+            label.x += dx;
+            label.y += dy;
         }
     }
-    let width = 160.0 + (rank.iter().copied().max().unwrap_or(0) + 1) as f64 * (max_width + 160.0);
     for (i, lane) in process.lanes.iter().enumerate() {
         let shape = &d.shapes[shape_by_element[&lane.id.selector()]];
         let out = &mut result.shapes[index[&shape.id.selector()]];
-        let dx = -out.bounds.x;
+        let dx = lane_x - out.bounds.x;
         let dy = band_y[i] - out.bounds.y;
         out.bounds = Bounds {
-            x: 0.0,
+            x: lane_x,
             y: band_y[i],
-            width,
-            height: band_heights[i],
+            width: width - lane_x,
+            height: band_y[i + 1] - band_y[i],
         };
         if let Some(label) = &mut out.label_bounds {
             label.x += dx;
@@ -1466,7 +1552,7 @@ pub fn propose_layout(
             x: 0.0,
             y: 0.0,
             width,
-            height: band_heights.iter().sum(),
+            height: band_y[bands],
         };
         if let Some(label) = &mut out.label_bounds {
             label.x += dx;
@@ -1480,8 +1566,340 @@ pub fn propose_layout(
         .enumerate()
         .map(|(i, e)| (e.id.clone(), i))
         .collect();
-    let mut outgoing = BTreeMap::<ElementSelector, Vec<ElementSelector>>::new();
-    let mut incoming = BTreeMap::<ElementSelector, Vec<ElementSelector>>::new();
+    // Flows as (id, source, target) in id order, with the channel (bottom, y,
+    // band) of every back edge.
+    let mut flow_ends = Vec::with_capacity(flows.len());
+    for flow in flows.values() {
+        let (
+            Some(crate::bpmn_model::EventReference::Local(s)),
+            Some(crate::bpmn_model::EventReference::Local(t)),
+        ) = (&flow.source, &flow.target)
+        else {
+            return Err(err("invalid_di", "Flow endpoint is missing or external"));
+        };
+        flow_ends.push((flow.id.selector(), indices[s], indices[t]));
+    }
+    let channel: Vec<_> = flow_ends
+        .iter()
+        .map(|(id, _, _)| {
+            loop_plan.get(id).map(|&(bottom, block, k)| {
+                let (rows_top, rows_bottom) = block_rows[&block];
+                let y = if bottom {
+                    rows_bottom + 12.0 + 8.0 * k as f64
+                } else {
+                    rows_top - 12.0 - 8.0 * k as f64
+                };
+                (bottom, y, block.0)
+            })
+        })
+        .collect();
+    let node_bounds: Vec<Bounds> = (0..n)
+        .map(|i| {
+            result.shapes[index[&shape_of(i).id.selector()]]
+                .bounds
+                .clone()
+        })
+        .collect();
+    let is_task = |i: usize| nodes[&ids[i]].kind.is_activity();
+    let vy = |v: usize| row_y[&key(v)];
+    // The chain vertex next to an end of a forward flow.
+    let partner = |a: usize, b: usize, source: bool| {
+        let chain = &lay.chains[&(a, b)];
+        chain[if source { 1 } else { chain.len() - 2 }]
+    };
+    // Sides: 0 top, 1 right, 2 bottom, 3 left. Self loops claim theirs first,
+    // then back edges (top or bottom unless a vertex blocks the way to their
+    // channel), then forward flows: aligned partners use the horizontal side,
+    // others the top or bottom vertex facing them unless a vertex of the same
+    // layer is in the way. Event and gateway sides serve one flow when possible;
+    // an external label below (or above) the node blocks that vertex.
+    let mut side = vec![[0u8; 2]; flow_ends.len()];
+    let mut taken: Vec<Vec<u8>> = (0..n)
+        .map(|i| {
+            let label = result.shapes[index[&shape_of(i).id.selector()]]
+                .label_bounds
+                .as_ref();
+            let b = &node_bounds[i];
+            match label {
+                Some(l) if l.y >= b.y + b.height / 2.0 => vec![2],
+                Some(_) => vec![0],
+                None => vec![],
+            }
+        })
+        .collect();
+    let pass_of = |f: usize| {
+        let (_, a, b) = flow_ends[f];
+        if a == b {
+            0
+        } else if channel[f].is_some() {
+            1
+        } else {
+            2
+        }
+    };
+    for pass in 0..3 {
+        for f in (0..flow_ends.len()).filter(|&f| pass_of(f) == pass) {
+            let (_, a, b) = flow_ends[f];
+            for (end, own) in [(0, a), (1, b)] {
+                let horizontal = if end == 0 { 1 } else { 3 };
+                let preferred = match channel[f] {
+                    _ if pass == 0 => [1, 0][end],
+                    Some((bottom, _, band)) => {
+                        if lay.between(own, !bottom, band) > 0 {
+                            horizontal
+                        } else if bottom {
+                            2
+                        } else {
+                            0
+                        }
+                    }
+                    None => {
+                        let (ko, kp) = (key(own), key(partner(a, b, end == 0)));
+                        let blocked = lay.order[lay.layer[own]].iter().any(|&w| {
+                            let kw = key(w);
+                            w != own && ((ko < kw && kw <= kp) || (kp <= kw && kw < ko))
+                        });
+                        if ko == kp || blocked {
+                            horizontal
+                        } else if kp > ko {
+                            2
+                        } else {
+                            0
+                        }
+                    }
+                };
+                side[f][end] = if is_task(own) {
+                    if pass == 2 { horizontal } else { preferred }
+                } else {
+                    let t = &mut taken[own];
+                    let s = [preferred, horizontal]
+                        .into_iter()
+                        .find(|s| !t.contains(s))
+                        .unwrap_or(preferred);
+                    t.push(s);
+                    s
+                };
+            }
+        }
+    }
+    // Port points: side centres, except that the flows on one side of a task
+    // spread over it at (k + 1) / (m + 1), sorted by the y of their partner.
+    let mut port = Vec::with_capacity(flow_ends.len());
+    let mut spread = BTreeMap::<(usize, u8), Vec<(f64, usize, usize)>>::new();
+    for (f, &(_, a, b)) in flow_ends.iter().enumerate() {
+        let mut ends = Vec::with_capacity(2);
+        for (end, own) in [(0, a), (1, b)] {
+            let bounds = &node_bounds[own];
+            let (cx, cy) = (
+                bounds.x + bounds.width / 2.0,
+                bounds.y + bounds.height / 2.0,
+            );
+            ends.push(match side[f][end] {
+                0 => Point { x: cx, y: bounds.y },
+                1 => Point {
+                    x: bounds.x + bounds.width,
+                    y: cy,
+                },
+                2 => Point {
+                    x: cx,
+                    y: bounds.y + bounds.height,
+                },
+                _ => Point { x: bounds.x, y: cy },
+            });
+            if is_task(own) && side[f][end] % 2 == 1 {
+                let partner_y = match channel[f] {
+                    _ if a == b => f64::MIN,
+                    Some((_, y, _)) => y,
+                    None => vy(partner(a, b, end == 0)),
+                };
+                spread
+                    .entry((own, side[f][end]))
+                    .or_default()
+                    .push((partner_y, f, end));
+            }
+        }
+        port.push(ends);
+    }
+    for ((own, _), mut list) in spread {
+        list.sort_by(|x, y| x.0.total_cmp(&y.0).then(x.1.cmp(&y.1)));
+        let (b, m) = (&node_bounds[own], list.len() as f64);
+        for (k, &(_, f, end)) in list.iter().enumerate() {
+            port[f][end].y = b.y + b.height * (k + 1) as f64 / (m + 1.0);
+        }
+    }
+    // Routes are planned as points and vertical legs in a gap (0 before the
+    // first layer, l + 1 after layer l). Forward flows run on their dummy rows
+    // and change rows in the gaps; back edges climb to their channel either from
+    // a top or bottom vertex or through the gap beside a blocked endpoint.
+    enum Step {
+        At(Point),
+        Leg(usize, f64, f64),
+    }
+    let mut plans: Vec<Vec<Step>> = Vec::with_capacity(flow_ends.len());
+    for (f, &(_, a, b)) in flow_ends.iter().enumerate() {
+        let (start, end) = (port[f][0].clone(), port[f][1].clone());
+        let vertical = |end: usize| side[f][end] % 2 == 0;
+        let mut steps = vec![Step::At(start.clone())];
+        if a == b {
+            let box_x = node_bounds[a].x + node_bounds[a].width + 20.0;
+            let box_y = node_bounds[a].y - 20.0;
+            steps.push(Step::At(Point {
+                x: box_x,
+                y: start.y,
+            }));
+            steps.push(Step::At(Point { x: box_x, y: box_y }));
+            steps.push(Step::At(Point { x: end.x, y: box_y }));
+        } else if let Some((_, y, _)) = channel[f] {
+            steps.push(if vertical(0) {
+                Step::At(Point { x: start.x, y })
+            } else {
+                Step::Leg(rank[a] + 1, start.y, y)
+            });
+            steps.push(if vertical(1) {
+                Step::At(Point { x: end.x, y })
+            } else {
+                Step::Leg(rank[b], y, end.y)
+            });
+        } else {
+            let chain = &lay.chains[&(a, b)];
+            let mut y = start.y;
+            if vertical(0) {
+                y = if chain.len() > 2 {
+                    vy(chain[1])
+                } else if !vertical(1) {
+                    end.y
+                } else {
+                    (start.y + end.y) / 2.0
+                };
+                steps.push(Step::At(Point { x: start.x, y }));
+            }
+            for pair in chain.windows(2) {
+                let next = if pair[1] != b {
+                    vy(pair[1])
+                } else if vertical(1) {
+                    y
+                } else {
+                    end.y
+                };
+                if next != y {
+                    steps.push(Step::Leg(lay.layer[pair[0]] + 1, y, next));
+                    y = next;
+                }
+            }
+            if vertical(1) {
+                steps.push(Step::At(Point { x: end.x, y }));
+            }
+        }
+        steps.push(Step::At(end));
+        plans.push(steps);
+    }
+    cancelled(cancel)?;
+    // Each leg gets its own 8 px track, centred in its gap: upward legs from the
+    // left and downward legs from the right, both by ascending start y.
+    let mut gap_legs = BTreeMap::<usize, Vec<(bool, f64, usize, usize)>>::new();
+    for (f, steps) in plans.iter().enumerate() {
+        for (s, step) in steps.iter().enumerate() {
+            if let Step::Leg(gap, from, to) = step {
+                gap_legs
+                    .entry(*gap)
+                    .or_default()
+                    .push((to > from, *from, f, s));
+            }
+        }
+    }
+    let mut track_x = BTreeMap::new();
+    for (gap, mut list) in gap_legs {
+        let left = if gap == 0 {
+            col_x[0] - 80.0
+        } else {
+            col_x[gap - 1] + column[gap - 1][0] + column[gap - 1][1]
+        };
+        let right = if gap < layers {
+            col_x[gap]
+        } else {
+            left + 80.0
+        };
+        list.sort_by(|x, y| {
+            x.0.cmp(&y.0)
+                .then(if x.0 {
+                    y.1.total_cmp(&x.1)
+                } else {
+                    x.1.total_cmp(&y.1)
+                })
+                .then((x.2, x.3).cmp(&(y.2, y.3)))
+        });
+        let first = (left + right) / 2.0 - 4.0 * (list.len() - 1) as f64;
+        for (k, &(_, _, f, s)) in list.iter().enumerate() {
+            track_x.insert((f, s), first + 8.0 * k as f64);
+        }
+    }
+    let mut route_work = 0usize;
+    const ROUTE_WORK_LIMIT: usize = 500_000;
+    for (f, steps) in plans.into_iter().enumerate() {
+        cancelled(cancel)?;
+        let (id, a, b) = &flow_ends[f];
+        let (a, b) = (*a, *b);
+        let mut points = Vec::with_capacity(steps.len() + 4);
+        for (s, step) in steps.into_iter().enumerate() {
+            match step {
+                Step::At(p) => points.push(p),
+                Step::Leg(_, from, to) => {
+                    let x = track_x[&(f, s)];
+                    points.push(Point { x, y: from });
+                    points.push(Point { x, y: to });
+                }
+            }
+        }
+        let mut points = simplify(points);
+        // A plan with too many bends or one crossing a node falls back to the
+        // obstacle router, then to a plain route through the target's gap.
+        if points.len() > 16
+            || (0..n).any(|w| {
+                w != a
+                    && w != b
+                    && points
+                        .windows(2)
+                        .any(|s| segment_hits(&s[0], &s[1], &node_bounds[w]))
+            })
+        {
+            let (start, end) = (port[f][0].clone(), port[f][1].clone());
+            let mut obstacles: Vec<_> = (0..n)
+                .filter(|&w| w != a && w != b)
+                .map(|w| node_bounds[w].clone())
+                .collect();
+            obstacles.extend(result.shapes.iter().filter_map(|s| s.label_bounds.clone()));
+            route_work = route_work.saturating_add(4 + 5 * obstacles.len());
+            let routed = (route_work <= ROUTE_WORK_LIMIT)
+                .then(|| crate::geometry::route(start.clone(), end.clone(), &obstacles, 8.0, 1000))
+                .and_then(|r| r.ok()?.waypoints)
+                .filter(|w| w.len() <= 16);
+            points = routed.unwrap_or_else(|| {
+                let x = col_x[rank[b]] - 12.0;
+                simplify(vec![
+                    start.clone(),
+                    Point { x, y: start.y },
+                    Point { x, y: end.y },
+                    end.clone(),
+                ])
+            });
+        }
+        result.edges[edge_index[&edge_by_element[id].id.selector()]].waypoints = points;
+    }
+    let mut placed: Vec<Bounds> = result
+        .shapes
+        .iter()
+        .filter_map(|s| s.label_bounds.clone())
+        .collect();
+    for (id, _, _) in &flow_ends {
+        let out = &mut result.edges[edge_index[&edge_by_element[id].id.selector()]];
+        if let Some(label) = &mut out.label_bounds {
+            place_label(label, &out.waypoints, &node_bounds, &placed);
+            placed.push(label.clone());
+        }
+    }
+    let shape_at = |id: &ElementSelector| index[&d.shapes[shape_by_element[id]].id.selector()];
+    let node_shapes: Vec<_> = ids.iter().map(&shape_at).collect();
+    let mut endpoints = Vec::with_capacity(flows.len());
     for flow in flows.values() {
         let (
             Some(crate::bpmn_model::EventReference::Local(source_id)),
@@ -1490,281 +1908,14 @@ pub fn propose_layout(
         else {
             return Err(err("invalid_di", "Flow endpoint is missing or external"));
         };
-        outgoing
-            .entry(source_id.clone())
-            .or_default()
-            .push(flow.id.selector());
-        incoming
-            .entry(target_id.clone())
-            .or_default()
-            .push(flow.id.selector());
+        endpoints.push((
+            edge_index[&edge_by_element[&flow.id.selector()].id.selector()],
+            shape_at(source_id),
+            shape_at(target_id),
+        ));
     }
-    let mut route_work = 0usize;
-    const ROUTE_WORK_LIMIT: usize = 500_000;
-    // Event and gateway ports face their partner: aligned partners use the
-    // horizontal side, others the top or bottom vertex. Back-edges (rank does not
-    // increase) leave and enter over the top. Each side serves one flow per node.
-    let bounds_of = |id: &ElementSelector| {
-        result.shapes[index[&d.shapes[shape_by_element[id]].id.selector()]]
-            .bounds
-            .clone()
-    };
-    let is_task = |id: &ElementSelector| {
-        matches!(
-            nodes[id].kind,
-            NodeKind::Task | NodeKind::UserTask | NodeKind::ManualTask
-        )
-    };
-    let is_back = |s: &ElementSelector, t: &ElementSelector| rank[indices[s]] >= rank[indices[t]];
-    let mut sides = BTreeMap::<(ElementSelector, bool), Point>::new();
-    let mut used = BTreeMap::<ElementSelector, Vec<u8>>::new();
-    for back_pass in [true, false] {
-        for flow in flows.values() {
-            let (
-                Some(crate::bpmn_model::EventReference::Local(s)),
-                Some(crate::bpmn_model::EventReference::Local(t)),
-            ) = (&flow.source, &flow.target)
-            else {
-                return Err(err("invalid_di", "Flow endpoint is missing or external"));
-            };
-            if s == t || is_back(s, t) != back_pass {
-                continue;
-            }
-            for (own, other, source) in [(s, t, true), (t, s, false)] {
-                if !back_pass && is_task(own) {
-                    continue;
-                }
-                let (b, o) = (bounds_of(own), bounds_of(other));
-                let (cy, ocy) = (b.y + b.height / 2.0, o.y + o.height / 2.0);
-                // 0 top, 1 right, 2 bottom, 3 left.
-                let horizontal = if source { 1 } else { 3 };
-                let preferred = if back_pass {
-                    if loop_plan[&flow.id.selector()].0 {
-                        2
-                    } else {
-                        0
-                    }
-                } else if (ocy - cy).abs() < 0.5 {
-                    horizontal
-                } else if ocy > cy {
-                    2
-                } else {
-                    0
-                };
-                // An external label below (or above) the node blocks that vertex.
-                let taken = used.entry(own.clone()).or_insert_with(|| {
-                    let label = result.shapes
-                        [index[&d.shapes[shape_by_element[own]].id.selector()]]
-                        .label_bounds
-                        .as_ref();
-                    match label {
-                        Some(l) if l.y >= b.y + b.height / 2.0 => vec![2],
-                        Some(_) => vec![0],
-                        None => vec![],
-                    }
-                });
-                let side = [preferred, horizontal, 2, 0]
-                    .into_iter()
-                    .find(|side| !taken.contains(side))
-                    .unwrap_or(preferred);
-                taken.push(side);
-                let point = match side {
-                    0 => Point {
-                        x: b.x + b.width / 2.0,
-                        y: b.y,
-                    },
-                    1 => Point {
-                        x: b.x + b.width,
-                        y: cy,
-                    },
-                    2 => Point {
-                        x: b.x + b.width / 2.0,
-                        y: b.y + b.height,
-                    },
-                    _ => Point { x: b.x, y: cy },
-                };
-                sides.insert((flow.id.selector(), source), point);
-            }
-        }
-    }
-    for (number, flow) in flows.values().enumerate() {
-        cancelled(cancel)?;
-        let (
-            Some(crate::bpmn_model::EventReference::Local(source_id)),
-            Some(crate::bpmn_model::EventReference::Local(target_id)),
-        ) = (&flow.source, &flow.target)
-        else {
-            return Err(err("invalid_di", "Flow endpoint is missing or external"));
-        };
-        let source =
-            &result.shapes[index[&d.shapes[shape_by_element[source_id]].id.selector()]].bounds;
-        let target =
-            &result.shapes[index[&d.shapes[shape_by_element[target_id]].id.selector()]].bounds;
-        let port_y = |id: &ElementSelector, bounds: &Bounds, list: &[ElementSelector]| {
-            if matches!(
-                nodes[id].kind,
-                NodeKind::Task | NodeKind::UserTask | NodeKind::ManualTask
-            ) {
-                let position = list
-                    .iter()
-                    .position(|edge| edge == &flow.id.selector())
-                    .unwrap_or(0);
-                bounds.y + bounds.height * (position + 1) as f64 / (list.len() + 1) as f64
-            } else {
-                bounds.y + bounds.height / 2.0
-            }
-        };
-        let port =
-            |id: &ElementSelector, bounds: &Bounds, list: &[ElementSelector], source: bool| {
-                if matches!(
-                    nodes[id].kind,
-                    NodeKind::Task | NodeKind::UserTask | NodeKind::ManualTask
-                ) {
-                    Point {
-                        x: if source {
-                            bounds.x + bounds.width
-                        } else {
-                            bounds.x
-                        },
-                        y: port_y(id, bounds, list),
-                    }
-                } else {
-                    // Only self-loops have no assigned side; they use the horizontal sides.
-                    sides
-                        .get(&(flow.id.selector(), source))
-                        .cloned()
-                        .unwrap_or(Point {
-                            x: if source {
-                                bounds.x + bounds.width
-                            } else {
-                                bounds.x
-                            },
-                            y: bounds.y + bounds.height / 2.0,
-                        })
-                }
-            };
-        let back = source_id != target_id && is_back(source_id, target_id);
-        let start = match sides.get(&(flow.id.selector(), true)) {
-            Some(point) => point.clone(),
-            None => port(source_id, source, &outgoing[source_id], true),
-        };
-        let end = match sides.get(&(flow.id.selector(), false)) {
-            Some(point) => point.clone(),
-            None => port(target_id, target, &incoming[target_id], false),
-        };
-        let points = if source_id == target_id {
-            let gap = 40.0 + number as f64 * 2.0;
-            vec![
-                start.clone(),
-                Point {
-                    x: start.x + gap,
-                    y: start.y,
-                },
-                Point {
-                    x: start.x + gap,
-                    y: source.y - gap,
-                },
-                Point {
-                    x: source.x - gap,
-                    y: source.y - gap,
-                },
-                Point {
-                    x: source.x - gap,
-                    y: end.y,
-                },
-                end.clone(),
-            ]
-        } else if back {
-            let (bottom, band, k) = loop_plan[&flow.id.selector()];
-            let channel_y = if bottom {
-                band_y[band] + lowest[band] + 12.0 + 8.0 * k as f64
-            } else {
-                band_y[band] + top[band] - 12.0 - 8.0 * k as f64
-            };
-            vec![
-                start.clone(),
-                Point {
-                    x: start.x,
-                    y: channel_y,
-                },
-                Point {
-                    x: end.x,
-                    y: channel_y,
-                },
-                end.clone(),
-            ]
-        } else {
-            let mut obstacles: Vec<_> = ids
-                .iter()
-                .filter(|id| *id != source_id && *id != target_id)
-                .map(|id| {
-                    result.shapes[index[&d.shapes[shape_by_element[id]].id.selector()]]
-                        .bounds
-                        .clone()
-                })
-                .collect();
-            // External labels are real obstacles too; routing around them avoids
-            // constructing a proposal which the later collision check must reject.
-            obstacles.extend(
-                result
-                    .shapes
-                    .iter()
-                    .filter_map(|shape| shape.label_bounds.clone()),
-            );
-            route_work = route_work.saturating_add(obstacles.len());
-            if route_work > ROUTE_WORK_LIMIT {
-                return Err(err("budget", "Routing work limit exceeded"));
-            }
-            let straight = start.y == end.y
-                && start.x < end.x
-                && obstacles.iter().all(|b| {
-                    let inflated = Bounds {
-                        x: b.x - 8.0,
-                        y: b.y - 8.0,
-                        width: b.width + 16.0,
-                        height: b.height + 16.0,
-                    };
-                    valid_bounds(&inflated) && !segment_hits(&start, &end, &inflated)
-                });
-            if straight {
-                vec![start, end]
-            } else {
-                route_work = route_work.saturating_add(4 + 4 * obstacles.len());
-                if route_work > ROUTE_WORK_LIMIT {
-                    return Err(err("budget", "Routing work limit exceeded"));
-                }
-                crate::geometry::route(start, end, &obstacles, 8.0, 1000)
-                    .map_err(|_| err("routing", "Invalid route geometry"))?
-                    .waypoints
-                    .ok_or_else(|| err("routing", "No collision-free route within budget"))?
-            }
-        };
-        let original_edge = edge_by_element[&flow.id.selector()];
-        let out = &mut result.edges[edge_index[&original_edge.id.selector()]];
-        out.waypoints = points;
-        if let Some(label) = &mut out.label_bounds {
-            let segment = out
-                .waypoints
-                .windows(2)
-                .max_by(|a, b| {
-                    let length = |pair: &[Point]| {
-                        (pair[0].x - pair[1].x).abs() + (pair[0].y - pair[1].y).abs()
-                    };
-                    length(a).total_cmp(&length(b))
-                })
-                .ok_or_else(|| err("routing", "Edge has no label segment"))?;
-            let a = &segment[0];
-            let b = &segment[1];
-            if a.y == b.y {
-                label.x = (a.x + b.x - label.width) / 2.0;
-                label.y = a.y - label.height - 8.0;
-            } else {
-                label.x = a.x + 8.0;
-                label.y = (a.y + b.y - label.height) / 2.0;
-            }
-        }
-    }
-    let proposal = LayoutProposal {
+    let (warnings, metrics) = measure(&result, &node_shapes, &endpoints)?;
+    Ok(LayoutProposal {
         session_id: session_id.into(),
         generation,
         document_id: document.id,
@@ -1772,103 +1923,399 @@ pub fn propose_layout(
         choreography_scope_shape: None,
         original,
         proposed: result,
-    };
-    if !valid_geometry(&proposal.proposed) {
+        warnings,
+        metrics,
+    })
+}
+
+/// Layered graph used for ordering and rows. Real vertices keep their indices
+/// `0..n`; each forward edge gets one dummy vertex per layer it crosses, in its
+/// source's band and component. Rows are numbered per (band, component) block.
+struct Layered {
+    real: usize,
+    layer: Vec<usize>,
+    band: Vec<usize>,
+    comp: Vec<usize>,
+    row: Vec<usize>,
+    order: Vec<Vec<usize>>,
+    pred: Vec<Vec<usize>>,
+    succ: Vec<Vec<usize>>,
+    /// Vertex chain `[source, dummies.., target]` of every forward node pair.
+    chains: BTreeMap<(usize, usize), Vec<usize>>,
+}
+const MAX_LAYERED_VERTICES: usize = 20_000;
+impl Layered {
+    fn new(
+        graph: &[Vec<usize>],
+        reverse: &[Vec<usize>],
+        back: &BTreeSet<(usize, usize)>,
+        mut layer: Vec<usize>,
+        mut band: Vec<usize>,
+        cancel: &AtomicBool,
+    ) -> Result<Self, LayoutError> {
+        let n = graph.len();
+        let forward = |v: usize, w: usize| v != w && !back.contains(&(v, w));
+        // Pull each source next to its nearest successor.
+        for v in 0..n {
+            if !reverse[v].iter().any(|&u| forward(u, v))
+                && let Some(m) = graph[v]
+                    .iter()
+                    .filter(|&&w| forward(v, w))
+                    .map(|&w| layer[w])
+                    .min()
+            {
+                layer[v] = m - 1;
+            }
+        }
+        // Weakly connected components, numbered by their smallest member.
+        let mut comp = vec![usize::MAX; n];
+        let mut count = 0;
+        for root in 0..n {
+            if comp[root] != usize::MAX
+                || graph[root].iter().chain(&reverse[root]).all(|&w| w == root)
+            {
+                continue;
+            }
+            comp[root] = count;
+            let mut stack = vec![root];
+            while let Some(v) = stack.pop() {
+                for &w in graph[v].iter().chain(&reverse[v]) {
+                    if comp[w] == usize::MAX {
+                        comp[w] = count;
+                        stack.push(w);
+                    }
+                }
+            }
+            count += 1;
+        }
+        // Unconnected nodes form a final pseudo-component packed in a square grid.
+        let isolated: Vec<_> = (0..n).filter(|&v| comp[v] == usize::MAX).collect();
+        let side = (1usize..).find(|k| k * k >= isolated.len()).unwrap_or(1);
+        for (k, &v) in isolated.iter().enumerate() {
+            comp[v] = count;
+            layer[v] = k % side;
+        }
+        let (mut pred, mut succ) = (vec![Vec::new(); n], vec![Vec::new(); n]);
+        let mut chains = BTreeMap::new();
+        for v in 0..n {
+            for &w in graph[v].iter().filter(|&&w| forward(v, w)) {
+                let mut chain = vec![v];
+                for l in layer[v] + 1..layer[w] {
+                    if layer.len() >= MAX_LAYERED_VERTICES {
+                        return Err(err("budget", "Layered graph exceeds the vertex limit"));
+                    }
+                    chain.push(layer.len());
+                    layer.push(l);
+                    band.push(band[v]);
+                    comp.push(comp[v]);
+                    pred.push(Vec::new());
+                    succ.push(Vec::new());
+                }
+                chain.push(w);
+                for pair in chain.windows(2) {
+                    succ[pair[0]].push(pair[1]);
+                    pred[pair[1]].push(pair[0]);
+                }
+                chains.insert((v, w), chain);
+            }
+        }
+        let layers = layer.iter().max().map_or(0, |m| m + 1);
+        let mut order = vec![Vec::new(); layers];
+        for (v, &l) in layer.iter().enumerate() {
+            order[l].push(v);
+        }
+        let mut lay = Layered {
+            real: n,
+            row: vec![0; layer.len()],
+            layer,
+            band,
+            comp,
+            order,
+            pred,
+            succ,
+            chains,
+        };
+        lay.sort_layers(cancel)?;
+        lay.align_rows();
+        Ok(lay)
+    }
+    fn group(&self, v: usize) -> (usize, usize) {
+        (self.band[v], self.comp[v])
+    }
+    /// Barycenter sweeps plus adjacent transpositions inside each (band,
+    /// component) group, keeping the order with the fewest crossings.
+    fn sort_layers(&mut self, cancel: &AtomicBool) -> Result<(), LayoutError> {
+        let mut pos = vec![0; self.layer.len()];
+        for list in &mut self.order {
+            list.sort_by_key(|&v| (self.band[v], self.comp[v], v));
+            for (i, &v) in list.iter().enumerate() {
+                pos[v] = i;
+            }
+        }
+        let mut best = (crossings(&self.order, &pos, &self.pred), self.order.clone());
+        let layers = self.order.len();
+        for _ in 0..4 {
+            cancelled(cancel)?;
+            for down in [true, false] {
+                let nbrs = if down { &self.pred } else { &self.succ };
+                let seq: Vec<usize> = if down {
+                    (1..layers).collect()
+                } else {
+                    (0..layers.saturating_sub(1)).rev().collect()
+                };
+                for l in seq {
+                    let mut keyed: Vec<_> = self.order[l]
+                        .iter()
+                        .map(|&v| {
+                            let bary = if nbrs[v].is_empty() {
+                                pos[v] as f64
+                            } else {
+                                nbrs[v].iter().map(|&u| pos[u] as f64).sum::<f64>()
+                                    / nbrs[v].len() as f64
+                            };
+                            (self.group(v), bary, v)
+                        })
+                        .collect();
+                    keyed.sort_by(|a, b| {
+                        a.0.cmp(&b.0).then(a.1.total_cmp(&b.1)).then(a.2.cmp(&b.2))
+                    });
+                    self.order[l] = keyed.into_iter().map(|(_, _, v)| v).collect();
+                    for (i, &v) in self.order[l].iter().enumerate() {
+                        pos[v] = i;
+                    }
+                }
+            }
+            for l in 0..layers {
+                for i in 1..self.order[l].len() {
+                    let (u, v) = (self.order[l][i - 1], self.order[l][i]);
+                    let pair = |a: usize, b: usize| -> usize {
+                        [&self.pred, &self.succ]
+                            .iter()
+                            .map(|nb| {
+                                nb[a]
+                                    .iter()
+                                    .map(|&x| nb[b].iter().filter(|&&y| pos[x] > pos[y]).count())
+                                    .sum::<usize>()
+                            })
+                            .sum()
+                    };
+                    if self.group(u) == self.group(v) && pair(v, u) < pair(u, v) {
+                        self.order[l].swap(i - 1, i);
+                        (pos[u], pos[v]) = (i, i - 1);
+                    }
+                }
+            }
+            let count = crossings(&self.order, &pos, &self.pred);
+            if count < best.0 {
+                best = (count, self.order.clone());
+            }
+        }
+        self.order = best.1;
+        Ok(())
+    }
+    /// Integer rows inside each (band, component) block: a left-to-right pass
+    /// towards the lower median of same-band predecessors, then a right-to-left
+    /// pass towards successors, so splits, upper branches and joins share a row.
+    /// Dummies follow their chain predecessor. Rows are then renumbered densely.
+    fn align_rows(&mut self) {
+        let mut row = vec![0i64; self.layer.len()];
+        for list in &self.order {
+            for group in list.chunk_by(|&a, &b| self.group(a) == self.group(b)) {
+                for (i, &v) in group.iter().enumerate() {
+                    row[v] = i as i64;
+                }
+            }
+        }
+        let layers = self.order.len();
+        for down in [true, false] {
+            let seq: Vec<usize> = if down {
+                (0..layers).collect()
+            } else {
+                (0..layers).rev().collect()
+            };
+            for l in seq {
+                for group in self.order[l].chunk_by(|&a, &b| self.group(a) == self.group(b)) {
+                    let desired: Vec<i64> = group
+                        .iter()
+                        .map(|&v| {
+                            let nbrs = if down || self.is_dummy(v) {
+                                &self.pred[v]
+                            } else {
+                                &self.succ[v]
+                            };
+                            let mut rows: Vec<i64> = nbrs
+                                .iter()
+                                .filter(|&&u| self.band[u] == self.band[v])
+                                .map(|&u| row[u])
+                                .collect();
+                            rows.sort_unstable();
+                            rows.get(rows.len().saturating_sub(1) / 2)
+                                .copied()
+                                .unwrap_or(row[v])
+                        })
+                        .collect();
+                    for (&v, r) in group.iter().zip(fit_rows(&desired)) {
+                        row[v] = r;
+                    }
+                }
+            }
+        }
+        let mut used = BTreeMap::<(usize, usize), BTreeSet<i64>>::new();
+        for (v, &r) in row.iter().enumerate() {
+            used.entry(self.group(v)).or_default().insert(r);
+        }
+        for (v, &r) in row.iter().enumerate() {
+            self.row[v] = used[&self.group(v)].range(..r).count();
+        }
+    }
+    fn is_dummy(&self, v: usize) -> bool {
+        v >= self.real
+    }
+    /// Vertices in an endpoint's layer between it and the top (or bottom) edge
+    /// of the channel's block in band `limit`.
+    fn between(&self, e: usize, top: bool, limit: usize) -> usize {
+        let key = |v: usize| (self.band[v], self.comp[v], self.row[v]);
+        self.order[self.layer[e]]
+            .iter()
+            .filter(|&&w| {
+                w != e
+                    && if top {
+                        key(w) < key(e) && key(w) >= (limit, self.comp[e], 0)
+                    } else {
+                        key(w) > key(e) && key(w) <= (limit, self.comp[e], usize::MAX)
+                    }
+            })
+            .count()
+    }
+    /// A back edge runs above unless fewer vertices block the way down (ties go up).
+    fn channel_top(&self, a: usize, b: usize) -> bool {
+        let (lo, hi) = (
+            self.band[a].min(self.band[b]),
+            self.band[a].max(self.band[b]),
+        );
+        self.between(a, true, lo) + self.between(b, true, lo)
+            <= self.between(a, false, hi) + self.between(b, false, hi)
+    }
+}
+/// Crossings between adjacent layers, counted as inversions with a Fenwick tree.
+fn crossings(order: &[Vec<usize>], pos: &[usize], pred: &[Vec<usize>]) -> usize {
+    let mut total = 0;
+    for list in order {
+        let mut pairs: Vec<(usize, usize)> = list
+            .iter()
+            .flat_map(|&v| pred[v].iter().map(move |&u| (pos[u], pos[v])))
+            .collect();
+        pairs.sort_unstable();
+        let mut tree = vec![0usize; list.len() + 1];
+        for (k, &(_, b)) in pairs.iter().enumerate() {
+            let (mut i, mut at_most) = (b + 1, 0);
+            while i > 0 {
+                at_most += tree[i];
+                i &= i - 1;
+            }
+            total += k - at_most;
+            let mut i = b + 1;
+            while i < tree.len() {
+                tree[i] += 1;
+                i += i.isolate_lowest_one();
+            }
+        }
+    }
+    total
+}
+/// Strictly increasing rows closest (in L1) to `desired`: pool adjacent
+/// violators of `desired[i] - i`, each pool taking its upper median.
+fn fit_rows(desired: &[i64]) -> Vec<i64> {
+    let mut pools: Vec<(Vec<i64>, i64)> = Vec::new();
+    for (i, &d) in desired.iter().enumerate() {
+        let mut values = vec![d - i as i64];
+        loop {
+            let mut sorted = values.clone();
+            sorted.sort_unstable();
+            let median = sorted[sorted.len() / 2];
+            match pools.last() {
+                Some((_, m)) if *m > median => {
+                    if let Some((previous, _)) = pools.pop() {
+                        values.extend(previous);
+                    }
+                }
+                _ => {
+                    pools.push((values, median));
+                    break;
+                }
+            }
+        }
+    }
+    let mut rows = Vec::with_capacity(desired.len());
+    for (values, median) in pools {
+        for _ in values {
+            rows.push(median + rows.len() as i64);
+        }
+    }
+    rows
+}
+
+/// Final proof of a computed layout. Invalid geometry and overlapping nodes refuse
+/// the proposal; every other defect becomes one counted warning per code. The
+/// pairwise checks are bounded by the shape and edge limits checked on entry.
+/// `nodes` are flow-node shape indices and `endpoints` are
+/// `(edge, source shape, target shape)` indices into `g`.
+fn measure(
+    g: &LayoutGeometry,
+    nodes: &[usize],
+    endpoints: &[(usize, usize, usize)],
+) -> Result<(Vec<LayoutWarning>, LayoutMetrics), LayoutError> {
+    if !valid_geometry(g) {
         return Err(err("invalid_geometry", "Computed geometry exceeds bounds"));
     }
-    let node_shapes: Vec<_> = ids
-        .iter()
-        .map(|id| &proposal.proposed.shapes[index[&d.shapes[shape_by_element[id]].id.selector()]])
-        .collect();
-    for (i, shape) in node_shapes.iter().enumerate() {
-        if node_shapes
-            .iter()
-            .skip(i + 1)
-            .any(|other| overlap(&shape.bounds, &other.bounds))
-        {
+    let node_bounds: Vec<_> = nodes.iter().map(|&i| &g.shapes[i].bounds).collect();
+    for (i, a) in node_bounds.iter().enumerate() {
+        if node_bounds[i + 1..].iter().any(|b| overlap(a, b)) {
             return Err(err("collision", "Node placement overlaps"));
         }
     }
-    let labels: Vec<_> = proposal
-        .proposed
+    let labels: Vec<_> = g
         .shapes
         .iter()
         .filter_map(|shape| shape.label_bounds.as_ref())
-        .chain(
-            proposal
-                .proposed
-                .edges
-                .iter()
-                .filter_map(|edge| edge.label_bounds.as_ref()),
-        )
+        .chain(g.edges.iter().filter_map(|edge| edge.label_bounds.as_ref()))
         .collect();
+    let mut label_overlaps = 0;
     for (i, label) in labels.iter().enumerate() {
-        if labels.iter().skip(i + 1).any(|other| overlap(label, other))
-            || node_shapes
+        label_overlaps += labels[i + 1..]
+            .iter()
+            .filter(|other| overlap(label, other))
+            .count()
+            + node_bounds.iter().filter(|b| overlap(label, b)).count();
+    }
+    let mut over_label = 0;
+    for edge in &g.edges {
+        for s in edge.waypoints.windows(2) {
+            over_label += labels
                 .iter()
-                .any(|shape| overlap(label, &shape.bounds))
-        {
-            return Err(err("collision", "Label overlaps another label or node"));
+                .filter(|label| segment_hits(&s[0], &s[1], label))
+                .count();
         }
     }
-    for edge in &proposal.proposed.edges {
-        for segment in edge.waypoints.windows(2) {
-            if labels
+    let mut over_node = 0;
+    for &(edge, source, target) in endpoints {
+        let points = &g.edges[edge].waypoints;
+        for (k, s) in points.windows(2).enumerate() {
+            let hits = |shape: usize| segment_hits(&s[0], &s[1], &g.shapes[shape].bounds);
+            // Leaving the source or entering the target is not a re-entry.
+            over_node +=
+                usize::from((k > 0 && hits(source)) || (k + 2 < points.len() && hits(target)));
+            over_node += nodes
                 .iter()
-                .any(|label| segment_hits(&segment[0], &segment[1], label))
-            {
-                return Err(err("collision", "Route crosses a label"));
-            }
+                .filter(|&&n| n != source && n != target && hits(n))
+                .count();
         }
     }
-    for flow in flows.values() {
-        let (
-            Some(crate::bpmn_model::EventReference::Local(source_id)),
-            Some(crate::bpmn_model::EventReference::Local(target_id)),
-        ) = (&flow.source, &flow.target)
-        else {
-            return Err(err("invalid_di", "Flow endpoint is missing or external"));
-        };
-        let edge = &proposal.proposed.edges
-            [edge_index[&edge_by_element[&flow.id.selector()].id.selector()]];
-        for (segment_index, segment) in edge.waypoints.windows(2).enumerate() {
-            let source = &proposal.proposed.shapes
-                [index[&d.shapes[shape_by_element[source_id]].id.selector()]]
-                .bounds;
-            let target = &proposal.proposed.shapes
-                [index[&d.shapes[shape_by_element[target_id]].id.selector()]]
-                .bounds;
-            if (segment_index > 0 && segment_hits(&segment[0], &segment[1], source))
-                || (segment_index + 2 < edge.waypoints.len()
-                    && segment_hits(&segment[0], &segment[1], target))
-            {
-                return Err(err("routing", "Route re-enters an endpoint node"));
-            }
-            if ids
-                .iter()
-                .filter(|id| *id != source_id && *id != target_id)
-                .any(|id| {
-                    segment_hits(
-                        &segment[0],
-                        &segment[1],
-                        &proposal.proposed.shapes
-                            [index[&d.shapes[shape_by_element[id]].id.selector()]]
-                            .bounds,
-                    )
-                })
-            {
-                return Err(err("routing", "Route crosses a node"));
-            }
-        }
-    }
-    for (index, edge) in proposal.proposed.edges.iter().enumerate() {
-        for other in proposal.proposed.edges.iter().skip(index + 1) {
+    let (mut shared_channels, mut crossings) = (0, 0);
+    for (i, edge) in g.edges.iter().enumerate() {
+        for other in &g.edges[i + 1..] {
             for a in edge.waypoints.windows(2) {
                 for b in other.waypoints.windows(2) {
-                    route_work += 1;
-                    if route_work > ROUTE_WORK_LIMIT {
-                        return Err(err("budget", "Routing work limit exceeded"));
-                    }
                     let shared = if a[0].x == a[1].x && b[0].x == b[1].x && a[0].x == b[0].x {
                         a[0].y.min(a[1].y).max(b[0].y.min(b[1].y))
                             < a[0].y.max(a[1].y).min(b[0].y.max(b[1].y))
@@ -1878,9 +2325,6 @@ pub fn propose_layout(
                     } else {
                         false
                     };
-                    if shared {
-                        return Err(err("routing", "Routes share a channel"));
-                    }
                     let crosses = if a[0].x == a[1].x && b[0].y == b[1].y {
                         a[0].x > b[0].x.min(b[1].x)
                             && a[0].x < b[0].x.max(b[1].x)
@@ -1894,12 +2338,56 @@ pub fn propose_layout(
                     } else {
                         false
                     };
-                    if crosses {
-                        return Err(err("routing", "Routes cross"));
-                    }
+                    shared_channels += usize::from(shared);
+                    crossings += usize::from(crosses);
                 }
             }
         }
     }
-    Ok(proposal)
+    let warnings = [
+        ("label_overlap", label_overlaps, "label overlaps"),
+        (
+            "route_over_label",
+            over_label,
+            "route segments over a label",
+        ),
+        ("route_over_node", over_node, "route segments over a node"),
+        (
+            "shared_channel",
+            shared_channels,
+            "route segments sharing a channel",
+        ),
+        ("crossings", crossings, "route crossings"),
+    ]
+    .into_iter()
+    .filter(|(_, count, _)| *count > 0)
+    .map(|(code, count, what)| LayoutWarning {
+        code: code.into(),
+        message: format!("{count} {what}"),
+    })
+    .collect();
+    let (mut min_x, mut min_y, mut max_x, mut max_y) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+    for b in g.shapes.iter().map(|s| &s.bounds) {
+        min_x = min_x.min(b.x);
+        min_y = min_y.min(b.y);
+        max_x = max_x.max(b.x + b.width);
+        max_y = max_y.max(b.y + b.height);
+    }
+    let metrics = LayoutMetrics {
+        crossings,
+        overlaps: label_overlaps + over_label + over_node,
+        bends: g.edges.iter().map(|e| e.waypoints.len() - 2).sum(),
+        edge_length: g
+            .edges
+            .iter()
+            .flat_map(|e| e.waypoints.windows(2))
+            .map(|s| (s[1].x - s[0].x).hypot(s[1].y - s[0].y))
+            .sum(),
+        area: if g.shapes.is_empty() {
+            0.0
+        } else {
+            (max_x - min_x) * (max_y - min_y)
+        },
+    };
+    Ok((warnings, metrics))
 }

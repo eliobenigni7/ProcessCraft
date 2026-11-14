@@ -604,6 +604,8 @@ When the search budget is exhausted, return a simple visible route with a routin
 
 Automatic full-diagram layout is a separate user command. It cannot run as a side effect of opening, importing, changing a role label, or applying a theme.
 
+Auto-layout returns a best-effort proposal: a layered layout (dummy vertices, barycenter ordering inside fixed lanes and components, median-aligned rows, routing tracks in the gaps between layers) whose remaining defects are counted as `warnings` and `metrics` (crossings, overlaps, bends, edge length, area) rather than refused. Only overlapping nodes, invalid geometry, unsupported structures, limits and the layered-graph budget refuse. The preview shows the remaining crossings and warnings before the user applies it.
+
 Layout algorithms are replaceable functions behind stable geometry inputs/outputs. There is no plugin interface for one initial implementation.
 
 ## 13. Rendering, fonts, and export

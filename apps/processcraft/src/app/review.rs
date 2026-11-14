@@ -445,10 +445,27 @@ impl ProcessCraft {
             });
             ui.horizontal_wrapped(|ui| {
                 ui.strong("Auto-layout preview");
-                ui.label(format!(
+                let mut summary = format!(
                     "Diagram {} · project unchanged until Apply",
                     proposal.diagram_id
-                ));
+                );
+                for (count, what) in [
+                    (proposal.metrics.crossings, "crossings"),
+                    (proposal.warnings.len(), "warnings"),
+                ] {
+                    if count > 0 {
+                        summary.push_str(&format!(" · {count} {what}"));
+                    }
+                }
+                let label = ui.label(summary);
+                if !proposal.warnings.is_empty() {
+                    let messages: Vec<_> = proposal
+                        .warnings
+                        .iter()
+                        .map(|w| w.message.as_str())
+                        .collect();
+                    label.on_hover_text(messages.join("\n"));
+                }
                 if ui
                     .add_enabled(
                         active && !self.has_drafts(),
@@ -1354,6 +1371,8 @@ mod tests {
                 shapes: vec![],
                 edges: vec![],
             },
+            warnings: vec![],
+            metrics: Default::default(),
         };
         app.camera = (312.0, -125.0);
         app.zoom = 2.5;
@@ -1387,6 +1406,8 @@ mod tests {
                 shapes: vec![],
                 edges: vec![],
             },
+            warnings: vec![],
+            metrics: Default::default(),
         };
         let (tx, rx) = mpsc::channel();
         tx.send(Ok(proposal)).unwrap();
