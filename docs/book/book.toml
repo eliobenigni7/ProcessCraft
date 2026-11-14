@@ -1,0 +1,26 @@
+[book]
+title = "ProcessCraft documentation"
+authors = ["Elio Benigni"]
+language = "en"
+src = "src"
+
+[build]
+build-dir = "../../target/book"
+create-missing = false
+
+[output.html]
+default-theme = "light"
+preferred-dark-theme = "navy"
+additional-css = ["theme/processcraft.css"]
+site-url = "/ProcessCraft/docs/"
+git-repository-url = "https://github.com/eliobenigni7/ProcessCraft"
+edit-url-template = "https://github.com/eliobenigni7/ProcessCraft/edit/main/docs/book/{path}"
+no-section-label = true
+
+[output.html.fold]
+enable = true
+level = 1
+
+# Plain Markdown with includes expanded; scripts/docs_book.py publishes it as llms.txt, llms-full.txt
+# and a .md copy of every page.
+[output.markdown]

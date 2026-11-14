@@ -1,11 +1,12 @@
 name: Pages
 
-# Publishes site/ (pages, style.css, images) with the README screenshots, the app icon and the Inter
-# and JetBrains Mono fonts to GitHub Pages.
+# Publishes site/ (pages, style.css, images) with the README screenshots, the app icon, the Inter
+# and JetBrains Mono fonts, and the documentation book (docs/book, built with mdBook into docs/) to
+# GitHub Pages.
 on:
   push:
     branches: [main]
-    paths: ["site/**", "docs/images/**", "assets/fonts/**", "assets/app-icon/processcraft-256.png", ".github/workflows/pages.yml"]
+    paths: ["site/**", "docs/images/**", "docs/book/**", "docs/prompts/README.md", "scripts/docs_book.py", "assets/fonts/**", "assets/app-icon/processcraft-256.png", ".github/workflows/pages.yml"]
   workflow_dispatch:
 
 permissions:
@@ -25,6 +26,19 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - name: Install mdBook
+        env:
+          MDBOOK: mdbook-v0.5.4-x86_64-unknown-linux-gnu.tar.gz
+        run: |
+          curl -sSfL -o "$MDBOOK" "https://github.com/rust-lang/mdBook/releases/download/v0.5.4/$MDBOOK"
+          echo "3f28de05dafca9d0f2eab99c662116b0e37b89b1d96a08f8f430b9eeae958cd7  $MDBOOK" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/bin"
+          tar -xzf "$MDBOOK" -C "$RUNNER_TEMP/bin" mdbook
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: Build the book
+        run: |
+          mdbook build docs/book
+          python3 -I scripts/docs_book.py agents target/book
       - name: Assemble site
         run: |
           mkdir -p _site/images _site/fonts
@@ -33,6 +47,7 @@ jobs:
           cp docs/images/*.png _site/images/
           cp assets/fonts/Inter-*.ttf assets/fonts/JetBrainsMono-Regular.ttf assets/fonts/OFL-Inter.txt assets/fonts/OFL-JetBrainsMono.txt _site/fonts/
           cp assets/app-icon/processcraft-256.png _site/icon.png
+          cp -r target/book/html _site/docs
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

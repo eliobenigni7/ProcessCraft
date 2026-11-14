@@ -1,0 +1,67 @@
+/* Aligns mdBook with the ProcessCraft site and app tokens (apps/processcraft/src/theme.rs). */
+@font-face { font-family: "Inter"; font-weight: 400; font-display: swap; src: url("../../fonts/Inter-Regular.ttf") format("truetype"); }
+@font-face { font-family: "Inter"; font-weight: 500; font-display: swap; src: url("../../fonts/Inter-Medium.ttf") format("truetype"); }
+@font-face { font-family: "Inter"; font-weight: 600 700; font-display: swap; src: url("../../fonts/Inter-SemiBold.ttf") format("truetype"); }
+@font-face { font-family: "JetBrains Mono"; font-weight: 400; font-display: swap; src: url("../../fonts/JetBrainsMono-Regular.ttf") format("truetype"); }
+
+html { font-family: "Inter", "Segoe UI", system-ui, sans-serif; }
+code, pre, .hljs { font-family: "JetBrains Mono", ui-monospace, Consolas, monospace !important; }
+.content h1, .content h2, .content h3 { letter-spacing: -0.02em; font-weight: 600; }
+
+.light, html:not(.js) {
+  --bg: #fafbfc;
+  --fg: #16181d;
+  --sidebar-bg: #f7f8fa;
+  --sidebar-fg: #16181d;
+  --sidebar-non-existant: #8a91a0;
+  --sidebar-active: #9a6400;
+  --sidebar-spacer: #e3e6eb;
+  --links: #9a6400;
+  --inline-code-color: #16181d;
+  --theme-popup-bg: #ffffff;
+  --theme-popup-border: #e3e6eb;
+  --theme-hover: #f0f2f5;
+  --quote-bg: #fdf3dc;
+  --quote-border: #f2a516;
+  --table-border-color: #e3e6eb;
+  --table-header-bg: #f0f2f5;
+  --table-alternate-bg: #f7f8fa;
+  --searchbar-border-color: #cdd2da;
+  --searchbar-bg: #ffffff;
+  --search-mark-bg: #fdf3dc;
+  --icons: #5b6270;
+  --icons-hover: #16181d;
+}
+.navy, .coal, .ayu {
+  --bg: #121417;
+  --fg: #eceef2;
+  --sidebar-bg: #17191d;
+  --sidebar-fg: #eceef2;
+  --sidebar-non-existant: #6f7684;
+  --sidebar-active: #f5b940;
+  --sidebar-spacer: #2e333a;
+  --links: #f5b940;
+  --inline-code-color: #eceef2;
+  --theme-popup-bg: #1e2126;
+  --theme-popup-border: #2e333a;
+  --theme-hover: #262a30;
+  --quote-bg: #3a2e14;
+  --quote-border: #f2a516;
+  --table-border-color: #2e333a;
+  --table-header-bg: #262a30;
+  --table-alternate-bg: #17191d;
+  --searchbar-border-color: #454b54;
+  --searchbar-bg: #1e2126;
+  --search-mark-bg: #3a2e14;
+  --icons: #a8afbc;
+  --icons-hover: #eceef2;
+}
+
+/* "Who are you?" cards on the start page */
+.pc-paths { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin: 1em 0 2em; }
+.pc-paths a { display: block; padding: 18px 20px; border: 1px solid var(--table-border-color); border-radius: 12px; background: var(--sidebar-bg); color: var(--fg) !important; text-decoration: none !important; }
+.pc-paths a:hover { border-color: var(--quote-border); }
+.pc-paths b { display: block; font-size: 1.1em; margin-bottom: 6px; }
+.pc-paths span { display: block; font-size: 0.92em; opacity: 0.8; line-height: 1.5; }
+
+.content img { border: 1px solid var(--table-border-color); border-radius: 10px; }

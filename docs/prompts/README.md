@@ -13,6 +13,7 @@ is plain text and also an agent skill (`SKILL.md` with `name` and `description` 
 The server has no `prompts` capability: these files are the prompts. Load one as a skill, or paste
 its text into the agent's instructions. Nothing is installed with the application.
 
+<!-- ANCHOR: protocol (included by docs/book/src/agents/mcp.md) -->
 ## Start the server
 
 ```text
@@ -237,3 +238,4 @@ point, not permission to guess.
 - Saving or exporting outside the granted roots, or overwriting a file nobody asked to overwrite.
 - Deleting content, or changing names and values the task did not mention, to make a diagnostic
   disappear.
+<!-- ANCHOR_END: protocol -->

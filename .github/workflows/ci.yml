@@ -42,3 +42,8 @@ jobs:
         run: cargo clippy --workspace --all-targets --all-features --locked --offline -- -D warnings
       - name: Test
         run: cargo test --workspace --all-targets --all-features --locked --offline --no-fail-fast
+      # The reference pages of docs/book are generated from the CLI and must match it.
+      - name: Docs reference
+        run: |
+          cargo build -p processcraft-cli --locked --offline
+          python -I scripts/docs_book.py reference --cli target/debug/processcraft-cli.exe --check

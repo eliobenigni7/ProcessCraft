@@ -1,6 +1,8 @@
 # Site redesign
 
-Status: in progress (2026-11-14). Scope: the GitHub Pages site in `site/` and its workflow
+Status: implemented 2026-11-14. The site and the book were checked in a local build (light, dark,
+phone width, internal links); the desktop steps of the analyst tutorial follow the app's controls
+but were not run by hand, which the tutorial says. Scope: the GitHub Pages site in `site/` and its workflow
 `.github/workflows/pages.yml`. The app is unchanged.
 
 ## Decisions
