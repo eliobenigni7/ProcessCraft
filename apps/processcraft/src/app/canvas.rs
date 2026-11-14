@@ -31,8 +31,8 @@ enum Gesture {
         bounds: Bounds,
     },
     Resize(ResizeDrag),
-    /// Space tool drag from this screen point.
-    Space(Pos2),
+    /// Space tool drag from this model point.
+    Space((f64, f64)),
     /// Dragging a waypoint or segment of the selected edge (`edge` is its DI id).
     Bendpoint {
         edge: ElementSelector,
@@ -41,6 +41,8 @@ enum Gesture {
         part: EdgePart,
         /// Bounds of the source and target shapes.
         ends: [Option<Bounds>; 2],
+        /// Model point where the drag started (auto-scroll safe).
+        start: (f64, f64),
     },
 }
 
@@ -797,7 +799,11 @@ struct ReplaceMenu {
 }
 
 fn fit(diagram: &processcraft_core::model::Diagram, size: Vec2) -> ((f64, f64), f32) {
-    if let Some((minx, miny, maxx, maxy)) = diagram_extents(diagram) {
+    fit_extents(diagram_extents(diagram), size)
+}
+/// Camera and zoom showing `extents` (min x, min y, max x, max y) in `size`.
+fn fit_extents(extents: Option<(f64, f64, f64, f64)>, size: Vec2) -> ((f64, f64), f32) {
+    if let Some((minx, miny, maxx, maxy)) = extents {
         let zoom = (((size.x as f64 - 48.0).max(1.0) / (maxx - minx).max(1.0))
             .min((size.y as f64 - 48.0).max(1.0) / (maxy - miny).max(1.0))
             as f32)
@@ -811,6 +817,54 @@ fn fit(diagram: &processcraft_core::model::Diagram, size: Vec2) -> ((f64, f64), 
         )
     } else {
         ((0.0, 0.0), 1.0)
+    }
+}
+
+/// Consume a Shift+`digit` press, matched by logical or physical key so layouts where Shift
+/// turns the digit into a symbol still work.
+fn take_shift_digit(i: &mut egui::InputState, digit: egui::Key) -> bool {
+    let before = i.events.len();
+    i.events.retain(|e| {
+        !matches!(e, egui::Event::Key { key, physical_key, pressed: true, modifiers, .. }
+            if modifiers.shift_only() && (*key == digit || *physical_key == Some(digit)))
+    });
+    i.events.len() != before
+}
+/// Elements a marquee from `from` to `to` (model points) selects, as (element, DI id): dragged
+/// left to right, shapes fully inside; right to left, shapes it touches. Edges count when all
+/// their waypoints are inside.
+fn marquee(
+    diagram: &processcraft_core::model::Diagram,
+    from: (f64, f64),
+    to: (f64, f64),
+) -> Vec<(ElementSelector, ElementSelector)> {
+    let touch = to.0 < from.0;
+    let (x0, x1) = (from.0.min(to.0), from.0.max(to.0));
+    let (y0, y1) = (from.1.min(to.1), from.1.max(to.1));
+    let inside = |x: f64, y: f64| x >= x0 && x <= x1 && y >= y0 && y <= y1;
+    let shapes = diagram.shapes.iter().filter(|s| {
+        let b = &s.bounds;
+        if touch {
+            b.x <= x1 && b.x + b.width >= x0 && b.y <= y1 && b.y + b.height >= y0
+        } else {
+            inside(b.x, b.y) && inside(b.x + b.width, b.y + b.height)
+        }
+    });
+    let edges = diagram
+        .edges
+        .iter()
+        .filter(|e| !e.waypoints.is_empty() && e.waypoints.iter().all(|p| inside(p.x, p.y)));
+    shapes
+        .map(|s| (s.element.clone(), s.id.selector()))
+        .chain(edges.map(|e| (e.element.clone(), e.id.selector())))
+        .collect()
+}
+/// Shift during a move keeps only the dominant axis of the drag.
+fn lock_axis(offset: Vec2) -> Vec2 {
+    if offset.x.abs() >= offset.y.abs() {
+        Vec2::new(offset.x, 0.0)
+    } else {
+        Vec2::new(0.0, offset.y)
     }
 }
 
@@ -1737,6 +1791,16 @@ impl ProcessCraft {
         } else if ctx.input_mut(|i| i.consume_key(Modifiers::CTRL, Key::Z)) {
             self.history(processcraft_core::commands::Request::Undo);
         }
+        // Shift+1 fits the diagram, Shift+2 zooms to the selection (bpmn-js). Taken before the
+        // element keys, so Shift+1 does not add a start event.
+        if ctx.input_mut(|i| take_shift_digit(i, Key::Num1)) {
+            ctx.data_mut(|data| {
+                data.insert_temp(egui::Id::unique("processcraft-fit-clicked"), true)
+            });
+        }
+        if ctx.input_mut(|i| take_shift_digit(i, Key::Num2)) {
+            self.zoom_to_selection();
+        }
         let editable = self
             .ctl
             .session
@@ -1838,6 +1902,49 @@ impl ProcessCraft {
             );
         }
     }
+    /// Show `extents` in a canvas of `size`, beside the palette capsule rather than under it.
+    fn fit_view(&mut self, extents: Option<(f64, f64, f64, f64)>, size: Vec2) {
+        let inset = super::overlays::PALETTE_INSET;
+        let (camera, zoom) = fit_extents(extents, Vec2::new((size.x - inset).max(1.0), size.y));
+        (self.camera, self.zoom) = ((camera.0 - (inset / zoom) as f64, camera.1), zoom);
+    }
+    /// Shift+2: zoom to the selected shapes and edges of the current diagram.
+    fn zoom_to_selection(&mut self) {
+        let snap = self.ctl.session.snapshot();
+        let Some(diagram) = snap
+            .project
+            .documents
+            .get(self.doc)
+            .and_then(|d| self.current_diagram(d))
+        else {
+            return;
+        };
+        let mut extents: Option<(f64, f64, f64, f64)> = None;
+        let mut add = |x0: f64, y0: f64, x1: f64, y1: f64| {
+            extents = Some(extents.map_or((x0, y0, x1, y1), |e| {
+                (e.0.min(x0), e.1.min(y0), e.2.max(x1), e.3.max(y1))
+            }));
+        };
+        for b in diagram
+            .shapes
+            .iter()
+            .filter(|s| self.multi.contains(&s.element))
+            .map(|s| &s.bounds)
+        {
+            add(b.x, b.y, b.x + b.width, b.y + b.height);
+        }
+        for p in diagram
+            .edges
+            .iter()
+            .filter(|e| self.multi.contains(&e.element))
+            .flat_map(|e| &e.waypoints)
+        {
+            add(p.x, p.y, p.x, p.y);
+        }
+        if extents.is_some() {
+            self.fit_view(extents, self.canvas.size);
+        }
+    }
     pub(super) fn canvas_ui(&mut self, ui: &mut egui::Ui) {
         let snap = self.ctl.session.snapshot();
         let preview = self.layout_preview_document();
@@ -1909,10 +2016,7 @@ impl ProcessCraft {
             && let (Some(diagram), Some(key)) = (diagram, document_key)
             && (fit_clicked || previous.as_ref() != Some(&key))
         {
-            // Fit beside the palette capsule, not under it.
-            let inset = super::overlays::PALETTE_INSET;
-            let (camera, zoom) = fit(diagram, Vec2::new((size.x - inset).max(1.0), size.y));
-            (self.camera, self.zoom) = ((camera.0 - (inset / zoom) as f64, camera.1), zoom);
+            self.fit_view(diagram_extents(diagram), size);
             ui.ctx().data_mut(|data| data.insert_temp(fit_id, key));
         }
         if preview.is_none()
@@ -2438,7 +2542,7 @@ impl ProcessCraft {
                         painter.text(
                             rect.center() + egui::vec2(0.0, 58.0),
                             egui::Align2::CENTER_CENTER,
-                            "Drag empty space to pan · Shift-drag to select · Ctrl+wheel to zoom · Double-click or E to rename · Select an element for its context pad",
+                            "Drag empty space to pan · Shift-drag to select · Ctrl+wheel to zoom · Double-click, E or F2 to rename · Select an element for its context pad",
                             egui::FontId::proportional(11.0),
                             palette.muted,
                         );
@@ -2579,6 +2683,51 @@ impl ProcessCraft {
                     if let Some(h) = hovered_handle {
                         ctx.set_cursor_icon(resize_cursor(h));
                     }
+                    // Hover outline of the shape or edge under the pointer (not the selection).
+                    if let Some(pos) = hover.filter(|_| {
+                        hovered_handle.is_none()
+                            && self.canvas.gesture.is_none()
+                            && self.drag.is_none()
+                            && self.canvas.palette_drag.is_none()
+                    }) {
+                        let (x, y) = to_model(rect, camera, zoom, pos);
+                        let alt = ctx.input(|i| i.modifiers.alt);
+                        if let Some(h) = self.hit_at(x, y, zoom, alt)
+                            && !h.is_label
+                            && !self.multi.contains(&h.key.xml_id)
+                        {
+                            let stroke = egui::Stroke::new(1.5, accent.gamma_multiply(0.5));
+                            match &h.geometry {
+                                HitGeometry::Edge(points) => {
+                                    painter.add(egui::Shape::line(
+                                        points
+                                            .iter()
+                                            .map(|p| {
+                                                Pos2::new(
+                                                    rect.left() + (p.x - camera.0) as f32 * zoom,
+                                                    rect.top() + (p.y - camera.1) as f32 * zoom,
+                                                )
+                                            })
+                                            .collect(),
+                                        egui::Stroke::new(3.0, stroke.color),
+                                    ));
+                                }
+                                HitGeometry::Shape(b)
+                                | HitGeometry::Ellipse(b)
+                                | HitGeometry::Diamond(b)
+                                | HitGeometry::Hexagon(b)
+                                | HitGeometry::DataObject(b)
+                                | HitGeometry::DataStore(b) => {
+                                    painter.rect_stroke(
+                                        to_screen(rect, camera, zoom, b).expand(3.0),
+                                        6.0,
+                                        stroke,
+                                        egui::StrokeKind::Outside,
+                                    );
+                                }
+                            }
+                        }
+                    }
                     for (h, pos) in &handles {
                         let handle = Rect::from_center_size(*pos, Vec2::splat(8.0));
                         let fill = if hovered_handle == Some(*h) {
@@ -2688,7 +2837,8 @@ impl ProcessCraft {
                         if pan {
                             self.canvas.gesture = Some(Gesture::Pan);
                         } else if self.canvas.space_tool && editable {
-                            self.canvas.gesture = Some(Gesture::Space(pos));
+                            self.canvas.gesture =
+                                Some(Gesture::Space(to_model(rect, camera, zoom, pos)));
                         } else if let Some(edge) = selected_edge
                             && let Some((part, _)) =
                                 bend_handles.iter().find(|(_, h)| h.distance(pos) <= 8.0)
@@ -2701,6 +2851,7 @@ impl ProcessCraft {
                                 points: edge.waypoints.clone(),
                                 part: *part,
                                 ends: [from, to].map(|s| s.map(|s| s.bounds.clone())),
+                                start: to_model(rect, camera, zoom, pos),
                             });
                         } else if let Some(shape) = single {
                             if let Some(rule) = rule
@@ -2957,6 +3108,9 @@ impl ProcessCraft {
                             "The diagram changed while dragging. Start the move again.".into();
                     }
                     advance_drag(&mut self.drag, &ctx);
+                    if shift && let Some(drag) = &mut self.drag {
+                        drag.offset = lock_axis(drag.offset);
+                    }
                     // Snapping (Alt or Ctrl moves freely) and its guide lines.
                     let free = ctx.input(|i| i.modifiers.alt || i.modifiers.ctrl);
                     if response.dragged()
@@ -2981,6 +3135,12 @@ impl ProcessCraft {
                             }
                             _ => Default::default(),
                         };
+                        // An axis locked by Shift does not snap either.
+                        if shift && drag.offset.x == 0.0 {
+                            (drag.snap.dx, drag.snap.guide_x) = (0.0, None);
+                        } else if shift && drag.offset.y == 0.0 {
+                            (drag.snap.dy, drag.snap.guide_y) = (0.0, None);
+                        }
                     }
                     if response.dragged()
                         && let Some(drag) = &self.drag
@@ -3101,7 +3261,6 @@ impl ProcessCraft {
                     }
                     // Canvas gestures: pan, box select, connect, resize.
                     let pointer = ctx.input(|i| i.pointer.latest_pos());
-                    let origin = ctx.input(|i| i.pointer.press_origin());
                     if response.dragged() {
                         match &self.canvas.gesture {
                             Some(Gesture::Pan) => {
@@ -3110,9 +3269,13 @@ impl ProcessCraft {
                                 camera.1 -= delta.y as f64 / zoom as f64;
                                 ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
                             }
-                            Some(Gesture::Space(start)) => {
+                            Some(Gesture::Space(origin)) => {
                                 // The line where space opens and how far the shapes past it go.
                                 if let Some(pos) = pointer {
+                                    let start = &Pos2::new(
+                                        rect.left() + (origin.0 - camera.0) as f32 * zoom,
+                                        rect.top() + (origin.1 - camera.1) as f32 * zoom,
+                                    );
                                     let d = pos - *start;
                                     let stroke = egui::Stroke::new(1.5, accent);
                                     let (line, moved, cursor) = if d.x.abs() >= d.y.abs() {
@@ -3150,12 +3313,27 @@ impl ProcessCraft {
                                 if let Some(pos) = pointer {
                                     let area = Rect::from_two_pos(*start, pos);
                                     painter.rect_filled(area, 0.0, accent.gamma_multiply(0.12));
-                                    painter.rect_stroke(
-                                        area,
-                                        0.0,
-                                        egui::Stroke::new(1.0, accent),
-                                        egui::StrokeKind::Inside,
-                                    );
+                                    let stroke = egui::Stroke::new(1.0, accent);
+                                    if pos.x < start.x {
+                                        // Right to left selects on touch: dashed outline.
+                                        let corners = [
+                                            area.left_top(),
+                                            area.right_top(),
+                                            area.right_bottom(),
+                                            area.left_bottom(),
+                                            area.left_top(),
+                                        ];
+                                        painter.extend(egui::Shape::dashed_line(
+                                            &corners, stroke, 5.0, 3.0,
+                                        ));
+                                    } else {
+                                        painter.rect_stroke(
+                                            area,
+                                            0.0,
+                                            stroke,
+                                            egui::StrokeKind::Inside,
+                                        );
+                                    }
                                 }
                             }
                             Some(Gesture::Connect { element, bounds }) => {
@@ -3167,15 +3345,19 @@ impl ProcessCraft {
                                 }
                             }
                             Some(Gesture::Bendpoint {
-                                points, part, ends, ..
+                                points,
+                                part,
+                                ends,
+                                start,
+                                ..
                             }) => {
-                                if let (Some(pos), Some(start)) = (pointer, origin) {
-                                    let delta = (pos - start) / zoom;
+                                if let Some(pos) = pointer {
+                                    let (x, y) = to_model(rect, camera, zoom, pos);
                                     let edited = edit_route(
                                         points,
                                         *part,
-                                        delta.x as f64,
-                                        delta.y as f64,
+                                        x - start.0,
+                                        y - start.1,
                                         ends,
                                         self.canvas.grid_snap,
                                     );
@@ -3224,9 +3406,8 @@ impl ProcessCraft {
                     {
                         match gesture {
                             Gesture::Pan => {}
-                            Gesture::Space(start) => {
+                            Gesture::Space((x0, y0)) => {
                                 if let Some(pos) = pointer {
-                                    let (x0, y0) = to_model(rect, camera, zoom, start);
                                     let (x1, y1) = to_model(rect, camera, zoom, pos);
                                     let (axis, from, delta) = if (x1 - x0).abs() >= (y1 - y0).abs()
                                     {
@@ -3252,30 +3433,28 @@ impl ProcessCraft {
                                 if let Some(pos) = pointer {
                                     let (x0, y0) = to_model(rect, camera, zoom, start);
                                     let (x1, y1) = to_model(rect, camera, zoom, pos);
-                                    let (x0, x1) = (x0.min(x1), x0.max(x1));
-                                    let (y0, y1) = (y0.min(y1), y0.max(y1));
-                                    let inside: Vec<&Shape> = diagram
-                                        .shapes
-                                        .iter()
-                                        .filter(|s| {
-                                            let b = &s.bounds;
-                                            b.x >= x0
-                                                && b.y >= y0
-                                                && b.x + b.width <= x1
-                                                && b.y + b.height <= y1
-                                        })
-                                        .collect();
-                                    if let Some(first) = inside.first() {
-                                        self.select(Some(first.element.clone()));
-                                        let mut multi: Vec<ElementSelector> = Vec::new();
-                                        for shape in &inside {
-                                            if !multi.contains(&shape.element) {
-                                                multi.push(shape.element.clone());
+                                    let found = marquee(diagram, (x0, y0), (x1, y1));
+                                    if !found.is_empty() {
+                                        // Shift starts the marquee, so it adds to the selection.
+                                        let same = self.representation_diagram.as_ref()
+                                            == Some(&diagram_id);
+                                        let mut multi = self.multi.clone();
+                                        let mut representations = if same {
+                                            self.representation_selection.clone()
+                                        } else {
+                                            Vec::new()
+                                        };
+                                        for (element, representation) in found {
+                                            if !multi.contains(&element) {
+                                                multi.push(element);
+                                            }
+                                            if !representations.contains(&representation) {
+                                                representations.push(representation);
                                             }
                                         }
+                                        self.select(multi.first().cloned());
                                         self.multi = multi;
-                                        self.representation_selection =
-                                            inside.iter().map(|s| s.id.selector()).collect();
+                                        self.representation_selection = representations;
                                         self.representation_diagram = Some(diagram_id.clone());
                                         self.canvas.revealed = self.selected.clone();
                                         self.ctl.session.set_selection(
@@ -3322,11 +3501,13 @@ impl ProcessCraft {
                                 points,
                                 part,
                                 ends,
+                                start,
                             } => {
-                                if let (Some(pos), Some(start)) = (pointer, origin) {
-                                    let delta = (pos - start) / zoom;
+                                if let Some(pos) = pointer {
                                     let last = points.len().saturating_sub(1);
                                     let (x, y) = to_model(rect, camera, zoom, pos);
+                                    let delta =
+                                        Vec2::new((x - start.0) as f32, (y - start.1) as f32);
                                     let flow_ends = processcraft_core::queries::find_flow(d, &flow)
                                         .map(|f| (f.source.clone(), f.target.clone()));
                                     let own = match part {
@@ -4020,10 +4201,12 @@ impl ProcessCraft {
         {
             self.canvas.connect_click = Some((element, bounds));
         }
-        // E: direct editing of the selected element's label (bpmn-js).
+        // E or F2: direct editing of the selected element's label (bpmn-js).
         if editable
             && self.multi.len() <= 1
-            && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::E))
+            && ctx.input_mut(|i| {
+                i.consume_key(Modifiers::NONE, Key::E) || i.consume_key(Modifiers::NONE, Key::F2)
+            })
             && let Some(element) = self.selected.clone()
         {
             self.start_label_edit(element);
@@ -4204,7 +4387,13 @@ impl ProcessCraft {
         let active = self.drag.is_some()
             || matches!(
                 self.canvas.gesture,
-                Some(Gesture::BoxSelect(_) | Gesture::Connect { .. } | Gesture::Resize(_))
+                Some(
+                    Gesture::BoxSelect(_)
+                        | Gesture::Connect { .. }
+                        | Gesture::Resize(_)
+                        | Gesture::Bendpoint { .. }
+                        | Gesture::Space(_)
+                )
             );
         let (Some(rect), Some(pos)) = (self.canvas.rect, ctx.input(|i| i.pointer.latest_pos()))
         else {
@@ -4454,6 +4643,66 @@ mod tests {
         rename(&mut app, "Pay");
         app.fit_to_content(&task);
         assert_eq!(shape_bounds(&app, &task).height, 40.0);
+    }
+
+    #[test]
+    fn marquee_touches_right_to_left_and_shift_adds_to_the_selection() {
+        let mut app = ProcessCraft::default();
+        app.add(NodeKind::StartEvent);
+        let start = app.selected.clone().unwrap();
+        app.add(NodeKind::Task);
+        let task = app.selected.clone().unwrap();
+        let context = egui::Context::default();
+        let run = |app: &mut ProcessCraft, events: Vec<egui::Event>| {
+            let mut output = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(900., 600.))),
+                    events,
+                    ..Default::default()
+                },
+                |ui| app.canvas_ui(ui),
+            );
+            output.textures_delta.clear();
+        };
+        run(
+            &mut app,
+            vec![egui::Event::ModifiersChanged(egui::Modifiers::SHIFT)],
+        );
+        app.select(Some(start.clone()));
+        let screen = to_screen(
+            app.canvas.rect.unwrap(),
+            app.camera,
+            app.zoom,
+            &shape_bounds(&app, &task),
+        );
+        // From below right of the task back into its middle: it only touches the task.
+        let (from, to) = (screen.right_bottom() + Vec2::splat(20.0), screen.center());
+        let shift_button = |pos, pressed| egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::SHIFT,
+        };
+        run(&mut app, vec![egui::Event::PointerMoved(from)]);
+        run(&mut app, vec![shift_button(from, true)]);
+        for step in 1..=5 {
+            let at = from + (to - from) * (step as f32 / 5.0);
+            run(&mut app, vec![egui::Event::PointerMoved(at)]);
+        }
+        run(&mut app, vec![shift_button(to, false)]);
+        assert!(app.multi.contains(&start), "{:?}", app.multi);
+        assert!(app.multi.contains(&task), "{:?}", app.multi);
+        // Left to right needs the whole shape; an edge counts when all its points are inside.
+        let snap = app.ctl.session.snapshot();
+        let diagram = &snap.project.documents[0].diagrams[0];
+        let t = shape_bounds(&app, &task);
+        let center = (t.x + t.width / 2.0, t.y + t.height / 2.0);
+        assert!(marquee(diagram, center, (t.x + t.width + 5.0, t.y + t.height + 5.0)).is_empty());
+        let all = marquee(diagram, (-1e4, -1e4), (1e4, 1e4));
+        assert_eq!(all.len(), diagram.shapes.len() + diagram.edges.len());
+        // Shift during a move keeps the dominant axis.
+        assert_eq!(lock_axis(Vec2::new(30.0, -8.0)), Vec2::new(30.0, 0.0));
+        assert_eq!(lock_axis(Vec2::new(3.0, -8.0)), Vec2::new(0.0, -8.0));
     }
 
     #[test]

@@ -29,10 +29,11 @@ resize handle, sets the height of a task, sub-process or annotation to fit its t
 | Action | How |
 |---|---|
 | Connect, change type, delete | `C`, `R`, `Del`, or the context pad |
-| Rename, edit annotation text | Double-click or `E`; `Ctrl+Enter` finishes multi-line text |
+| Rename, edit annotation text | Double-click, `E` or `F2`; `Ctrl+Enter` finishes multi-line text |
 | Pan and zoom | Drag empty canvas, middle mouse or `Space`+drag; `Ctrl`+wheel; `Ctrl` `+` `−` `0` |
-| Select | Click; `Shift`+click toggles; `Shift`+drag draws a box; `Ctrl+A` |
-| Move precisely | Arrow keys (1 px), `Shift`+arrows (10 px); hold `Alt` to drag without snapping |
+| Fit | `Shift+1` fits the diagram, `Shift+2` zooms to the selection |
+| Select | Click; `Shift`+click toggles; `Ctrl+A`; `Shift`+drag draws a box that adds to the selection: left to right takes what is fully inside, right to left whatever it touches; flows count when they lie fully inside |
+| Move precisely | Arrow keys (1 px), `Shift`+arrows (10 px); hold `Shift` while dragging to keep one axis, `Alt` or `Ctrl` to drag without snapping |
 | Clipboard | `Ctrl+C` `Ctrl+X` `Ctrl+V` `Ctrl+D`; pasting BPMN XML from another tool imports it |
 | Find, space tool | `Ctrl+F`, `S` |
 | Undo, redo | `Ctrl+Z`, `Ctrl+Y` |
