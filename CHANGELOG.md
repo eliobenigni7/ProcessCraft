@@ -7,6 +7,29 @@ versions; such changes are listed here.
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-11-14
+
+Unsigned Windows build (x64): MSI installer and portable ZIP.
+
+### Added
+
+- **Move an edge's attach point:** drag an end handle of a selected flow near its shape to dock it
+  on any side, on the outline of rectangles, events and gateways, with snapping to the side's middle,
+  the next bendpoint or a straight line to the other end. The route is redrawn orthogonally and the
+  change is one undo step; the end keeps its place on that side when the shape later moves.
+
+### Changed
+
+- **Auto-layout:** fewer crossings and no shared channels in lane-heavy processes. Legs in the same
+  gap no longer cross, several flows on one side of a shape spread along its outline, and a long
+  flow between lanes can run in its target lane. A 48-node, five-lane litigation process goes from
+  6 crossings to the 1 its lane order forces.
+
+### Fixed
+
+- Releasing a dragged edge end on or just outside its own shape now re-docks it (before, only a
+  release strictly inside the shape did).
+
 ## [0.2.1] - 2026-11-14
 
 Unsigned Windows build (x64): MSI installer and portable ZIP.
@@ -103,7 +126,8 @@ First public prerelease: an unsigned Windows build (MSI installer and portable Z
   server, standalone or attached to the open desktop session.
 - Per-user Windows installer with file association.
 
-[Unreleased]: https://github.com/eliobenigni7/ProcessCraft/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/eliobenigni7/ProcessCraft/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/eliobenigni7/ProcessCraft/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/eliobenigni7/ProcessCraft/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/eliobenigni7/ProcessCraft/compare/v0.1.0-rc.1...v0.2.0
 [0.1.0-rc.1]: https://github.com/eliobenigni7/ProcessCraft/releases/tag/v0.1.0-rc.1

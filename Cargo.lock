@@ -2814,7 +2814,7 @@ dependencies = [
 
 [[package]]
 name = "processcraft"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "craft-ui",
  "eframe",
@@ -2835,7 +2835,7 @@ dependencies = [
 
 [[package]]
 name = "processcraft-cli"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "clap",
  "processcraft-core",
@@ -2852,7 +2852,7 @@ dependencies = [
 
 [[package]]
 name = "processcraft-core"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "schemars",
  "serde",
@@ -2863,7 +2863,7 @@ dependencies = [
 
 [[package]]
 name = "processcraft-io"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "png 0.17.16",
  "processcraft-core",
@@ -2878,7 +2878,7 @@ dependencies = [
 
 [[package]]
 name = "processcraft-render"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "cosmic-text",
  "pdf-writer",
