@@ -2,6 +2,14 @@
 use serde::de::{self, DeserializeSeed, MapAccess, SeqAccess, Visitor};
 use std::{collections::HashSet, fmt};
 
+/// Fails on malformed JSON, trailing data, or a duplicate object key; the error text is
+/// serde_json's.
+pub fn check(bytes: &[u8]) -> Result<(), serde_json::Error> {
+    let mut deserializer = serde_json::Deserializer::from_slice(bytes);
+    Check.deserialize(&mut deserializer)?;
+    deserializer.end()
+}
+
 pub fn has_duplicate_keys(bytes: &[u8]) -> bool {
     let mut deserializer = serde_json::Deserializer::from_slice(bytes);
     Check

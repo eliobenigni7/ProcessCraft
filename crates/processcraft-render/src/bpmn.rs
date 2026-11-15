@@ -1,3 +1,7 @@
+//! BPMN scene builder: turns a diagram of a `BpmnDocument` (or a culled viewport slice of
+//! it) into a `DiagramScene` of shapes, edges, markers and labels, plus the hit regions the
+//! canvas uses. Appearance colours, stroke widths and dash lengths are named constants here.
+
 use crate::{DiagramScene, RenderError, TextEngine, TextRequest};
 use processcraft_core::{
     bpmn_collaboration::{
@@ -590,13 +594,113 @@ impl Appearance {
     /// Default text and outline colour of the appearance.
     fn ink(self) -> [u8; 3] {
         match self {
-            Self::Light => [26, 37, 52],
+            Self::Light => DARK_INK,
             Self::Dark => [230, 234, 240],
             Self::CanvasLight => [42, 46, 54],
             Self::CanvasDark => [201, 206, 214],
         }
     }
+    /// Default fill of shapes.
+    fn fill(self) -> [u8; 3] {
+        match self {
+            Self::Light | Self::CanvasLight => [255, 255, 255],
+            Self::Dark => [47, 53, 63],
+            Self::CanvasDark => [32, 36, 42],
+        }
+    }
+    /// Default fill of a node of `kind`: tinted start/end events, and tinted activities in
+    /// the print appearances; everything else uses [`Self::fill`].
+    fn node_fill(self, kind: Option<NodeKind>) -> [u8; 3] {
+        let light = matches!(self, Self::Light | Self::CanvasLight);
+        match kind {
+            Some(NodeKind::StartEvent) if light => [240, 249, 242],
+            Some(NodeKind::StartEvent) => [40, 68, 53],
+            Some(NodeKind::EndEvent) if light => [255, 243, 240],
+            Some(NodeKind::EndEvent) => [74, 48, 45],
+            Some(
+                NodeKind::Task
+                | NodeKind::UserTask
+                | NodeKind::ManualTask
+                | NodeKind::ServiceTask
+                | NodeKind::SendTask
+                | NodeKind::ReceiveTask
+                | NodeKind::ScriptTask
+                | NodeKind::BusinessRuleTask
+                | NodeKind::SubProcess
+                | NodeKind::AdHocSubProcess
+                | NodeKind::Transaction
+                | NodeKind::CallActivity,
+            ) if self == Self::Light => [255, 252, 240],
+            Some(
+                NodeKind::Task
+                | NodeKind::UserTask
+                | NodeKind::ManualTask
+                | NodeKind::ServiceTask
+                | NodeKind::SendTask
+                | NodeKind::ReceiveTask
+                | NodeKind::ScriptTask
+                | NodeKind::BusinessRuleTask
+                | NodeKind::SubProcess
+                | NodeKind::AdHocSubProcess
+                | NodeKind::Transaction
+                | NodeKind::CallActivity,
+            ) if self == Self::Dark => [54, 56, 45],
+            _ => self.fill(),
+        }
+    }
+    /// Band behind the participant names of a choreography.
+    fn choreography_band(self) -> [u8; 3] {
+        if self.is_dark() {
+            [60, 74, 90]
+        } else {
+            [237, 241, 245]
+        }
+    }
+    /// Header strip of a pool or lane.
+    fn lane_header_band(self) -> [u8; 3] {
+        if self.is_dark() {
+            [35, 39, 45]
+        } else {
+            [242, 244, 247]
+        }
+    }
+    /// Dots of the canvas grid.
+    fn grid_dot(self) -> [u8; 3] {
+        if self.is_dark() {
+            [46, 51, 58]
+        } else {
+            [211, 216, 223]
+        }
+    }
 }
+
+/// Outline and text colour of the Light appearance; also used on the light non-initiating
+/// fills in every appearance.
+const DARK_INK: [u8; 3] = [26, 37, 52];
+/// Fill of non-initiating participant bands and message envelopes.
+const NON_INITIATING_FILL: [u8; 3] = [225, 225, 225];
+// Stroke widths by role.
+const STROKE_HAIRLINE: f32 = 0.8;
+const STROKE_OUTLINE: f32 = 1.0;
+const STROKE_ICON: f32 = 1.2;
+const STROKE_ARROW: f32 = 1.5;
+const STROKE_HEAVY: f32 = 3.0;
+// Dash lengths (on = off) of dashed lines.
+const MESSAGE_DASH: f32 = 7.0;
+const DOTTED_DASH: f32 = 2.0;
+const OUTLINE_DASH: f32 = 5.0;
+/// Size of the scene drawn in place of a preserved-source diagram.
+const EMPTY_SCENE_SIZE: f32 = 33.0;
+/// Padding around the diagram content in exports.
+const EXPORT_MARGIN: f64 = 16.0;
+/// Viewport scenes keep labels this far outside the visible area.
+const CULL_MARGIN: f32 = 64.0;
+/// Shapes beyond this coordinate magnitude are omitted by the viewport renderer.
+const VIEWPORT_GEOMETRY_LIMIT: f64 = 999_000.0;
+/// Coordinates beyond this magnitude make the diagram unrenderable.
+const GEOMETRY_LIMIT: f64 = 1_000_000.0;
+/// Range of the user-selectable zoom and export scale, shared with the apps.
+pub const ZOOM_RANGE: std::ops::RangeInclusive<f32> = 0.125..=8.0;
 
 // Overlay colour sets (M5.4). Light fills pair with dark ink and dark fills with
 // light ink; `render_regressions` checks every entry against `Appearance::ink`
@@ -778,7 +882,7 @@ fn draw_legend(
                 path.clone(),
                 overlay_fill(appearance, overlay.scale, item.bucket),
             )?;
-            outline(scene, &path, ink, 1.0)?;
+            outline(scene, &path, ink, STROKE_OUTLINE)?;
         }
         text(scene, &item.label, 16.0 + LEGEND_SWATCH + 4.0, y)?;
     }
@@ -1326,6 +1430,17 @@ fn data_label(
     }
 }
 
+/// What `BpmnScene::build_internal` draws besides the diagram geometry.
+#[derive(Clone, Copy)]
+struct BuildOptions<'a> {
+    appearance: Appearance,
+    /// Draw shape labels (viewport scenes draw them separately, culled on their own).
+    shape_labels: bool,
+    overlay: Option<&'a Overlay>,
+    /// Reserve and draw the overlay legend below the diagram.
+    with_legend: bool,
+}
+
 /// Document-only scene. Coordinates in hit regions remain in absolute document space.
 #[derive(Clone, Debug)]
 pub struct BpmnScene {
@@ -1356,27 +1471,46 @@ impl BpmnScene {
         overlay: Option<&Overlay>,
     ) -> Result<Self, RenderError> {
         Self::build_internal(
-            document, diagram_id, None, None, appearance, fonts, family, true, overlay, true,
+            document,
+            diagram_id,
+            None,
+            None,
+            fonts,
+            family,
+            BuildOptions {
+                appearance,
+                shape_labels: true,
+                overlay,
+                with_legend: true,
+            },
         )
     }
     /// `culled` replaces the stored diagram `diagram_id` and `index` is a prebuilt index of
     /// `document` (the viewport passes both, so it needs no document copy or second index).
-    #[allow(clippy::too_many_arguments)]
     fn build_internal<'d>(
         document: &'d BpmnDocument,
         diagram_id: &ElementSelector,
         culled: Option<&processcraft_core::model::Diagram>,
         index: Option<&SemanticIndex<'d>>,
-        appearance: Appearance,
         fonts: &mut TextEngine,
         family: &str,
-        shape_labels: bool,
-        overlay: Option<&Overlay>,
-        with_legend: bool,
+        options: BuildOptions<'_>,
     ) -> Result<Self, RenderError> {
+        let BuildOptions {
+            appearance,
+            shape_labels,
+            overlay,
+            with_legend,
+        } = options;
         if matches!(document.capability, Capability::PreservedSource { .. }) {
-            let mut scene = DiagramScene::new(33.0, 33.0)?;
-            scene.add_background_rect(0.0, 0.0, 33.0, 33.0, appearance.paper())?;
+            let mut scene = DiagramScene::new(EMPTY_SCENE_SIZE, EMPTY_SCENE_SIZE)?;
+            scene.add_background_rect(
+                0.0,
+                0.0,
+                EMPTY_SCENE_SIZE,
+                EMPTY_SCENE_SIZE,
+                appearance.paper(),
+            )?;
             return Ok(Self {
                 scene,
                 origin: (0.0, 0.0),
@@ -1403,7 +1537,11 @@ impl BpmnScene {
         };
         let mut extents: Option<(f64, f64, f64, f64)> = None;
         let mut include = |x: f64, y: f64| -> Result<(), RenderError> {
-            if !x.is_finite() || !y.is_finite() || x.abs() > 1_000_000.0 || y.abs() > 1_000_000.0 {
+            if !x.is_finite()
+                || !y.is_finite()
+                || x.abs() > GEOMETRY_LIMIT
+                || y.abs() > GEOMETRY_LIMIT
+            {
                 return Err(RenderError("Invalid diagram geometry"));
             }
             extents = Some(match extents {
@@ -1501,24 +1639,19 @@ impl BpmnScene {
                 }
             }
         }
-        let origin = (minx - 16.0, miny - 16.0);
+        let origin = (minx - EXPORT_MARGIN, miny - EXPORT_MARGIN);
         let overlay_view = overlay.map(OverlayView::new);
-        let diagram_height = ((maxy - miny) + 32.0) as f32;
+        let diagram_height = ((maxy - miny) + 2.0 * EXPORT_MARGIN) as f32;
         let (legend_width, legend_height) = match overlay {
             Some(overlay) if with_legend => legend_size(fonts, family, overlay)?,
             _ => (0.0, 0.0),
         };
         let mut scene = DiagramScene::for_diagram(
-            (((maxx - minx) + 32.0) as f32).max(legend_width),
+            (((maxx - minx) + 2.0 * EXPORT_MARGIN) as f32).max(legend_width),
             diagram_height + legend_height,
         )?;
         let bg = appearance.paper();
-        let (fg, fill) = match appearance {
-            Appearance::Light => ([26, 37, 52], [255, 255, 255]),
-            Appearance::Dark => ([230, 234, 240], [47, 53, 63]),
-            Appearance::CanvasLight => ([42, 46, 54], [255, 255, 255]),
-            Appearance::CanvasDark => ([201, 206, 214], [32, 36, 42]),
-        };
+        let (fg, fill) = (appearance.ink(), appearance.fill());
         scene.add_background_rect(0.0, 0.0, scene.width(), scene.height(), bg)?;
         let mut hits = Vec::new();
         let mut diagnostics = Vec::new();
@@ -1620,7 +1753,7 @@ impl BpmnScene {
                         | ParticipantBandKind::BottomNonInitiating
                 );
                 let default_band_fill = if non_initiating {
-                    [225, 225, 225]
+                    NON_INITIATING_FILL
                 } else {
                     fill
                 };
@@ -1652,10 +1785,10 @@ impl BpmnScene {
                 };
                 scene.add_path(band_path.clone(), band_fill)?;
                 let band_fg = if non_initiating {
-                    if low_contrast([26, 37, 52], band_fill) {
+                    if low_contrast(DARK_INK, band_fill) {
                         [255, 255, 255]
                     } else {
-                        [26, 37, 52]
+                        DARK_INK
                     }
                 } else {
                     fg
@@ -1680,7 +1813,7 @@ impl BpmnScene {
                 {
                     diagnostics.push(format!("Participant band {} explicit label color has low contrast against its fill", shape.id));
                 }
-                outline(&mut scene, &band_path, stroke, 1.0)?;
+                outline(&mut scene, &band_path, stroke, STROKE_OUTLINE)?;
                 if participant
                     .multiplicity
                     .as_ref()
@@ -1842,7 +1975,7 @@ impl BpmnScene {
                     (x + r, y),
                 ];
                 let stroke = color(shape.style.as_ref().and_then(|s| s.stroke.as_deref()), fg);
-                dashed_lines(&mut scene, &pts, stroke, 5.0)?;
+                dashed_lines(&mut scene, &pts, stroke, OUTLINE_DASH)?;
                 if shape_labels
                     && label_visible(shape.label.as_ref(), shape.label_visibility)
                     && let Some(name) = semantics.group_label(&shape.element, document).as_deref()
@@ -2023,55 +2156,7 @@ impl BpmnScene {
             let w = b.width as f32;
             let h = b.height as f32;
             let stroke = color(shape.style.as_ref().and_then(|s| s.stroke.as_deref()), fg);
-            let default_fill = match (appearance, kind) {
-                (Appearance::Light | Appearance::CanvasLight, Some(NodeKind::StartEvent)) => {
-                    [240, 249, 242]
-                }
-                (Appearance::Dark | Appearance::CanvasDark, Some(NodeKind::StartEvent)) => {
-                    [40, 68, 53]
-                }
-                (Appearance::Light | Appearance::CanvasLight, Some(NodeKind::EndEvent)) => {
-                    [255, 243, 240]
-                }
-                (Appearance::Dark | Appearance::CanvasDark, Some(NodeKind::EndEvent)) => {
-                    [74, 48, 45]
-                }
-                (
-                    Appearance::Light,
-                    Some(
-                        NodeKind::Task
-                        | NodeKind::UserTask
-                        | NodeKind::ManualTask
-                        | NodeKind::ServiceTask
-                        | NodeKind::SendTask
-                        | NodeKind::ReceiveTask
-                        | NodeKind::ScriptTask
-                        | NodeKind::BusinessRuleTask
-                        | NodeKind::SubProcess
-                        | NodeKind::AdHocSubProcess
-                        | NodeKind::Transaction
-                        | NodeKind::CallActivity,
-                    ),
-                ) => [255, 252, 240],
-                (
-                    Appearance::Dark,
-                    Some(
-                        NodeKind::Task
-                        | NodeKind::UserTask
-                        | NodeKind::ManualTask
-                        | NodeKind::ServiceTask
-                        | NodeKind::SendTask
-                        | NodeKind::ReceiveTask
-                        | NodeKind::ScriptTask
-                        | NodeKind::BusinessRuleTask
-                        | NodeKind::SubProcess
-                        | NodeKind::AdHocSubProcess
-                        | NodeKind::Transaction
-                        | NodeKind::CallActivity,
-                    ),
-                ) => [54, 56, 45],
-                _ => fill,
-            };
+            let default_fill = appearance.node_fill(kind);
             let overlaid = overlay_view
                 .as_ref()
                 .and_then(|view| view.fill(appearance, &shape.element, kind));
@@ -2143,11 +2228,7 @@ impl BpmnScene {
                 && diagram.plane_order.is_none()
             {
                 let band_h = (h * 0.22).clamp(12.0, 24.0).min((h - 2.0).max(0.0));
-                let band_color = if appearance.is_dark() {
-                    [60, 74, 90]
-                } else {
-                    [237, 241, 245]
-                };
+                let band_color = appearance.choreography_band();
                 if w > 2.0 && band_h > 1.0 {
                     // Bottom corners follow the rounded outline, 1 px inside it.
                     let mut band = PathBuilder::new();
@@ -2290,7 +2371,7 @@ impl BpmnScene {
                             }
                         }
                         points.push(points[0]);
-                        dashed_lines(&mut scene, &points, stroke, 5.0)?;
+                        dashed_lines(&mut scene, &points, stroke, OUTLINE_DASH)?;
                     } else {
                         let mut p = PathBuilder::new();
                         rounded(&mut p, x, y, w, h);
@@ -2318,7 +2399,7 @@ impl BpmnScene {
                             (h - 2.0 * inset).max(0.0),
                         );
                         if let Some(path) = inner.finish() {
-                            outline(&mut scene, &path, stroke, 1.0)?;
+                            outline(&mut scene, &path, stroke, STROKE_OUTLINE)?;
                         }
                     }
                 }
@@ -2326,7 +2407,7 @@ impl BpmnScene {
                     let mut p = PathBuilder::new();
                     cylinder(&mut p, x, y, w, h);
                     if let Some(path) = p.finish() {
-                        outline(&mut scene, &path, stroke, 1.5)?;
+                        outline(&mut scene, &path, stroke, STROKE_ARROW)?;
                     }
                     for offset in [0.10_f32, 0.18] {
                         let mut arc = PathBuilder::new();
@@ -2340,7 +2421,7 @@ impl BpmnScene {
                             y + h * offset,
                         );
                         if let Some(path) = arc.finish() {
-                            outline(&mut scene, &path, stroke, 1.0)?;
+                            outline(&mut scene, &path, stroke, STROKE_OUTLINE)?;
                         }
                     }
                 }
@@ -2403,7 +2484,7 @@ impl BpmnScene {
                     let mut head = PathBuilder::new();
                     ellipse(&mut head, x + 8.0, y + 6.0, 7.0, 7.0);
                     if let Some(path) = head.finish() {
-                        outline(&mut scene, &path, stroke, 1.0)?;
+                        outline(&mut scene, &path, stroke, STROKE_OUTLINE)?;
                     }
                     lines(
                         &mut scene,
@@ -2463,11 +2544,7 @@ impl BpmnScene {
                         if let Some(band) = band.filter(|_| w > header && h > header) {
                             scene.add_path(
                                 PathBuilder::from_rect(band),
-                                if appearance.is_dark() {
-                                    [35, 39, 45]
-                                } else {
-                                    [242, 244, 247]
-                                },
+                                appearance.lane_header_band(),
                             )?;
                         }
                     }
@@ -2591,8 +2668,18 @@ impl BpmnScene {
                             stroke,
                             1.0,
                         )?;
-                        lines(&mut scene, &[(cx - 4.0, cy), (cx + 4.0, cy)], stroke, 1.0)?;
-                        lines(&mut scene, &[(cx, cy - 4.0), (cx, cy + 4.0)], stroke, 1.0)?;
+                        lines(
+                            &mut scene,
+                            &[(cx - 4.0, cy), (cx + 4.0, cy)],
+                            stroke,
+                            STROKE_OUTLINE,
+                        )?;
+                        lines(
+                            &mut scene,
+                            &[(cx, cy - 4.0), (cx, cy + 4.0)],
+                            stroke,
+                            STROKE_OUTLINE,
+                        )?;
                         cx += 18.0;
                     }
                     if ad_hoc {
@@ -2719,9 +2806,19 @@ impl BpmnScene {
                     (cx - 5.0, cy + 5.0),
                     (cx - 5.0, cy - 5.0),
                 ];
-                lines(&mut scene, &pts, stroke, 1.0)?;
-                lines(&mut scene, &[(cx - 3.0, cy), (cx + 3.0, cy)], stroke, 1.0)?;
-                lines(&mut scene, &[(cx, cy - 3.0), (cx, cy + 3.0)], stroke, 1.0)?;
+                lines(&mut scene, &pts, stroke, STROKE_OUTLINE)?;
+                lines(
+                    &mut scene,
+                    &[(cx - 3.0, cy), (cx + 3.0, cy)],
+                    stroke,
+                    STROKE_OUTLINE,
+                )?;
+                lines(
+                    &mut scene,
+                    &[(cx, cy - 3.0), (cx, cy + 3.0)],
+                    stroke,
+                    STROKE_OUTLINE,
+                )?;
             }
             if let Some((port, output)) = port {
                 let r = w.min(h) * 0.12;
@@ -2937,7 +3034,14 @@ impl BpmnScene {
                     .iter()
                     .map(|p| ((p.x - origin.0) as f32, (p.y - origin.1) as f32))
                     .collect();
-                stroke_polyline(&mut scene, &points, stroke, EDGE_RADIUS, Some(2.0), 0.0)?;
+                stroke_polyline(
+                    &mut scene,
+                    &points,
+                    stroke,
+                    EDGE_RADIUS,
+                    Some(DOTTED_DASH),
+                    0.0,
+                )?;
                 open_arrow(&mut scene, &points, stroke)?;
                 hits.push(HitRegion {
                     key: ElementKey {
@@ -3035,8 +3139,8 @@ impl BpmnScene {
                 .collect();
             let dash = match flow.kind {
                 FlowKind::Sequence => None,
-                FlowKind::Message => Some(7.0),
-                _ => Some(2.0),
+                FlowKind::Message => Some(MESSAGE_DASH),
+                _ => Some(DOTTED_DASH),
             };
             stroke_polyline(&mut scene, &pts, stroke, EDGE_RADIUS, dash, 0.0)?;
             if matches!(flow.kind, FlowKind::Sequence) && semantics.is_default_flow(flow) {
@@ -3052,11 +3156,14 @@ impl BpmnScene {
                 );
                 let explicit = edge.style.as_ref().and_then(|s| s.stroke.as_deref());
                 let envelope_stroke = if filled && explicit.is_none() {
-                    [26, 37, 52]
+                    DARK_INK
                 } else {
                     stroke
                 };
-                if filled && explicit.is_some() && low_contrast(envelope_stroke, [225, 225, 225]) {
+                if filled
+                    && explicit.is_some()
+                    && low_contrast(envelope_stroke, NON_INITIATING_FILL)
+                {
                     diagnostics.push(format!("Message edge {} explicit stroke has low contrast against the envelope fill", edge.id));
                 }
                 envelope(&mut scene, cx, cy, envelope_stroke, filled, bg)?;
@@ -3098,7 +3205,12 @@ impl BpmnScene {
                         scene.add_path(path, stroke)?;
                     }
                 } else {
-                    lines(&mut scene, &[wing(0.5), b, wing(-0.5)], stroke, 1.5)?;
+                    lines(
+                        &mut scene,
+                        &[wing(0.5), b, wing(-0.5)],
+                        stroke,
+                        STROKE_ARROW,
+                    )?;
                 }
             }
             if matches!(flow.kind, FlowKind::Association)
@@ -3107,7 +3219,12 @@ impl BpmnScene {
             {
                 let angle = (b.1 - a.1).atan2(b.0 - a.0);
                 let wing = |v: f32| (b.0 - 9.0 * (angle + v).cos(), b.1 - 9.0 * (angle + v).sin());
-                lines(&mut scene, &[wing(0.5), b, wing(-0.5)], stroke, 1.5)?;
+                lines(
+                    &mut scene,
+                    &[wing(0.5), b, wing(-0.5)],
+                    stroke,
+                    STROKE_ARROW,
+                )?;
             }
             if label_visible(edge.label.as_ref(), edge.label_visibility)
                 && flow.name.as_deref().is_some_and(|name| !name.is_empty())
@@ -3497,7 +3614,7 @@ fn draw_flow_source_marker(
     }
     if message {
         filled_ellipse(scene, a.0 - 4.0, a.1 - 4.0, 8.0, 8.0, background)?;
-        return ring(scene, a.0 - 4.0, a.1 - 4.0, 8.0, 8.0, stroke, 1.2);
+        return ring(scene, a.0 - 4.0, a.1 - 4.0, 8.0, 8.0, stroke, STROKE_ICON);
     }
     let (ux, uy) = (dx / length, dy / length);
     let (nx, ny) = (-uy * 4.0, ux * 4.0);
@@ -3532,7 +3649,7 @@ fn open_arrow(
     if let Some((a, b)) = last_segment(points) {
         let angle = (b.1 - a.1).atan2(b.0 - a.0);
         let wing = |v: f32| (b.0 - 9.0 * (angle + v).cos(), b.1 - 9.0 * (angle + v).sin());
-        lines(scene, &[wing(0.5), b, wing(-0.5)], stroke, 1.5)?;
+        lines(scene, &[wing(0.5), b, wing(-0.5)], stroke, STROKE_ARROW)?;
     }
     Ok(())
 }
@@ -3679,7 +3796,7 @@ fn draw_new_markers(
                 _ => (false, false),
             };
             let r = w.min(h) * 0.25;
-            ring(scene, cx - r, cy - r, 2.0 * r, 2.0 * r, stroke, 1.2)?;
+            ring(scene, cx - r, cy - r, 2.0 * r, 2.0 * r, stroke, STROKE_ICON)?;
             if !instantiate {
                 ring(
                     scene,
@@ -3712,12 +3829,12 @@ fn draw_new_markers(
                         (cx + a.cos() * r * 0.55, cy + a.sin() * r * 0.55)
                     })
                     .collect();
-                lines(scene, &points, stroke, 1.2)?;
+                lines(scene, &points, stroke, STROKE_ICON)?;
             }
         }
         Some(NodeKind::ServiceTask) => {
             let (mx, my) = (x + 14.0, y + 13.0);
-            ring(scene, mx - 4.0, my - 4.0, 8.0, 8.0, stroke, 1.2)?;
+            ring(scene, mx - 4.0, my - 4.0, 8.0, 8.0, stroke, STROKE_ICON)?;
             for i in 0..8 {
                 let a = i as f32 * std::f32::consts::TAU / 8.0;
                 lines(
@@ -3733,7 +3850,7 @@ fn draw_new_markers(
         }
         Some(NodeKind::SendTask | NodeKind::ReceiveTask) => {
             if matches!(kind, Some(NodeKind::ReceiveTask)) && instantiate {
-                ring(scene, x + 3.0, y + 2.0, 22.0, 22.0, stroke, 1.2)?;
+                ring(scene, x + 3.0, y + 2.0, 22.0, 22.0, stroke, STROKE_ICON)?;
             }
             let pts = [
                 (x + 7.0, y + 8.0),
@@ -3759,7 +3876,7 @@ fn draw_new_markers(
                     1.0,
                 )?;
             } else {
-                lines(scene, &pts, stroke, 1.2)?;
+                lines(scene, &pts, stroke, STROKE_ICON)?;
                 lines(
                     scene,
                     &[
@@ -3808,7 +3925,12 @@ fn draw_new_markers(
                 1.2,
             )?;
             for yy in [11.0, 15.0] {
-                lines(scene, &[(x + 7.0, y + yy), (x + 21.0, y + yy)], stroke, 0.8)?;
+                lines(
+                    scene,
+                    &[(x + 7.0, y + yy), (x + 21.0, y + yy)],
+                    stroke,
+                    STROKE_HAIRLINE,
+                )?;
             }
             lines(
                 scene,
@@ -3822,8 +3944,8 @@ fn draw_new_markers(
     if let Some((definitions, parallel_multiple)) = effective {
         if definitions.len() > 1 && parallel_multiple {
             let r = w.min(h) * 0.26;
-            lines(scene, &[(cx - r, cy), (cx + r, cy)], stroke, 3.0)?;
-            lines(scene, &[(cx, cy - r), (cx, cy + r)], stroke, 3.0)?;
+            lines(scene, &[(cx - r, cy), (cx + r, cy)], stroke, STROKE_HEAVY)?;
+            lines(scene, &[(cx, cy - r), (cx, cy + r)], stroke, STROKE_HEAVY)?;
         } else if definitions.len() > 1 {
             let r = w.min(h) * 0.26;
             let pts: Vec<_> = (0..=5)
@@ -3842,7 +3964,7 @@ fn draw_new_markers(
                     scene.add_path(path, stroke)?;
                 }
             } else {
-                lines(scene, &pts, stroke, 1.2)?;
+                lines(scene, &pts, stroke, STROKE_ICON)?;
             }
         }
         for definition in definitions.iter().filter(|_| definitions.len() == 1) {
@@ -3894,7 +4016,7 @@ fn draw_new_markers(
                             scene.add_path(path, stroke)?;
                         }
                     } else {
-                        lines(scene, &pts, stroke, 1.2)?;
+                        lines(scene, &pts, stroke, STROKE_ICON)?;
                     }
                 }
                 EventDefinition::Error { .. } => {
@@ -4016,7 +4138,7 @@ fn draw_new_markers(
                 }
                 EventDefinition::Timer { .. } => {
                     let r = w.min(h) * 0.27;
-                    ring(scene, cx - r, cy - r, 2.0 * r, 2.0 * r, stroke, 1.2)?;
+                    ring(scene, cx - r, cy - r, 2.0 * r, 2.0 * r, stroke, STROKE_ICON)?;
                     for i in 0..12 {
                         let a = i as f32 * std::f32::consts::TAU / 12.0;
                         lines(
@@ -4082,7 +4204,11 @@ fn envelope(
     filled: bool,
     background: [u8; 3],
 ) -> Result<(), RenderError> {
-    let fill = if filled { [225, 225, 225] } else { background };
+    let fill = if filled {
+        NON_INITIATING_FILL
+    } else {
+        background
+    };
     scene.add_background_rect(x - 10.0, y - 6.0, 20.0, 12.0, fill)?;
     let line = stroke;
     lines(
@@ -4118,7 +4244,7 @@ fn marker_polygon(
             scene.add_path(path, color)?;
         }
     } else {
-        lines(scene, points, color, 1.2)?;
+        lines(scene, points, color, STROKE_ICON)?;
     }
     Ok(())
 }
@@ -4233,7 +4359,7 @@ fn dashed_ellipse(
             let a = (i as f32 + j as f32 / 6.0) * std::f32::consts::TAU / 16.0;
             pts.push((x + w * (1.0 + a.cos()) / 2.0, y + h * (1.0 + a.sin()) / 2.0));
         }
-        lines(scene, &pts, color, 1.5)?;
+        lines(scene, &pts, color, STROKE_ARROW)?;
     }
     Ok(())
 }
@@ -4258,7 +4384,7 @@ fn outline(
         ..Default::default()
     };
     let p = path
-        .stroke(&stroke, 1.0)
+        .stroke(&stroke, STROKE_OUTLINE)
         .ok_or(RenderError("Invalid stroke"))?;
     scene.add_path(p, color)
 }
@@ -4357,7 +4483,7 @@ fn stroke_polyline(
         ..Default::default()
     };
     let p = path
-        .stroke(&stroke, 1.0)
+        .stroke(&stroke, STROKE_OUTLINE)
         .ok_or(RenderError("Invalid stroke"))?;
     scene.add_path(p, color)
 }
@@ -4573,7 +4699,7 @@ impl BpmnViewport {
                 b.y + b.height - view.y,
             ]
             .iter()
-            .any(|n| !n.is_finite() || n.abs() > 999_000.0)
+            .any(|n| !n.is_finite() || n.abs() > VIEWPORT_GEOMETRY_LIMIT)
             {
                 viewport_diagnostics.push(format!(
                     "Shape {} omitted: geometry exceeds viewport renderer limits",
@@ -4605,12 +4731,14 @@ impl BpmnViewport {
             diagram_id,
             Some(&diagram),
             Some(semantics),
-            appearance,
             fonts,
             family,
-            false,
-            overlay,
-            false,
+            BuildOptions {
+                appearance,
+                shape_labels: false,
+                overlay,
+                with_legend: false,
+            },
         )?;
         built.diagnostics.extend(viewport_diagnostics);
         let original = document
@@ -4633,12 +4761,7 @@ impl BpmnViewport {
                 .map(|(i, id)| (id.clone(), i + 1))
                 .collect::<std::collections::BTreeMap<_, _>>()
         });
-        let fg = match appearance {
-            Appearance::Light => [26, 37, 52],
-            Appearance::Dark => [230, 234, 240],
-            Appearance::CanvasLight => [42, 46, 54],
-            Appearance::CanvasDark => [201, 206, 214],
-        };
+        let fg = appearance.ink();
         let overlay_view = overlay.map(OverlayView::new);
         // Labels are culled independently of their owning shape.
         for shape in &original.shapes {
@@ -4869,12 +4992,12 @@ impl BpmnViewport {
                 ) {
                     let band_fill = color(
                         shape.style.as_ref().and_then(|s| s.fill.as_deref()),
-                        [225, 225, 225],
+                        NON_INITIATING_FILL,
                     );
-                    if low_contrast([26, 37, 52], band_fill) {
+                    if low_contrast(DARK_INK, band_fill) {
                         [255, 255, 255]
                     } else {
-                        [26, 37, 52]
+                        DARK_INK
                     }
                 } else {
                     fg
@@ -4930,7 +5053,7 @@ impl BpmnViewport {
                         points,
                         stroke,
                         EDGE_RADIUS,
-                        Some(2.0),
+                        Some(DOTTED_DASH),
                         *offset,
                     )?;
                 }
@@ -5066,8 +5189,8 @@ impl BpmnViewport {
             let stroke = color(edge.style.as_ref().and_then(|s| s.stroke.as_deref()), fg);
             let dash = match flow.kind {
                 FlowKind::Sequence => None,
-                FlowKind::Message => Some(7.0),
-                _ => Some(2.0),
+                FlowKind::Message => Some(MESSAGE_DASH),
+                _ => Some(DOTTED_DASH),
             };
             let runs = clipped_runs(&edge.waypoints, view, built.origin);
             let segments = runs.len();
@@ -5088,10 +5211,10 @@ impl BpmnViewport {
                     })
                     .collect();
                 if let Some((cx, cy)) = polyline_midpoint(&points)
-                    && cx >= -64.0
-                    && cy >= -64.0
-                    && cx <= view.width as f32 + 64.0
-                    && cy <= view.height as f32 + 64.0
+                    && cx >= -CULL_MARGIN
+                    && cy >= -CULL_MARGIN
+                    && cx <= view.width as f32 + CULL_MARGIN
+                    && cy <= view.height as f32 + CULL_MARGIN
                 {
                     let background = appearance.paper();
                     let filled = matches!(
@@ -5100,13 +5223,13 @@ impl BpmnViewport {
                     );
                     let explicit = edge.style.as_ref().and_then(|s| s.stroke.as_deref());
                     let envelope_stroke = if filled && explicit.is_none() {
-                        [26, 37, 52]
+                        DARK_INK
                     } else {
                         stroke
                     };
                     if filled
                         && explicit.is_some()
-                        && low_contrast(envelope_stroke, [225, 225, 225])
+                        && low_contrast(envelope_stroke, NON_INITIATING_FILL)
                     {
                         built.diagnostics.push(format!("Message edge {} explicit stroke has low contrast against the envelope fill", edge.id));
                     }
@@ -5222,7 +5345,12 @@ impl BpmnViewport {
                             built.scene.add_path(p, stroke)?;
                         }
                     } else {
-                        lines(&mut built.scene, &[wing(0.5), end, wing(-0.5)], stroke, 1.5)?;
+                        lines(
+                            &mut built.scene,
+                            &[wing(0.5), end, wing(-0.5)],
+                            stroke,
+                            STROKE_ARROW,
+                        )?;
                     }
                 }
             }
@@ -5253,7 +5381,12 @@ impl BpmnViewport {
                             end.1 - 9.0 * (angle + v).sin(),
                         )
                     };
-                    lines(&mut built.scene, &[wing(0.5), end, wing(-0.5)], stroke, 1.5)?;
+                    lines(
+                        &mut built.scene,
+                        &[wing(0.5), end, wing(-0.5)],
+                        stroke,
+                        STROKE_ARROW,
+                    )?;
                 }
             }
             if label_visible(edge.label.as_ref(), edge.label_visibility)
@@ -5341,14 +5474,9 @@ impl BpmnViewport {
                     gy += DOT_SPACING;
                 }
                 if let Some(dots) = dots.finish() {
-                    built.scene.prepend_background_path(
-                        dots,
-                        if appearance.is_dark() {
-                            [46, 51, 58]
-                        } else {
-                            [211, 216, 223]
-                        },
-                    );
+                    built
+                        .scene
+                        .prepend_background_path(dots, appearance.grid_dot());
                 }
             }
         }

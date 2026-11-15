@@ -1,3 +1,6 @@
+//! Toolkit-free scene: filled paths, background rectangles and positioned text labels in
+//! scene coordinates, with the size limits that keep rasterizing and exporting bounded.
+
 use crate::{RenderError, TextLayout};
 use std::fmt::Write;
 use tiny_skia::{Path, PathBuilder, PathSegment, Rect};

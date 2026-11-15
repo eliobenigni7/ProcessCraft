@@ -61,7 +61,13 @@ impl PendingEffect {
                 stage,
                 backup,
             } => {
-                json!({"ok":false,"status":"reconciliationRequired","sessionId":receipt.session_id,"target":receipt.target,"operationId":receipt.operation_id,"contentId":receipt.saved_content_id,"diskDigest":receipt.disk_digest,"stage":stage,"backup":backup,"reconciliationRequired":true})
+                json!({
+                    "ok":false,"status":"reconciliationRequired",
+                    "sessionId":receipt.session_id,"target":receipt.target,
+                    "operationId":receipt.operation_id,"contentId":receipt.saved_content_id,
+                    "diskDigest":receipt.disk_digest,"stage":stage,"backup":backup,
+                    "reconciliationRequired":true
+                })
             }
             Self::Export {
                 operation_id,
@@ -73,11 +79,19 @@ impl PendingEffect {
                 backup,
                 ..
             } => {
-                json!({"ok":false,"status":"reconciliationRequired","sessionId":session_id,"target":target,"operationId":operation_id,"contentId":content_id,"diskDigest":disk_digest,"stage":stage,"backup":backup,"reconciliationRequired":true})
+                json!({
+                    "ok":false,"status":"reconciliationRequired",
+                    "sessionId":session_id,"target":target,
+                    "operationId":operation_id,"contentId":content_id,
+                    "diskDigest":disk_digest,"stage":stage,"backup":backup,
+                    "reconciliationRequired":true
+                })
             }
         }
     }
 }
+// Only the Windows named-pipe forwarder (`forward_attachment`) reads these fields; the
+// non-Windows stub ignores them, so they would trigger dead-code warnings there.
 #[cfg_attr(not(windows), allow(dead_code))]
 struct Attachment {
     endpoint: String,
@@ -276,12 +290,25 @@ fn tools() -> Vec<Tool> {
         .as_object_mut()
         .and_then(|o| o.remove("$defs"))
         .unwrap_or(json!({}));
-    let apply = schema(
-        json!({"$defs":defs,"type":"object","properties":{"sessionId":{"type":"string"},"requestId":{"type":"string"},"expectedGeneration":{"type":"integer","minimum":0},"request":request},"required":["sessionId","requestId","expectedGeneration","request"],"additionalProperties":false}),
-    );
-    let save = schema(
-        json!({"type":"object","properties":{"sessionId":{"type":"string"},"requestId":{"type":"string"},"expectedGeneration":{"type":"integer","minimum":0},"path":{"type":"string"},"overwrite":{"type":"boolean"}},"required":["sessionId","requestId","expectedGeneration","path","overwrite"],"additionalProperties":false}),
-    );
+    let apply = schema(json!({
+        "$defs":defs,"type":"object",
+        "properties":{
+            "sessionId":{"type":"string"},"requestId":{"type":"string"},
+            "expectedGeneration":{"type":"integer","minimum":0},"request":request
+        },
+        "required":["sessionId","requestId","expectedGeneration","request"],
+        "additionalProperties":false
+    }));
+    let save = schema(json!({
+        "type":"object",
+        "properties":{
+            "sessionId":{"type":"string"},"requestId":{"type":"string"},
+            "expectedGeneration":{"type":"integer","minimum":0},
+            "path":{"type":"string"},"overwrite":{"type":"boolean"}
+        },
+        "required":["sessionId","requestId","expectedGeneration","path","overwrite"],
+        "additionalProperties":false
+    }));
     // MCP requires an object-typed inputSchema; the generated tagged enum is a bare oneOf.
     let mut query = serde_json::to_value(schemars::schema_for!(Query)).expect("query schema");
     query["type"] = json!("object");
@@ -354,7 +381,11 @@ impl ServerHandler for Server {
         let response = match params.name.as_ref() {
             "inspect" if args == json!({}) => {
                 let s = state.session.snapshot();
-                json!({"sessionId":state.session.id(),"generation":s.generation,"contentId":s.content_id,"projectId":s.project.id,"name":s.project.name,"documents":s.project.documents.len()})
+                json!({
+                    "sessionId":state.session.id(),"generation":s.generation,
+                    "contentId":s.content_id,"projectId":s.project.id,
+                    "name":s.project.name,"documents":s.project.documents.len()
+                })
             }
             "validate" if args == json!({}) => {
                 let s = state.session.snapshot();
@@ -423,19 +454,47 @@ impl ServerHandler for Server {
                         processcraft_core::queries::supporting_catalog_fields(&snapshot.project, document_id)
                             .ok_or_else(|| ErrorData::invalid_params("document not found", None))?
                             .into_iter().map(|row| json!(row)).collect(), offset, limit),
-                    Query::Comments { offset, limit } => (snapshot.project.comments.iter().map(|c| json!({"comment":c,"orphan":processcraft_core::queries::comment_is_orphan(&snapshot.project,c)})).collect(), offset, limit),
-                    Query::Checkpoints { offset, limit } => (snapshot.project.checkpoints.iter().map(|c| json!({"id":c.id,"name":c.name,"createdUnixMs":c.created_unix_ms,"reference":snapshot.project.reference_checkpoint == Some(c.id)})).collect(), offset, limit),
-                    Query::CompareCheckpoint { checkpoint_id, offset, limit } => (vec![json!(processcraft_core::queries::compare_checkpoint(&snapshot.project, checkpoint_id).ok_or_else(|| ErrorData::invalid_params("checkpoint not found", None))?)], offset, limit),
+                    Query::Comments { offset, limit } => {
+                        let rows = snapshot.project.comments.iter().map(|c| {
+                            let orphan = processcraft_core::queries::comment_is_orphan(&snapshot.project, c);
+                            json!({"comment":c,"orphan":orphan})
+                        });
+                        (rows.collect(), offset, limit)
+                    }
+                    Query::Checkpoints { offset, limit } => {
+                        let rows = snapshot.project.checkpoints.iter().map(|c| {
+                            json!({
+                                "id":c.id,"name":c.name,"createdUnixMs":c.created_unix_ms,
+                                "reference":snapshot.project.reference_checkpoint == Some(c.id)
+                            })
+                        });
+                        (rows.collect(), offset, limit)
+                    }
+                    Query::CompareCheckpoint { checkpoint_id, offset, limit } => {
+                        let comparison = processcraft_core::queries::compare_checkpoint(&snapshot.project, checkpoint_id)
+                            .ok_or_else(|| ErrorData::invalid_params("checkpoint not found", None))?;
+                        (vec![json!(comparison)], offset, limit)
+                    }
                     Query::LayoutPreview { session_id, expected_generation, document_id, diagram_id, choreography_scope_shape } => {
-                        if session_id != state.session.id() || expected_generation != snapshot.generation { return Err(ErrorData::invalid_params("session or generation mismatch", None)); }
-                        let doc = snapshot.project.documents.iter().find(|d| d.id == document_id).ok_or_else(|| ErrorData::invalid_params("document not found",None))?;
+                        if session_id != state.session.id() || expected_generation != snapshot.generation {
+                            return Err(ErrorData::invalid_params("session or generation mismatch", None));
+                        }
+                        let doc = snapshot.project.documents.iter().find(|d| d.id == document_id)
+                            .ok_or_else(|| ErrorData::invalid_params("document not found", None))?;
                         let cancel = std::sync::atomic::AtomicBool::new(false);
                         let proposal = match choreography_scope_shape {
-                            Some(shape) => processcraft_core::layout::propose_choreography_scope_layout(doc, &diagram_id, &shape, &session_id, expected_generation, &cancel),
-                            None => processcraft_core::layout::propose_layout(doc, &diagram_id, &session_id, expected_generation, &cancel),
-                        }.map_err(|e| ErrorData::invalid_params(e.to_string(),None))?;
+                            Some(shape) => processcraft_core::layout::propose_choreography_scope_layout(
+                                doc, &diagram_id, &shape, &session_id, expected_generation, &cancel,
+                            ),
+                            None => processcraft_core::layout::propose_layout(
+                                doc, &diagram_id, &session_id, expected_generation, &cancel,
+                            ),
+                        }.map_err(|e| ErrorData::invalid_params(e.to_string(), None))?;
                         let value = json!({"proposal":proposal});
-                        if serde_json::to_vec(&value).map_or(true, |v| v.len() > 3 * 1024 * 1024) { return Err(ErrorData::invalid_params("proposal exceeds response limit",None)); }
+                        let too_large = serde_json::to_vec(&value).map_or(true, |v| v.len() > 3 * 1024 * 1024);
+                        if too_large {
+                            return Err(ErrorData::invalid_params("proposal exceeds response limit", None));
+                        }
                         return Ok(CallToolResult::structured(value).into());
                     }
                     Query::Library {
@@ -488,7 +547,16 @@ impl ServerHandler for Server {
                     Query::Table { document_id, process_id, offset, limit } => (
                         processcraft_core::queries::activity_table(&snapshot.project, document_id, &process_id)
                             .ok_or_else(|| ErrorData::invalid_params("process not found", None))?
-                            .into_iter().map(|row| json!({"key":row.key,"name":row.name,"lane":row.lane,"role":row.role,"systems":row.systems,"documents":row.documents,"attributes":row.attributes,"outgoing":row.outgoing.into_iter().map(|f| json!({"id":f.id,"target":f.target,"condition":f.condition})).collect::<Vec<_>>() })).collect(), offset, limit),
+                            .into_iter().map(|row| {
+                                let outgoing = row.outgoing.into_iter()
+                                    .map(|f| json!({"id":f.id,"target":f.target,"condition":f.condition}))
+                                    .collect::<Vec<_>>();
+                                json!({
+                                    "key":row.key,"name":row.name,"lane":row.lane,"role":row.role,
+                                    "systems":row.systems,"documents":row.documents,
+                                    "attributes":row.attributes,"outgoing":outgoing
+                                })
+                            }).collect(), offset, limit),
                     Query::Raci { document_id, process_id, offset, limit } => {
                         let matrix = processcraft_core::queries::raci_matrix(&snapshot.project, document_id, &process_id)
                             .ok_or_else(|| ErrorData::invalid_params("process not found", None))?;
@@ -693,17 +761,33 @@ impl ServerHandler for Server {
                                                 Ok(OpenSession::Writable(mut writer)) => {
                                                     match writer.save(&export.0) {
                                                         SaveOutcome::Committed { warning } => {
-                                                            json!({"ok":true,"status":"committed","operationId":operation,"contentId":snapshot.content_id,"diskDigest":disk_digest,"warning":warning.map(|e|e.to_string()),"report":export.1})
+                                                            json!({
+                                                                "ok":true,"status":"committed",
+                                                                "operationId":operation,"contentId":snapshot.content_id,
+                                                                "diskDigest":disk_digest,
+                                                                "warning":warning.map(|e|e.to_string()),
+                                                                "report":export.1
+                                                            })
                                                         }
                                                         SaveOutcome::NotCommitted { error } => {
-                                                            json!({"ok":false,"status":"notCommitted","operationId":operation,"error":error.to_string()})
+                                                            json!({
+                                                                "ok":false,"status":"notCommitted",
+                                                                "operationId":operation,"error":error.to_string()
+                                                            })
                                                         }
                                                         SaveOutcome::Indeterminate {
                                                             error,
                                                             stage,
                                                             backup,
                                                         } => {
-                                                            let result = json!({"ok":false,"status":"indeterminate","operationId":operation,"sessionId":parsed.session_id,"target":parsed.path,"contentId":snapshot.content_id,"diskDigest":disk_digest,"error":error.to_string(),"stage":stage,"backup":backup,"reconciliationRequired":true});
+                                                            let result = json!({
+                                                                "ok":false,"status":"indeterminate",
+                                                                "operationId":operation,"sessionId":parsed.session_id,
+                                                                "target":parsed.path,"contentId":snapshot.content_id,
+                                                                "diskDigest":disk_digest,"error":error.to_string(),
+                                                                "stage":stage,"backup":backup,
+                                                                "reconciliationRequired":true
+                                                            });
                                                             state.pending =
                                                                 Some(PendingEffect::Export {
                                                                     operation_id: operation,
@@ -808,7 +892,7 @@ fn prepare_export(project: &ProjectData, args: &Export) -> Result<(Vec<u8>, Valu
         diagram,
         appearance,
         &mut fonts,
-        "Noto Sans",
+        crate::run::FONT_FAMILY,
     )
     .map_err(|e| json!({"ok":false,"status":"exportBlocked","error":e.to_string()}))?;
     if !args.acknowledge_diagnostics && !diagnostics.is_empty() {
@@ -832,7 +916,7 @@ fn prepare_export(project: &ProjectData, args: &Export) -> Result<(Vec<u8>, Valu
             acknowledge_diagnostics: args.acknowledge_diagnostics,
         },
         &mut fonts,
-        "Noto Sans",
+        crate::run::FONT_FAMILY,
         overlay.as_ref(),
     )
     .map_err(|e| json!({"ok":false,"status":"exportBlocked","error":e.to_string()}))?;
@@ -884,7 +968,10 @@ fn handle_reconcile(state: &mut State, request: &Reconcile) -> Value {
         .as_ref()
         .is_some_and(|(id, _)| *id == request.operation_id);
     if !matches_pending && !matches_settled {
-        return json!({"ok":false,"status":"unknownOperation","sessionId":request.session_id,"operationId":request.operation_id,"reconciliationRequired":true});
+        return json!({
+            "ok":false,"status":"unknownOperation","sessionId":request.session_id,
+            "operationId":request.operation_id,"reconciliationRequired":true
+        });
     }
     if request.expected_generation != state.session.snapshot().generation {
         return json!({"ok":false,"status":"generationConflict"});
@@ -913,7 +1000,10 @@ fn reconcile_effect(state: &mut State, operation_id: uuid::Uuid) -> Value {
         return value.clone();
     }
     let Some(pending) = state.pending.as_mut() else {
-        return json!({"ok":false,"status":"unknownOperation","sessionId":state.session.id(),"operationId":operation_id,"reconciliationRequired":true});
+        return json!({
+            "ok":false,"status":"unknownOperation","sessionId":state.session.id(),
+            "operationId":operation_id,"reconciliationRequired":true
+        });
     };
     let (actual, session, target, digest, content, stage, backup) = match pending {
         PendingEffect::Native {
@@ -949,7 +1039,10 @@ fn reconcile_effect(state: &mut State, operation_id: uuid::Uuid) -> Value {
         ),
     };
     if actual != operation_id {
-        return json!({"ok":false,"status":"unknownOperation","sessionId":state.session.id(),"operationId":operation_id,"reconciliationRequired":true});
+        return json!({
+            "ok":false,"status":"unknownOperation","sessionId":state.session.id(),
+            "operationId":operation_id,"reconciliationRequired":true
+        });
     }
     let resolved = match pending {
         PendingEffect::Native { .. } => state
@@ -966,12 +1059,26 @@ fn reconcile_effect(state: &mut State, operation_id: uuid::Uuid) -> Value {
                 state.session.mark_saved(content);
             }
             state.pending = None;
-            let value = json!({"ok":true,"status":if committed {"committed"} else {"notCommitted"},"operationId":actual,"sessionId":session,"target":target,"contentId":content,"diskDigest":digest,"stage":stage,"backup":backup});
+            let status = if committed {
+                "committed"
+            } else {
+                "notCommitted"
+            };
+            let value = json!({
+                "ok":true,"status":status,"operationId":actual,"sessionId":session,
+                "target":target,"contentId":content,"diskDigest":digest,
+                "stage":stage,"backup":backup
+            });
             state.settled = Some((actual, value.clone()));
             value
         }
         Err(e) => {
-            json!({"ok":false,"status":"indeterminate","operationId":actual,"sessionId":session,"target":target,"contentId":content,"diskDigest":digest,"stage":stage,"backup":backup,"error":e.to_string(),"reconciliationRequired":true})
+            json!({
+                "ok":false,"status":"indeterminate","operationId":actual,
+                "sessionId":session,"target":target,"contentId":content,
+                "diskDigest":digest,"stage":stage,"backup":backup,
+                "error":e.to_string(),"reconciliationRequired":true
+            })
         }
     }
 }
@@ -979,7 +1086,11 @@ fn reconcile_effect(state: &mut State, operation_id: uuid::Uuid) -> Value {
 fn save_outcome(outcome: ProjectSaveOutcome) -> Value {
     match outcome {
         ProjectSaveOutcome::Committed { receipt, warning } => {
-            json!({"ok":true,"status":"committed","operationId":receipt.operation_id,"sessionId":receipt.session_id,"contentId":receipt.saved_content_id,"diskDigest":receipt.disk_digest,"warning":warning.map(|e| e.to_string())})
+            json!({
+                "ok":true,"status":"committed","operationId":receipt.operation_id,
+                "sessionId":receipt.session_id,"contentId":receipt.saved_content_id,
+                "diskDigest":receipt.disk_digest,"warning":warning.map(|e| e.to_string())
+            })
         }
         ProjectSaveOutcome::NotCommitted { error } => {
             json!({"ok":false,"status":"notCommitted","error":error.to_string()})
@@ -990,7 +1101,13 @@ fn save_outcome(outcome: ProjectSaveOutcome) -> Value {
             stage,
             backup,
         } => {
-            json!({"ok":false,"status":"indeterminate","operationId":attempted.operation_id,"sessionId":attempted.session_id,"target":attempted.target,"contentId":attempted.saved_content_id,"diskDigest":attempted.disk_digest,"stage":stage,"backup":backup,"error":error.to_string(),"reconciliationRequired":true})
+            json!({
+                "ok":false,"status":"indeterminate","operationId":attempted.operation_id,
+                "sessionId":attempted.session_id,"target":attempted.target,
+                "contentId":attempted.saved_content_id,"diskDigest":attempted.disk_digest,
+                "stage":stage,"backup":backup,"error":error.to_string(),
+                "reconciliationRequired":true
+            })
         }
     }
 }
@@ -1003,7 +1120,7 @@ pub fn run(
     attach: Option<(String, String, String)>,
 ) -> Result<(), crate::run::Error> {
     let failure = |e: String| crate::run::Error {
-        code: 1,
+        code: crate::run::exit::IO,
         message: e,
     };
     if attach.is_some() && (!read.is_empty() || !write.is_empty()) {
@@ -1085,7 +1202,7 @@ pub fn run(
 
 fn serve(server: Server) -> Result<(), crate::run::Error> {
     let failure = |e: String| crate::run::Error {
-        code: 1,
+        code: crate::run::exit::IO,
         message: e,
     };
     let rt = tokio::runtime::Builder::new_current_thread()
@@ -1280,9 +1397,11 @@ fn forward_attachment(
     };
     match processcraft_io::windows_pipe::call(&attachment.endpoint, &attachment.token, &request) {
         Ok(value) => Ok(CallToolResult::structured(value).into()),
-        Err(_) => Ok(CallToolResult::structured_error(
-            json!({"ok":false,"status":"unknown","sessionId":request.session_id,"requestId":request.request_id,"target":request.params.get("path"),"operationId":request.params.get("operationId"),"reconciliationRequired":effect}),
-        )
+        Err(_) => Ok(CallToolResult::structured_error(json!({
+            "ok":false,"status":"unknown","sessionId":request.session_id,
+            "requestId":request.request_id,"target":request.params.get("path"),
+            "operationId":request.params.get("operationId"),"reconciliationRequired":effect
+        }))
         .into()),
     }
 }

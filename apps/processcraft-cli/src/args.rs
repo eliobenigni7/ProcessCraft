@@ -1,3 +1,6 @@
+//! Command-line definition (clap) of `processcraft-cli`: subcommands, their options and the
+//! value enums they accept.
+
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
@@ -234,6 +237,15 @@ pub enum Command {
 pub enum OverlayModeArg {
     Heatmap,
     Badge,
+}
+
+impl From<OverlayModeArg> for processcraft_core::overlay::OverlayMode {
+    fn from(mode: OverlayModeArg) -> Self {
+        match mode {
+            OverlayModeArg::Heatmap => Self::Heatmap,
+            OverlayModeArg::Badge => Self::Badge,
+        }
+    }
 }
 
 #[derive(Clone, Copy, clap::ValueEnum)]
