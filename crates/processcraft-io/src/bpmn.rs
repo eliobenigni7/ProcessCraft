@@ -10,13 +10,12 @@ use quick_xml::events::Event;
 use quick_xml::name::{PrefixDeclaration, QName, ResolveResult};
 use quick_xml::reader::NsReader;
 
-const BPMN: &str = "http://www.omg.org/spec/BPMN/20100524/MODEL";
-const BPMNDI: &str = "http://www.omg.org/spec/BPMN/20100524/DI";
-const DC: &str = "http://www.omg.org/spec/DD/20100524/DC";
-const DI: &str = "http://www.omg.org/spec/DD/20100524/DI";
-const XSI: &str = "http://www.w3.org/2001/XMLSchema-instance";
+use crate::ns::{BPMN, BPMNDI, DC, DI, XML, XMLNS, XSI};
+/// Error text in `import_bpmn` says "32 MiB"; keep it in sync.
 pub const MAX_RAW_BYTES: usize = 32 * 1024 * 1024;
+/// Error text in `import_bpmn` says "128 levels"; keep it in sync.
 pub const MAX_DEPTH: usize = 128;
+/// Error text in `import_bpmn` says "10,000 per document"; keep it in sync.
 pub const MAX_ELEMENTS: usize = 10_000;
 /// Namespace declarations per document and attributes per element.
 pub const MAX_NAMESPACE_DECLARATIONS: usize = 1024;
@@ -317,8 +316,8 @@ pub fn import_bpmn(bytes: &[u8]) -> Result<PreservedBpmn, ImportError> {
                         validate_namespace_name(&value)?;
                         // NsReader checks raw declarations. Check decoded values
                         // too so character/entity escapes cannot hide reserved URIs.
-                        let xml_uri = "http://www.w3.org/XML/1998/namespace";
-                        let xmlns_uri = "http://www.w3.org/2000/xmlns/";
+                        let xml_uri = XML;
+                        let xmlns_uri = XMLNS;
                         let xml_prefix = binding == PrefixDeclaration::Named("xml");
                         if binding == PrefixDeclaration::Named("xmlns")
                             || value == xmlns_uri
@@ -911,13 +910,17 @@ fn validate_qname(value: &str) -> Result<(), ImportError> {
     }
     Ok(())
 }
+/// XML 1.0 (5th ed.) `Name` minus the colon: first char per NameStartChar, rest per NameChar.
 fn ncname(value: &str) -> bool {
     let mut chars = value.chars();
+    // NameChar = NameStartChar | "-" | "." | [0-9] | #xB7 | [#x0300-#x036F] | [#x203F-#x2040]  (XML 1.0 [4a])
     chars.next().is_some_and(name_start) && chars.all(|c| name_start(c) || matches!(c, '-' | '.' | '0'..='9' | '\u{b7}' | '\u{300}'..='\u{36f}' | '\u{203f}'..='\u{2040}'))
 }
+/// XML 1.0 production [4] NameStartChar without `:` (NCName).
 fn name_start(c: char) -> bool {
     matches!(c, '_' | 'A'..='Z' | 'a'..='z' | '\u{c0}'..='\u{d6}' | '\u{d8}'..='\u{f6}' | '\u{f8}'..='\u{2ff}' | '\u{370}'..='\u{37d}' | '\u{37f}'..='\u{1fff}' | '\u{200c}'..='\u{200d}' | '\u{2070}'..='\u{218f}' | '\u{2c00}'..='\u{2fef}' | '\u{3001}'..='\u{d7ff}' | '\u{f900}'..='\u{fdcf}' | '\u{fdf0}'..='\u{fffd}' | '\u{10000}'..='\u{effff}')
 }
+/// XML 1.0 production [2] Char.
 fn xml_char(c: char) -> bool {
     matches!(c, '\t' | '\n' | '\r' | '\u{20}'..='\u{d7ff}' | '\u{e000}'..='\u{fffd}' | '\u{10000}'..='\u{10ffff}')
 }

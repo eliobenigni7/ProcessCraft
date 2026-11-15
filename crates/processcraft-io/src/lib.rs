@@ -3,6 +3,7 @@ mod access;
 mod activity_export;
 mod choreography_export;
 mod collaboration_export;
+mod ns;
 pub mod recovery;
 mod root_order_export;
 mod save;

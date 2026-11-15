@@ -264,6 +264,7 @@ mod private {
     }
 }
 #[cfg(windows)]
+// Win32 FFI for the owner-only recovery directory; the crate otherwise denies `unsafe`.
 #[allow(unsafe_code)]
 mod private;
 

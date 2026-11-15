@@ -45,6 +45,12 @@ const CHOREOGRAPHY_GRAPH_CAPABILITY: &str = "bpmn-choreography-graph-v1";
 const QUALIFIED_BOUNDARY_CAPABILITY: &str = "bpmn-qualified-boundary-reference-v1";
 const ANALYST_ATTRIBUTES_CAPABILITY: &str = "analyst-attributes-v1";
 const MODELING_CONVENTIONS_CAPABILITY: &str = "modeling-conventions-v1";
+/// Maximum bytes accepted for the `mimetype` entry.
+const MIMETYPE_ENTRY_LIMIT: usize = 128;
+/// Maximum width x height of the `preview.png` thumbnail.
+const PREVIEW_PIXEL_LIMIT: u64 = 4_000_000;
+/// Maximum decoded (raw RGBA) size of `preview.png`, in bytes.
+const PREVIEW_DECODED_LIMIT: usize = 32 * 1024 * 1024;
 
 fn has_analyst_attributes(
     definitions: &[AttributeDefinition],
@@ -677,7 +683,7 @@ fn load_with_limits(
             return Err(err("duplicate entry"));
         }
         let cap = if name == "mimetype" {
-            128
+            MIMETYPE_ENTRY_LIMIT
         } else if name == "manifest.json"
             || name == "project.json"
             || (name.starts_with("checkpoints/") && name.ends_with(".json"))
@@ -807,7 +813,7 @@ fn load_with_limits(
     {
         return Err(err("comments require schema 3"));
     }
-    if dto.checkpoints.len() > 20 {
+    if dto.checkpoints.len() > processcraft_core::MAX_CHECKPOINTS {
         return Err(err("checkpoint limit exceeded"));
     }
     let mut frozen = Vec::new();
@@ -1195,11 +1201,11 @@ fn validate_preview(data: &[u8]) -> Result<(), NativeError> {
     let decoder = png::Decoder::new(Cursor::new(data));
     let mut reader = decoder.read_info().map_err(err)?;
     let info = reader.info();
-    if u64::from(info.width) * u64::from(info.height) > 4_000_000 {
+    if u64::from(info.width) * u64::from(info.height) > PREVIEW_PIXEL_LIMIT {
         return Err(err("preview exceeds pixel limit"));
     }
     let size = reader.output_buffer_size();
-    if size > 32 * 1024 * 1024 {
+    if size > PREVIEW_DECODED_LIMIT {
         return Err(err("preview exceeds decoded limit"));
     }
     let mut buffer = vec![0; size];

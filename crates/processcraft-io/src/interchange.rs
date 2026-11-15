@@ -1,5 +1,12 @@
-//! Conservative interchange: validate first, then qualify a small lossless profile.
+//! Conservative BPMN interchange: validate first, then qualify a small lossless profile.
+//!
+//! Import (`prepare_import`) parses the source safely, projects only content inside a qualified
+//! profile into the typed model, and re-exports that projection to confirm it round-trips
+//! (qualify, export, re-parse, compare via `interchange_compare`). Anything that fails the loop
+//! stays as non-editable preserved source: content is preserved byte-for-byte or refused,
+//! never silently dropped or reinterpreted. `export_bpmn` applies the same checks on the way out.
 use crate::bpmn::{ImportError, import_bpmn};
+use crate::ns::{BPMN, BPMNDI, DC, DI, XSI};
 use processcraft_core::{
     bpmn_catalog::{
         BpmnResource, Interface, ItemDefinition, ItemKind, Operation, ResourceParameter,
@@ -19,10 +26,6 @@ use quick_xml::{
     reader::NsReader,
 };
 use std::{collections::BTreeMap, sync::Arc};
-const B: &str = "http://www.omg.org/spec/BPMN/20100524/MODEL";
-const BD: &str = "http://www.omg.org/spec/BPMN/20100524/DI";
-const DC: &str = "http://www.omg.org/spec/DD/20100524/DC";
-const DI: &str = "http://www.omg.org/spec/DD/20100524/DI";
 const ANONYMOUS_CONTEXT_MARKER: &str = "data-processcraft-internal-context";
 /// Namespace of the custom attribute values written to `extensionElements` (M5.1b).
 pub const PC_ATTRIBUTES_NS: &str = "urn:processcraft:attributes:1";
@@ -133,12 +136,13 @@ pub fn prepare_import(bytes: &[u8], source_name: &str) -> Result<PreparedImport,
 fn invalid_choreography_loop_types(bytes: &[u8]) -> Vec<String> {
     let text = String::from_utf8_lossy(bytes);
     let mut found = Vec::new();
-    for (at, _) in text.match_indices("loopType=\"") {
+    const NEEDLE: &str = "loopType=\"";
+    for (at, _) in text.match_indices(NEEDLE) {
         let tag_start = text[..at].rfind('<').unwrap_or(0);
         if !text[tag_start..at].contains("horeography") {
             continue;
         }
-        let rest = &text[at + 10..];
+        let rest = &text[at + NEEDLE.len()..];
         let value = &rest[..rest.find('"').unwrap_or(rest.len())];
         if !matches!(
             value,
@@ -259,7 +263,7 @@ fn xml_content(e: &Elem) -> Option<processcraft_core::bpmn_xml::XmlContent> {
 }
 fn structured_documentation(e: &Elem) -> Option<processcraft_core::bpmn_metadata::Documentation> {
     use processcraft_core::{bpmn_metadata::Documentation, bpmn_xml::MixedXml};
-    if e.ns != B
+    if e.ns != BPMN
         || e.name != "documentation"
         || !attrs(e, &["id", "textFormat"])
         || e.children.len() > 1
@@ -280,7 +284,7 @@ fn mixed_body(e: &Elem, preserve_context: bool) -> Option<processcraft_core::bpm
         return None;
     }
     let body = if (!preserve_context
-        || e.namespaces.len() == 1 && e.namespaces.get("").is_some_and(|v| v == B))
+        || e.namespaces.len() == 1 && e.namespaces.get("").is_some_and(|v| v == BPMN))
         && e.content
             .iter()
             .all(|part| matches!(part, ElemContent::Text(_)))
@@ -293,7 +297,7 @@ fn mixed_body(e: &Elem, preserve_context: bool) -> Option<processcraft_core::bpm
     Some(body)
 }
 fn extension_elements(e: &Elem) -> Option<processcraft_core::bpmn_metadata::ExtensionElements> {
-    if e.ns != B || e.name != "extensionElements" || !attrs(e, &[]) {
+    if e.ns != BPMN || e.name != "extensionElements" || !attrs(e, &[]) {
         return None;
     }
     let content = xml_content(e)?;
@@ -452,7 +456,7 @@ fn extract_owner_metadata(e: &mut Elem, pending: &mut BTreeMap<String, PendingBa
     for child in &mut e.children {
         extract_owner_metadata(child, pending)?;
     }
-    if e.ns != B || !supported_base_owner(&e.name) {
+    if e.ns != BPMN || !supported_base_owner(&e.name) {
         return Some(());
     }
     let mut docs = Vec::new();
@@ -460,9 +464,9 @@ fn extract_owner_metadata(e: &mut Elem, pending: &mut BTreeMap<String, PendingBa
     let mut rest = Vec::new();
     let mut phase = 0;
     for child in std::mem::take(&mut e.children) {
-        if child.ns == B && child.name == "documentation" && phase == 0 {
+        if child.ns == BPMN && child.name == "documentation" && phase == 0 {
             docs.push(structured_documentation(&child)?);
-        } else if child.ns == B
+        } else if child.ns == BPMN
             && child.name == "extensionElements"
             && phase == 0
             && extension.is_none()
@@ -587,7 +591,7 @@ fn extract_flow_metadata(e: &mut Elem, target_namespace: &str) -> Option<()> {
     for child in &mut e.children {
         extract_flow_metadata(child, target_namespace)?;
     }
-    if e.ns != B || !is_flow_element(&e.name) {
+    if e.ns != BPMN || !is_flow_element(&e.name) {
         return Some(());
     }
     let mut result = processcraft_core::bpmn_activity::FlowElementMetadata::default();
@@ -598,7 +602,7 @@ fn extract_flow_metadata(e: &mut Elem, target_namespace: &str) -> Option<()> {
     let mut rest = Vec::new();
     for child in std::mem::take(&mut e.children) {
         match (child.ns.as_str(), child.name.as_str()) {
-            (B, "auditing") if phase == 0 && result.auditing.is_none() => {
+            (BPMN, "auditing") if phase == 0 && result.auditing.is_none() => {
                 if !attrs(&child, &["id"]) || !child.children.is_empty() {
                     return None;
                 }
@@ -608,7 +612,7 @@ fn extract_flow_metadata(e: &mut Elem, target_namespace: &str) -> Option<()> {
                 });
                 phase = 1;
             }
-            (B, "monitoring") if phase <= 1 && result.monitoring.is_none() => {
+            (BPMN, "monitoring") if phase <= 1 && result.monitoring.is_none() => {
                 if !attrs(&child, &["id"]) || !child.children.is_empty() {
                     return None;
                 }
@@ -618,7 +622,7 @@ fn extract_flow_metadata(e: &mut Elem, target_namespace: &str) -> Option<()> {
                 });
                 phase = 2;
             }
-            (B, "categoryValueRef") if phase <= 2 => {
+            (BPMN, "categoryValueRef") if phase <= 2 => {
                 if !attrs(&child, &[]) || !child.children.is_empty() {
                     return None;
                 }
@@ -628,7 +632,7 @@ fn extract_flow_metadata(e: &mut Elem, target_namespace: &str) -> Option<()> {
                 ));
                 phase = 2;
             }
-            (B, "incoming")
+            (BPMN, "incoming")
                 if phase <= 3
                     && !matches!(
                         e.name.as_str(),
@@ -647,7 +651,7 @@ fn extract_flow_metadata(e: &mut Elem, target_namespace: &str) -> Option<()> {
                 ));
                 phase = 3;
             }
-            (B, "outgoing")
+            (BPMN, "outgoing")
                 if phase <= 4
                     && !matches!(
                         e.name.as_str(),
@@ -666,7 +670,7 @@ fn extract_flow_metadata(e: &mut Elem, target_namespace: &str) -> Option<()> {
                 ));
                 phase = 4;
             }
-            (B, "auditing" | "monitoring" | "categoryValueRef" | "incoming" | "outgoing") => {
+            (BPMN, "auditing" | "monitoring" | "categoryValueRef" | "incoming" | "outgoing") => {
                 return None;
             }
             _ => {
@@ -713,7 +717,7 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                 let opaque = stack.last().is_some_and(|parent| {
                     parent.opaque
                         || (parent.ns == DI && parent.name == "extension")
-                        || (parent.ns == B
+                        || (parent.ns == BPMN
                             && matches!(
                                 parent.name.as_str(),
                                 "documentation" | "script" | "text" | "extensionElements"
@@ -786,7 +790,7 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                         continue;
                     }
                     if let ResolveResult::Bound(uri) = ns {
-                        if item.ns == B
+                        if item.ns == BPMN
                             && item.name == "rootElement"
                             && uri.0 == "http://www.w3.org/2001/XMLSchema-instance"
                             && key == "type"
@@ -796,7 +800,7 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                                 .ok()?
                                 .into_owned();
                             let (resolved, name) = r.resolver().resolve_element(QName(&value));
-                            if !matches!(resolved, ResolveResult::Bound(uri) if uri.0 == B)
+                            if !matches!(resolved, ResolveResult::Bound(uri) if uri.0 == BPMN)
                                 || name.as_ref() != "tCallableElement"
                             {
                                 return None;
@@ -805,7 +809,7 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                                 .insert("xsi:type".into(), "tCallableElement".into());
                             continue;
                         }
-                        if item.ns == B
+                        if item.ns == BPMN
                             && item.name == "partitionElement"
                             && uri.0 == "http://www.w3.org/2001/XMLSchema-instance"
                             && key == "type"
@@ -815,7 +819,7 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                                 .ok()?
                                 .into_owned();
                             let (resolved, name) = r.resolver().resolve_element(QName(&value));
-                            if !matches!(resolved, ResolveResult::Bound(uri) if uri.0 == B)
+                            if !matches!(resolved, ResolveResult::Bound(uri) if uri.0 == BPMN)
                                 || name.as_ref() != "tCategoryValue"
                             {
                                 return None;
@@ -824,7 +828,7 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                                 .insert("xsi:type".into(), "tCategoryValue".into());
                             continue;
                         }
-                        if item.ns != B
+                        if item.ns != BPMN
                             || !is_expression(&item.name)
                             || uri.0 != "http://www.w3.org/2001/XMLSchema-instance"
                             || key != "type"
@@ -853,7 +857,7 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                             .ok()?
                             .into_owned();
                         let (resolved, name) = r.resolver().resolve_element(QName(&value));
-                        if !matches!(resolved, ResolveResult::Bound(uri) if uri.0==B)
+                        if !matches!(resolved, ResolveResult::Bound(uri) if uri.0==BPMN)
                             || !matches!(name.as_ref(), "tExpression" | "tFormalExpression")
                         {
                             return None;
@@ -867,7 +871,7 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                         .normalized_value(XmlVersion::Implicit1_0)
                         .ok()?
                         .into_owned();
-                    if (item.ns == B
+                    if (item.ns == BPMN
                         && matches!(
                             (item.name.as_str(), key),
                             ("itemDefinition", "structureRef")
@@ -934,7 +938,7 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                                     "itemSubjectRef"
                                 )
                         ))
-                        || (item.ns == BD
+                        || (item.ns == BPMNDI
                             && ((item.name == "BPMNLabel" && key == "labelStyle")
                                 || (item.name == "BPMNShape"
                                     && key == "choreographyActivityShape")))
@@ -953,7 +957,7 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                             },
                         );
                     }
-                    if item.ns == B && is_expression(&item.name) && key == "evaluatesToTypeRef" {
+                    if item.ns == BPMN && is_expression(&item.name) && key == "evaluatesToTypeRef" {
                         let (resolved, local) = r.resolver().resolve_element(QName(&value));
                         let namespace = match resolved {
                             ResolveResult::Bound(uri) => uri.0.to_string(),
@@ -970,9 +974,13 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                     }
                     if matches!(
                         (item.ns.as_str(), item.name.as_str(), key),
-                        (B, "sequenceFlow", "sourceRef" | "targetRef")
-                            | (BD, "BPMNPlane" | "BPMNShape" | "BPMNEdge", "bpmnElement")
-                            | (BD, "BPMNEdge", "sourceElement" | "targetElement")
+                        (BPMN, "sequenceFlow", "sourceRef" | "targetRef")
+                            | (
+                                BPMNDI,
+                                "BPMNPlane" | "BPMNShape" | "BPMNEdge",
+                                "bpmnElement"
+                            )
+                            | (BPMNDI, "BPMNEdge", "sourceElement" | "targetElement")
                     ) {
                         if item.name == "sequenceFlow" {
                             if value.contains(':') {
@@ -1005,7 +1013,7 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
             }
             Event::End(_) => {
                 let mut item = stack.pop()?;
-                if item.ns == B && matches!(item.name.as_str(), "flowNodeRef") {
+                if item.ns == BPMN && matches!(item.name.as_str(), "flowNodeRef") {
                     let q = item.text.trim();
                     if item.name == "flowNodeRef" && !q.contains(':') {
                         item.text = q.to_owned();
@@ -1022,7 +1030,7 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                         item.text = local.as_ref().into();
                     }
                 }
-                if item.ns == B
+                if item.ns == BPMN
                     && matches!(
                         item.name.as_str(),
                         "participantRef"
@@ -1074,7 +1082,7 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                 if let Some(last) = stack.last_mut() {
                     if last.opaque
                         || (last.ns == DI && last.name == "extension")
-                        || last.ns == B
+                        || last.ns == BPMN
                             && matches!(
                                 last.name.as_str(),
                                 "documentation"
@@ -1144,7 +1152,7 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                 let last = stack.last_mut()?;
                 if !last.opaque
                     && !(last.ns == DI && last.name == "extension")
-                    && (last.ns != B
+                    && (last.ns != BPMN
                         || !matches!(
                             last.name.as_str(),
                             "documentation"
@@ -1189,7 +1197,7 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                 let last = stack.last_mut()?;
                 if !last.opaque
                     && !(last.ns == DI && last.name == "extension")
-                    && (last.ns != B
+                    && (last.ns != BPMN
                         || !matches!(
                             last.name.as_str(),
                             "documentation"
@@ -1221,7 +1229,7 @@ fn tree(bytes: &[u8]) -> Option<Elem> {
                 let last = stack.last_mut()?;
                 if !last.opaque
                     && !(last.ns == DI && last.name == "extension")
-                    && !(last.ns == B
+                    && !(last.ns == BPMN
                         && (matches!(last.name.as_str(), "documentation" | "script" | "text")
                             || is_expression(&last.name)))
                 {
@@ -1309,7 +1317,7 @@ fn parse_di_metadata(
     ))
 }
 fn parse_label(e: &Elem, target_namespace: &str) -> Option<Label> {
-    if e.ns != BD || e.name != "BPMNLabel" || !di_attrs(e, &["id", "labelStyle"]) {
+    if e.ns != BPMNDI || e.name != "BPMNLabel" || !di_attrs(e, &["id", "labelStyle"]) {
         return None;
     }
     let (di_metadata, offset) = parse_di_metadata(e)?;
@@ -1335,7 +1343,7 @@ fn parse_label(e: &Elem, target_namespace: &str) -> Option<Label> {
     })
 }
 fn parse_expression(e: &Elem, implicit_formal: bool) -> Option<Expression> {
-    if e.ns != B
+    if e.ns != BPMN
         || e.text.len() > 16_384
         || e.namespaces.len() > 256
         || e.namespaces
@@ -1377,11 +1385,11 @@ fn parse_expression(e: &Elem, implicit_formal: bool) -> Option<Expression> {
             ElemContent::Child(index) => {
                 has_markup = true;
                 let child = e.children.get(*index)?;
-                if child.ns == B && child.name == "documentation" && !seen_extension {
+                if child.ns == BPMN && child.name == "documentation" && !seen_extension {
                     ExpressionPart::Documentation {
                         documentation: structured_documentation(child)?,
                     }
-                } else if child.ns == B && child.name == "extensionElements" && !seen_extension {
+                } else if child.ns == BPMN && child.name == "extensionElements" && !seen_extension {
                     seen_extension = true;
                     ExpressionPart::ExtensionElements {
                         extension_elements: extension_elements(child)?,
@@ -1430,12 +1438,12 @@ fn parse_correlation_key(
     namespace: &str,
 ) -> Option<processcraft_core::bpmn_activity::CorrelationKey> {
     use processcraft_core::bpmn_activity::CorrelationKey;
-    if e.ns != B || e.name != "correlationKey" || !attrs(e, &["id", "name"]) {
+    if e.ns != BPMN || e.name != "correlationKey" || !attrs(e, &["id", "name"]) {
         return None;
     }
     let mut refs = Vec::new();
     for child in &e.children {
-        if child.ns != B
+        if child.ns != BPMN
             || child.name != "correlationPropertyRef"
             || !attrs(child, &[])
             || !child.children.is_empty()
@@ -1459,7 +1467,7 @@ fn parse_correlation_property(
     namespace: &str,
 ) -> Option<processcraft_core::bpmn_activity::CorrelationProperty> {
     use processcraft_core::bpmn_activity::{CorrelationProperty, CorrelationRetrieval};
-    if e.ns != B
+    if e.ns != BPMN
         || e.name != "correlationProperty"
         || !attrs(e, &["id", "name", "type"])
         || e.children.is_empty()
@@ -1468,7 +1476,7 @@ fn parse_correlation_property(
     }
     let mut retrieval_expressions = Vec::new();
     for child in &e.children {
-        if child.ns != B
+        if child.ns != BPMN
             || child.name != "correlationPropertyRetrievalExpression"
             || !attrs(child, &["id", "messageRef"])
             || child.children.len() != 1
@@ -1499,12 +1507,15 @@ fn parse_correlation_subscription(
     namespace: &str,
 ) -> Option<processcraft_core::bpmn_activity::CorrelationSubscription> {
     use processcraft_core::bpmn_activity::{CorrelationPropertyBinding, CorrelationSubscription};
-    if e.ns != B || e.name != "correlationSubscription" || !attrs(e, &["id", "correlationKeyRef"]) {
+    if e.ns != BPMN
+        || e.name != "correlationSubscription"
+        || !attrs(e, &["id", "correlationKeyRef"])
+    {
         return None;
     }
     let mut bindings = Vec::new();
     for child in &e.children {
-        if child.ns != B
+        if child.ns != BPMN
             || child.name != "correlationPropertyBinding"
             || !attrs(child, &["id", "correlationPropertyRef"])
             || child.children.len() != 1
@@ -1533,7 +1544,7 @@ fn parse_correlation_subscription(
     })
 }
 fn parse_audit_monitor(e: &Elem) -> Option<processcraft_core::bpmn_activity::AuditMonitor> {
-    if e.ns != B
+    if e.ns != BPMN
         || !matches!(e.name.as_str(), "auditing" | "monitoring")
         || !attrs(e, &["id"])
         || !e.children.is_empty()
@@ -1546,7 +1557,7 @@ fn parse_audit_monitor(e: &Elem) -> Option<processcraft_core::bpmn_activity::Aud
     })
 }
 fn parse_property(e: &Elem) -> Option<processcraft_core::bpmn_model::EventProperty> {
-    if e.ns != B || e.name != "property" || !attrs(e, &["id", "name", "itemSubjectRef"]) {
+    if e.ns != BPMN || e.name != "property" || !attrs(e, &["id", "name", "itemSubjectRef"]) {
         return None;
     }
     Some(processcraft_core::bpmn_model::EventProperty {
@@ -1560,7 +1571,7 @@ fn parse_io_binding(
     e: &Elem,
     namespace: &str,
 ) -> Option<processcraft_core::bpmn_activity::IoBinding> {
-    if e.ns != B
+    if e.ns != BPMN
         || e.name != "ioBinding"
         || !attrs(e, &["id", "operationRef", "inputDataRef", "outputDataRef"])
         || !e.children.is_empty()
@@ -1579,7 +1590,7 @@ fn parse_io_binding(
     })
 }
 fn parse_rendering(e: &Elem) -> Option<processcraft_core::bpmn_activity::BaseOwner> {
-    if e.ns != B || e.name != "rendering" || !attrs(e, &["id"]) || !e.children.is_empty() {
+    if e.ns != BPMN || e.name != "rendering" || !attrs(e, &["id"]) || !e.children.is_empty() {
         return None;
     }
     Some(processcraft_core::bpmn_activity::BaseOwner {
@@ -1595,7 +1606,7 @@ fn parse_resource_role(
         ResourceAssignmentExpression, ResourceParameterBinding, ResourceRole,
         ResourceRoleAssignment, ResourceRoleKind,
     };
-    if e.ns != B || !attrs(e, &["id", "name"]) {
+    if e.ns != BPMN || !attrs(e, &["id", "name"]) {
         return None;
     }
     let kind = match e.name.as_str() {
@@ -1607,7 +1618,7 @@ fn parse_resource_role(
     };
     let assignment = if e.children.is_empty() {
         ResourceRoleAssignment::None
-    } else if e.children[0].ns == B
+    } else if e.children[0].ns == BPMN
         && e.children[0].name == "resourceRef"
         && attrs(&e.children[0], &[])
         && e.children[0].children.is_empty()
@@ -1615,7 +1626,7 @@ fn parse_resource_role(
         let reference = event_reference(e.children[0].catalog_text_qname.as_ref()?, namespace);
         let mut bindings = Vec::new();
         for child in &e.children[1..] {
-            if child.ns != B
+            if child.ns != BPMN
                 || child.name != "resourceParameterBinding"
                 || !attrs(child, &["id", "parameterRef"])
                 || child.children.len() != 1
@@ -1638,7 +1649,7 @@ fn parse_resource_role(
             bindings,
         }
     } else if e.children.len() == 1
-        && e.children[0].ns == B
+        && e.children[0].ns == BPMN
         && e.children[0].name == "resourceAssignmentExpression"
     {
         let child = &e.children[0];
@@ -1671,7 +1682,7 @@ fn parse_global_task(
     namespace: &str,
 ) -> Option<processcraft_core::bpmn_activity::GlobalTask> {
     use processcraft_core::bpmn_activity::{CallableMetadata, GlobalTask, GlobalTaskKind};
-    if e.ns != B
+    if e.ns != BPMN
         || !attrs(
             e,
             &["id", "name", "implementation", "scriptLanguage", "xsi:type"],
@@ -1686,7 +1697,7 @@ fn parse_global_task(
     let mut renderings = Vec::new();
     let mut phase = 0u8;
     for child in &e.children {
-        if child.ns != B {
+        if child.ns != BPMN {
             return None;
         }
         match child.name.as_str() {
@@ -1766,7 +1777,7 @@ fn parse_global_task(
     })
 }
 fn parse_event_definition(e: &Elem, target_namespace: &str) -> Option<EventDefinition> {
-    if e.ns != B {
+    if e.ns != BPMN {
         return None;
     }
     let id = optional_id(e)?;
@@ -1779,7 +1790,7 @@ fn parse_event_definition(e: &Elem, target_namespace: &str) -> Option<EventDefin
         "messageEventDefinition" if attrs(e, &["id", "messageRef"]) => {
             let mut operation_ref = None;
             for child in &e.children {
-                if child.ns != B
+                if child.ns != BPMN
                     || child.name != "operationRef"
                     || !child.attrs.is_empty()
                     || !child.children.is_empty()
@@ -1876,7 +1887,7 @@ fn parse_event_definition(e: &Elem, target_namespace: &str) -> Option<EventDefin
             let mut sources = Vec::new();
             let mut target = None;
             for child in &e.children {
-                if child.ns != B || !child.attrs.is_empty() || !child.children.is_empty() {
+                if child.ns != BPMN || !child.attrs.is_empty() || !child.children.is_empty() {
                     return None;
                 }
                 let reference =
@@ -1927,7 +1938,7 @@ fn gateway_details(e: &Elem) -> Option<(String, Option<NodeDetails>)> {
     let mut seen_doc = false;
     let mut activation_condition = None;
     for child in &e.children {
-        if child.ns != B {
+        if child.ns != BPMN {
             return None;
         }
         match child.name.as_str() {
@@ -1964,7 +1975,7 @@ fn parse_implicit_input_association(
 ) -> Option<processcraft_core::bpmn_activity::ImplicitInputAssociation> {
     use processcraft_core::bpmn_activity::ImplicitInputAssociation;
     use processcraft_core::bpmn_data::DataAssignment;
-    if e.ns != B || e.name != "dataInputAssociation" || !attrs(e, &["id"]) {
+    if e.ns != BPMN || e.name != "dataInputAssociation" || !attrs(e, &["id"]) {
         return None;
     }
     let mut sources = Vec::new();
@@ -1972,7 +1983,7 @@ fn parse_implicit_input_association(
     let mut transformation = None;
     let mut assignments = Vec::new();
     for child in &e.children {
-        if child.ns != B {
+        if child.ns != BPMN {
             return None;
         }
         match child.name.as_str() {
@@ -2018,7 +2029,7 @@ fn parse_implicit_throw(
     namespace: &str,
 ) -> Option<processcraft_core::bpmn_activity::ImplicitThrowEvent> {
     use processcraft_core::bpmn_activity::ImplicitThrowEvent;
-    if e.ns != B || e.name != "event" || !attrs(e, &["id", "name"]) {
+    if e.ns != BPMN || e.name != "event" || !attrs(e, &["id", "name"]) {
         return None;
     }
     let mut flow = take_flow_metadata(e);
@@ -2051,7 +2062,7 @@ fn parse_implicit_throw(
     };
     let mut phase = 0;
     for child in &e.children {
-        if child.ns != B {
+        if child.ns != BPMN {
             return None;
         }
         match child.name.as_str() {
@@ -2097,7 +2108,7 @@ fn loop_characteristics(e: &Elem, namespace: &str) -> Option<LoopCharacteristics
             return None;
         }
         let condition = if let Some(child) = e.children.first() {
-            if child.ns != B || child.name != "loopCondition" {
+            if child.ns != BPMN || child.name != "loopCondition" {
                 return None;
             }
             Some(parse_expression(child, false)?)
@@ -2176,7 +2187,7 @@ fn loop_characteristics(e: &Elem, namespace: &str) -> Option<LoopCharacteristics
     };
     let mut phase = 0;
     for child in &e.children {
-        if child.ns != B {
+        if child.ns != BPMN {
             return None;
         }
         match child.name.as_str() {
@@ -2220,7 +2231,7 @@ fn loop_characteristics(e: &Elem, namespace: &str) -> Option<LoopCharacteristics
                 if phase <= 5
                     && attrs(child, &["id"])
                     && (1..=2).contains(&child.children.len())
-                    && child.children[0].ns == B
+                    && child.children[0].ns == BPMN
                     && child.children[0].name == "condition" =>
             {
                 let condition = Some(parse_expression(&child.children[0], true)?);
@@ -2250,7 +2261,7 @@ fn parse_item_aware(e: &Elem) -> Option<Option<processcraft_core::bpmn_data::Ite
     use processcraft_core::bpmn_data::{DataState, ItemAwareMetadata};
     let mut state = None;
     for child in &e.children {
-        if child.ns == B && child.name == "dataState" {
+        if child.ns == BPMN && child.name == "dataState" {
             if state.is_some() || !attrs(child, &["id", "name"]) || !child.children.is_empty() {
                 return None;
             }
@@ -2259,7 +2270,7 @@ fn parse_item_aware(e: &Elem) -> Option<Option<processcraft_core::bpmn_data::Ite
                 id: optional_id(child)?,
                 name: child.attrs.get("name").cloned(),
             });
-        } else if child.ns != B || child.name != "documentation" {
+        } else if child.ns != BPMN || child.name != "documentation" {
             return None;
         }
     }
@@ -2276,10 +2287,10 @@ fn parse_item_aware(e: &Elem) -> Option<Option<processcraft_core::bpmn_data::Ite
 fn item_documentation(e: &Elem) -> Option<String> {
     let mut doc = None;
     for child in &e.children {
-        if child.ns == B && child.name == "dataState" {
+        if child.ns == BPMN && child.name == "dataState" {
             continue;
         }
-        if child.ns != B
+        if child.ns != BPMN
             || child.name != "documentation"
             || !child.attrs.is_empty()
             || !child.children.is_empty()
@@ -2292,7 +2303,7 @@ fn item_documentation(e: &Elem) -> Option<String> {
     Some(doc.unwrap_or_default())
 }
 fn parse_data_port(e: &Elem) -> Option<processcraft_core::bpmn_data::DataPort> {
-    if e.ns != B
+    if e.ns != BPMN
         || !matches!(
             e.name.as_str(),
             "dataInput" | "dataOutput" | "inputDataItem" | "outputDataItem"
@@ -2311,7 +2322,7 @@ fn parse_data_port(e: &Elem) -> Option<processcraft_core::bpmn_data::DataPort> {
     })
 }
 fn parse_io_set(child: &Elem, input: bool) -> Option<processcraft_core::bpmn_data::IoSet> {
-    if child.ns != B || !attrs(child, &["id", "name"]) {
+    if child.ns != BPMN || !attrs(child, &["id", "name"]) {
         return None;
     }
     let mut set = processcraft_core::bpmn_data::IoSet {
@@ -2321,7 +2332,7 @@ fn parse_io_set(child: &Elem, input: bool) -> Option<processcraft_core::bpmn_dat
         ..Default::default()
     };
     for reference in &child.children {
-        if reference.ns != B || !reference.attrs.is_empty() || !reference.children.is_empty() {
+        if reference.ns != BPMN || !reference.attrs.is_empty() || !reference.children.is_empty() {
             return None;
         }
         let value = reference.text.trim().parse().ok()?;
@@ -2350,7 +2361,7 @@ fn parse_io_specification(e: &Elem) -> Option<processcraft_core::bpmn_data::IoSp
         ..Default::default()
     };
     for child in &e.children {
-        if child.ns != B {
+        if child.ns != BPMN {
             return None;
         }
         match child.name.as_str() {
@@ -2400,7 +2411,7 @@ fn parse_data_association(
     let mut transformation = None;
     let mut assignments = Vec::new();
     for child in &e.children {
-        if child.ns != B {
+        if child.ns != BPMN {
             return None;
         }
         match child.name.as_str() {
@@ -2494,7 +2505,7 @@ fn parse_event(
     let mut definition_refs = Vec::new();
     let mut phase = 0u8;
     for child in &e.children {
-        if child.ns != B {
+        if child.ns != BPMN {
             return None;
         }
         match child.name.as_str() {
@@ -2650,13 +2661,13 @@ fn activity_properties(
             _ => {}
         }
         if child.name == "completionCondition" && e.name == "adHocSubProcess" {
-            if child.ns != B || result.completion_condition.is_some() {
+            if child.ns != BPMN || result.completion_condition.is_some() {
                 return None;
             }
             result.completion_condition = Some(parse_expression(child, false)?);
         }
         if child.name == "script" {
-            if e.name != "scriptTask" || child.ns != B || result.script.is_some() {
+            if e.name != "scriptTask" || child.ns != BPMN || result.script.is_some() {
                 return None;
             }
             result.script = Some(mixed_body(child, true)?);
@@ -2673,7 +2684,7 @@ fn activity_parts(e: &Elem, namespace: &str) -> Option<(String, Option<LoopChara
     let mut seen_doc = false;
     let mut lp = None;
     for child in &e.children {
-        if child.ns != B {
+        if child.ns != BPMN {
             return None;
         }
         if child.name == "documentation"
@@ -2721,14 +2732,14 @@ fn parse_lane_set(
     target_namespace: &str,
 ) -> Option<()> {
     if depth > 32
-        || set.ns != B
+        || set.ns != BPMN
         || !matches!(set.name.as_str(), "laneSet" | "childLaneSet")
         || !attrs(set, &["id", "name"])
     {
         return None;
     }
     for lane in &set.children {
-        if lane.ns != B
+        if lane.ns != BPMN
             || lane.name != "lane"
             || !attrs(lane, &["id", "name", "partitionElementRef"])
         {
@@ -2742,7 +2753,7 @@ fn parse_lane_set(
         let mut partition_element = None;
         let mut seen_child_set = false;
         for child in &lane.children {
-            if child.ns != B {
+            if child.ns != BPMN {
                 return None;
             }
             match child.name.as_str() {
@@ -2848,7 +2859,7 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
     }
     for n in &e.children {
         at(n);
-        if e.name == "process" && n.ns == B {
+        if e.name == "process" && n.ns == BPMN {
             match n.name.as_str() {
                 "supportedInterfaceRef" if attrs(n, &[]) && n.children.is_empty() => {
                     process_metadata
@@ -2904,7 +2915,7 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
         if matches!(
             e.name.as_str(),
             "subProcess" | "adHocSubProcess" | "transaction"
-        ) && n.ns == B
+        ) && n.ns == BPMN
             && matches!(
                 n.name.as_str(),
                 "standardLoopCharacteristics" | "multiInstanceLoopCharacteristics"
@@ -2912,14 +2923,14 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
         {
             continue;
         }
-        if e.name == "adHocSubProcess" && n.ns == B && n.name == "completionCondition" {
+        if e.name == "adHocSubProcess" && n.ns == BPMN && n.name == "completionCondition" {
             continue;
         }
-        if n.ns == B && n.name == "documentation" {
+        if n.ns == BPMN && n.name == "documentation" {
             documentation_nodes.push(structured_documentation(n)?);
             continue;
         }
-        if n.ns != B {
+        if n.ns != BPMN {
             return None;
         }
         if n.name == "ioSpecification" {
@@ -2987,7 +2998,7 @@ fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Pro
             let mut seen_text = false;
             let mut seen_doc = false;
             for c in &n.children {
-                if c.ns != B {
+                if c.ns != BPMN {
                     return None;
                 }
                 match c.name.as_str() {
@@ -3491,7 +3502,7 @@ fn parse_participant_association(
     e: &Elem,
     namespace: &str,
 ) -> Option<processcraft_core::bpmn_collaboration::ParticipantAssociation> {
-    if e.ns != B
+    if e.ns != BPMN
         || e.name != "participantAssociation"
         || !attrs(e, &["id"])
         || e.children.len() != 2
@@ -3499,7 +3510,11 @@ fn parse_participant_association(
         return None;
     }
     let reference = |child: &Elem, name: &str| -> Option<EventReference> {
-        if child.ns != B || child.name != name || !attrs(child, &[]) || !child.children.is_empty() {
+        if child.ns != BPMN
+            || child.name != name
+            || !attrs(child, &[])
+            || !child.children.is_empty()
+        {
             return None;
         }
         Some(event_reference(
@@ -3554,7 +3569,7 @@ fn parse_conversation(
     let mut correlation_keys = Vec::new();
     let mut phase = 0;
     for c in &e.children {
-        if c.ns != B {
+        if c.ns != BPMN {
             return None;
         }
         match c.name.as_str() {
@@ -3606,7 +3621,7 @@ fn parse_participant(e: &Elem, namespace: &str) -> Option<Participant> {
     let mut multiplicity = None;
     let mut phase = 0;
     for child in &e.children {
-        if child.ns != B {
+        if child.ns != BPMN {
             return None;
         }
         match child.name.as_str() {
@@ -3682,7 +3697,7 @@ fn parse_collaboration_artifact(
         "textAnnotation" if attrs(e, &["id", "textFormat"]) => {
             let mut text = None;
             for child in &e.children {
-                if child.ns != B || child.name != "text" || text.is_some() {
+                if child.ns != BPMN || child.name != "text" || text.is_some() {
                     return None;
                 }
                 text = Some(mixed_body(child, true)?);
@@ -3842,7 +3857,7 @@ fn parse_partner_refs(e: &Elem, namespace: &str) -> Option<Vec<EventReference>> 
     }
     let mut result = Vec::new();
     for child in &e.children {
-        if child.ns != B
+        if child.ns != BPMN
             || child.name != "participantRef"
             || !attrs(child, &[])
             || !child.children.is_empty()
@@ -3901,7 +3916,7 @@ fn parse_collaboration(e: &Elem, namespace: &str) -> Option<Collaboration> {
             return None;
         }
         phase = next;
-        if child.ns != B {
+        if child.ns != BPMN {
             return None;
         }
         match child.name.as_str() {
@@ -4246,7 +4261,7 @@ fn parse_choreography_flow(
         ChoreographyActivity, ChoreographyActivityDetails as Details,
         ChoreographyFlowElement as Element, ChoreographyGraph, ChoreographyLoopType,
     };
-    if depth > MAX_CHOREOGRAPHY_DEPTH || e.ns != B {
+    if depth > MAX_CHOREOGRAPHY_DEPTH || e.ns != BPMN {
         return None;
     }
     if matches!(
@@ -4274,7 +4289,7 @@ fn parse_choreography_flow(
         let mut associations = Vec::new();
         let mut phase = 0;
         for child in &e.children {
-            if child.ns != B {
+            if child.ns != BPMN {
                 return None;
             }
             match child.name.as_str() {
@@ -4514,7 +4529,7 @@ fn parse_choreography(
             return None;
         }
         phase = next;
-        if child.ns != B {
+        if child.ns != BPMN {
             return None;
         }
         match child.name.as_str() {
@@ -4664,7 +4679,9 @@ fn catalog_interface(e: &Elem) -> Option<Interface> {
     }
     let mut operations = Vec::new();
     for op in &e.children {
-        if op.ns != B || op.name != "operation" || !attrs(op, &["id", "name", "implementationRef"])
+        if op.ns != BPMN
+            || op.name != "operation"
+            || !attrs(op, &["id", "name", "implementationRef"])
         {
             return None;
         }
@@ -4672,7 +4689,7 @@ fn catalog_interface(e: &Elem) -> Option<Interface> {
         let mut output = None;
         let mut errors = Vec::new();
         for child in &op.children {
-            if child.ns != B || !child.attrs.is_empty() || !child.children.is_empty() {
+            if child.ns != BPMN || !child.attrs.is_empty() || !child.children.is_empty() {
                 return None;
             }
             let q = child.catalog_text_qname.clone()?;
@@ -4711,7 +4728,7 @@ fn catalog_resource(e: &Elem) -> Option<BpmnResource> {
     }
     let mut parameters = Vec::new();
     for p in &e.children {
-        if p.ns != B
+        if p.ns != BPMN
             || p.name != "resourceParameter"
             || !attrs(p, &["id", "name", "type", "isRequired"])
             || !p.children.is_empty()
@@ -4876,7 +4893,7 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
         if e.opaque || (e.ns == DI && e.name == "extension") {
             return false;
         }
-        let supported_di = e.ns == BD
+        let supported_di = e.ns == BPMNDI
             && matches!(
                 e.name.as_str(),
                 "BPMNPlane" | "BPMNShape" | "BPMNEdge" | "BPMNLabel"
@@ -4888,7 +4905,7 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
         at(owner);
         return refused(|| "extension attributes inside this element".into());
     }
-    if root.ns != B
+    if root.ns != BPMN
         || root.name != "definitions"
         || !root.attrs.keys().all(|key| [
                 "id",
@@ -4932,17 +4949,17 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
     for e in &root.children {
         at(e);
         let phase = match (e.ns.as_str(), e.name.as_str()) {
-            (B, "import") => 0,
-            (B, "extension") => 1,
-            (BD, "BPMNDiagram") => 3,
-            (B, "relationship") => 4,
+            (BPMN, "import") => 0,
+            (BPMN, "extension") => 1,
+            (BPMNDI, "BPMNDiagram") => 3,
+            (BPMN, "relationship") => 4,
             _ => 2,
         };
         if phase < root_phase {
             return None;
         }
         root_phase = phase;
-        if e.ns == B && e.name == "import" {
+        if e.ns == BPMN && e.name == "import" {
             if seen_non_import
                 || !attrs(e, &["namespace", "location", "importType"])
                 || !e.children.is_empty()
@@ -4972,12 +4989,12 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
         }
         seen_non_import = true;
         match (e.ns.as_str(), e.name.as_str()) {
-            (B, "correlationProperty") => {
+            (BPMN, "correlationProperty") => {
                 d.correlation_properties
                     .push(parse_correlation_property(e, &target_namespace)?);
             }
             (
-                B,
+                BPMN,
                 "rootElement"
                 | "globalTask"
                 | "globalManualTask"
@@ -4988,7 +5005,7 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                 d.global_tasks
                     .push(parse_global_task(e, &target_namespace)?);
             }
-            (B, "extension") => {
+            (BPMN, "extension") => {
                 if !attrs(e, &["definition", "mustUnderstand"]) || d.extensions.len() >= 256 {
                     return None;
                 }
@@ -5007,7 +5024,7 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                     must_understand,
                 });
             }
-            (B, "relationship") => {
+            (BPMN, "relationship") => {
                 if !attrs(e, &["id", "type", "direction"]) || d.relationships.len() >= 256 {
                     return None;
                 }
@@ -5022,7 +5039,7 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                 let mut sources = Vec::new();
                 let mut targets = Vec::new();
                 for child in &e.children {
-                    if child.ns != B || !attrs(child, &[]) || !child.children.is_empty() {
+                    if child.ns != BPMN || !attrs(child, &[]) || !child.children.is_empty() {
                         return None;
                     }
                     match child.name.as_str() {
@@ -5046,7 +5063,7 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                 });
             }
             (
-                B,
+                BPMN,
                 "messageEventDefinition"
                 | "signalEventDefinition"
                 | "errorEventDefinition"
@@ -5061,22 +5078,22 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                 e,
                 root.attrs.get("targetNamespace")?,
             )?),
-            (B, "itemDefinition") if d.catalog.item_definitions.len() < 256 => {
+            (BPMN, "itemDefinition") if d.catalog.item_definitions.len() < 256 => {
                 d.catalog.item_definitions.push(catalog_item(e)?)
             }
-            (B, "interface") if d.catalog.interfaces.len() < 256 => {
+            (BPMN, "interface") if d.catalog.interfaces.len() < 256 => {
                 d.catalog.interfaces.push(catalog_interface(e)?)
             }
-            (B, "resource") if d.catalog.resources.len() < 256 => {
+            (BPMN, "resource") if d.catalog.resources.len() < 256 => {
                 d.catalog.resources.push(catalog_resource(e)?)
             }
-            (B, "category") => {
+            (BPMN, "category") => {
                 if !attrs(e, &["id", "name"]) {
                     return None;
                 }
                 let mut values = Vec::new();
                 for child in &e.children {
-                    if child.ns != B
+                    if child.ns != BPMN
                         || child.name != "categoryValue"
                         || !attrs(child, &["id", "value"])
                         || !child.children.is_empty()
@@ -5096,7 +5113,7 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                     values,
                 });
             }
-            (B, "dataStore") => {
+            (BPMN, "dataStore") => {
                 if !attrs(
                     e,
                     &["id", "name", "capacity", "isUnlimited", "itemSubjectRef"],
@@ -5113,7 +5130,7 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                     item_aware: parse_item_aware(e)?,
                 });
             }
-            (B, "error" | "escalation") => {
+            (BPMN, "error" | "escalation") => {
                 if !attrs(
                     e,
                     &["id", "name", "errorCode", "escalationCode", "structureRef"],
@@ -5156,7 +5173,7 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                     }
                 });
             }
-            (B, "signal" | "message") => {
+            (BPMN, "signal" | "message") => {
                 if !attrs(
                     e,
                     if e.name == "signal" {
@@ -5186,7 +5203,7 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                     }
                 });
             }
-            (B, "partnerEntity" | "partnerRole") => {
+            (BPMN, "partnerEntity" | "partnerRole") => {
                 if !attrs(e, &["id", "name"]) {
                     return None;
                 }
@@ -5209,7 +5226,7 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                         });
                 }
             }
-            (B, "endPoint") => {
+            (BPMN, "endPoint") => {
                 if !attrs(e, &["id"]) || !e.text.trim().is_empty() || !e.children.is_empty() {
                     return None;
                 }
@@ -5219,11 +5236,11 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                         base: take_anonymous_base(e),
                     });
             }
-            (B, "choreography" | "globalChoreographyTask") => {
+            (BPMN, "choreography" | "globalChoreographyTask") => {
                 d.choreographies
                     .push(parse_choreography(e, &target_namespace)?);
             }
-            (B, "collaboration" | "globalConversation") => {
+            (BPMN, "collaboration" | "globalConversation") => {
                 let collaboration = parse_collaboration(e, &target_namespace)?;
                 if d.collaboration.is_none() {
                     d.collaboration = Some(collaboration);
@@ -5231,7 +5248,7 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                     d.additional_collaborations.push(collaboration);
                 }
             }
-            (B, "process") => {
+            (BPMN, "process") => {
                 if !attrs(
                     e,
                     &[
@@ -5249,14 +5266,14 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                 let p = parse_container(e, 0, root.attrs.get("targetNamespace")?)?;
                 d.processes.push(p);
             }
-            (BD, "BPMNDiagram") => {
+            (BPMNDI, "BPMNDiagram") => {
                 if !attrs(e, &["id", "name", "documentation", "resolution"])
                     || e.children.is_empty()
                 {
                     return None;
                 }
                 let plane = &e.children[0];
-                if plane.ns != BD
+                if plane.ns != BPMNDI
                     || plane.name != "BPMNPlane"
                     || !di_attrs(plane, &["id", "bpmnElement"])
                 {
@@ -5282,7 +5299,7 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                     edges: vec![],
                 };
                 for style in &e.children[1..] {
-                    if style.ns != BD
+                    if style.ns != BPMNDI
                         || style.name != "BPMNLabelStyle"
                         || !attrs(style, &["id"])
                         || style.children.len() != 1
@@ -5321,7 +5338,7 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                 }
                 for item in &plane.children[plane_offset..] {
                     at(item);
-                    if item.ns != BD
+                    if item.ns != BPMNDI
                         || !di_attrs(
                             item,
                             if item.name == "BPMNShape" {
@@ -5427,7 +5444,7 @@ fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument> {
                             let mut points = vec![];
                             let mut label = None;
                             for pt in &item.children[offset..] {
-                                if pt.ns == BD && pt.name == "BPMNLabel" && label.is_none() {
+                                if pt.ns == BPMNDI && pt.name == "BPMNLabel" && label.is_none() {
                                     label =
                                         Some(parse_label(pt, root.attrs.get("targetNamespace")?)?);
                                     continue;
@@ -5903,7 +5920,7 @@ fn restore_owner_defaults(xml: &str, pending: &BTreeMap<String, PendingBase>) ->
             Event::Start(element) | Event::Empty(element) => {
                 let empty = xml.get(start..end)?.ends_with("/>");
                 let (ns, local) = reader.resolver().resolve_element(element.name());
-                let is_bpmn = matches!(ns, ResolveResult::Bound(uri) if uri.0 == B);
+                let is_bpmn = matches!(ns, ResolveResult::Bound(uri) if uri.0 == BPMN);
                 let local_name = local.as_ref().to_owned();
                 let parent_changed = stack.last().is_some_and(|frame| frame.changed);
                 let inside_opaque = stack.last().is_some_and(|frame| frame.opaque);
@@ -5975,17 +5992,17 @@ fn restore_owner_defaults(xml: &str, pending: &BTreeMap<String, PendingBase>) ->
                     && context.is_some()
                     && (anonymous_context.is_some()
                         || desired_default != original_default
-                        || (parent_changed && desired_default != B));
+                        || (parent_changed && desired_default != BPMN));
                 let mut renamed = None;
                 let mut changed = false;
                 if rewrite {
                     let context = context?;
-                    let tag = if desired_default == B {
+                    let tag = if desired_default == BPMN {
                         local_name.clone()
                     } else {
                         let prefix = context
                             .iter()
-                            .find(|n| !n.prefix.is_empty() && n.uri == B)?
+                            .find(|n| !n.prefix.is_empty() && n.uri == BPMN)?
                             .prefix
                             .as_str();
                         format!("{prefix}:{local_name}")
@@ -6097,7 +6114,7 @@ fn insert_owner_metadata(xml: &str, mut pending: BTreeMap<String, PendingBase>) 
             _ => continue,
         };
         let (namespace, _) = reader.resolver().resolve_element(element.name());
-        if !matches!(namespace, ResolveResult::Bound(uri) if uri.0 == B) {
+        if !matches!(namespace, ResolveResult::Bound(uri) if uri.0 == BPMN) {
             continue;
         }
         let mut owner_id = None;
@@ -6175,12 +6192,12 @@ fn insert_owner_metadata(xml: &str, mut pending: BTreeMap<String, PendingBase>) 
                 .map(|n| n.uri.as_str())
                 .unwrap_or("");
             let local_name = owner_name.rsplit(':').next()?;
-            let tag = if default == B {
+            let tag = if default == BPMN {
                 local_name.to_owned()
             } else {
                 let prefix = context
                     .iter()
-                    .find(|n| !n.prefix.is_empty() && n.uri == B)?
+                    .find(|n| !n.prefix.is_empty() && n.uri == BPMN)?
                     .prefix
                     .as_str();
                 format!("{prefix}:{local_name}")
@@ -6355,7 +6372,7 @@ fn write_participant_association(
     namespace: &str,
     context: &ExportContext,
 ) {
-    xml.push_str(&format!("<participantAssociation xmlns=\"{B}\""));
+    xml.push_str(&format!("<participantAssociation xmlns=\"{BPMN}\""));
     if let Some(id) = &value.id {
         write_xml_id(xml, id);
     }
@@ -6536,7 +6553,7 @@ fn local_qname_value(id: &XmlId, namespace: &str) -> String {
 }
 fn write_local_qname_open(xml: &mut String, tag: &str, namespace: &str) -> String {
     if namespace.is_empty() {
-        xml.push_str(&format!("<pc_q:{tag} xmlns:pc_q=\"{B}\" xmlns=\"\""));
+        xml.push_str(&format!("<pc_q:{tag} xmlns:pc_q=\"{BPMN}\" xmlns=\"\""));
         format!("pc_q:{tag}")
     } else {
         xml.push_str(&format!("<{tag} xmlns:tns=\"{}\"", esc(namespace)));
@@ -6640,13 +6657,13 @@ fn write_collaboration_qname_owner(
         prefix
     };
     let owner = if empty_default {
-        format!("{}:{tag}", next_prefix(B))
+        format!("{}:{tag}", next_prefix(BPMN))
     } else {
         tag.to_owned()
     };
     let mut attrs = Vec::new();
     for (name, q) in values {
-        let lexical = if q.namespace.is_empty() || (!empty_default && q.namespace == B) {
+        let lexical = if q.namespace.is_empty() || (!empty_default && q.namespace == BPMN) {
             q.local.to_string()
         } else {
             format!("{}:{}", next_prefix(&q.namespace), q.local)
@@ -6696,7 +6713,7 @@ fn write_participant(
         write_event_qname_text(xml, "endPointRef", reference, namespace, document);
     }
     if let Some(value) = &participant.multiplicity {
-        xml.push_str(&format!("<participantMultiplicity xmlns=\"{B}\""));
+        xml.push_str(&format!("<participantMultiplicity xmlns=\"{BPMN}\""));
         if let Some(id) = &value.id {
             write_xml_id(xml, id);
         }
@@ -6761,7 +6778,7 @@ fn write_event_qname_text(
 ) {
     let qname = event_reference_qname(reference, namespace, context);
     xml.push_str(&format!(
-        "<pc_event:{tag} xmlns:pc_event=\"{B}\" xmlns=\"{}\">{}</pc_event:{tag}>",
+        "<pc_event:{tag} xmlns:pc_event=\"{BPMN}\" xmlns=\"{}\">{}</pc_event:{tag}>",
         esc(&qname.namespace),
         qname.local
     ));
@@ -6822,7 +6839,7 @@ fn write_reference_owner_open(
     let owner_prefix = q
         .namespace
         .is_empty()
-        .then(|| find_prefix(B).unwrap_or_else(|| "pc_corr_owner".into()));
+        .then(|| find_prefix(BPMN).unwrap_or_else(|| "pc_corr_owner".into()));
     let name = owner_prefix
         .as_ref()
         .map(|prefix| format!("{prefix}:{tag}"))
@@ -6830,9 +6847,9 @@ fn write_reference_owner_open(
     xml.push('<');
     xml.push_str(&name);
     if let Some(prefix) = &owner_prefix {
-        xml.push_str(&format!(" xmlns:{prefix}=\"{B}\" xmlns=\"\""));
+        xml.push_str(&format!(" xmlns:{prefix}=\"{BPMN}\" xmlns=\"\""));
     }
-    if q.namespace.is_empty() || q.namespace == B {
+    if q.namespace.is_empty() || q.namespace == BPMN {
         xml.push_str(&format!(" {attribute}=\"{}\"", q.local));
     } else {
         let prefix = find_prefix(&q.namespace).unwrap_or_else(|| "pc_corr_ref".into());
@@ -6849,7 +6866,7 @@ fn write_audit_monitor(
     tag: &str,
     value: &processcraft_core::bpmn_activity::AuditMonitor,
 ) {
-    xml.push_str(&format!("<{tag} xmlns=\"{B}\""));
+    xml.push_str(&format!("<{tag} xmlns=\"{BPMN}\""));
     if let Some(id) = &value.id {
         write_xml_id(xml, id);
     }
@@ -6888,7 +6905,7 @@ fn write_correlation_key(
     namespace: &str,
     context: &ExportContext,
 ) {
-    xml.push_str(&format!("<correlationKey xmlns=\"{B}\""));
+    xml.push_str(&format!("<correlationKey xmlns=\"{BPMN}\""));
     if let Some(id) = &value.id {
         write_xml_id(xml, id);
     }
@@ -7068,7 +7085,7 @@ fn write_io_binding(
     xml.push_str(&format!("</{tag}>"));
 }
 fn write_rendering(xml: &mut String, rendering: &processcraft_core::bpmn_activity::BaseOwner) {
-    xml.push_str(&format!("<rendering xmlns=\"{B}\""));
+    xml.push_str(&format!("<rendering xmlns=\"{BPMN}\""));
     if let Some(id) = &rendering.id {
         write_xml_id(xml, id);
     }
@@ -7090,7 +7107,7 @@ fn write_resource_role(
         ResourceRoleKind::HumanPerformer => "humanPerformer",
         ResourceRoleKind::PotentialOwner => "potentialOwner",
     };
-    xml.push_str(&format!("<{tag} xmlns=\"{B}\""));
+    xml.push_str(&format!("<{tag} xmlns=\"{BPMN}\""));
     if let Some(id) = &role.id {
         write_xml_id(xml, id);
     }
@@ -7167,7 +7184,7 @@ fn write_global_task(
     };
     xml.push_str(&format!("<{tag}"));
     if matches!(value.kind, GlobalTaskKind::CallableElement) {
-        xml.push_str(&format!(" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:bpmn=\"{B}\" xsi:type=\"bpmn:tCallableElement\""));
+        xml.push_str(&format!(" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:bpmn=\"{BPMN}\" xsi:type=\"bpmn:tCallableElement\""));
     }
     if let Some(id) = &value.id {
         write_xml_id(xml, id);
@@ -7268,7 +7285,7 @@ fn write_event_definition(
     } else {
         xml.push_str(&format!("<{tag}"));
         if restore_default {
-            xml.push_str(&format!(" xmlns=\"{B}\""));
+            xml.push_str(&format!(" xmlns=\"{BPMN}\""));
         }
         tag.to_owned()
     };
@@ -7472,7 +7489,7 @@ fn write_lanes(
         anonymous_base_children(xml, Some(&lane.id), lane.base.as_ref());
         if let Some(partition) = &lane.partition_element {
             xml.push_str(&format!(
-                "<partitionElement xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:pc_bpmn=\"{B}\" xsi:type=\"pc_bpmn:tCategoryValue\""
+                "<partitionElement xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:pc_bpmn=\"{BPMN}\" xsi:type=\"pc_bpmn:tCategoryValue\""
             ));
             write_xml_id(xml, &partition.id);
             if let Some(value) = &partition.value {
@@ -7552,7 +7569,7 @@ fn write_item_state(
     if let Some(state) = metadata.and_then(|m| m.data_state.as_ref()) {
         xml.push_str("<dataState");
         if restore_default {
-            xml.push_str(&format!(" xmlns=\"{B}\""));
+            xml.push_str(&format!(" xmlns=\"{BPMN}\""));
         }
         if let Some(id) = &state.id {
             write_xml_id(xml, id);
@@ -7584,7 +7601,7 @@ fn write_io_specification(
 ) {
     xml.push_str("<ioSpecification");
     if unqualified {
-        xml.push_str(&format!(" xmlns=\"{B}\""));
+        xml.push_str(&format!(" xmlns=\"{BPMN}\""));
     }
     if let Some(id) = &io.id {
         write_xml_id(xml, id);
@@ -7606,7 +7623,7 @@ fn write_io_specification(
             };
             xml.push_str(&format!("<{element}"));
             if unqualified_item {
-                xml.push_str(&format!(" xmlns:pc_data=\"{B}\" xmlns=\"\""));
+                xml.push_str(&format!(" xmlns:pc_data=\"{BPMN}\" xmlns=\"\""));
             }
             if let Some(id) = &port.id {
                 write_xml_id(xml, id);
@@ -7706,9 +7723,9 @@ fn write_event_port(
     };
     xml.push_str(&format!("<{element}"));
     if empty_qname {
-        xml.push_str(&format!(" xmlns:pc_data=\"{B}\" xmlns=\"\""));
+        xml.push_str(&format!(" xmlns:pc_data=\"{BPMN}\" xmlns=\"\""));
     } else if restore_default {
-        xml.push_str(&format!(" xmlns=\"{B}\""));
+        xml.push_str(&format!(" xmlns=\"{BPMN}\""));
     }
     if let Some(id) = &port.id {
         write_xml_id(xml, id);
@@ -7738,7 +7755,7 @@ fn write_event_set(
     let tag = if input { "inputSet" } else { "outputSet" };
     xml.push_str(&format!("<{tag}"));
     if restore_default {
-        xml.push_str(&format!(" xmlns=\"{B}\""));
+        xml.push_str(&format!(" xmlns=\"{BPMN}\""));
     }
     if let Some(id) = &set.id {
         write_xml_id(xml, id);
@@ -7803,9 +7820,9 @@ fn write_event_property(xml: &mut String, property: &EventProperty, restore_defa
     };
     xml.push_str(&format!("<{tag}"));
     if empty_qname {
-        xml.push_str(&format!(" xmlns:pc_data=\"{B}\" xmlns=\"\""));
+        xml.push_str(&format!(" xmlns:pc_data=\"{BPMN}\" xmlns=\"\""));
     } else if restore_default {
-        xml.push_str(&format!(" xmlns=\"{B}\""));
+        xml.push_str(&format!(" xmlns=\"{BPMN}\""));
     }
     if let Some(id) = &property.id {
         write_xml_id(xml, id);
@@ -7834,7 +7851,7 @@ fn write_data_association(
     };
     xml.push_str(&format!("<{tag}"));
     if restore_default {
-        xml.push_str(&format!(" xmlns=\"{B}\""));
+        xml.push_str(&format!(" xmlns=\"{BPMN}\""));
     }
     if let Some(id) = &a.id {
         write_xml_id(xml, id);
@@ -7969,7 +7986,7 @@ fn write_scope(
         };
         xml.push_str(&format!("<{tag}"));
         if unqualified {
-            xml.push_str(&format!(" xmlns:pc_data=\"{B}\" xmlns=\"\""));
+            xml.push_str(&format!(" xmlns:pc_data=\"{BPMN}\" xmlns=\"\""));
         }
         if let Some(id) = &o.id {
             write_xml_id(xml, id);
@@ -8124,7 +8141,7 @@ fn write_scope(
                     .find(|(prefix, uri)| {
                         !prefix.is_empty()
                             && prefix != "xml"
-                            && uri == B
+                            && uri == BPMN
                             && contexts
                                 .iter()
                                 .all(|d| d.namespaces.iter().any(|(p, _)| p == prefix))
@@ -8144,7 +8161,7 @@ fn write_scope(
         xml.push_str(&format!("<{tag_name}"));
         write_xml_id(xml, &n.id);
         if unqualified {
-            xml.push_str(&format!(" xmlns:{owner_prefix}=\"{B}\" xmlns=\"\""));
+            xml.push_str(&format!(" xmlns:{owner_prefix}=\"{BPMN}\" xmlns=\"\""));
         }
         for (index, (name, reference)) in [("messageRef", refs[0]), ("operationRef", refs[1])]
             .into_iter()
@@ -8480,7 +8497,7 @@ fn write_scope(
                     xml.push_str(&format!(
                         "<standardLoopCharacteristics{}",
                         if unqualified {
-                            format!(" xmlns=\"{B}\"")
+                            format!(" xmlns=\"{BPMN}\"")
                         } else {
                             String::new()
                         }
@@ -8599,11 +8616,11 @@ fn write_scope(
                         used.insert(prefix.clone(), uri.to_owned());
                         prefix
                     };
-                    let owner_prefix = empty_default.then(|| prefix_for(B));
+                    let owner_prefix = empty_default.then(|| prefix_for(BPMN));
                     let mut written_refs = Vec::new();
                     for (name, q) in &refs {
                         let value =
-                            if q.namespace.is_empty() || (!empty_default && q.namespace == B) {
+                            if q.namespace.is_empty() || (!empty_default && q.namespace == BPMN) {
                                 q.local.to_string()
                             } else {
                                 format!("{}:{}", prefix_for(&q.namespace), q.local)
@@ -8618,7 +8635,7 @@ fn write_scope(
                     if empty_default {
                         xml.push_str(" xmlns=\"\"");
                     } else if unqualified {
-                        xml.push_str(&format!(" xmlns=\"{B}\""));
+                        xml.push_str(&format!(" xmlns=\"{BPMN}\""));
                     }
                     for (prefix, uri) in &used {
                         xml.push_str(&format!(" xmlns:{prefix}=\"{}\"", esc(uri)));
@@ -8662,7 +8679,7 @@ fn write_scope(
                     for value in complex_behavior_definitions {
                         xml.push_str("<complexBehaviorDefinition");
                         if empty_default {
-                            xml.push_str(&format!(" xmlns=\"{B}\""));
+                            xml.push_str(&format!(" xmlns=\"{BPMN}\""));
                         }
                         if let Some(id) = &value.id {
                             write_xml_id(xml, id);
@@ -9665,7 +9682,8 @@ fn export_document(
     // Call activity targets are checked by core reference validation above: a calledElement
     // resolving to a local non-callable element is refused, one naming nothing in this file
     // is an external callable (e.g. an engine process key) and is written verbatim.
-    let mut xml = format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?><definitions xmlns=\"{B}\"");
+    let mut xml =
+        format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?><definitions xmlns=\"{BPMN}\"");
     write_xml_id(&mut xml, &document.definitions_id);
     xml.push_str(&format!(" targetNamespace=\"{}\">", esc(&namespace)));
     if let Some(definitions) = &document.definitions {
@@ -9730,7 +9748,7 @@ fn export_document(
         };
         xml.push_str(&format!("<{tag}"));
         if unqualified {
-            xml.push_str(&format!(" xmlns:pc_definition=\"{B}\" xmlns=\"\""));
+            xml.push_str(&format!(" xmlns:pc_definition=\"{BPMN}\" xmlns=\"\""));
         }
         if let Some(q) = &extension.definition {
             write_catalog_qname_attribute(&mut xml, "definition", q, "pc_extension");
@@ -9807,7 +9825,7 @@ fn export_document(
         };
         xml.push_str(&format!("<{tag}"));
         if unqualified {
-            xml.push_str(&format!(" xmlns:pc_data=\"{B}\" xmlns=\"\""));
+            xml.push_str(&format!(" xmlns:pc_data=\"{BPMN}\" xmlns=\"\""));
         }
         if let Some(id) = &store.id {
             write_xml_id(&mut xml, id);
@@ -10302,7 +10320,7 @@ fn export_document(
             .map(|n| n.prefix.as_str())
             .unwrap_or("bpmndi");
         xml.push_str(&format!(
-            "<{di_prefix}:BPMNDiagram xmlns:{di_prefix}=\"{BD}\""
+            "<{di_prefix}:BPMNDiagram xmlns:{di_prefix}=\"{BPMNDI}\""
         ));
         write_xml_id(&mut xml, &d.id);
         write_xml_name(&mut xml, d.name.as_deref());
@@ -10577,7 +10595,7 @@ fn export_document(
             ("target", &relationship.targets),
         ] {
             for q in values {
-                xml.push_str(&format!("<pc_relationship:{tag} xmlns:pc_relationship=\"{B}\" xmlns=\"{}\">{}</pc_relationship:{tag}>", esc(&q.namespace), q.local));
+                xml.push_str(&format!("<pc_relationship:{tag} xmlns:pc_relationship=\"{BPMN}\" xmlns=\"{}\">{}</pc_relationship:{tag}>", esc(&q.namespace), q.local));
             }
         }
         xml.push_str("</relationship>");
@@ -10799,14 +10817,14 @@ fn write_structured_documentation(
             let name = if content
                 .namespaces
                 .iter()
-                .any(|n| n.prefix.is_empty() && n.uri == B)
+                .any(|n| n.prefix.is_empty() && n.uri == BPMN)
             {
                 "documentation".to_owned()
             } else {
                 let prefix = content
                     .namespaces
                     .iter()
-                    .find(|n| !n.prefix.is_empty() && n.uri == B)
+                    .find(|n| !n.prefix.is_empty() && n.uri == BPMN)
                     .map(|n| n.prefix.as_str())
                     .unwrap_or("!");
                 format!("{prefix}:documentation")
@@ -10819,7 +10837,7 @@ fn write_structured_documentation(
     if let Some(namespaces) = namespaces {
         write_namespace_context(xml, namespaces);
     } else {
-        xml.push_str(&format!(" xmlns=\"{B}\""));
+        xml.push_str(&format!(" xmlns=\"{BPMN}\""));
     }
     if let Some(id) = &doc.id {
         write_xml_id(xml, id);
@@ -10842,7 +10860,7 @@ fn write_mixed_element(xml: &mut String, tag: &str, body: &processcraft_core::bp
             let name = if content
                 .namespaces
                 .iter()
-                .any(|n| n.prefix.is_empty() && n.uri == B)
+                .any(|n| n.prefix.is_empty() && n.uri == BPMN)
             {
                 tag.to_owned()
             } else {
@@ -10851,7 +10869,7 @@ fn write_mixed_element(xml: &mut String, tag: &str, body: &processcraft_core::bp
                     content
                         .namespaces
                         .iter()
-                        .find(|n| !n.prefix.is_empty() && n.uri == B)
+                        .find(|n| !n.prefix.is_empty() && n.uri == BPMN)
                         .map(|n| n.prefix.as_str())
                         .unwrap_or("!")
                 )
@@ -10870,14 +10888,14 @@ fn write_extension_elements(
     extension: &processcraft_core::bpmn_metadata::ExtensionElements,
 ) {
     let context = &extension.content.namespaces;
-    let tag = if context.iter().any(|n| n.prefix.is_empty() && n.uri == B) {
+    let tag = if context.iter().any(|n| n.prefix.is_empty() && n.uri == BPMN) {
         "extensionElements".to_owned()
     } else {
         format!(
             "{}:extensionElements",
             context
                 .iter()
-                .find(|n| !n.prefix.is_empty() && n.uri == B)
+                .find(|n| !n.prefix.is_empty() && n.uri == BPMN)
                 .map(|n| n.prefix.as_str())
                 .unwrap_or("!")
         )
@@ -10927,12 +10945,12 @@ fn write_context_qname_attribute(
 fn write_catalog_qname_text(xml: &mut String, tag: &str, q: &QNameRef) {
     if q.namespace.is_empty() {
         xml.push_str(&format!(
-            "<bpmn:{tag} xmlns:bpmn=\"{B}\" xmlns=\"\">{}</bpmn:{tag}>",
+            "<bpmn:{tag} xmlns:bpmn=\"{BPMN}\" xmlns=\"\">{}</bpmn:{tag}>",
             q.local
         ));
     } else {
         xml.push_str(&format!(
-            "<bpmn:{tag} xmlns:bpmn=\"{B}\" xmlns:q=\"{}\">q:{}</bpmn:{tag}>",
+            "<bpmn:{tag} xmlns:bpmn=\"{BPMN}\" xmlns:q=\"{}\">q:{}</bpmn:{tag}>",
             esc(&q.namespace),
             q.local
         ));
@@ -10960,12 +10978,12 @@ fn catalog_open(
     base: Option<&processcraft_core::bpmn_metadata::BaseMetadata>,
 ) -> String {
     if let Some(context) = metadata_context(base) {
-        let tag = if context.iter().any(|n| n.prefix.is_empty() && n.uri == B) {
+        let tag = if context.iter().any(|n| n.prefix.is_empty() && n.uri == BPMN) {
             local.to_owned()
         } else {
             let prefix = context
                 .iter()
-                .find(|n| !n.prefix.is_empty() && n.uri == B)
+                .find(|n| !n.prefix.is_empty() && n.uri == BPMN)
                 .map(|n| n.prefix.as_str())
                 .unwrap_or("!");
             format!("{prefix}:{local}")
@@ -10978,7 +10996,7 @@ fn catalog_open(
         let tag = format!("bpmn:{local}");
         xml.push('<');
         xml.push_str(&tag);
-        xml.push_str(&format!(" xmlns:bpmn=\"{B}\" xmlns=\"\""));
+        xml.push_str(&format!(" xmlns:bpmn=\"{BPMN}\" xmlns=\"\""));
         tag
     }
 }
@@ -11131,7 +11149,7 @@ fn write_loop_expression(
         let mut child = String::new();
         write_expression(&mut child, tag, expression, false);
         if let Some(index) = child.find(|c: char| c == '>' || c.is_whitespace()) {
-            child.insert_str(index, &format!(" xmlns=\"{B}\""));
+            child.insert_str(index, &format!(" xmlns=\"{BPMN}\""));
         }
         xml.push_str(&child);
     } else {
@@ -11163,14 +11181,14 @@ fn write_expression(xml: &mut String, tag: &str, expression: &Expression, legacy
         .find(|(p, _)| p.is_empty())
         .map(|(_, u)| u.as_str())
         .unwrap_or("");
-    let tag_name = if default == B {
+    let tag_name = if default == BPMN {
         tag.to_string()
-    } else if let Some(prefix) = existing(B) {
+    } else if let Some(prefix) = existing(BPMN) {
         format!("{prefix}:{tag}")
     } else {
         "!".to_string()
     };
-    let xp = existing("http://www.w3.org/2001/XMLSchema-instance");
+    let xp = existing(XSI);
     xml.push_str(&format!("<{tag_name}"));
     if !data.namespaces.iter().any(|(prefix, _)| prefix.is_empty()) {
         xml.push_str(" xmlns=\"\"");
@@ -11183,9 +11201,9 @@ fn write_expression(xml: &mut String, tag: &str, expression: &Expression, legacy
         }
     }
     let type_value = |local: &str| {
-        if default == B {
+        if default == BPMN {
             local.to_owned()
-        } else if let Some(prefix) = existing(B) {
+        } else if let Some(prefix) = existing(BPMN) {
             format!("{prefix}:{local}")
         } else {
             "!".to_string()
@@ -11280,7 +11298,7 @@ fn di_owner_prefix<'a>(
         .and_then(|m| {
             m.namespaces
                 .iter()
-                .find(|n| !n.prefix.is_empty() && n.uri == BD)
+                .find(|n| !n.prefix.is_empty() && n.uri == BPMNDI)
                 .map(|n| n.prefix.as_str())
         })
         .unwrap_or(fallback)
@@ -11404,7 +11422,7 @@ fn documentation(e: &Elem) -> Option<String> {
         return None;
     }
     let d = &e.children[0];
-    if d.ns != B || d.name != "documentation" || !d.attrs.is_empty() || !d.children.is_empty() {
+    if d.ns != BPMN || d.name != "documentation" || !d.attrs.is_empty() || !d.children.is_empty() {
         return None;
     }
     Some(d.text.clone())
@@ -11417,7 +11435,7 @@ fn write_doc(
     match docs {
         processcraft_core::bpmn_metadata::DocumentationSet::Legacy(text) if !text.is_empty() => {
             xml.push_str(&format!(
-                "<documentation xmlns=\"{B}\">{}</documentation>",
+                "<documentation xmlns=\"{BPMN}\">{}</documentation>",
                 esc(text)
             ));
         }
@@ -11438,7 +11456,7 @@ fn flow_parts(e: &Elem) -> Option<(String, Option<Expression>)> {
     let mut condition = None;
     let mut seen_doc = false;
     for c in &e.children {
-        if c.ns != B {
+        if c.ns != BPMN {
             return None;
         }
         match c.name.as_str() {
