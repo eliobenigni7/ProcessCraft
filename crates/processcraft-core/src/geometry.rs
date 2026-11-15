@@ -1,4 +1,7 @@
 //! Bounded, toolkit-independent geometry helpers. Routing is always explicit.
+//!
+//! Coordinates and sizes are checked against `COORDINATE_LIMIT`; helpers build the
+//! `Mutation`s that move, resize or reroute shapes and edges, but never apply them.
 use crate::{
     commands::{Mutation, Request, ShapeBounds},
     ids::{DocumentId, ElementSelector},

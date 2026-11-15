@@ -1,4 +1,16 @@
-//! Toolkit-independent process identities and persistent model.
+//! Toolkit-independent BPMN domain core: no filesystem, GUI, dialogs or networking.
+//!
+//! Module groups:
+//! - model: `ids`, `model`, `bpmn_*` (typed BPMN content), `metadata_read` / `metadata_visit`.
+//! - command pipeline: `commands` (the only way to change a project), `history`, `rules`,
+//!   `modeling`, `replace`, `manipulate`, `containers`, `clipboard`, `arrange`.
+//! - validity vs diagnostics: hard structural validity lives in `identity`
+//!   (`ProjectData::validate`); non-blocking editing diagnostics live in `validation*` and
+//!   `conventions`.
+//! - geometry and layout: `geometry`, `layout`.
+//! - analyst layer: `attributes`, `conventions`, `overlay`, and the read-only `queries`.
+//!
+//! See `docs/design/solution-design.md` for the architecture.
 mod element_identity_edit;
 pub mod field_projection;
 mod identity;
@@ -9,6 +21,9 @@ pub mod model;
 pub mod queries;
 pub mod reference_resolution;
 pub use ids::{DictionaryEntryId, DocumentId, InvalidId, ProjectId};
+
+/// Most checkpoints a project may hold (command, validation and native load all enforce it).
+pub const MAX_CHECKPOINTS: usize = 20;
 
 pub mod arrange;
 pub mod attributes;

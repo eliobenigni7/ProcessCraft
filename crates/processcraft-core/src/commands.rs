@@ -1,4 +1,11 @@
 //! Atomic, toolkit-independent project mutations and session history.
+//!
+//! A `Request::Batch` is applied to a candidate copy of the project (copy-on-write); after the
+//! post-batch checks and structural validation pass, the content identity is recomputed and the
+//! candidate replaces the state as one undo step. On any failure state, history and generation
+//! are unchanged. Generation (monotonic, for conflict checks and stale-result discarding),
+//! content identity (SHA-256 of persistent content, drives `dirty`) and checkpoints
+//! (persistent revisions) are independent notions.
 use crate::{
     history::{History, HistoryEntry},
     ids::{
@@ -1215,7 +1222,7 @@ impl Session {
                             });
                         }
                         Mutation::InitializeDocumentRootOrder { document_id } => {
-                            let document = doc(&mut candidate, document_id, true)?;
+                            let document = doc_structural(&mut candidate, document_id)?;
                             if document.root_order.is_some() {
                                 return Err(invalid("root order is already initialized"));
                             }
@@ -2061,7 +2068,19 @@ fn check_activity_references(
     }
     Ok(())
 }
-fn doc(
+/// Document for an edit of the BPMN structure: refused for preserved-source and
+/// retained-extension documents, and when opaque XML blocks structural edits.
+fn doc_structural(p: &mut ProjectData, id: DocumentId) -> Result<&mut BpmnDocument, CommandError> {
+    doc_for_edit(p, id, true)
+}
+/// Document for a diagram or metadata edit: only preserved-source documents are refused.
+fn doc_nonstructural(
+    p: &mut ProjectData,
+    id: DocumentId,
+) -> Result<&mut BpmnDocument, CommandError> {
+    doc_for_edit(p, id, false)
+}
+fn doc_for_edit(
     p: &mut ProjectData,
     id: DocumentId,
     structural: bool,
@@ -2996,7 +3015,7 @@ fn delete_choreography_flow_element(
     scope_id: &ElementSelector,
     element_id: &ElementSelector,
 ) -> Result<(), CommandError> {
-    let document = doc(p, document_id, true)?;
+    let document = doc_structural(p, document_id)?;
     let before: std::collections::HashSet<_> = document
         .element_identities()
         .into_iter()
@@ -3234,15 +3253,18 @@ fn auto_resize(
 ) -> Result<(), CommandError> {
     let mut resized = false;
     for _ in 0..32 {
-        let steps =
-            crate::containers::auto_resize_step(doc(p, document_id, false)?, diagram_id, &elements);
+        let steps = crate::containers::auto_resize_step(
+            doc_nonstructural(p, document_id)?,
+            diagram_id,
+            &elements,
+        );
         if steps.is_empty() {
             break;
         }
         elements.clear();
         for (element, shape_id, bounds) in steps {
             let batch = crate::manipulate::resize(
-                doc(p, document_id, false)?,
+                doc_nonstructural(p, document_id)?,
                 diagram_id,
                 &shape_id,
                 bounds,
@@ -3255,7 +3277,7 @@ fn auto_resize(
             resized = true;
         }
     }
-    let d = doc(p, document_id, false)?;
+    let d = doc_nonstructural(p, document_id)?;
     if resized && d.capability.allows_structural_editing() && !d.blocks_structural_edits() {
         crate::containers::sync_lanes(old, d, diagram_id);
     }
@@ -3281,7 +3303,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             document_id,
             collaboration,
         } => {
-            let document = doc(p, document_id, true)?;
+            let document = doc_structural(p, document_id)?;
             if let Some(existing) = document
                 .collaboration
                 .as_mut()
@@ -3304,7 +3326,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             document_id,
             collaboration_id,
         } => {
-            let document = doc(p, document_id, true)?;
+            let document = doc_structural(p, document_id)?;
             if document
                 .collaboration
                 .as_ref()
@@ -3329,13 +3351,13 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             partner_roles,
             endpoints,
         } => {
-            let document = doc(p, document_id, true)?;
+            let document = doc_structural(p, document_id)?;
             document.partner_entities = partner_entities;
             document.partner_roles = partner_roles;
             document.endpoints = endpoints;
         }
         Mutation::SetDocumentRootOrder { document_id, order } => {
-            doc(p, document_id, true)?.root_order = order;
+            doc_structural(p, document_id)?.root_order = order;
         }
         Mutation::InitializeDocumentRootOrder { .. } => {
             return Err(invalid(
@@ -3347,14 +3369,14 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             diagram_id,
             metadata,
         } => {
-            diagram(doc(p, document_id, true)?, &diagram_id)?.plane_metadata = metadata;
+            diagram(doc_structural(p, document_id)?, &diagram_id)?.plane_metadata = metadata;
         }
         Mutation::SetDiagramPlaneOrder {
             document_id,
             diagram_id,
             order,
         } => {
-            diagram(doc(p, document_id, true)?, &diagram_id)?.plane_order = order;
+            diagram(doc_structural(p, document_id)?, &diagram_id)?.plane_order = order;
         }
         Mutation::SetShapeRepresentationMetadata {
             document_id,
@@ -3365,7 +3387,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             participant_band_kind,
             choreography_activity_shape,
         } => {
-            let shape = diagram(doc(p, document_id, true)?, &diagram_id)?
+            let shape = diagram(doc_structural(p, document_id)?, &diagram_id)?
                 .shapes
                 .iter_mut()
                 .find(|shape| shape.id == shape_id)
@@ -3382,7 +3404,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             metadata,
             message_visible_kind,
         } => {
-            let edge = diagram(doc(p, document_id, true)?, &diagram_id)?
+            let edge = diagram(doc_structural(p, document_id)?, &diagram_id)?
                 .edges
                 .iter_mut()
                 .find(|edge| edge.id == edge_id)
@@ -3395,7 +3417,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             participant_id,
             multiplicity,
         } => {
-            let document = doc(p, document_id, true)?;
+            let document = doc_structural(p, document_id)?;
             let participant = document
                 .collaboration
                 .iter_mut()
@@ -3415,7 +3437,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             flow_id,
             message_ref,
         } => {
-            let flow = flow_mut(doc(p, document_id, true)?, &flow_id)?;
+            let flow = flow_mut(doc_structural(p, document_id)?, &flow_id)?;
             if flow.kind != FlowKind::Message {
                 return Err(invalid("message reference requires a message flow"));
             }
@@ -3425,20 +3447,20 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             document_id,
             global_tasks,
         } => {
-            doc(p, document_id, true)?.global_tasks = global_tasks;
+            doc_structural(p, document_id)?.global_tasks = global_tasks;
         }
         Mutation::SetCorrelationProperties {
             document_id,
             correlation_properties,
         } => {
-            doc(p, document_id, true)?.correlation_properties = correlation_properties;
+            doc_structural(p, document_id)?.correlation_properties = correlation_properties;
         }
         Mutation::SetExpression {
             document_id,
             expression_id,
             expression,
         } => {
-            let d = doc(p, document_id, false)?;
+            let d = doc_nonstructural(p, document_id)?;
             if !matches!(d.capability, Capability::Editable) {
                 return Err(CommandError::CapabilityDenied);
             }
@@ -3485,13 +3507,13 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             document_id,
             extensions,
         } => {
-            doc(p, document_id, true)?.extensions = extensions;
+            doc_structural(p, document_id)?.extensions = extensions;
         }
         Mutation::SetDefinitionsRelationships {
             document_id,
             relationships,
         } => {
-            let document = doc(p, document_id, true)?;
+            let document = doc_structural(p, document_id)?;
             let namespace = document
                 .definitions
                 .as_ref()
@@ -3550,7 +3572,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             documentation,
             resolution,
         } => {
-            let diagram = diagram(doc(p, document_id, false)?, &diagram_id)?;
+            let diagram = diagram(doc_nonstructural(p, document_id)?, &diagram_id)?;
             diagram.documentation = documentation;
             diagram.resolution = resolution;
         }
@@ -3559,7 +3581,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             diagram_id,
             label_styles,
         } => {
-            diagram(doc(p, document_id, true)?, &diagram_id)?.label_styles = label_styles;
+            diagram(doc_structural(p, document_id)?, &diagram_id)?.label_styles = label_styles;
         }
         Mutation::SetShapeLabel {
             document_id,
@@ -3568,7 +3590,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             label,
             label_visibility,
         } => {
-            let shape = diagram(doc(p, document_id, true)?, &diagram_id)?
+            let shape = diagram(doc_structural(p, document_id)?, &diagram_id)?
                 .shapes
                 .iter_mut()
                 .find(|shape| shape.id == shape_id)
@@ -3583,7 +3605,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             label,
             label_visibility,
         } => {
-            let edge = diagram(doc(p, document_id, true)?, &diagram_id)?
+            let edge = diagram(doc_structural(p, document_id)?, &diagram_id)?
                 .edges
                 .iter_mut()
                 .find(|edge| edge.id == edge_id)
@@ -3596,7 +3618,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             documentation_id,
             documentation,
         } => {
-            let d = doc(p, document_id, false)?;
+            let d = doc_nonstructural(p, document_id)?;
             let opaque = d.has_opaque_xml();
             let mut found = 0;
             let mut invalid_id = false;
@@ -3665,7 +3687,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             element_id,
             metadata,
         } => {
-            let d = doc(p, document_id, true)?;
+            let d = doc_structural(p, document_id)?;
             let mut found = false;
             crate::metadata_visit::visit_base_metadata_mut(d, |id, slot| {
                 if id.is_some_and(|id| id.selector() == element_id) {
@@ -3682,7 +3704,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             element_id,
             extras,
         } => {
-            let d = doc(p, document_id, true)?;
+            let d = doc_structural(p, document_id)?;
             let mut found = false;
             crate::metadata_visit::visit_legacy_metadata_mut(d, |id, _, slot| {
                 if id.selector() == element_id {
@@ -3699,7 +3721,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             element_id,
             body,
         } => {
-            let node = node_mut(doc(p, document_id, true)?, &element_id)?;
+            let node = node_mut(doc_structural(p, document_id)?, &element_id)?;
             if node.kind != NodeKind::ScriptTask {
                 return Err(invalid("element is not a script task"));
             }
@@ -3710,7 +3732,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             element_id,
             body,
         } => {
-            let node = node_mut(doc(p, document_id, true)?, &element_id)?;
+            let node = node_mut(doc_structural(p, document_id)?, &element_id)?;
             if node.kind != NodeKind::TextAnnotation {
                 return Err(invalid("element is not a text annotation"));
             }
@@ -3736,7 +3758,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             element_id,
             documentation,
         } => {
-            let d = doc(p, document_id, true)?;
+            let d = doc_structural(p, document_id)?;
             let mut found = false;
             for process in &mut d.processes {
                 if process.id == element_id {
@@ -3793,7 +3815,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             document_id,
             resources,
         } => {
-            let document = doc(p, document_id, true)?;
+            let document = doc_structural(p, document_id)?;
             for scope in crate::queries::scopes(document) {
                 for node in scope.nodes {
                     if let Some(reference) = node
@@ -3815,7 +3837,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             document_id,
             definitions,
         } => {
-            doc(p, document_id, true)?.root_event_definitions = definitions;
+            doc_structural(p, document_id)?.root_event_definitions = definitions;
         }
         Mutation::SetShapeDiAttributes {
             document_id,
@@ -3824,7 +3846,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             is_horizontal,
             is_marker_visible,
         } => {
-            let shape = diagram(doc(p, document_id, false)?, &diagram_id)?
+            let shape = diagram(doc_nonstructural(p, document_id)?, &diagram_id)?
                 .shapes
                 .iter_mut()
                 .find(|shape| shape.id == shape_id)
@@ -3839,7 +3861,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             source_element,
             target_element,
         } => {
-            let edge = diagram(doc(p, document_id, false)?, &diagram_id)?
+            let edge = diagram(doc_nonstructural(p, document_id)?, &diagram_id)?
                 .edges
                 .iter_mut()
                 .find(|edge| edge.id == edge_id)
@@ -3862,7 +3884,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             element_id,
             text,
         } => {
-            let node = node_mut(doc(p, document_id, true)?, &element_id)?;
+            let node = node_mut(doc_structural(p, document_id)?, &element_id)?;
             if node.kind != NodeKind::TextAnnotation {
                 return Err(invalid("element is not a text annotation"));
             }
@@ -3895,7 +3917,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             process_id,
             is_executable,
         } => {
-            let document = doc(p, document_id, true)?;
+            let document = doc_structural(p, document_id)?;
             let process = document
                 .processes
                 .iter_mut()
@@ -3908,7 +3930,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             process_id,
             metadata,
         } => {
-            let process = doc(p, document_id, true)?
+            let process = doc_structural(p, document_id)?
                 .processes
                 .iter_mut()
                 .find(|process| process.id == process_id)
@@ -3920,42 +3942,42 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             element_id,
             metadata,
         } => {
-            node_mut(doc(p, document_id, true)?, &element_id)?.flow_metadata = metadata;
+            node_mut(doc_structural(p, document_id)?, &element_id)?.flow_metadata = metadata;
         }
         Mutation::SetFlowMetadata {
             document_id,
             element_id,
             metadata,
         } => {
-            flow_mut(doc(p, document_id, true)?, &element_id)?.flow_metadata = metadata;
+            flow_mut(doc_structural(p, document_id)?, &element_id)?.flow_metadata = metadata;
         }
         Mutation::SetCollaborationName { document_id, name } => {
-            collaboration_mut(doc(p, document_id, false)?)?.name = name;
+            collaboration_mut(doc_nonstructural(p, document_id)?)?.name = name;
         }
         Mutation::SetCollaborationCorrelationKeys {
             document_id,
             correlation_keys,
         } => {
-            collaboration_mut(doc(p, document_id, true)?)?.correlation_keys = correlation_keys;
+            collaboration_mut(doc_structural(p, document_id)?)?.correlation_keys = correlation_keys;
         }
         Mutation::SetDiagramName {
             document_id,
             diagram_id,
             name,
         } => {
-            diagram(doc(p, document_id, false)?, &diagram_id)?.name = name;
+            diagram(doc_nonstructural(p, document_id)?, &diagram_id)?.name = name;
         }
         Mutation::SetNodeItemAware {
             document_id,
             element_id,
             item_aware,
-        } => node_mut(doc(p, document_id, true)?, &element_id)?.item_aware = item_aware,
+        } => node_mut(doc_structural(p, document_id)?, &element_id)?.item_aware = item_aware,
         Mutation::SetProcessIoSpecification {
             document_id,
             process_id,
             io_specification,
         } => {
-            let process = doc(p, document_id, true)?
+            let process = doc_structural(p, document_id)?
                 .processes
                 .iter_mut()
                 .find(|p| p.id == process_id)
@@ -3965,22 +3987,22 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
         Mutation::SetDataStores {
             document_id,
             data_stores,
-        } => doc(p, document_id, true)?.data_stores = data_stores,
+        } => doc_structural(p, document_id)?.data_stores = data_stores,
         Mutation::SetScopeDataObjects {
             document_id,
             scope_id,
             data_objects,
-        } => *data_parts_mut(doc(p, document_id, true)?, &scope_id)?.0 = data_objects,
+        } => *data_parts_mut(doc_structural(p, document_id)?, &scope_id)?.0 = data_objects,
         Mutation::SetScopeDataAssociations {
             document_id,
             scope_id,
             data_associations,
-        } => *data_parts_mut(doc(p, document_id, true)?, &scope_id)?.1 = data_associations,
+        } => *data_parts_mut(doc_structural(p, document_id)?, &scope_id)?.1 = data_associations,
         Mutation::SetSupportingCatalog {
             document_id,
             catalog,
         } => {
-            let d = doc(p, document_id, true)?;
+            let d = doc_structural(p, document_id)?;
             for scope in crate::queries::scopes(d) {
                 for node in scope.nodes {
                     if let Some(reference) = node
@@ -4003,7 +4025,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             element_id,
             activity,
         } => {
-            let d = doc(p, document_id, true)?;
+            let d = doc_structural(p, document_id)?;
             let old_script = crate::queries::find_node(d, &element_id)
                 .and_then(|n| n.activity.as_ref())
                 .and_then(|a| a.script.as_ref());
@@ -4028,12 +4050,12 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
         Mutation::CreateCategory {
             document_id,
             category,
-        } => doc(p, document_id, true)?.categories.push(category),
+        } => doc_structural(p, document_id)?.categories.push(category),
         Mutation::UpdateCategory {
             document_id,
             category,
         } => {
-            let d = doc(p, document_id, true)?;
+            let d = doc_structural(p, document_id)?;
             let index = d
                 .categories
                 .iter()
@@ -4045,7 +4067,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             document_id,
             category_id,
         } => {
-            let d = doc(p, document_id, true)?;
+            let d = doc_structural(p, document_id)?;
             let index = d
                 .categories
                 .iter()
@@ -4057,13 +4079,13 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             document_id,
             scope_id,
             group,
-        } => groups_mut(doc(p, document_id, true)?, &scope_id)?.push(group),
+        } => groups_mut(doc_structural(p, document_id)?, &scope_id)?.push(group),
         Mutation::UpdateGroup {
             document_id,
             scope_id,
             group,
         } => {
-            let groups = groups_mut(doc(p, document_id, true)?, &scope_id)?;
+            let groups = groups_mut(doc_structural(p, document_id)?, &scope_id)?;
             let index = groups
                 .iter()
                 .position(|v| v.id == group.id)
@@ -4075,7 +4097,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             scope_id,
             group_id,
         } => {
-            let d = doc(p, document_id, true)?;
+            let d = doc_structural(p, document_id)?;
             let groups = groups_mut(d, &scope_id)?;
             let index = groups
                 .iter()
@@ -4094,7 +4116,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             flow_id,
             direction,
         } => {
-            let flow = flow_mut(doc(p, document_id, true)?, &flow_id)?;
+            let flow = flow_mut(doc_structural(p, document_id)?, &flow_id)?;
             if flow.kind != FlowKind::Association {
                 return Err(invalid("association direction requires an association"));
             }
@@ -4104,14 +4126,14 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             document_id,
             scope_id,
             lane_set_id,
-        } => *lane_set_mut(doc(p, document_id, true)?, &scope_id)? = lane_set_id,
+        } => *lane_set_mut(doc_structural(p, document_id)?, &scope_id)? = lane_set_id,
         Mutation::SetChildLaneSetId {
             document_id,
             scope_id,
             lane_id,
             child_lane_set_id,
         } => {
-            let lanes = scope_parts_mut(doc(p, document_id, true)?, &scope_id)?.1;
+            let lanes = scope_parts_mut(doc_structural(p, document_id)?, &scope_id)?.1;
             lanes
                 .iter_mut()
                 .find(|lane| lane.id == lane_id)
@@ -4124,7 +4146,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             lane_set_name,
         } => {
             check_lane_set_name(&lane_set_name)?;
-            *lane_set_name_mut(doc(p, document_id, true)?, &scope_id)? = lane_set_name;
+            *lane_set_name_mut(doc_structural(p, document_id)?, &scope_id)? = lane_set_name;
         }
         Mutation::SetChildLaneSetName {
             document_id,
@@ -4133,7 +4155,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             child_lane_set_name,
         } => {
             check_lane_set_name(&child_lane_set_name)?;
-            scope_parts_mut(doc(p, document_id, true)?, &scope_id)?
+            scope_parts_mut(doc_structural(p, document_id)?, &scope_id)?
                 .1
                 .iter_mut()
                 .find(|lane| lane.id == lane_id)
@@ -4148,7 +4170,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             partition_element_ref,
         } => {
             check_lane_set_name(&partition_element.as_ref().and_then(|e| e.value.clone()))?;
-            let lane = scope_parts_mut(doc(p, document_id, true)?, &scope_id)?
+            let lane = scope_parts_mut(doc_structural(p, document_id)?, &scope_id)?
                 .1
                 .iter_mut()
                 .find(|lane| lane.id == lane_id)
@@ -4162,7 +4184,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             representation_id,
             bounds,
         } => {
-            let diagram = diagram(doc(p, document_id, true)?, &diagram_id)?;
+            let diagram = diagram(doc_structural(p, document_id)?, &diagram_id)?;
             let label = if let Some(shape) = diagram
                 .shapes
                 .iter_mut()
@@ -4185,12 +4207,13 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             element_id,
             io_specification,
         } => {
-            node_mut(doc(p, document_id, true)?, &element_id)?.io_specification = io_specification;
+            node_mut(doc_structural(p, document_id)?, &element_id)?.io_specification =
+                io_specification;
         }
         Mutation::CreateDataStore {
             document_id,
             data_store,
-        } => doc(p, document_id, true)?.data_stores.push(data_store),
+        } => doc_structural(p, document_id)?.data_stores.push(data_store),
         Mutation::UpdateDataStore {
             document_id,
             data_store,
@@ -4198,7 +4221,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             if data_store.id.is_none() {
                 return Err(invalid("Use SetDataStores for a store without an ID"));
             }
-            let d = doc(p, document_id, true)?;
+            let d = doc_structural(p, document_id)?;
             let index = d
                 .data_stores
                 .iter()
@@ -4210,7 +4233,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             document_id,
             data_store_id,
         } => {
-            let d = doc(p, document_id, true)?;
+            let d = doc_structural(p, document_id)?;
             let index = d
                 .data_stores
                 .iter()
@@ -4222,7 +4245,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             document_id,
             scope_id,
             data_object,
-        } => data_parts_mut(doc(p, document_id, true)?, &scope_id)?
+        } => data_parts_mut(doc_structural(p, document_id)?, &scope_id)?
             .0
             .push(data_object),
         Mutation::UpdateDataObject {
@@ -4235,7 +4258,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                     "Use SetScopeDataObjects for an object without an ID",
                 ));
             }
-            let items = data_parts_mut(doc(p, document_id, true)?, &scope_id)?.0;
+            let items = data_parts_mut(doc_structural(p, document_id)?, &scope_id)?.0;
             let index = items
                 .iter()
                 .position(|v| v.id == data_object.id)
@@ -4247,7 +4270,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             scope_id,
             data_object_id,
         } => {
-            let items = data_parts_mut(doc(p, document_id, true)?, &scope_id)?.0;
+            let items = data_parts_mut(doc_structural(p, document_id)?, &scope_id)?.0;
             let index = items
                 .iter()
                 .position(|v| v.id.as_ref().is_some_and(|id| id == &data_object_id))
@@ -4258,7 +4281,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             document_id,
             scope_id,
             association,
-        } => data_parts_mut(doc(p, document_id, true)?, &scope_id)?
+        } => data_parts_mut(doc_structural(p, document_id)?, &scope_id)?
             .1
             .push(association),
         Mutation::UpdateDataAssociation {
@@ -4271,7 +4294,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                     "Use SetScopeDataAssociations for an association without an ID",
                 ));
             }
-            let items = data_parts_mut(doc(p, document_id, true)?, &scope_id)?.1;
+            let items = data_parts_mut(doc_structural(p, document_id)?, &scope_id)?.1;
             let index = items
                 .iter()
                 .position(|v| v.id == association.id)
@@ -4283,7 +4306,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             scope_id,
             association_id,
         } => {
-            let items = data_parts_mut(doc(p, document_id, true)?, &scope_id)?.1;
+            let items = data_parts_mut(doc_structural(p, document_id)?, &scope_id)?.1;
             let index = items
                 .iter()
                 .position(|v| v.id.as_ref().is_some_and(|id| id == &association_id))
@@ -4295,17 +4318,19 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             diagram_id,
             plane,
         } => {
-            diagram(doc(p, document_id, true)?, &diagram_id)?.plane = plane;
+            diagram(doc_structural(p, document_id)?, &diagram_id)?.plane = plane;
         }
         Mutation::CreateChoreography {
             document_id,
             choreography,
-        } => doc(p, document_id, true)?.choreographies.push(choreography),
+        } => doc_structural(p, document_id)?
+            .choreographies
+            .push(choreography),
         Mutation::UpdateChoreography {
             document_id,
             choreography,
         } => {
-            let d = doc(p, document_id, true)?;
+            let d = doc_structural(p, document_id)?;
             let index = d
                 .choreographies
                 .iter()
@@ -4320,7 +4345,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             document_id,
             choreography_id,
         } => {
-            let d = doc(p, document_id, true)?;
+            let d = doc_structural(p, document_id)?;
             let index = d
                 .choreographies
                 .iter()
@@ -4336,7 +4361,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             choreography_id,
         } => {
             use crate::bpmn_collaboration::{ChoreographyFlowElement, ChoreographyGraph};
-            let c = choreography_mut(doc(p, document_id, true)?, &choreography_id)?;
+            let c = choreography_mut(doc_structural(p, document_id)?, &choreography_id)?;
             if c.graph.is_some() {
                 return Err(invalid("choreography already has a graph"));
             }
@@ -4364,7 +4389,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             element,
         } => {
             let graph = choreography_scope_mut(
-                choreography_mut(doc(p, document_id, true)?, &choreography_id)?,
+                choreography_mut(doc_structural(p, document_id)?, &choreography_id)?,
                 &scope_id,
             )?;
             if index > graph.flow_elements.len() {
@@ -4379,7 +4404,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             element,
         } => {
             let graph = choreography_scope_mut(
-                choreography_mut(doc(p, document_id, true)?, &choreography_id)?,
+                choreography_mut(doc_structural(p, document_id)?, &choreography_id)?,
                 &scope_id,
             )?;
             let id = choreography_element_id(&element);
@@ -4432,7 +4457,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             index,
         } => {
             let graph = choreography_scope_mut(
-                choreography_mut(doc(p, document_id, true)?, &choreography_id)?,
+                choreography_mut(doc_structural(p, document_id)?, &choreography_id)?,
                 &scope_id,
             )?;
             if index >= graph.flow_elements.len() {
@@ -4457,7 +4482,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             if source_scope_id == target_scope_id {
                 return Err(invalid("use reorder within one scope"));
             }
-            let document = doc(p, document_id, true)?;
+            let document = doc_structural(p, document_id)?;
             let c = choreography_mut(document, &choreography_id)?;
             let source = choreography_scope_mut(c, &source_scope_id)?;
             let old = source
@@ -4502,7 +4527,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             artifact,
         } => {
             let artifacts = choreography_artifacts_mut(
-                choreography_mut(doc(p, document_id, true)?, &choreography_id)?,
+                choreography_mut(doc_structural(p, document_id)?, &choreography_id)?,
                 &scope_id,
                 true,
             )?;
@@ -4520,7 +4545,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             artifact,
         } => {
             let artifacts = choreography_artifacts_mut(
-                choreography_mut(doc(p, document_id, true)?, &choreography_id)?,
+                choreography_mut(doc_structural(p, document_id)?, &choreography_id)?,
                 &scope_id,
                 false,
             )?;
@@ -4540,7 +4565,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             scope_id,
             artifact_id,
         } => {
-            let document = doc(p, document_id, true)?;
+            let document = doc_structural(p, document_id)?;
             let before: std::collections::HashSet<_> = document
                 .element_identities()
                 .into_iter()
@@ -4595,7 +4620,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             index,
         } => {
             let artifacts = choreography_artifacts_mut(
-                choreography_mut(doc(p, document_id, true)?, &choreography_id)?,
+                choreography_mut(doc_structural(p, document_id)?, &choreography_id)?,
                 &scope_id,
                 false,
             )?;
@@ -4620,7 +4645,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             if source_scope_id == target_scope_id {
                 return Err(invalid("use reorder within one scope"));
             }
-            let document = doc(p, document_id, true)?;
+            let document = doc_structural(p, document_id)?;
             if !choreography_reparent_geometry_safe(
                 document,
                 &choreography_id,
@@ -4661,7 +4686,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                 ));
             }
             let graph = choreography_scope_mut(
-                choreography_mut(doc(p, document_id, true)?, &choreography_id)?,
+                choreography_mut(doc_structural(p, document_id)?, &choreography_id)?,
                 &scope_id,
             )?;
             if index > graph.data_associations.len() {
@@ -4681,7 +4706,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                 .ok_or_else(|| invalid("data association requires a stable identity"))?
                 .selector();
             let graph = choreography_scope_mut(
-                choreography_mut(doc(p, document_id, true)?, &choreography_id)?,
+                choreography_mut(doc_structural(p, document_id)?, &choreography_id)?,
                 &scope_id,
             )?;
             let old = graph
@@ -4697,7 +4722,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             scope_id,
             association_id,
         } => {
-            let document = doc(p, document_id, true)?;
+            let document = doc_structural(p, document_id)?;
             let before: std::collections::HashSet<_> = document
                 .element_identities()
                 .into_iter()
@@ -4736,7 +4761,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             index,
         } => {
             let graph = choreography_scope_mut(
-                choreography_mut(doc(p, document_id, true)?, &choreography_id)?,
+                choreography_mut(doc_structural(p, document_id)?, &choreography_id)?,
                 &scope_id,
             )?;
             if index >= graph.data_associations.len() {
@@ -4758,7 +4783,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             choreography_id,
             activity,
         } => {
-            let c = choreography_mut(doc(p, document_id, true)?, &choreography_id)?;
+            let c = choreography_mut(doc_structural(p, document_id)?, &choreography_id)?;
             if c.graph.is_some() {
                 return Err(invalid(
                     "legacy activity command requires a legacy choreography",
@@ -4771,7 +4796,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             choreography_id,
             activity,
         } => {
-            let c = choreography_mut(doc(p, document_id, true)?, &choreography_id)?;
+            let c = choreography_mut(doc_structural(p, document_id)?, &choreography_id)?;
             if c.graph.is_some() {
                 return Err(invalid(
                     "legacy activity command requires a legacy choreography",
@@ -4789,7 +4814,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             choreography_id,
             activity_id,
         } => {
-            let document = doc(p, document_id, true)?;
+            let document = doc_structural(p, document_id)?;
             let c = choreography_mut(document, &choreography_id)?;
             if c.graph.is_some() {
                 return Err(invalid(
@@ -4823,12 +4848,12 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             }
         }
         Mutation::CreateConversationNode { document_id, node } => {
-            collaboration_mut(doc(p, document_id, true)?)?
+            collaboration_mut(doc_structural(p, document_id)?)?
                 .conversation_nodes
                 .push(node)
         }
         Mutation::UpdateConversationNode { document_id, node } => {
-            let c = collaboration_mut(doc(p, document_id, true)?)?;
+            let c = collaboration_mut(doc_structural(p, document_id)?)?;
             let index = c
                 .conversation_nodes
                 .iter()
@@ -4840,7 +4865,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             document_id,
             node_id,
         } => {
-            let d = doc(p, document_id, true)?;
+            let d = doc_structural(p, document_id)?;
             let c = collaboration_mut(d)?;
             if !c.conversation_nodes.iter().any(|n| n.id == node_id) {
                 return Err(invalid("conversation node not found"));
@@ -4869,12 +4894,12 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             });
         }
         Mutation::CreateConversationLink { document_id, link } => {
-            collaboration_mut(doc(p, document_id, true)?)?
+            collaboration_mut(doc_structural(p, document_id)?)?
                 .conversation_links
                 .push(link)
         }
         Mutation::UpdateConversationLink { document_id, link } => {
-            let c = collaboration_mut(doc(p, document_id, true)?)?;
+            let c = collaboration_mut(doc_structural(p, document_id)?)?;
             let index = c
                 .conversation_links
                 .iter()
@@ -4886,7 +4911,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             document_id,
             link_id,
         } => {
-            let d = doc(p, document_id, true)?;
+            let d = doc_structural(p, document_id)?;
             let c = collaboration_mut(d)?;
             let index = c
                 .conversation_links
@@ -4906,7 +4931,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             element_id,
             loop_characteristics,
         } => {
-            let document = doc(p, document_id, true)?;
+            let document = doc_structural(p, document_id)?;
             node_mut(document, &element_id)?.loop_characteristics = loop_characteristics;
         }
         Mutation::SetNodeDetails {
@@ -4914,7 +4939,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             element_id,
             details,
         } => {
-            let document = doc(p, document_id, true)?;
+            let document = doc_structural(p, document_id)?;
             let node = node_mut(document, &element_id)?;
             if matches!(
                 &node.details,
@@ -4935,7 +4960,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             name,
             created_unix_ms,
         } => {
-            if p.checkpoints.len() >= 20 {
+            if p.checkpoints.len() >= crate::MAX_CHECKPOINTS {
                 return Err(invalid("checkpoint limit exceeded"));
             }
             if p.checkpoints.iter().any(|c| c.id == id) {
@@ -4986,7 +5011,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             *p = restored;
         }
         Mutation::ApplyLayout { proposal } => {
-            let document = doc(p, proposal.document_id, true)?;
+            let document = doc_structural(p, proposal.document_id)?;
             crate::layout::validate_proposal(document, &proposal)
                 .map_err(|e| invalid(&e.to_string()))?;
             let diagram = diagram(document, &proposal.diagram_id)?;
@@ -5058,7 +5083,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             if !node.kind.is_activity() {
                 return Err(invalid("splice requires activity"));
             }
-            let d = doc(p, document_id, true)?;
+            let d = doc_structural(p, document_id)?;
             if d.diagrams.len() != 1 || d.diagrams[0].id != diagram_id {
                 return Err(invalid("splice requires exactly one diagram"));
             }
@@ -5171,20 +5196,14 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                 .find(|e| e.id == entry_id)
                 .ok_or_else(|| invalid("entry not found"))?
                 .clone();
-            let attribute_used = |project: &ProjectData| {
-                project.attribute_values.iter().any(|assignment| {
-                    matches!(
-                        &assignment.value,
-                        crate::attributes::AttributeValue::DictionaryRefs(refs)
-                            if refs.iter().any(|r| r == &DictionaryTarget::Entry(entry_id))
-                    )
-                })
-            };
             let used = p
                 .dictionary_links
                 .iter()
                 .any(|l| l.target == DictionaryTarget::Entry(entry_id))
-                || attribute_used(p);
+                || crate::attributes::dictionary_entry_in_use(
+                    p,
+                    &DictionaryTarget::Entry(entry_id),
+                );
             if used {
                 let replacement = match resolution {
                     DictionaryDeleteResolution::Reject => return Err(invalid("entry is in use")),
@@ -5209,20 +5228,11 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                 let mut seen = std::collections::HashSet::new();
                 p.dictionary_links
                     .retain(|l| seen.insert((l.source.clone(), l.kind, l.target.clone())));
-                for assignment in &mut p.attribute_values {
-                    if let crate::attributes::AttributeValue::DictionaryRefs(refs) =
-                        &mut assignment.value
-                    {
-                        for reference in refs.iter_mut() {
-                            if *reference == DictionaryTarget::Entry(entry_id) {
-                                *reference = replacement.clone();
-                            }
-                        }
-                        // Retargeting can merge two references anywhere in the list.
-                        let mut seen = std::collections::HashSet::new();
-                        refs.retain(|reference| seen.insert(reference.clone()));
-                    }
-                }
+                crate::attributes::retarget_dictionary_refs(
+                    p,
+                    &DictionaryTarget::Entry(entry_id),
+                    &replacement,
+                );
             }
             p.dictionary_entries.retain(|e| e.id != entry_id);
         }
@@ -5231,7 +5241,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             kind,
             targets,
         } => {
-            doc(p, source.document_id, true)?;
+            doc_structural(p, source.document_id)?;
             p.dictionary_links
                 .retain(|l| l.source != source || l.kind != kind);
             p.dictionary_links
@@ -5259,7 +5269,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
         Mutation::SetAttributeValues { source, values } => {
             // Values live at project level and leave the document untouched, so
             // opaque (foreign) XML in it does not block setting them.
-            doc(p, source.document_id, false)?;
+            doc_nonstructural(p, source.document_id)?;
             crate::attributes::apply_set_values(p, source, values)?;
         }
         Mutation::SetConventionsProfile { profile } => {
@@ -5274,7 +5284,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             flow_id,
             condition,
         } => {
-            let d = doc(p, document_id, true)?;
+            let d = doc_structural(p, document_id)?;
             let mut found = None;
             for process in &mut d.processes {
                 if let Some(flow) = process.flows.iter_mut().find(|f| f.id == flow_id) {
@@ -5310,7 +5320,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             flow_id,
             condition,
         } => {
-            let d = doc(p, document_id, true)?;
+            let d = doc_structural(p, document_id)?;
             let f = flow_mut(d, &flow_id)?;
             if f.kind != FlowKind::Sequence {
                 return Err(invalid("condition requires sequence flow"));
@@ -5323,7 +5333,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             owner,
             contact,
         } => {
-            let d = doc(p, document_id, true)?;
+            let d = doc_structural(p, document_id)?;
             let n = node_mut(d, &element_id)?;
             n.owner = owner;
             n.contact = contact;
@@ -5334,7 +5344,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             p.description = description;
         }
         Mutation::DeleteDocument { document_id } => {
-            doc(p, document_id, true)?;
+            doc_structural(p, document_id)?;
             p.documents.retain(|d| d.id != document_id);
             prune_removed_element_refs(p, document_id, None);
             p.links.retain(|l| l.target != document_id);
@@ -5344,7 +5354,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             diagram_id,
             shape,
         } => {
-            let diagram = diagram(doc(p, document_id, true)?, &diagram_id)?;
+            let diagram = diagram(doc_structural(p, document_id)?, &diagram_id)?;
             if let Some(order) = &mut diagram.plane_order {
                 order.push(shape.id.selector());
             }
@@ -5355,7 +5365,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             diagram_id,
             shape_id,
         } => {
-            let document = doc(p, document_id, true)?;
+            let document = doc_structural(p, document_id)?;
             let namespace = document
                 .definitions
                 .as_ref()
@@ -5381,7 +5391,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             diagram_id,
             edge,
         } => {
-            let diagram = diagram(doc(p, document_id, true)?, &diagram_id)?;
+            let diagram = diagram(doc_structural(p, document_id)?, &diagram_id)?;
             if let Some(order) = &mut diagram.plane_order {
                 order.push(edge.id.selector());
             }
@@ -5390,12 +5400,12 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
         Mutation::CreateProcess {
             document_id,
             process: value,
-        } => doc(p, document_id, true)?.processes.push(value),
+        } => doc_structural(p, document_id)?.processes.push(value),
         Mutation::CreateCollaboration {
             document_id,
             collaboration,
         } => {
-            let d = doc(p, document_id, true)?;
+            let d = doc_structural(p, document_id)?;
             if d.collaboration.is_some() {
                 return Err(invalid("collaboration already exists"));
             }
@@ -5404,7 +5414,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
         Mutation::CreateParticipant {
             document_id,
             participant,
-        } => doc(p, document_id, true)?
+        } => doc_structural(p, document_id)?
             .collaboration
             .as_mut()
             .ok_or_else(|| invalid("collaboration not found"))?
@@ -5414,7 +5424,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             document_id,
             process_id,
             lane,
-        } => scope_parts_mut(doc(p, document_id, true)?, &process_id)?
+        } => scope_parts_mut(doc_structural(p, document_id)?, &process_id)?
             .1
             .push(lane),
         Mutation::CreateElement {
@@ -5422,7 +5432,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             process_id,
             element,
         } => {
-            let d = doc(p, document_id, true)?;
+            let d = doc_structural(p, document_id)?;
             let mut pending = vec![&element];
             while let Some(node) = pending.pop() {
                 if let Some(activity) = &node.activity {
@@ -5440,7 +5450,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             process_id,
             flow,
         } => {
-            let d = doc(p, document_id, true)?;
+            let d = doc_structural(p, document_id)?;
             if let Some(id) = process_id {
                 // BPMN export writes a scope's sequence flows before its associations; keep the
                 // same order so an exported file re-imports to the same model.
@@ -5464,13 +5474,13 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
         Mutation::CreateDiagram {
             document_id,
             diagram,
-        } => doc(p, document_id, true)?.diagrams.push(diagram),
+        } => doc_structural(p, document_id)?.diagrams.push(diagram),
         Mutation::DocumentProperties {
             document_id,
             name,
             folder,
         } => {
-            let d = doc(p, document_id, false)?;
+            let d = doc_nonstructural(p, document_id)?;
             if matches!(d.capability, Capability::RetainedExtensions { .. }) && d.folder != folder {
                 return Err(CommandError::CapabilityDenied);
             }
@@ -5481,7 +5491,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             document_id,
             metadata,
         } => {
-            let d = doc(p, document_id, true)?;
+            let d = doc_structural(p, document_id)?;
             if d.definitions.is_none() && d.provenance.is_some() {
                 return Err(invalid(
                     "Original target namespace must be recovered before editing definitions metadata",
@@ -5533,7 +5543,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             element_id,
             name,
         } => {
-            let d = doc(p, document_id, false)?;
+            let d = doc_nonstructural(p, document_id)?;
             if crate::queries::find_node(d, &element_id)
                 .is_some_and(|node| node.kind == NodeKind::TextAnnotation)
                 || d.collaboration.iter().chain(&d.additional_collaborations).filter_map(|root| root.extras.as_ref()).chain(d.choreographies.iter().filter_map(|root| root.extras.as_ref())).flat_map(|extras| &extras.artifacts).any(|artifact| matches!(artifact, crate::bpmn_collaboration::CollaborationArtifact::TextAnnotation(node) if node.id == element_id))
@@ -5701,7 +5711,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             element_id,
             documentation,
         } => {
-            let d = doc(p, document_id, false)?;
+            let d = doc_nonstructural(p, document_id)?;
             let mut structured = documentation_is_structured(d, &element_id);
             crate::metadata_visit::visit_legacy_metadata_mut(d, |id, value, _| {
                 if id == &element_id
@@ -5779,7 +5789,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             shape_id,
             bounds,
         } => {
-            let s = diagram(doc(p, document_id, false)?, &diagram_id)?
+            let s = diagram(doc_nonstructural(p, document_id)?, &diagram_id)?
                 .shapes
                 .iter_mut()
                 .find(|s| s.id == shape_id)
@@ -5792,7 +5802,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             edge_id,
             waypoints,
         } => {
-            let d = doc(p, document_id, false)?;
+            let d = doc_nonstructural(p, document_id)?;
             // Every route change is normalized here (ends docked on the true outline), and an
             // explicit label follows the route's midpoint, so moves, resizes, reconnects and
             // manual edits all keep it in place.
@@ -5839,7 +5849,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             lane_id,
             bounds,
         } => {
-            let d = doc(p, document_id, true)?;
+            let d = doc_structural(p, document_id)?;
             let (nodes, lanes, _) = scope_parts_mut(d, &process_id)?;
             if !nodes.iter().any(|n| n.id == element_id) {
                 return Err(invalid("node not found"));
@@ -5890,7 +5900,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             flow_id,
             edge_id,
         } => {
-            doc(p, document_id, true)?;
+            doc_structural(p, document_id)?;
             let d = p
                 .documents
                 .iter()
@@ -5915,7 +5925,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             flow_id,
             edge_id,
         } => {
-            doc(p, document_id, true)?;
+            doc_structural(p, document_id)?;
             let d = p
                 .documents
                 .iter()
@@ -5947,7 +5957,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             element_id,
             target,
         } => {
-            let d = doc(p, document_id, true)?;
+            let d = doc_structural(p, document_id)?;
             if let Some(diagram_id) =
                 crate::containers::collapse_toggle_target(d, &element_id, &target)
             {
@@ -5973,7 +5983,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             flow_id,
             edge_id,
         } => {
-            let d = doc(p, document_id, false)?;
+            let d = doc_nonstructural(p, document_id)?;
             let old = d.clone();
             let semantic = d.capability.allows_structural_editing() && !d.blocks_structural_edits();
             let moved: Vec<ElementSelector> = d
@@ -6003,7 +6013,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             shape_id,
             bounds,
         } => {
-            let d = doc(p, document_id, false)?;
+            let d = doc_nonstructural(p, document_id)?;
             let old = d.clone();
             let resized: Vec<ElementSelector> = d
                 .diagrams
@@ -6018,7 +6028,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             for m in batch {
                 mutate(p, m)?;
             }
-            let d = doc(p, document_id, false)?;
+            let d = doc_nonstructural(p, document_id)?;
             if d.capability.allows_structural_editing() && !d.blocks_structural_edits() {
                 crate::containers::sync_lanes(&old, d, &diagram_id);
             }
@@ -6032,7 +6042,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             source_id,
             target_id,
         } => {
-            let d = doc(p, document_id, true)?;
+            let d = doc_structural(p, document_id)?;
             let batch =
                 crate::manipulate::reconnect(d, &diagram_id, &flow_id, &source_id, &target_id)
                     .map_err(CommandError::InvalidParams)?;
@@ -6051,7 +6061,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             flow_id,
             edge_id,
         } => {
-            let d = doc(p, document_id, true)?;
+            let d = doc_structural(p, document_id)?;
             let old = d.clone();
             let node = node_id.selector();
             let ids = crate::manipulate::CreateIds {
@@ -6073,7 +6083,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             element_id,
             location,
         } => crate::containers::add_lane(
-            doc(p, document_id, true)?,
+            doc_structural(p, document_id)?,
             &diagram_id,
             &element_id,
             location,
@@ -6085,7 +6095,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             element_id,
             count,
         } => crate::containers::split_lane(
-            doc(p, document_id, true)?,
+            doc_structural(p, document_id)?,
             &diagram_id,
             &element_id,
             count,
@@ -6098,7 +6108,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             center,
         } => {
             let batch = crate::containers::create_pool(
-                doc(p, document_id, true)?,
+                doc_structural(p, document_id)?,
                 &diagram_id,
                 name,
                 center,
@@ -6113,7 +6123,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             diagram_id,
             element_id,
         } => {
-            let d = doc(p, document_id, true)?;
+            let d = doc_structural(p, document_id)?;
             let old = d.clone();
             if crate::containers::toggle_collapse(d, &diagram_id, &element_id)
                 .map_err(CommandError::InvalidParams)?
@@ -6130,9 +6140,15 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             before,
             at,
         } => {
-            let d = doc(p, document_id, false)?;
+            let d = doc_nonstructural(p, document_id)?;
             let semantic = d.capability.allows_structural_editing() && !d.blocks_structural_edits();
-            crate::containers::make_space(d, &diagram_id, axis, start, delta, !before, semantic, at)
+            let space = crate::containers::Space {
+                axis,
+                start,
+                delta,
+                after: !before,
+            };
+            crate::containers::make_space(d, &diagram_id, space, semantic, at)
                 .map_err(CommandError::InvalidParams)?
         }
         Mutation::Align {
@@ -6142,7 +6158,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             alignment,
         } => {
             let prepared = crate::arrange::prepare_align(
-                doc(p, document_id, false)?,
+                doc_nonstructural(p, document_id)?,
                 &diagram_id,
                 &shape_ids,
                 alignment,
@@ -6157,7 +6173,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             distribution,
         } => {
             let prepared = crate::arrange::prepare_distribute(
-                doc(p, document_id, false)?,
+                doc_nonstructural(p, document_id)?,
                 &diagram_id,
                 &shape_ids,
                 distribution,
@@ -6173,7 +6189,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             dy,
             target_diagram_id,
         } => {
-            let d = doc(p, document_id, true)?;
+            let d = doc_structural(p, document_id)?;
             let clipboard =
                 crate::clipboard::copy(d, &diagram_id, &element_ids).map_err(invalid)?;
             let target = target_diagram_id.unwrap_or(diagram_id);
@@ -6190,7 +6206,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
             element_id,
         } => {
             if let Some((choreography_id, scope_id)) =
-                choreography_graph_owner(doc(p, document_id, true)?, &element_id)
+                choreography_graph_owner(doc_structural(p, document_id)?, &element_id)
             {
                 return delete_choreography_flow_element(
                     p,
@@ -6200,7 +6216,7 @@ fn mutate(p: &mut ProjectData, m: Mutation) -> Result<(), CommandError> {
                     &element_id,
                 );
             }
-            let d = doc(p, document_id, true)?;
+            let d = doc_structural(p, document_id)?;
             // Sibling lanes take a deleted lane's space; membership follows afterwards.
             let lane_old = crate::queries::scopes(d)
                 .iter()

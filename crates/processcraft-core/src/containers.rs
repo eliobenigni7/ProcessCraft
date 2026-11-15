@@ -134,11 +134,11 @@ fn container_shape(
 /// `start` on `axis` (before it when `after` is false) move by `delta`; resizable shapes that
 /// cross the line grow or shrink by it on that side.
 #[derive(Clone, Copy, Debug)]
-struct Space {
-    axis: Axis,
-    start: f64,
-    delta: f64,
-    after: bool,
+pub struct Space {
+    pub axis: Axis,
+    pub start: f64,
+    pub delta: f64,
+    pub after: bool,
 }
 /// New bounds per shape index of one diagram.
 type Changes = HashMap<usize, Bounds>;
@@ -1176,17 +1176,14 @@ pub fn collapse_toggle_target(
 /// Refused when a container would shrink below its minimum size. `semantic` allows the lane
 /// membership update (a diagram-only edit otherwise). When the drag starts at `at` inside a
 /// pool, only that pool and the shapes in it take part (whole diagram otherwise).
-#[allow(clippy::too_many_arguments)]
 pub fn make_space(
     doc: &mut BpmnDocument,
     diagram_id: &ElementSelector,
-    axis: Axis,
-    start: f64,
-    delta: f64,
-    after: bool,
+    space: Space,
     semantic: bool,
     at: Option<Point>,
 ) -> Result<(), String> {
+    let Space { start, delta, .. } = space;
     if at.as_ref().is_some_and(|p| !geometry::valid_point(p)) {
         return Err("invalid position".into());
     }
@@ -1203,12 +1200,6 @@ pub fn make_space(
     let old = doc.clone();
     let di = diagram_index(doc, diagram_id)?;
     let diagram = &doc.diagrams[di];
-    let space = Space {
-        axis,
-        start,
-        delta,
-        after,
-    };
     let mut changes = Changes::new();
     // bpmn-js: a drag that starts in a pool only makes space in that pool.
     let pool = at.and_then(|p| {

@@ -1,4 +1,7 @@
 //! Read-only projections of the current in-memory project.
+//!
+//! Pure functions over a project snapshot (dictionary, element lists, RACI matrix, checkpoint
+//! summaries, ...) shared by the GUI, CLI and MCP so none of them re-derive project facts.
 use crate::{
     ids::{
         CheckpointId, DictionaryEntryId, DocumentId, ElementIdentity, ElementKey, ElementSelector,

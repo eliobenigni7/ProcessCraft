@@ -981,3 +981,29 @@ pub fn connect(
     });
     Ok(batch)
 }
+
+/// Whether `candidate` may become the parent of the conversation node `current` without
+/// creating a cycle in the conversation hierarchy. Any parent is valid when nothing is edited.
+pub fn valid_conversation_parent(
+    nodes: &[crate::bpmn_collaboration::ConversationNode],
+    current: Option<&ElementSelector>,
+    candidate: &crate::bpmn_collaboration::ConversationNode,
+) -> bool {
+    let Some(current) = current else {
+        return true;
+    };
+    let mut cursor = Some(candidate.id.selector());
+    for _ in 0..=nodes.len() {
+        let Some(id) = cursor else {
+            return true;
+        };
+        if &id == current {
+            return false;
+        }
+        cursor = nodes
+            .iter()
+            .find(|node| node.id == id)
+            .and_then(|node| node.parent.clone());
+    }
+    false
+}

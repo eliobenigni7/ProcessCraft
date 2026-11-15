@@ -1,3 +1,7 @@
+//! Persistent project model: `ProjectData` (documents, dictionary, comments, checkpoints,
+//! attribute definitions and values), its immutable `FrozenProject` snapshot form, and the
+//! per-document BPMN content (`BpmnDocument`, processes, nodes, flows, lanes, diagrams).
+//! Mutation goes through `commands`; structural validity is checked in `identity.rs`.
 use crate::ids::{
     CheckpointId, CommentId, DictionaryEntryId, DocumentId, ElementKey, ProjectId, XmlId,
 };

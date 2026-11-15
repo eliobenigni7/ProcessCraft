@@ -1,8 +1,32 @@
+//! Structural validity and content identity of a project.
+//!
+//! `ProjectData::validate` is the hard structural check (unique IDs, resolvable references,
+//! bounded sizes) that every mutation must preserve; it is distinct from the non-blocking
+//! editing diagnostics in `validation.rs`. This module also computes the SHA-256 content identity
+//! of canonical persistent content and holds `CheckpointCache`.
+use crate::attributes::MAX_TEXT;
 use crate::ids::XmlId;
 use crate::model::*;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
+
+/// Maximum entries in a per-element list (imports, ports, operations, assignments, ...).
+const MAX_COLLECTION_ITEMS: usize = 256;
+/// Maximum flow/graph elements counted in one document.
+const MAX_DOCUMENT_ELEMENTS: usize = 10_000;
+/// Maximum elements counted across the whole project.
+const MAX_PROJECT_ELEMENTS: usize = 100_000;
+/// Maximum documents in one project.
+const MAX_DOCUMENTS: usize = 500;
+/// Maximum items in a serialized JSON array.
+const MAX_JSON_ARRAY_ITEMS: usize = 100_000;
+/// Maximum bytes of a serialized JSON string or comment text (1 MiB).
+const MAX_LONG_TEXT_BYTES: usize = 1_048_576;
+/// JSON nesting limit, matching serde_json's reader.
+const MAX_JSON_DEPTH: usize = 128;
+/// Largest absolute diagram coordinate or extent accepted.
+const MAX_COORDINATE: f64 = 1_000_000_000.0;
 
 fn fail<T>(message: &str) -> Result<T, String> {
     Err(message.into())
@@ -17,7 +41,7 @@ fn add<'a, T: Eq + std::hash::Hash>(set: &mut HashSet<&'a T>, id: &'a T) -> Resu
 fn bounds(b: &Bounds) -> Result<(), String> {
     if [b.x, b.y, b.width, b.height]
         .iter()
-        .all(|n| n.is_finite() && n.abs() <= 1_000_000_000.0)
+        .all(|n| n.is_finite() && n.abs() <= MAX_COORDINATE)
         && b.width >= 0.0
         && b.height >= 0.0
     {
@@ -53,13 +77,13 @@ fn label(l: &Option<Label>) -> Result<(), String> {
 /// Nesting is bounded exactly like serde_json's reader (127 levels), so a value
 /// serialized from the model is readable back without reparsing it here.
 fn inspect(v: &Value, depth: usize) -> Result<(), String> {
-    if matches!(v, Value::Array(_) | Value::Object(_)) && depth + 1 >= 128 {
+    if matches!(v, Value::Array(_) | Value::Object(_)) && depth + 1 >= MAX_JSON_DEPTH {
         return fail("project JSON is not readable: recursion limit exceeded");
     }
     match v {
-        Value::String(s) if s.len() > 1_048_576 => fail("string exceeds 1 MiB"),
+        Value::String(s) if s.len() > MAX_LONG_TEXT_BYTES => fail("string exceeds 1 MiB"),
         Value::Array(a) => {
-            if a.len() > 100_000 {
+            if a.len() > MAX_JSON_ARRAY_ITEMS {
                 return fail("collection exceeds limit");
             }
             for x in a {
@@ -77,7 +101,7 @@ fn inspect(v: &Value, depth: usize) -> Result<(), String> {
     }
 }
 fn short(s: &str) -> Result<(), String> {
-    if s.len() > 16_384 {
+    if s.len() > MAX_TEXT {
         fail("label exceeds 16 KiB")
     } else {
         Ok(())
@@ -161,7 +185,7 @@ fn validate_event_payload(
             }
             if expression
                 .as_ref()
-                .is_some_and(|e| e.plain_text().is_some_and(|s| s.len() > 16_384))
+                .is_some_and(|e| e.plain_text().is_some_and(|s| s.len() > MAX_TEXT))
             {
                 return fail("Invalid timer expression");
             }
@@ -342,7 +366,7 @@ impl ProjectData {
     /// them instead of serializing again.
     fn validate_cached(&self, cache: &mut CheckpointCache) -> Result<Validated, String> {
         short(&self.name)?;
-        if self.checkpoints.len() > 20 {
+        if self.checkpoints.len() > crate::MAX_CHECKPOINTS {
             return fail("checkpoint limit exceeded");
         }
         let mut checkpoint_ids = HashSet::new();
@@ -461,11 +485,11 @@ impl ProjectData {
                 return fail("duplicate comment ID");
             }
             short(&comment.author)?;
-            if comment.text.len() > 1_048_576 {
+            if comment.text.len() > MAX_LONG_TEXT_BYTES {
                 return fail("comment exceeds 1 MiB");
             }
         }
-        if self.documents.len() > 500 {
+        if self.documents.len() > MAX_DOCUMENTS {
             return fail("document limit exceeded");
         }
 
@@ -526,7 +550,7 @@ impl ProjectData {
                 canonical: canonical.clone(),
             });
         }
-        if total > 100_000 {
+        if total > MAX_PROJECT_ELEMENTS {
             return fail("project element limit exceeded");
         }
         for link in &self.links {
@@ -858,7 +882,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                 &metadata.namespaces,
             )?;
         }
-        if metadata.imports.len() > 256 {
+        if metadata.imports.len() > MAX_COLLECTION_ITEMS {
             return fail("Definitions import limit exceeded");
         }
         for import in &metadata.imports {
@@ -910,11 +934,11 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
         reference.as_ref().and_then(|reference| match reference_index.resolve(reference) { crate::reference_resolution::ReferenceResolution::Resolved(value) => Some(value), _ => None })
     };
 
-    if d.extensions.len() > 256 || d.relationships.len() > 256 {
+    if d.extensions.len() > MAX_COLLECTION_ITEMS || d.relationships.len() > MAX_COLLECTION_ITEMS {
         return fail("Definitions declaration limit exceeded");
     }
     for extension in &d.extensions {
-        if extension.documentation.len() > 256 {
+        if extension.documentation.len() > MAX_COLLECTION_ITEMS {
             return fail("Extension documentation limit exceeded");
         }
         for doc in &extension.documentation {
@@ -929,7 +953,9 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             add(&mut ids, id)?;
         }
         definitions_text(&relationship.relationship_type)?;
-        if relationship.sources.len() > 256 || relationship.targets.len() > 256 {
+        if relationship.sources.len() > MAX_COLLECTION_ITEMS
+            || relationship.targets.len() > MAX_COLLECTION_ITEMS
+        {
             return fail("Relationship reference limit exceeded");
         }
         for reference in relationship.sources.iter().chain(&relationship.targets) {
@@ -967,9 +993,9 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
         }
     }
     let catalog = &d.catalog;
-    if catalog.item_definitions.len() > 256
-        || catalog.interfaces.len() > 256
-        || catalog.resources.len() > 256
+    if catalog.item_definitions.len() > MAX_COLLECTION_ITEMS
+        || catalog.interfaces.len() > MAX_COLLECTION_ITEMS
+        || catalog.resources.len() > MAX_COLLECTION_ITEMS
     {
         return fail("Supporting catalog limit exceeded");
     }
@@ -989,7 +1015,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
         if let Some(name) = &interface.implementation_ref {
             check_qname(name)?;
         }
-        if interface.operations.is_empty() || interface.operations.len() > 256 {
+        if interface.operations.is_empty() || interface.operations.len() > MAX_COLLECTION_ITEMS {
             return fail("Interface requires one to 256 operations");
         }
         for operation in &interface.operations {
@@ -1000,7 +1026,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             if let Some(name) = &operation.implementation_ref {
                 check_qname(name)?;
             }
-            if operation.error_refs.len() > 256 {
+            if operation.error_refs.len() > MAX_COLLECTION_ITEMS {
                 return fail("Operation error reference limit exceeded");
             }
             for reference in
@@ -1024,7 +1050,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             add(&mut ids, id)?;
         }
         definitions_text(&resource.name)?;
-        if resource.parameters.len() > 256 {
+        if resource.parameters.len() > MAX_COLLECTION_ITEMS {
             return fail("Resource parameter limit exceeded");
         }
         for parameter in &resource.parameters {
@@ -1083,7 +1109,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             }
         }
         for association in scope.data_associations {
-            if association.assignments.len() > 256 {
+            if association.assignments.len() > MAX_COLLECTION_ITEMS {
                 return fail("Data assignment limit exceeded");
             }
             for assignment in &association.assignments {
@@ -1139,7 +1165,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                         } => (outputs, output_set),
                         EventIo::Throw { inputs, input_set } => (inputs, input_set),
                     };
-                    if ports.len() > 256 {
+                    if ports.len() > MAX_COLLECTION_ITEMS {
                         return fail("Event port limit exceeded");
                     }
                     for port in ports {
@@ -1211,7 +1237,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             if let Some(crate::bpmn_model::NodeDetails::Event { properties, io, .. }) =
                 &node.details
             {
-                if properties.len() > 256 {
+                if properties.len() > MAX_COLLECTION_ITEMS {
                     return fail("Event property limit exceeded");
                 }
                 for property in properties {
@@ -1234,7 +1260,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                         } => (outputs, output_set),
                         EventIo::Throw { inputs, input_set } => (inputs, input_set),
                     };
-                    if ports.len() > 256 {
+                    if ports.len() > MAX_COLLECTION_ITEMS {
                         return fail("Event port limit exceeded");
                     }
                     for port in ports {
@@ -1352,7 +1378,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             } {
                 definitions_text(text)?;
             }
-            if data.namespaces.len() > 256 {
+            if data.namespaces.len() > MAX_COLLECTION_ITEMS {
                 return fail("Expression namespace limit exceeded");
             }
             let mut prefixes = HashSet::new();
@@ -1470,7 +1496,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             _ => {}
         }
     }
-    if d.root_event_definitions.len() > 256 {
+    if d.root_event_definitions.len() > MAX_COLLECTION_ITEMS {
         return fail("Root event definition limit exceeded");
     }
     for definition in &d.root_event_definitions {
@@ -1531,7 +1557,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
         }
         if let Some(capacity) = &store.capacity {
             let digits = capacity.strip_prefix(['+', '-']).unwrap_or(capacity);
-            if capacity.len() > 16_384
+            if capacity.len() > MAX_TEXT
                 || digits.is_empty()
                 || !digits.bytes().all(|b| b.is_ascii_digit())
             {
@@ -1584,7 +1610,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             .saturating_add(scope.objects.len())
             .saturating_add(scope.associations.len())
             .saturating_add(scope.groups.len());
-        if count > 10_000 {
+        if count > MAX_DOCUMENT_ELEMENTS {
             return fail("document element limit exceeded");
         }
         for n in scope.nodes {
@@ -1618,7 +1644,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                 ) => {
                     if called_element
                         .as_ref()
-                        .is_some_and(|value| value.namespace.len() > 16_384)
+                        .is_some_and(|value| value.namespace.len() > MAX_TEXT)
                     {
                         return fail("invalid call namespace");
                     }
@@ -1717,7 +1743,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                     }
                     if let Some(condition) = activation_condition
                         && (!matches!(n.kind, NodeKind::ComplexGateway)
-                            || condition.plain_text().is_some_and(|s| s.len() > 16_384))
+                            || condition.plain_text().is_some_and(|s| s.len() > MAX_TEXT))
                     {
                         return fail("invalid gateway activation condition");
                     }
@@ -1910,7 +1936,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                     return fail("activity properties require activity");
                 }
                 let check_text = |value: &Option<String>| -> Result<(), String> {
-                    if value.as_ref().is_some_and(|v| v.len() > 16_384) {
+                    if value.as_ref().is_some_and(|v| v.len() > MAX_TEXT) {
                         return fail("activity property too long");
                     }
                     Ok(())
@@ -1996,7 +2022,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                 if let Some(script) = &activity.script {
                     match script {
                         crate::bpmn_xml::MixedXml::Text(text) => {
-                            if text.len() > 16_384 {
+                            if text.len() > MAX_TEXT {
                                 return fail("activity property too long");
                             }
                         }
@@ -2014,7 +2040,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                     .into_iter()
                     .flatten()
                 {
-                    if name.namespace.len() > 16_384 {
+                    if name.namespace.len() > MAX_TEXT {
                         return fail("invalid QName namespace");
                     }
                 }
@@ -2025,7 +2051,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                     return fail("loop characteristics require an activity");
                 }
                 let check = |value: Option<&str>| -> Result<(), String> {
-                    if value.is_some_and(|s| s.len() > 16_384) {
+                    if value.is_some_and(|s| s.len() > MAX_TEXT) {
                         return fail("invalid loop expression");
                     }
                     Ok(())
@@ -2126,9 +2152,9 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                         | NodeKind::BoundaryEvent
                 );
                 if !event
-                    || definitions.len() > 256
-                    || definition_refs.len() > 256
-                    || properties.len() > 256
+                    || definitions.len() > MAX_COLLECTION_ITEMS
+                    || definition_refs.len() > MAX_COLLECTION_ITEMS
+                    || properties.len() > MAX_COLLECTION_ITEMS
                 {
                     return fail("invalid event details");
                 }
@@ -2261,7 +2287,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                             if owned && let Some(id) = id {
                                 add(&mut ids, id)?;
                             }
-                            if expression.plain_text().is_some_and(|s| s.len() > 16_384) {
+                            if expression.plain_text().is_some_and(|s| s.len() > MAX_TEXT) {
                                 return fail("invalid conditional expression");
                             }
                         }
@@ -2605,7 +2631,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             count = count
                 .saturating_add(graph.flow_elements.len())
                 .saturating_add(graph.data_associations.len());
-            if count > 10_000 {
+            if count > MAX_DOCUMENT_ELEMENTS {
                 return fail("choreography element limit exceeded");
             }
             let nodes: HashSet<_> = graph
@@ -2624,7 +2650,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                 if let Some(id) = &association.id {
                     add(&mut ids, id)?;
                 }
-                if association.assignments.len() > 256 {
+                if association.assignments.len() > MAX_COLLECTION_ITEMS {
                     return fail("Data assignment limit exceeded");
                 }
                 for assignment in &association.assignments {
@@ -2706,7 +2732,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                             &a.details
                         {
                             count = count.saturating_add(artifacts.len());
-                            if count > 10_000 {
+                            if count > MAX_DOCUMENT_ELEMENTS {
                                 return fail("choreography element limit exceeded");
                             }
                             for artifact in artifacts {
@@ -2800,7 +2826,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
                         if let Some(crate::bpmn_model::NodeDetails::Event { definitions, .. }) =
                             &n.details
                         {
-                            if definitions.len() > 256 {
+                            if definitions.len() > MAX_COLLECTION_ITEMS {
                                 return fail("Event definition limit exceeded");
                             }
                             for definition in definitions {
@@ -3385,8 +3411,8 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             for p in &e.waypoints {
                 if !p.x.is_finite()
                     || !p.y.is_finite()
-                    || p.x.abs() > 1_000_000_000.0
-                    || p.y.abs() > 1_000_000_000.0
+                    || p.x.abs() > MAX_COORDINATE
+                    || p.y.abs() > MAX_COORDINATE
                 {
                     return fail("invalid waypoint");
                 }
@@ -3406,7 +3432,7 @@ fn validate_document(d: &BpmnDocument, resources: &HashSet<&XmlId>) -> Result<us
             }
         }
     }
-    if ids.len() > 10_000 {
+    if ids.len() > MAX_DOCUMENT_ELEMENTS {
         return fail("document element limit exceeded");
     }
     Ok(ids.len())

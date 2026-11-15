@@ -338,8 +338,7 @@ pub enum TimerKind {
     Cycle,
 }
 
-// Keep the existing public and serialized event fields directly addressable.
-#[allow(clippy::large_enum_variant)]
+#[allow(clippy::large_enum_variant)] // Keeps the existing public and serialized event fields directly addressable.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
 pub enum NodeDetails {

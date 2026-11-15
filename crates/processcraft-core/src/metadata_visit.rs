@@ -1,4 +1,8 @@
 //! Mutable traversal of modeled common metadata, preserving its owning identity.
+//!
+//! Visits every element's base metadata (documentation, extensions, ...) together with the
+//! `ElementIdentity` that owns it. Its read-only twin is `metadata_read.rs`; keep the two
+//! traversals in step.
 use crate::{
     bpmn_metadata::{BaseExtras, BaseMetadata, DocumentationSet},
     ids::ElementIdentity,

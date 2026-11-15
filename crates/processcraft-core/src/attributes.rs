@@ -747,6 +747,33 @@ pub fn apply_update(
     Ok(())
 }
 
+/// True when any `DictionaryRefs` attribute value points at `entry`.
+pub(crate) fn dictionary_entry_in_use(project: &ProjectData, entry: &DictionaryTarget) -> bool {
+    project.attribute_values.iter().any(|assignment| {
+        matches!(&assignment.value, AttributeValue::DictionaryRefs(refs) if refs.contains(entry))
+    })
+}
+
+/// Points every `DictionaryRefs` reference to `from` at `to`, dropping duplicates the
+/// retarget creates anywhere in a list.
+pub(crate) fn retarget_dictionary_refs(
+    project: &mut ProjectData,
+    from: &DictionaryTarget,
+    to: &DictionaryTarget,
+) {
+    for assignment in &mut project.attribute_values {
+        if let AttributeValue::DictionaryRefs(refs) = &mut assignment.value {
+            for reference in refs.iter_mut() {
+                if reference == from {
+                    *reference = to.clone();
+                }
+            }
+            let mut seen = std::collections::HashSet::new();
+            refs.retain(|reference| seen.insert(reference.clone()));
+        }
+    }
+}
+
 /// Deletes a definition, refusing, discarding or moving its values.
 pub fn apply_delete(
     project: &mut ProjectData,
