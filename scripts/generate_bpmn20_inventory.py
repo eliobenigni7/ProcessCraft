@@ -92,7 +92,7 @@ for declaration in declarations:
             "crates/processcraft-io/tests/interchange.rs:definitions_metadata_roundtrips_with_presence_and_namespace_identity",
             "crates/processcraft-io/tests/native.rs:definitions_metadata_requires_capability_in_live_and_checkpoint_documents",
             "crates/processcraft-core/tests/commands.rs:definitions_metadata_is_undoable_and_validated_atomically",
-            "apps/processcraft/src/app.rs:definitions_draft_is_guarded_and_uses_history",
+            "apps/processcraft/src/app/tests.rs:definitions_draft_is_guarded_and_uses_history",
             "apps/processcraft-cli/tests/definitions_mcp.rs:definitions_metadata_uses_discovered_mcp_command_and_exact_history",
         ]
         declaration["limitations"] = (

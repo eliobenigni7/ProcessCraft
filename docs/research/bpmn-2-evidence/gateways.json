@@ -106,7 +106,7 @@
    "dimension": "edit",
    "state": "verified",
    "evidence": [
-    "apps/processcraft/src/app.rs:graph_gateway_properties_keep_metadata_and_representation_through_history"
+    "apps/processcraft/src/app/tests.rs:graph_gateway_properties_keep_metadata_and_representation_through_history"
    ],
    "note": "GUI commit_draft submits SetNodeDetails; asserts Diverging, undo/redo"
   },
