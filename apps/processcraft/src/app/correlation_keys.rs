@@ -1,3 +1,5 @@
+//! Editor for the correlation keys of choreography activities and flow elements.
+//! Emits `UpdateChoreographyActivity` and `UpdateChoreographyFlowElement`.
 use super::callable::reference_list_ui;
 use super::catalog::optional_text;
 use super::event::{ReferenceDraft, local_choice_label};

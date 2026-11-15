@@ -1,3 +1,5 @@
+//! Editor for choreography graph data associations and element identity promotion.
+//! Emits `CreateChoreographyDataAssociation`, `UpdateChoreographyDataAssociation`, `DeleteChoreographyDataAssociation`, `ReorderChoreographyDataAssociation` and `PromoteElementIdentity`.
 use super::*;
 use processcraft_core::bpmn_data::{DataAssignment, DataAssociation, DataAssociationKind};
 use processcraft_core::bpmn_model::{EventIo, NodeDetails};

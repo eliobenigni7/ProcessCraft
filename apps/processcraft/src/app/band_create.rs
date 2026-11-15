@@ -1,3 +1,5 @@
+//! Creation form for choreography participant bands and tasks.
+//! Emits `CreateChoreography`, `CreateDiagram` and `CreateShape` from `BandDraft`.
 use super::event::local_choice_label;
 use super::*;
 pub(super) struct BandDraft {

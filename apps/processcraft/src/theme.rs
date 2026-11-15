@@ -51,6 +51,9 @@ pub const RADIUS: u8 = 6;
 pub const RADIUS_CARD: u8 = 8;
 pub const RADIUS_FLOAT: u8 = 12;
 pub const INTERACT_HEIGHT: f32 = 28.0;
+/// Connect-gesture target colours on the canvas: allowed and refused (same in both themes).
+pub const CONNECT_OK: Color32 = Color32::from_rgb(34, 139, 74);
+pub const CONNECT_REFUSED: Color32 = Color32::from_rgb(200, 50, 50);
 
 const MEDIUM: &str = "medium";
 const SEMIBOLD: &str = "semibold";

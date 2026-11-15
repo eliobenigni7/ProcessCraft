@@ -1,3 +1,4 @@
+//! Draft editor for DI element metadata (foreign attributes); builds the value for its owning editor.
 use super::xml::{AttributeDraft, ContentDraft, bindings_ui};
 use processcraft_core::bpmn_xml::{NamespaceBinding, XmlContent};
 use processcraft_core::model::DiElementMetadata;

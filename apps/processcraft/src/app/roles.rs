@@ -1,3 +1,5 @@
+//! Editor for activity resource roles and properties.
+//! Emits `SetActivityProperties`.
 use super::catalog::optional_text;
 use super::event::{ReferenceDraft, build_ref, local_choice_label, ref_ui};
 use super::inspector::{ExpressionDefault, optional_expression_ui_with_default};

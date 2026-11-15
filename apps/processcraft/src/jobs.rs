@@ -1,3 +1,4 @@
+//! Latest-wins background workers for rendering and recovery writes; results carry a key and are dropped when stale.
 use processcraft_core::{ids::ElementSelector, model::BpmnDocument};
 use processcraft_render::{Appearance, BpmnViewport, HitRegion, TextEngine, Viewport};
 use std::sync::{Arc, Condvar, Mutex, mpsc};

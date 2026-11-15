@@ -1,3 +1,5 @@
+//! Editor for process-activity metadata: supported processes, roles, properties and callable bindings.
+//! Emits `SetProcessActivityMetadata`.
 use super::callable::{
     BindingDraft, interface_choices, port_choices, reference_list_ui, selector_ui,
 };

@@ -1,8 +1,12 @@
-use super::event::{ReferenceDraft, build_ref, ref_ui};
+//! Editor for the kind, participant/message-flow references and call mappings of a conversation node.
+use super::event::{ReferenceDraft, build_ref, local_choice_label, ref_ui};
 use super::*;
 use processcraft_core::bpmn_collaboration::{
     ConversationKind, ConversationNode, ParticipantAssociation,
 };
+
+/// Upper bound on the entries of each reference list in a draft.
+const MAX_ENTRIES: usize = 256;
 
 struct MappingDraft {
     value: ParticipantAssociation,
@@ -95,7 +99,121 @@ impl ConversationDetailsDraft {
         Ok(node)
     }
 }
+
+fn kind_label(kind: ConversationKind) -> &'static str {
+    match kind {
+        ConversationKind::Conversation => "Conversation",
+        ConversationKind::SubConversation => "Sub-conversation",
+        ConversationKind::CallConversation => "Call conversation",
+    }
+}
+
+/// An editable list of references with per-item "Remove" and a bounded "Add" button.
+fn reference_list_ui(
+    ui: &mut egui::Ui,
+    (id_salt, item_label, remove_label, add_label): (&str, &str, &str, &str),
+    references: &mut Vec<Option<ReferenceDraft>>,
+    choices: &[(ElementSelector, String)],
+) {
+    let mut remove = None;
+    for (index, reference) in references.iter_mut().enumerate() {
+        ui.push_id((id_salt, index), |ui| {
+            ref_ui(
+                ui,
+                &format!("{item_label} {}", index + 1),
+                reference,
+                choices,
+            );
+            if ui.button(remove_label).clicked() {
+                remove = Some(index);
+            }
+        });
+    }
+    if let Some(index) = remove {
+        references.remove(index);
+    }
+    let has_room = references.len() < MAX_ENTRIES;
+    if ui
+        .add_enabled(has_room, egui::Button::new(add_label))
+        .clicked()
+    {
+        references.push(Some(ReferenceDraft::Local(None)));
+    }
+}
+
+/// Participants of the collaboration or choreography `called` points at.
+fn called_participant_choices(
+    document: &BpmnDocument,
+    called: &Option<ReferenceDraft>,
+) -> Vec<(ElementSelector, String)> {
+    let Some(ReferenceDraft::Local(Some(id))) = called else {
+        return Vec::new();
+    };
+    let collaboration = document
+        .collaboration
+        .iter()
+        .chain(document.additional_collaborations.iter())
+        .find(|candidate| candidate.id == *id)
+        .map(|candidate| &candidate.participants);
+    let participants = collaboration.or_else(|| {
+        document
+            .choreographies
+            .iter()
+            .find(|candidate| candidate.id == *id)
+            .map(|candidate| &candidate.participants)
+    });
+    participants
+        .into_iter()
+        .flatten()
+        .enumerate()
+        .map(|(i, value)| {
+            let label = local_choice_label(value.name.as_deref(), "Participant", &value.id, i + 1);
+            (value.id.selector(), label)
+        })
+        .collect()
+}
+
 impl ProcessCraft {
+    /// Applies the draft to `root`. Returns whether the editor should close.
+    fn apply_conversation_details(
+        &mut self,
+        document: &BpmnDocument,
+        root: &Collaboration,
+        draft: &ConversationDetailsDraft,
+    ) -> bool {
+        if draft.generation != self.ctl.session.snapshot().generation
+            || draft.root != root.id.selector()
+        {
+            self.ctl.error =
+                "The model changed while this draft was open. Discard it and reopen the editor."
+                    .into();
+            return false;
+        }
+        let node = match draft.build() {
+            Ok(node) => node,
+            Err(error) => {
+                self.ctl.error = error;
+                return false;
+            }
+        };
+        let mut updated = root.clone();
+        let Some(current) = updated
+            .conversation_nodes
+            .iter_mut()
+            .find(|v| v.id == node.id)
+        else {
+            self.ctl.error = "The conversation no longer exists.".into();
+            return false;
+        };
+        *current = node;
+        let update = super::collaboration::update_root(document, updated);
+        if !self.ctl.mutate(vec![update]) {
+            return false;
+        }
+        self.collaboration.clear_node();
+        true
+    }
+
     pub(super) fn conversation_details_ui(
         &mut self,
         ui: &mut egui::Ui,
@@ -105,11 +223,9 @@ impl ProcessCraft {
         generation: u64,
     ) {
         if self.collaboration.conversation_details.is_none() {
+            let edit = egui::Button::new("Edit conversation details…");
             if ui
-                .add_enabled(
-                    !self.collaboration.has_draft(),
-                    egui::Button::new("Edit conversation details…"),
-                )
+                .add_enabled(!self.collaboration.has_draft(), edit)
                 .clicked()
                 && self.commit_draft()
             {
@@ -127,15 +243,8 @@ impl ProcessCraft {
             .iter()
             .enumerate()
             .map(|(i, p)| {
-                (
-                    p.id.selector(),
-                    super::event::local_choice_label(
-                        p.name.as_deref(),
-                        "Participant",
-                        &p.id,
-                        i + 1,
-                    ),
-                )
+                let label = local_choice_label(p.name.as_deref(), "Participant", &p.id, i + 1);
+                (p.id.selector(), label)
             })
             .collect();
         let message_choices: Vec<_> = root
@@ -143,15 +252,9 @@ impl ProcessCraft {
             .iter()
             .enumerate()
             .map(|(i, flow)| {
-                (
-                    flow.id.selector(),
-                    super::event::local_choice_label(
-                        flow.name.as_deref(),
-                        "Message flow",
-                        &flow.id,
-                        i + 1,
-                    ),
-                )
+                let label =
+                    local_choice_label(flow.name.as_deref(), "Message flow", &flow.id, i + 1);
+                (flow.id.selector(), label)
             })
             .collect();
         let root_choices: Vec<_> = document
@@ -160,15 +263,8 @@ impl ProcessCraft {
             .chain(document.additional_collaborations.iter())
             .enumerate()
             .map(|(i, c)| {
-                (
-                    c.id.selector(),
-                    super::event::local_choice_label(
-                        c.name.as_deref(),
-                        "Collaboration",
-                        &c.id,
-                        i + 1,
-                    ),
-                )
+                let label = local_choice_label(c.name.as_deref(), "Collaboration", &c.id, i + 1);
+                (c.id.selector(), label)
             })
             .collect();
         let mut draft = self
@@ -179,46 +275,103 @@ impl ProcessCraft {
         let mut close = false;
         ui.group(|ui| {
             ui.strong("Conversation details");
-            egui::ComboBox::from_label("Kind").selected_text(match draft.node.kind { ConversationKind::Conversation => "Conversation", ConversationKind::SubConversation => "Sub-conversation", ConversationKind::CallConversation => "Call conversation" }).show_ui(ui, |ui| {
-                ui.selectable_value(&mut draft.node.kind, ConversationKind::Conversation, "Conversation");
-                ui.selectable_value(&mut draft.node.kind, ConversationKind::SubConversation, "Sub-conversation");
-                ui.selectable_value(&mut draft.node.kind, ConversationKind::CallConversation, "Call conversation");
-            });
+            egui::ComboBox::from_label("Kind")
+                .selected_text(kind_label(draft.node.kind))
+                .show_ui(ui, |ui| {
+                    for kind in [
+                        ConversationKind::Conversation,
+                        ConversationKind::SubConversation,
+                        ConversationKind::CallConversation,
+                    ] {
+                        ui.selectable_value(&mut draft.node.kind, kind, kind_label(kind));
+                    }
+                });
             ui.label("Participant references");
-            let mut remove = None;
-            for (index, reference) in draft.participants.iter_mut().enumerate() { ui.push_id(("participant", index), |ui| { ref_ui(ui, &format!("Participant {}", index + 1), reference, &participant_choices); if ui.button("Remove participant reference").clicked() { remove = Some(index); } }); }
-            if let Some(index) = remove { draft.participants.remove(index); }
-            if ui.add_enabled(draft.participants.len() < 256, egui::Button::new("Add participant reference")).clicked() { draft.participants.push(Some(ReferenceDraft::Local(None))); }
-            if draft.node.kind == ConversationKind::CallConversation { ui.label("Call conversations cannot contain message-flow references in BPMN export."); }
+            reference_list_ui(
+                ui,
+                (
+                    "participant",
+                    "Participant",
+                    "Remove participant reference",
+                    "Add participant reference",
+                ),
+                &mut draft.participants,
+                &participant_choices,
+            );
+            let is_call = draft.node.kind == ConversationKind::CallConversation;
+            if is_call {
+                ui.label(
+                    "Call conversations cannot contain message-flow references in BPMN export.",
+                );
+            }
             ui.label("Message flows");
-            let mut remove = None;
-            for (index, reference) in draft.messages.iter_mut().enumerate() { ui.push_id(("message", index), |ui| { ref_ui(ui, &format!("Message flow {}", index + 1), reference, &message_choices); if ui.button("Remove message flow").clicked() { remove = Some(index); } }); }
-            if let Some(index) = remove { draft.messages.remove(index); }
-            if ui.add_enabled(draft.messages.len() < 256, egui::Button::new("Add message flow")).clicked() { draft.messages.push(Some(ReferenceDraft::Local(None))); }
-            if draft.node.kind == ConversationKind::CallConversation {
+            reference_list_ui(
+                ui,
+                (
+                    "message",
+                    "Message flow",
+                    "Remove message flow",
+                    "Add message flow",
+                ),
+                &mut draft.messages,
+                &message_choices,
+            );
+            if is_call {
                 ref_ui(ui, "Called collaboration", &mut draft.called, &root_choices);
-                let inner_choices: Vec<_> = match &draft.called {
-                    Some(ReferenceDraft::Local(Some(id))) => document.collaboration.iter().chain(document.additional_collaborations.iter()).find(|candidate| candidate.id == *id).map(|candidate| &candidate.participants).or_else(|| document.choreographies.iter().find(|candidate| candidate.id == *id).map(|candidate| &candidate.participants)).into_iter().flatten().enumerate().map(|(i, value)| (value.id.selector(), super::event::local_choice_label(value.name.as_deref(), "Participant", &value.id, i + 1))).collect(),
-                    _ => Vec::new(),
-                };
+                let inner_choices = called_participant_choices(document, &draft.called);
                 ui.strong("Participant mappings");
                 let mut remove = None;
-                for (index, mapping) in draft.mappings.iter_mut().enumerate() { ui.push_id(("mapping", index), |ui| {
-                    ref_ui(ui, "Inner participant", &mut mapping.inner, &inner_choices);
-                    ref_ui(ui, "Outer participant", &mut mapping.outer, &participant_choices);
-                    if ui.button("Remove mapping").clicked() { remove = Some(index); }
-                }); }
-                if let Some(index) = remove { draft.mappings.remove(index); }
-                if ui.add_enabled(draft.mappings.len() < 256, egui::Button::new("Add mapping")).clicked() { draft.mappings.push(MappingDraft { value: ParticipantAssociation { id: None, base: None, inner: None, outer: None }, inner: None, outer: None }); }
-            } else if draft.node.call.is_some() && ui.button("Remove call details").clicked() { draft.node.call = None; draft.called = None; draft.mappings.clear(); }
-            ui.horizontal(|ui| {
-                if ui.button("Apply conversation details").clicked() {
-                    if draft.generation != self.ctl.session.snapshot().generation || draft.root != root.id.selector() { self.ctl.error = "The model changed while this draft was open. Discard it and reopen the editor.".into(); }
-                    else { match draft.build() { Ok(node) => { let mut updated = root.clone(); if let Some(current) = updated.conversation_nodes.iter_mut().find(|v| v.id == node.id) { *current = node; if self.ctl.mutate(vec![super::collaboration::update_root(document, updated)]) { self.collaboration.clear_node(); close = true; } } else { self.ctl.error = "The conversation no longer exists.".into(); } }, Err(error) => self.ctl.error = error } }
+                for (index, mapping) in draft.mappings.iter_mut().enumerate() {
+                    ui.push_id(("mapping", index), |ui| {
+                        ref_ui(ui, "Inner participant", &mut mapping.inner, &inner_choices);
+                        ref_ui(
+                            ui,
+                            "Outer participant",
+                            &mut mapping.outer,
+                            &participant_choices,
+                        );
+                        if ui.button("Remove mapping").clicked() {
+                            remove = Some(index);
+                        }
+                    });
                 }
-                if ui.button("Discard conversation details").clicked() { close = true; }
+                if let Some(index) = remove {
+                    draft.mappings.remove(index);
+                }
+                let has_room = draft.mappings.len() < MAX_ENTRIES;
+                if ui
+                    .add_enabled(has_room, egui::Button::new("Add mapping"))
+                    .clicked()
+                {
+                    draft.mappings.push(MappingDraft {
+                        value: ParticipantAssociation {
+                            id: None,
+                            base: None,
+                            inner: None,
+                            outer: None,
+                        },
+                        inner: None,
+                        outer: None,
+                    });
+                }
+            } else if draft.node.call.is_some() && ui.button("Remove call details").clicked() {
+                draft.node.call = None;
+                draft.called = None;
+                draft.mappings.clear();
+            }
+            ui.horizontal(|ui| {
+                if ui.button("Apply conversation details").clicked()
+                    && self.apply_conversation_details(document, root, &draft)
+                {
+                    close = true;
+                }
+                if ui.button("Discard conversation details").clicked() {
+                    close = true;
+                }
             });
-            if !close { self.collaboration.conversation_details = Some(draft); }
+            if !close {
+                self.collaboration.conversation_details = Some(draft);
+            }
         });
     }
 }

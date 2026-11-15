@@ -1,3 +1,5 @@
+//! Editor for diagram-level styles, metadata and plane order.
+//! Emits `SetDiagramLabelStyles`, `SetDiagramMetadata`, `SetDiagramPlaneMetadata` and `SetDiagramPlaneOrder`.
 use super::catalog::{optional_bool, optional_text};
 use super::*;
 use processcraft_core::model::{DiFont, Diagram, LabelStyle};

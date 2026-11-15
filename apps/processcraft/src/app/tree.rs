@@ -1,4 +1,5 @@
-use super::ProcessCraft;
+//! Project tree (library, documents, scopes, diagrams) with selection and navigation; it only changes selection and view.
+use super::{ProcessCraft, View};
 use crate::widgets::{self, Icon};
 use egui_ltreeview::{Action, NodeBuilder, TreeView, TreeViewState};
 use processcraft_core::{
@@ -124,12 +125,12 @@ impl ProcessCraft {
             state.set_openness(TreeId::Root, true);
             state
         });
-        let current = if matches!(self.view, 0 | 3) {
+        let current = if matches!(self.view, View::Model | View::Table) {
             snap.project
                 .documents
                 .get(self.doc)
                 .map(|d| TreeId::Document(d.id))
-        } else if self.view == 1 {
+        } else if self.view == View::Library {
             Some(
                 self.folder_selected
                     .clone()
@@ -330,19 +331,19 @@ impl ProcessCraft {
         });
         if let Some(target) = target.filter(|target| {
             Some(target) != current.as_ref()
-                || (self.view == 3 && matches!(target, TreeId::Document(_)))
+                || (self.view == View::Table && matches!(target, TreeId::Document(_)))
         }) && self.prepare_navigation()
         {
             match target {
                 TreeId::Root => {
                     self.folder_selected = None;
-                    self.view = 1;
+                    self.view = View::Library;
                 }
                 TreeId::Folder(id) => {
                     if let Some(folder) = snap.project.folders.iter().find(|f| f.id == id) {
                         self.folder_selected = Some(id);
                         self.folder_name = folder.name.clone();
-                        self.view = 1;
+                        self.view = View::Library;
                     }
                 }
                 TreeId::Document(id) => {
@@ -351,18 +352,18 @@ impl ProcessCraft {
                         self.process_id = None;
                         self.diagram_id = None;
                         self.select(None);
-                        self.view = 0;
+                        self.view = View::Model;
                     }
                 }
             }
         }
         // A rejected draft guard must not leave the widget on a phantom selection.
-        let selected = if matches!(self.view, 0 | 3) {
+        let selected = if matches!(self.view, View::Model | View::Table) {
             snap.project
                 .documents
                 .get(self.doc)
                 .map(|d| TreeId::Document(d.id))
-        } else if self.view == 1 {
+        } else if self.view == View::Library {
             Some(
                 self.folder_selected
                     .clone()
@@ -471,7 +472,7 @@ mod tests {
     #[test]
     fn arrow_down_moves_from_focused_root_to_document() {
         let mut app = ProcessCraft {
-            view: 1,
+            view: View::Library,
             folder_selected: None,
             ..Default::default()
         };
@@ -505,7 +506,7 @@ mod tests {
                 .is_open(&TreeId::Root)
         });
         assert_eq!(open, Some(false));
-        assert_eq!(app.view, 1);
+        assert_eq!(app.view, View::Library);
         draw(&ctx, &mut app, vec![key(egui::Key::ArrowRight)]);
         let open = ctx.data(|data| {
             data.get_temp::<TreeViewState<TreeId>>(state_id)
@@ -513,15 +514,15 @@ mod tests {
                 .is_open(&TreeId::Root)
         });
         assert_eq!(open, Some(true));
-        assert_eq!(app.view, 1);
+        assert_eq!(app.view, View::Library);
         draw(&ctx, &mut app, vec![]);
         draw(&ctx, &mut app, vec![key(egui::Key::ArrowDown)]);
-        assert_eq!(app.view, 0);
+        assert_eq!(app.view, View::Model);
     }
     #[test]
     fn workbench_arrows_work_when_tree_container_has_focus() {
         let mut app = ProcessCraft {
-            view: 1,
+            view: View::Library,
             folder_selected: None,
             ..Default::default()
         };
@@ -575,10 +576,10 @@ mod tests {
         assert_eq!(open, Some(true));
         draw(&ctx, &mut app, vec![]);
         draw(&ctx, &mut app, vec![key(egui::Key::ArrowDown)]);
-        assert_eq!(app.view, 1);
+        assert_eq!(app.view, View::Library);
         assert_eq!(app.folder_selected, Some(folder_id));
         draw(&ctx, &mut app, vec![]);
         draw(&ctx, &mut app, vec![key(egui::Key::ArrowDown)]);
-        assert_eq!(app.view, 0);
+        assert_eq!(app.view, View::Model);
     }
 }

@@ -1,5 +1,7 @@
-use super::{ProcessCraft, advance_drag, begin_drag, diagram_extents, finish_drag};
-use crate::theme::Theme;
+//! The diagram canvas: raster/texture presentation, hit-testing, gestures, context pad, palette popups and inline label editing.
+//! Gestures are turned into core modeling mutations (`Connect`, `CreateAt`, `Reconnect`, `ResizeShape`, `Rename`, ...); the canvas never edits the model directly.
+use super::{ProcessCraft, View, advance_drag, begin_drag, diagram_extents, finish_drag};
+use crate::theme::{CONNECT_OK, CONNECT_REFUSED, Theme};
 use egui::{Color32, Pos2, Rect, Sense, Vec2};
 use processcraft_core::{
     arrange::{Alignment, Distribution},
@@ -11,8 +13,8 @@ use processcraft_core::{
 use processcraft_render::{Appearance, HitGeometry, Viewport};
 use std::sync::Arc;
 
-const MIN_ZOOM: f32 = 0.125;
-const MAX_ZOOM: f32 = 8.0;
+const MIN_ZOOM: f32 = *processcraft_render::ZOOM_RANGE.start();
+const MAX_ZOOM: f32 = *processcraft_render::ZOOM_RANGE.end();
 pub(super) const ZOOM_STEP: f32 = 1.25;
 
 /// Model origin, zoom and logical size of a rendered texture, so it can be moved and scaled on
@@ -1157,9 +1159,6 @@ fn resize_bounds(
     }
 }
 
-/// Connect-gesture target colors: allowed and refused.
-const CONNECT_OK: Color32 = Color32::from_rgb(34, 139, 74);
-const CONNECT_REFUSED: Color32 = Color32::from_rgb(200, 50, 50);
 const PAD_ENTRY: f32 = 22.0;
 
 /// Context pad entries next to a single selected shape (bpmn-js style).
@@ -1800,7 +1799,7 @@ impl ProcessCraft {
             return;
         }
         let snap = self.ctl.session.snapshot();
-        let Some(d) = snap.project.documents.get(self.doc) else {
+        let Some(d) = self.current_document(&snap) else {
             return;
         };
         let Some(diagram) = self.current_diagram(d) else {
@@ -1829,7 +1828,7 @@ impl ProcessCraft {
     ) -> bool {
         let kind = entry.kind;
         let snap = self.ctl.session.snapshot();
-        let Some(d) = snap.project.documents.get(self.doc) else {
+        let Some(d) = self.current_document(&snap) else {
             return false;
         };
         let Some(diagram) = self.current_diagram(d) else {
@@ -1919,7 +1918,10 @@ impl ProcessCraft {
         use egui::{Key, Modifiers};
         // Ctrl+Plus/Minus/0 zoom the diagram, not the whole UI (View menu keeps UI scale).
         ctx.options_mut(|o| o.zoom_with_keyboard = false);
-        if self.view != 0 || ctx.egui_wants_keyboard_input() || self.canvas.label_edit.is_some() {
+        if self.view != View::Model
+            || ctx.egui_wants_keyboard_input()
+            || self.canvas.label_edit.is_some()
+        {
             return;
         }
         let ctrl_shift = Modifiers::CTRL | Modifiers::SHIFT;
@@ -2103,9 +2105,7 @@ impl ProcessCraft {
     pub(super) fn canvas_ui(&mut self, ui: &mut egui::Ui) {
         let snap = self.ctl.session.snapshot();
         let preview = self.layout_preview_document();
-        let display = preview
-            .as_ref()
-            .or_else(|| snap.project.documents.get(self.doc));
+        let display = preview.as_ref().or_else(|| self.current_document(&snap));
         let diagram = display.and_then(|d| {
             d.diagrams
                 .iter()
@@ -2115,8 +2115,7 @@ impl ProcessCraft {
         if preview.is_some() {
             ui.label("Auto-fit preview");
         } else {
-            if let (Some(document), Some(diagram)) = (snap.project.documents.get(self.doc), diagram)
-            {
+            if let (Some(document), Some(diagram)) = (self.current_document(&snap), diagram) {
                 let scopes = self.choreography_scope_infos(document, snap.generation);
                 if let Some(scope) = scopes.iter().find(|scope| scope.owner == diagram.plane) {
                     let mut path = Vec::new();
@@ -2162,7 +2161,7 @@ impl ProcessCraft {
         ui.ctx()
             .data_mut(|data| data.insert_temp(egui::Id::unique("test_canvas_size"), size));
         let fit_id = egui::Id::unique("processcraft-editor-fit");
-        let document_key = snap.project.documents.get(self.doc).and_then(|document| {
+        let document_key = self.current_document(&snap).and_then(|document| {
             diagram
                 .map(|diagram| format!("{}:{}:{}", self.ctl.session.id(), document.id, diagram.id))
         });
@@ -2266,7 +2265,7 @@ impl ProcessCraft {
         build: impl FnOnce(processcraft_core::DocumentId, ElementSelector) -> Mutation,
     ) {
         let snap = self.ctl.session.snapshot();
-        let Some(document) = snap.project.documents.get(self.doc) else {
+        let Some(document) = self.current_document(&snap) else {
             return;
         };
         let Some(diagram) = self.current_diagram(document) else {
@@ -2507,7 +2506,7 @@ impl ProcessCraft {
         } else {
             preview
                 .as_ref()
-                .or_else(|| snap.project.documents.get(self.doc))
+                .or_else(|| self.current_document(&snap))
                 .and_then(|d| {
                     d.diagrams
                         .iter()
@@ -2532,10 +2531,7 @@ impl ProcessCraft {
         let palette = self.theme.palette();
         let painter = ui.painter_at(rect);
         painter.rect_filled(rect, 4, palette.canvas);
-        if let Some(d) = preview
-            .as_ref()
-            .or_else(|| snap.project.documents.get(self.doc))
-        {
+        if let Some(d) = preview.as_ref().or_else(|| self.current_document(&snap)) {
             if let Some(diagram) = d
                 .diagrams
                 .iter()
@@ -4012,7 +4008,7 @@ impl ProcessCraft {
     /// Select every shape and connection of the current diagram (Ctrl+A).
     pub(super) fn select_all(&mut self) {
         let snap = self.ctl.session.snapshot();
-        let Some(d) = snap.project.documents.get(self.doc) else {
+        let Some(d) = self.current_document(&snap) else {
             return;
         };
         let Some(diagram) = self.current_diagram(d) else {
@@ -4044,7 +4040,7 @@ impl ProcessCraft {
         ctx: &egui::Context,
     ) -> Option<processcraft_core::clipboard::Clipboard> {
         let snap = self.ctl.session.snapshot();
-        let d = snap.project.documents.get(self.doc)?;
+        let d = self.current_document(&snap)?;
         let diagram = self.current_diagram(d)?;
         match processcraft_core::clipboard::copy(d, &diagram.id.selector(), &self.multi) {
             Ok(clipboard) => {
@@ -4073,7 +4069,7 @@ impl ProcessCraft {
             return;
         }
         let snap = self.ctl.session.snapshot();
-        let Some(d) = snap.project.documents.get(self.doc) else {
+        let Some(d) = self.current_document(&snap) else {
             return;
         };
         let Some(diagram) = self.current_diagram(d) else {
@@ -4099,7 +4095,7 @@ impl ProcessCraft {
             Ok(pasted) => {
                 if self.ctl.mutate(pasted.mutations) {
                     let snap = self.ctl.session.snapshot();
-                    let Some(d) = snap.project.documents.get(self.doc) else {
+                    let Some(d) = self.current_document(&snap) else {
                         return;
                     };
                     let representations = self
@@ -4154,7 +4150,7 @@ impl ProcessCraft {
     /// Duplicate the selection next to itself without touching the clipboard (Ctrl+D).
     fn duplicate_selection(&mut self) {
         let snap = self.ctl.session.snapshot();
-        let Some(d) = snap.project.documents.get(self.doc) else {
+        let Some(d) = self.current_document(&snap) else {
             return;
         };
         let Some(diagram) = self.current_diagram(d) else {
@@ -4180,7 +4176,7 @@ impl ProcessCraft {
             return;
         };
         let snap = self.ctl.session.snapshot();
-        let Some(d) = snap.project.documents.get(self.doc) else {
+        let Some(d) = self.current_document(&snap) else {
             return;
         };
         let options = replace_options(d, &menu.element);
@@ -4445,7 +4441,7 @@ impl ProcessCraft {
         ) -> Result<processcraft_core::geometry::PreparedMove, &'static str>,
     ) {
         let snap = self.ctl.session.snapshot();
-        let Some(d) = snap.project.documents.get(self.doc) else {
+        let Some(d) = self.current_document(&snap) else {
             return;
         };
         let Some(diagram) = self.current_diagram(d) else {
@@ -4509,7 +4505,7 @@ impl ProcessCraft {
     /// `resizeShape`.
     pub(super) fn fit_to_content(&mut self, element: &ElementSelector) {
         let snap = self.ctl.session.snapshot();
-        let Some(d) = snap.project.documents.get(self.doc) else {
+        let Some(d) = self.current_document(&snap) else {
             return;
         };
         let Some(diagram) = self.current_diagram(d) else {
@@ -4532,7 +4528,7 @@ impl ProcessCraft {
     /// The single selected shape's element when "Fit to content" applies to it.
     fn fit_target(&self) -> Option<ElementSelector> {
         let snap = self.ctl.session.snapshot();
-        let d = snap.project.documents.get(self.doc)?;
+        let d = self.current_document(&snap)?;
         let element = self.selected.clone().filter(|_| self.multi.len() == 1)?;
         self.current_diagram(d)?
             .shapes
@@ -4631,7 +4627,7 @@ impl ProcessCraft {
             return;
         };
         let snap = self.ctl.session.snapshot();
-        let Some(d) = snap.project.documents.get(self.doc) else {
+        let Some(d) = self.current_document(&snap) else {
             return;
         };
         let Some(diagram) = self.current_diagram(d) else {

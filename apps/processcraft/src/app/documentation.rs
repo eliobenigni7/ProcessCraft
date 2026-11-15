@@ -1,3 +1,5 @@
+//! Draft editor for BPMN documentation entries.
+//! Emits `ReplaceDocumentation`.
 use super::catalog::{IdentityDraft, id_build, id_string, optional_text};
 use super::xml::MixedDraft;
 use super::*;

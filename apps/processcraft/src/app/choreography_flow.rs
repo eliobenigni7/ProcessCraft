@@ -1,3 +1,5 @@
+//! Editor for choreography activities and flow elements, including their message flows and participants.
+//! Emits `UpdateChoreographyActivity`, `UpdateChoreographyFlowElement`, `SetFlowMetadata` and `CreateEdge`.
 use super::callable::reference_list_ui;
 use super::event::{ReferenceDraft, local_choice_label, ref_ui};
 use super::*;
@@ -659,7 +661,7 @@ impl ProcessCraft {
     }
     pub(super) fn apply_choreography_flow_draft(&mut self) -> Result<(), String> {
         let snap = self.ctl.session.snapshot();
-        let Some(document) = snap.project.documents.get(self.doc) else {
+        let Some(document) = self.current_document(&snap) else {
             return Err("no model is open".into());
         };
         let Some(draft) = self.choreography_flow_draft.as_mut() else {

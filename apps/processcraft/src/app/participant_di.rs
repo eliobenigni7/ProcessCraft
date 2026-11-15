@@ -1,3 +1,5 @@
+//! Editors for participant multiplicity and message-flow references.
+//! Emits `SetParticipantMultiplicity` and `SetMessageFlowReference`.
 use super::catalog::optional_text;
 use super::event::{ReferenceDraft, build_ref, local_choice_label, local_choices, ref_ui};
 use super::*;

@@ -1,3 +1,5 @@
+//! Editor for the correlation property catalog.
+//! Emits `SetCorrelationProperties`.
 use super::catalog::{QNameDraft, optional_qname, optional_text, q_build};
 use super::event::{ReferenceDraft, build_ref, local_choices, ref_ui};
 use super::inspector::{ExpressionDefault, optional_expression_ui_with_default};
@@ -163,7 +165,7 @@ impl CorrelationCatalogDraft {
 impl ProcessCraft {
     pub(super) fn correlation_catalog_ui(&mut self, ui: &mut egui::Ui, editable: bool) {
         let snapshot = self.ctl.session.snapshot();
-        let Some(document) = snapshot.project.documents.get(self.doc) else {
+        let Some(document) = self.current_document(&snapshot) else {
             return;
         };
         if self.correlation_catalog_draft.is_none() {

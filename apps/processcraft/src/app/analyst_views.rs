@@ -1,3 +1,5 @@
+//! Library, Dictionary and activity-table views of the analyst layer.
+//! Emits folder, dictionary-entry, lane and attribute mutations (`CreateFolder`, `CreateDictionaryEntry`, `AssignLane`, ...) through the controller.
 use super::*;
 use processcraft_core::{
     attributes::{AttributeDefinition, AttributeTarget},
@@ -207,7 +209,7 @@ impl ProcessCraft {
         let project = &snap.project;
         ui.spacing_mut().item_spacing = egui::vec2(12.0, 8.0);
         match self.view {
-            1 => {
+            View::Library => {
                 let library = queries::library_search(project, &self.library_filter);
                 ui.horizontal(|ui| {
                     ui.heading("Library");
@@ -385,7 +387,7 @@ impl ProcessCraft {
                                     self.diagram_id = None;
                                     self.select(None);
                                     if double {
-                                        self.view = 0;
+                                        self.view = View::Model;
                                     }
                                 }
                             }
@@ -419,7 +421,7 @@ impl ProcessCraft {
                     self.library_details(ui, project, false);
                 }
             }
-            2 => {
+            View::Dictionary => {
                 ui.horizontal(|ui| {
                     ui.heading("Dictionary");
                     if crate::widgets::primary_button(ui, "New entry").clicked()
@@ -564,8 +566,8 @@ impl ProcessCraft {
                     self.dictionary_editor(ui, project, false);
                 }
             }
-            3 => self.activity_table_ui(ui, project),
-            _ => {}
+            View::Table => self.activity_table_ui(ui, project),
+            View::Model => {}
         }
     }
 
@@ -632,7 +634,7 @@ impl ProcessCraft {
                 if crate::widgets::primary_button(ui, "Open in modeler").clicked()
                     && self.prepare_navigation()
                 {
-                    self.view = 0;
+                    self.view = View::Model;
                 }
                 ui.menu_button("Move model to…", |ui| {
                     if ui.button("Root").clicked() {
@@ -800,7 +802,7 @@ impl ProcessCraft {
                         self.process_id = None;
                         self.diagram_id = None;
                         self.select(Some(key.xml_id));
-                        self.view = 0;
+                        self.view = View::Model;
                     }
                 }
             }
@@ -837,7 +839,7 @@ impl ProcessCraft {
                         if super::shell::segment(ui, false, "Model").clicked()
                             && self.prepare_navigation()
                         {
-                            self.view = 0;
+                            self.view = View::Model;
                         }
                         if super::shell::segment(ui, !raci_on, "Table").clicked() {
                             ui.ctx().data_mut(|data| data.insert_temp(raci_flag, false));
@@ -1130,7 +1132,7 @@ impl ProcessCraft {
                     self.commit_draft();
                 }
                 if ui.button("Edit selected activity").clicked() {
-                    self.view = 0;
+                    self.view = View::Model;
                 }
             });
             self.dictionary_links_ui(ui);
@@ -1436,9 +1438,7 @@ impl ProcessCraft {
 
     pub(super) fn dictionary_links_ui(&mut self, ui: &mut egui::Ui) {
         let snap = self.ctl.session.snapshot();
-        let (Some(d), Some(element)) =
-            (snap.project.documents.get(self.doc), self.selected.clone())
-        else {
+        let (Some(d), Some(element)) = (self.current_document(&snap), self.selected.clone()) else {
             return;
         };
         let Some(p) = queries::scopes(d)
@@ -1538,9 +1538,7 @@ impl ProcessCraft {
             return;
         }
         let snap = self.ctl.session.snapshot();
-        let (Some(d), Some(flow_id)) =
-            (snap.project.documents.get(self.doc), self.selected.clone())
-        else {
+        let (Some(d), Some(flow_id)) = (self.current_document(&snap), self.selected.clone()) else {
             return;
         };
         let Some(p) = queries::scopes(d)
@@ -1907,7 +1905,7 @@ mod tests {
     fn narrow_data_views_expose_stacked_content_to_page_scroll() {
         let ctx = egui::Context::default();
         let mut app = ProcessCraft::default();
-        for view in [1, 2, 3] {
+        for view in [View::Library, View::Dictionary, View::Table] {
             app.view = view;
             let mut content_height = 0.0;
             let mut output = ctx.run_ui(
@@ -1930,7 +1928,7 @@ mod tests {
             output.textures_delta.clear();
             assert!(
                 content_height.is_finite() && content_height > 250.0,
-                "view {view}: {content_height}"
+                "view {view:?}: {content_height}"
             );
         }
     }
@@ -2137,7 +2135,7 @@ mod tests {
     #[test]
     fn attribute_tab_and_table_columns_render() {
         let (mut app, risk) = app_with_risk();
-        app.view = 2;
+        app.view = View::Dictionary;
         app.attributes.tab = attributes::Tab::Attributes;
         let ctx = egui::Context::default();
         let frame = |app: &mut ProcessCraft| {
@@ -2154,7 +2152,7 @@ mod tests {
             output.textures_delta.clear();
         };
         frame(&mut app);
-        app.view = 3;
+        app.view = View::Table;
         app.attributes.columns = vec![risk.id];
         frame(&mut app);
         assert_eq!(app.attributes.columns, vec![risk.id]);

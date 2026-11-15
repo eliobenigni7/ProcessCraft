@@ -1,3 +1,5 @@
+//! Editors for the supporting catalog: item definitions, interfaces and BPMN resources.
+//! Emits `SetSupportingCatalog`.
 use super::*;
 use processcraft_core::bpmn_catalog::{
     BpmnResource, Interface, ItemDefinition, ItemKind, Operation, ResourceParameter,

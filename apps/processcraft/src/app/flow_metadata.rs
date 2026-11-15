@@ -1,3 +1,5 @@
+//! Editor for sequence-flow and node flow metadata.
+//! Emits `SetFlowMetadata` and `SetNodeFlowMetadata`.
 use super::callable::reference_list_ui;
 use super::event::{ReferenceDraft, local_choice_label};
 use super::*;

@@ -1,3 +1,4 @@
+//! Blocking file effects (import, export, writes) run off the UI thread; results are polled by the app.
 use processcraft_core::{
     ids::{DocumentId, ElementSelector},
     model::ProjectData,

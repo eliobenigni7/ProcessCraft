@@ -1,3 +1,5 @@
+//! Event section of the inspector: event definitions, event resources and root event definitions.
+//! Emits `SetNodeDetails`, `SetRootEventDefinitions`, `SetEventResources` and `UpdateChoreographyFlowElement`.
 use super::catalog::{QNameDraft, optional_bool, optional_qname, optional_text, q_build};
 use super::inspector::{ExpressionDefault, expression_ui};
 use super::*;
@@ -1016,7 +1018,7 @@ pub(super) fn event_io_ui(ui: &mut egui::Ui, io: &mut Option<EventIoDraft>, catc
 impl ProcessCraft {
     pub(super) fn event_editor_ui(&mut self, ui: &mut egui::Ui, editable: bool) {
         let snapshot = self.ctl.session.snapshot();
-        let Some(document) = snapshot.project.documents.get(self.doc) else {
+        let Some(document) = self.current_document(&snapshot) else {
             return;
         };
         let Some(selected) = self.selected.clone() else {
@@ -1374,7 +1376,7 @@ impl ProcessCraft {
     }
     pub(super) fn event_catalog_ui(&mut self, ui: &mut egui::Ui, editable: bool) {
         let snapshot = self.ctl.session.snapshot();
-        let Some(document) = snapshot.project.documents.get(self.doc) else {
+        let Some(document) = self.current_document(&snapshot) else {
             return;
         };
         ui.separator();

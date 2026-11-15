@@ -1,3 +1,5 @@
+//! Editor for loop and multi-instance characteristics, including complex behavior definitions.
+//! Emits `SetNodeLoop`.
 use super::catalog::{IdentityDraft, id_build, id_string, optional_bool, optional_text};
 use super::data::{ItemDraft, PortDraft, build_item, item_ui};
 use super::event::{

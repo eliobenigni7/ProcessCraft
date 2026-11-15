@@ -1,3 +1,5 @@
+//! Diagram-interchange section of the inspector: shape and edge representation, labels and endpoints.
+//! Emits `SetShapeDiAttributes`, `SetEdgeDiEndpoints`, `Set*RepresentationMetadata`, `SetShapeLabel`, `SetEdgeLabel` and `DeleteShape`.
 use super::*;
 
 pub(super) enum DiDraft {
@@ -331,7 +333,7 @@ impl ProcessCraft {
     }
     pub(super) fn di_ui(&mut self, ui: &mut egui::Ui, editable: bool) {
         let snapshot = self.ctl.session.snapshot();
-        let Some(document) = snapshot.project.documents.get(self.doc) else {
+        let Some(document) = self.current_document(&snapshot) else {
             return;
         };
         let Some(selected) = self.selected.clone() else {

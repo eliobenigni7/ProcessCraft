@@ -200,7 +200,7 @@ impl ProcessCraft {
     pub(super) fn canvas_overlays(&mut self, ctx: &egui::Context, canvas: Rect) -> bool {
         let mut fit = false;
         let snap = self.ctl.session.snapshot();
-        let Some(document) = snap.project.documents.get(self.doc) else {
+        let Some(document) = self.current_document(&snap) else {
             return false;
         };
         let editable = document.capability.allows_structural_editing();

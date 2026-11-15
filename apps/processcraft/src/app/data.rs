@@ -1,3 +1,5 @@
+//! Data section of the inspector: data objects, data stores, item-aware metadata, I/O specifications and data associations.
+//! Emits `SetScopeDataObjects`, `SetDataStores`, `SetScopeDataAssociations`, `SetNodeItemAware`, `SetNodeIoSpecification`, `SetProcessIoSpecification` and `SetNodeDetails`.
 use super::catalog::{
     IdentityDraft, QNameDraft, id_build, id_selector, id_string, optional_bool, optional_qname,
     optional_text, q_build, text,
@@ -1304,7 +1306,7 @@ impl DataDraft {
 impl ProcessCraft {
     pub(super) fn data_ui(&mut self, ui: &mut egui::Ui, editable: bool) {
         let snapshot = self.ctl.session.snapshot();
-        let Some(document) = snapshot.project.documents.get(self.doc) else {
+        let Some(document) = self.current_document(&snapshot) else {
             return;
         };
         let scope = processcraft_core::queries::scopes(document)
@@ -1855,8 +1857,8 @@ mod tests {
         assert!(!after.dirty);
         assert_eq!(after.undo_count, snapshot.undo_count);
         app.data_draft = Some(DataDraft::new(document, scope()));
-        app.new_or_open("new");
-        assert_eq!(app.confirm, Some("new"));
+        app.new_or_open(PendingAction::New);
+        assert_eq!(app.confirm, Some(PendingAction::New));
         assert_eq!(app.ctl.session.id(), session);
         assert!(app.data_draft.is_some());
         app.open_selected_path(None);

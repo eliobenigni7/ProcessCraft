@@ -1,3 +1,5 @@
+//! Inspector editor for the common BPMN base metadata and extras of an element.
+//! Emits `SetBaseMetadata` and `SetBaseExtras`.
 use super::documentation::EntryDraft;
 use super::xml::{AttributeDraft, ContentDraft, bindings_ui};
 use super::*;

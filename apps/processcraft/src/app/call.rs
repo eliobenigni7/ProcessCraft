@@ -1,3 +1,5 @@
+//! Inspector editor for the called element of a call activity.
+//! Emits `SetNodeDetails`.
 use super::catalog::{QNameDraft, optional_qname, q_build};
 use super::*;
 use processcraft_core::bpmn_model::{NodeDetails, QNameRef};

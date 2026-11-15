@@ -1,3 +1,5 @@
+//! Editors for callable bindings and the global-task catalog.
+//! Emits `SetGlobalTasks`.
 use super::catalog::optional_text;
 use super::event::{ReferenceDraft, build_ref, local_choice_label, local_choices, ref_ui};
 use super::roles::RolesDraft;
@@ -388,7 +390,7 @@ impl CallableCatalogDraft {
 impl ProcessCraft {
     pub(super) fn callable_catalog_ui(&mut self, ui: &mut egui::Ui, editable: bool) {
         let snap = self.ctl.session.snapshot();
-        let Some(document) = snap.project.documents.get(self.doc) else {
+        let Some(document) = self.current_document(&snap) else {
             return;
         };
         if self.callable_catalog_draft.is_none() {

@@ -1,3 +1,5 @@
+//! The window shell: menus, navigation rail, document header and tabs, bottom panel and the workbench layout.
+//! Also creates models and documents (`CreateDocument`, `CreateDiagram`, choreography creation) and routes between views.
 use super::*;
 use crate::widgets::{self, Icon};
 use processcraft_core::ids::DocumentId;
@@ -347,7 +349,7 @@ impl ProcessCraft {
                 None => Some(BottomTab::Problems),
             };
         }
-        let focus = self.shell.focus && self.view == 0;
+        let focus = self.shell.focus && self.view == View::Model;
         ui.spacing_mut().item_spacing.y = 0.0;
         let can_undo = snap.undo_count > 0 || self.has_drafts();
         // Redo first applies open drafts; an unchanged draft leaves the redo stack intact.
@@ -361,8 +363,8 @@ impl ProcessCraft {
         self.shell
             .tabs
             .retain(|id| snap.project.documents.iter().any(|d| d.id == *id));
-        if matches!(self.view, 0 | 3)
-            && let Some(doc) = snap.project.documents.get(self.doc)
+        if matches!(self.view, View::Model | View::Table)
+            && let Some(doc) = self.current_document(&snap)
             && !self.shell.tabs.contains(&doc.id)
         {
             self.shell.tabs.push(doc.id);
@@ -374,11 +376,11 @@ impl ProcessCraft {
             egui::MenuBar::new().ui(ui, |ui| {
                 ui.menu_button("File", |ui| {
                     if ui.button("New project    Ctrl+N").clicked() {
-                        self.new_or_open("new");
+                        self.new_or_open(PendingAction::New);
                         ui.close();
                     }
                     if ui.button("Open…              Ctrl+O").clicked() {
-                        self.new_or_open("open");
+                        self.new_or_open(PendingAction::Open);
                         ui.close();
                     }
                     ui.add_enabled_ui(!self.settings.recent.is_empty(), |ui| {
@@ -394,7 +396,7 @@ impl ProcessCraft {
                                     .clicked()
                                 {
                                     self.pending_open = Some(path);
-                                    self.new_or_open("open");
+                                    self.new_or_open(PendingAction::Open);
                                     ui.close();
                                 }
                             }
@@ -533,7 +535,7 @@ impl ProcessCraft {
         } else {
             0.0
         };
-        let inspector_width = if self.view == 0 && self.show_right && wide && !focus {
+        let inspector_width = if self.view == View::Model && self.show_right && wide && !focus {
             self.right_width.clamp(280.0, 420.0)
         } else {
             0.0
@@ -561,7 +563,7 @@ impl ProcessCraft {
             egui::pos2(content.right() - inspector_width, content.bottom()),
         );
         self.shell_panel(ui, "content", central, p.canvas, false, |app, ui| {
-            if app.view == 0 {
+            if app.view == View::Model {
                 if !focus {
                     egui::Frame::new()
                         .fill(p.base)
@@ -698,7 +700,7 @@ impl ProcessCraft {
                 if app.ctl.migration {
                     ui.label(small("Migration · Save As required").color(p.warning));
                 }
-                if app.view == 0
+                if app.view == View::Model
                     && toolbar_room
                     && let Some(stats) = app.diagram_stats(&snap)
                 {
@@ -891,7 +893,8 @@ impl ProcessCraft {
                         else {
                             continue;
                         };
-                        let selected = index == self.doc && matches!(self.view, 0 | 3);
+                        let selected =
+                            index == self.doc && matches!(self.view, View::Model | View::Table);
                         let tab = egui::Frame::new()
                             .fill(if selected { p.base } else { p.panel })
                             .inner_margin(egui::Margin::symmetric(8, 3))
@@ -910,7 +913,7 @@ impl ProcessCraft {
                                         self.process_id = None;
                                         self.diagram_id = None;
                                         self.select(None);
-                                        self.view = 0;
+                                        self.view = View::Model;
                                     }
                                     if widgets::icon_button_sized(
                                         ui,
@@ -970,7 +973,7 @@ impl ProcessCraft {
                 self.diagram_id = None;
                 self.select(None);
             } else {
-                self.view = 1;
+                self.view = View::Library;
             }
         }
     }
@@ -1011,19 +1014,19 @@ impl ProcessCraft {
             self.process_id = None;
             self.diagram_id = None;
             self.select(None);
-            self.view = 0;
+            self.view = View::Model;
         }
     }
     fn navigation_ui(&mut self, ui: &mut egui::Ui) {
         ui.spacing_mut().item_spacing.y = 6.0;
         ui.vertical_centered(|ui| {
             for (index, icon, label) in [
-                (1, Icon::Folder, "Library"),
-                (0, Icon::Workflow, "Model"),
-                (2, Icon::Book, "Dictionary"),
+                (View::Library, Icon::Folder, "Library"),
+                (View::Model, Icon::Workflow, "Model"),
+                (View::Dictionary, Icon::Book, "Dictionary"),
             ] {
                 // Table is a way of looking at the open model, so it lights the Model place.
-                let here = self.view == index || (index == 0 && self.view == 3);
+                let here = self.view == index || (index == View::Model && self.view == View::Table);
                 if widgets::icon_button(ui, icon, label, here).clicked()
                     && self.prepare_navigation()
                 {
@@ -1059,7 +1062,7 @@ impl ProcessCraft {
                 .clicked()
             {
                 self.shell.focus = !self.shell.focus;
-                self.view = 0;
+                self.view = View::Model;
             }
         });
     }
@@ -1083,7 +1086,7 @@ impl ProcessCraft {
         ui.add_space(4.0);
         widgets::section_label(ui, "Models");
         let search = self.shell.search.clone();
-        let outline = self.view == 0;
+        let outline = self.view == View::Model;
         egui::ScrollArea::both()
             .id_salt("project_tree")
             .max_height(if outline {
@@ -1104,7 +1107,7 @@ impl ProcessCraft {
                     .id_salt("model_outline")
                     .max_height(240.0)
                     .show(ui, |ui| {
-                        if let Some(doc) = snap.project.documents.get(self.doc) {
+                        if let Some(doc) = self.current_document(&snap) {
                             for process in processcraft_core::queries::scopes(doc) {
                                 // Unnamed elements show their type, never a raw XML ID.
                                 for (id, name, kind) in process
@@ -1144,7 +1147,7 @@ impl ProcessCraft {
     }
     /// Lane and activity counts of the shown process, for the status bar.
     fn diagram_stats(&self, snap: &processcraft_core::commands::Snapshot) -> Option<String> {
-        let doc = snap.project.documents.get(self.doc)?;
+        let doc = self.current_document(snap)?;
         let scopes = processcraft_core::queries::scopes(doc);
         let process = scopes.iter().find(|scope| {
             self.process_id
@@ -1223,7 +1226,7 @@ impl ProcessCraft {
     fn compact_document_header(&mut self, ui: &mut egui::Ui) {
         let snapshot = self.ctl.session.snapshot();
         ui.horizontal(|ui| {
-            if let Some(document) = snapshot.project.documents.get(self.doc) {
+            if let Some(document) = self.current_document(&snapshot) {
                 ui.add_sized(
                     [ui.available_width().min(220.0), 24.0],
                     egui::Label::new(
@@ -1235,7 +1238,7 @@ impl ProcessCraft {
             }
             ui.menu_button("View", |ui| {
                 if ui.button("Table").clicked() && self.prepare_navigation() {
-                    self.view = 3;
+                    self.view = View::Table;
                     ui.close();
                 }
                 ui.separator();
@@ -1249,7 +1252,7 @@ impl ProcessCraft {
     fn document_header(&mut self, ui: &mut egui::Ui) {
         let snap = self.ctl.session.snapshot();
         let p = self.theme.palette();
-        if let Some(doc) = snap.project.documents.get(self.doc) {
+        if let Some(doc) = self.current_document(&snap) {
             ui.label(
                 egui::RichText::new(format!(
                     "{}  ›  {}",
@@ -1264,7 +1267,7 @@ impl ProcessCraft {
             );
         }
         ui.horizontal(|ui| {
-            if let Some(doc) = snap.project.documents.get(self.doc) {
+            if let Some(doc) = self.current_document(&snap) {
                 ui.label(egui::RichText::new(&doc.name).font(crate::theme::semibold(18.0)));
                 // Only limited documents get a badge; an editable model needs no label.
                 let badge = match &doc.capability {
@@ -1287,7 +1290,7 @@ impl ProcessCraft {
                     ui.horizontal(|ui| {
                         let _ = segment(ui, true, "Model");
                         if segment(ui, false, "Table").clicked() && self.prepare_navigation() {
-                            self.view = 3;
+                            self.view = View::Table;
                         }
                     });
                 });
@@ -1299,7 +1302,7 @@ impl ProcessCraft {
     }
     fn model_selectors(&mut self, ui: &mut egui::Ui) {
         let snap = self.ctl.session.snapshot();
-        if let Some(doc) = snap.project.documents.get(self.doc) {
+        if let Some(doc) = self.current_document(&snap) {
             ui.strong("Processes and subprocesses");
             for process in processcraft_core::queries::scopes(doc) {
                 if ui
@@ -1819,7 +1822,7 @@ impl ProcessCraft {
                         && self.commit_dictionary_draft()
                     {
                         let snap = self.ctl.session.snapshot();
-                        if let Some(doc) = snap.project.documents.get(self.doc) {
+                        if let Some(doc) = self.current_document(&snap) {
                             let diagram = doc
                                 .diagrams
                                 .iter()
@@ -2228,7 +2231,7 @@ mod tests {
             1,
             "{model:?}"
         );
-        app.view = 1;
+        app.view = View::Library;
         let library = labels(&mut app);
         for text in ["New model", "Open in modeler", "Move model to…"] {
             assert!(library.iter().any(|l| l == text), "{text}: {library:?}");
@@ -2273,7 +2276,7 @@ mod tests {
         assert!(app.prepare_navigation());
         app.close_tab(id);
         assert!(app.shell.tabs.is_empty());
-        assert_eq!(app.view, 1);
+        assert_eq!(app.view, View::Library);
         assert_eq!(
             app.ctl.session.snapshot().project.documents.len(),
             before.project.documents.len()
@@ -2284,7 +2287,7 @@ mod tests {
             app.apply_theme(&context);
             for width in [320.0, 720.0, 1440.0] {
                 app.shell.properties = width < 980.0;
-                for view in 0..4 {
+                for view in [View::Model, View::Library, View::Dictionary, View::Table] {
                     app.view = view;
                     let mut output = context.run_ui(
                         egui::RawInput {

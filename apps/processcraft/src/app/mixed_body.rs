@@ -1,3 +1,5 @@
+//! Editor for script and text-annotation bodies (mixed content).
+//! Emits `SetScriptBody` and `SetAnnotationBody`.
 use super::xml::MixedDraft;
 use super::*;
 use processcraft_core::bpmn_xml::MixedXml;

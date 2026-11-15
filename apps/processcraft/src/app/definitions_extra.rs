@@ -1,3 +1,5 @@
+//! Editor for definitions-level extensions, relationships and metadata.
+//! Emits `SetDefinitionsExtensions`, `SetDefinitionsRelationships` and `SetDefinitionsMetadata`.
 use super::catalog::{QNameDraft, optional_bool, optional_qname, q_build, text};
 use super::documentation::EntryDraft;
 use super::xml::{AttributeDraft, bindings_ui};
