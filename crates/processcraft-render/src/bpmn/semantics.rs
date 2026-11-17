@@ -3,7 +3,7 @@
 use crate::RenderError;
 use processcraft_core::{
     bpmn_collaboration::{Choreography, ChoreographyActivity, ConversationLink, ConversationNode},
-    bpmn_data::{DataAssociation, DataObject, DataPort},
+    bpmn_data::{DataAssociation, DataObject, DataPort, DataStore},
     bpmn_model::{EventDefinition, NodeDetails},
     ids::ElementSelector,
     model::{Bounds, BpmnDocument, Flow, FlowKind, Lane, Node, NodeKind},
@@ -378,23 +378,48 @@ impl<'a> SemanticIndex<'a> {
         }
         (false, true)
     }
+    /// The diagram shape a participant band's `choreography_activity_shape` points at.
+    pub(super) fn participant_band_owner<'d>(
+        &self,
+        band: &processcraft_core::model::Shape,
+        diagram: &'d processcraft_core::model::Diagram,
+    ) -> Option<&'d processcraft_core::model::Shape> {
+        match &band.choreography_activity_shape {
+            Some(processcraft_core::model::DiReference::Local(id)) => {
+                diagram.shapes.iter().find(|s| &s.id == id)
+            }
+            Some(processcraft_core::model::DiReference::Qualified(q))
+                if self.target_namespace.as_ref() == Some(&q.namespace) =>
+            {
+                diagram
+                    .shapes
+                    .iter()
+                    .find(|s| s.id.xml_id() == Some(&q.local))
+            }
+            _ => None,
+        }
+    }
+    /// Whether `band` is a representation of the choreography activity drawn as `owner`.
+    pub(super) fn band_belongs_to(
+        &self,
+        band: &processcraft_core::model::Shape,
+        owner: &processcraft_core::model::Shape,
+    ) -> bool {
+        match &band.choreography_activity_shape {
+            Some(processcraft_core::model::DiReference::Local(id)) => id == &owner.id.selector(),
+            Some(processcraft_core::model::DiReference::Qualified(q)) => {
+                self.target_namespace.as_ref() == Some(&q.namespace)
+                    && owner.id.xml_id() == Some(&q.local)
+            }
+            None => false,
+        }
+    }
     pub(super) fn shape_visibility(
         &self,
         shape: &processcraft_core::model::Shape,
         diagram: &processcraft_core::model::Diagram,
     ) -> (bool, bool) {
-        let owner = match &shape.choreography_activity_shape {
-            Some(processcraft_core::model::DiReference::Local(id)) => {
-                diagram.shapes.iter().find(|s| &s.id == id)
-            }
-            Some(processcraft_core::model::DiReference::Qualified(q)) => {
-                diagram.shapes.iter().find(|s| {
-                    s.id.xml_id() == Some(&q.local)
-                        && self.target_namespace.as_ref() == Some(&q.namespace)
-                })
-            }
-            None => None,
-        };
+        let owner = self.participant_band_owner(shape, diagram);
         if let Some(owner) = owner {
             return self.visibility(&owner.element, &owner.bounds, diagram);
         }
@@ -724,5 +749,139 @@ pub(super) fn data_label(
         Some(state) if !base.is_empty() => format!("{base} [{state}]"),
         Some(state) => format!("[{state}]"),
         None => base.to_owned(),
+    }
+}
+
+/// The model objects behind one diagram shape, resolved once and shared by the scene
+/// builder (`draw_shape`) and the viewport label pass.
+pub(super) struct ShapeRefs<'a> {
+    pub(super) node: Option<&'a Node>,
+    pub(super) port: Option<(&'a DataPort, bool)>,
+    pub(super) store: Option<&'a DataStore>,
+    pub(super) kind: Option<NodeKind>,
+    pub(super) call_target: CalledTarget,
+    pub(super) marker_kind: Option<NodeKind>,
+    pub(super) conversation: Option<&'a ConversationNode>,
+    pub(super) choreography: Option<(&'a Choreography, &'a ChoreographyActivity)>,
+    /// Display text of the node and whether it was cut at the display limit.
+    pub(super) node_name: Option<(std::borrow::Cow<'a, str>, bool)>,
+}
+
+impl<'a> ShapeRefs<'a> {
+    pub(super) fn resolve(
+        semantics: &SemanticIndex<'a>,
+        document: &'a BpmnDocument,
+        element: &ElementSelector,
+    ) -> Self {
+        let node = semantics.node(element).map(|(node, _)| node);
+        let port = semantics.port(element);
+        let store = document.data_stores.iter().find(|store| {
+            store
+                .id
+                .as_ref()
+                .is_some_and(|identity| identity == element)
+        });
+        let kind = node
+            .map(|node| node.kind)
+            .or(port.map(|_| NodeKind::DataObjectReference))
+            .or(store.map(|_| NodeKind::DataStoreReference));
+        let call_target = called_target(node, document);
+        let marker_kind = match call_target {
+            CalledTarget::Global(task_kind) => Some(task_kind),
+            _ => kind,
+        };
+        Self {
+            node,
+            port,
+            store,
+            kind,
+            call_target,
+            marker_kind,
+            conversation: semantics.conversation(element),
+            choreography: semantics.choreography(element),
+            node_name: node.map(|node| node_display_name(node, document)),
+        }
+    }
+
+    /// Text drawn for the shape, with a data state appended as `name [state]`, or `None`
+    /// when the element has no name slot at all.
+    ///
+    /// `label_pass_names` is true for the viewport's separate label pass. Groups and
+    /// participant bands are drawn by `draw_group` and `draw_participant_band` in the
+    /// scene, which take their text from `group_label` and the band's participant, so
+    /// `draw_shape` never sees them. The label pass has no such per-kind drawing, so it
+    /// adds group labels and choreography participants to the chain. The resulting
+    /// text is the same one the scene draws for those shapes.
+    pub(super) fn display_name(
+        &self,
+        semantics: &SemanticIndex<'a>,
+        document: &BpmnDocument,
+        element: &ElementSelector,
+        label_pass_names: bool,
+    ) -> Option<String> {
+        let group_text = if label_pass_names {
+            semantics.group_label(element, document)
+        } else {
+            None
+        };
+        let mut name = group_text
+            .as_deref()
+            .or_else(|| {
+                self.choreography
+                    .map(|(_, activity)| activity.name.as_deref().unwrap_or(""))
+            })
+            .or_else(|| {
+                self.conversation
+                    .map(|node| node.name.as_deref().unwrap_or(""))
+            })
+            .or(self.node_name.as_ref().map(|(text, _)| text.as_ref()))
+            .or_else(|| {
+                self.port
+                    .map(|(port, _)| port.name.as_deref().unwrap_or(""))
+            })
+            .or_else(|| self.store.map(|store| store.name.as_deref().unwrap_or("")))
+            .or_else(|| {
+                semantics
+                    .lane(element)
+                    .map(|(lane, _)| lane.name.as_deref().unwrap_or(""))
+            })
+            .or_else(|| {
+                if !label_pass_names {
+                    return None;
+                }
+                semantics
+                    .choreographies
+                    .iter()
+                    .flat_map(|(c, _)| &c.participants)
+                    .find(|p| &p.id == element)
+                    .map(|p| p.name.as_deref().unwrap_or(""))
+            });
+        if let Some(p) = semantics.participant(element) {
+            name = Some(p.name.as_deref().unwrap_or(""));
+        }
+        let name = name?;
+        let state = |state: Option<&str>| match state.filter(|state| !state.is_empty()) {
+            Some(state) if !name.is_empty() => format!("{name} [{state}]"),
+            Some(state) => format!("[{state}]"),
+            None => name.to_owned(),
+        };
+        Some(if let Some((port, _)) = self.port {
+            state(
+                port.item_aware
+                    .as_ref()
+                    .and_then(|item| item.data_state.as_ref())
+                    .and_then(|state| state.name.as_deref()),
+            )
+        } else if let Some(store) = self.store {
+            state(
+                store
+                    .item_aware
+                    .as_ref()
+                    .and_then(|item| item.data_state.as_ref())
+                    .and_then(|state| state.name.as_deref()),
+            )
+        } else {
+            data_label(self.node, name, semantics)
+        })
     }
 }

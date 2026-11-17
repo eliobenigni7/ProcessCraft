@@ -188,3 +188,58 @@ fn sub_choreography_collapsed_shows_plus_marker_and_expanded_does_not() {
         id::<processcraft_core::ids::ElementSelector>("exchange")
     );
 }
+
+/// Participant band names come from the band's participant in the scene (`draw_participant_band`)
+/// and from the viewport's label pass; both must show the same text and the same label hit.
+#[test]
+fn participant_band_names_agree_between_scene_and_viewport() {
+    use processcraft_render::{BpmnViewport, Viewport};
+    let view = |d: &BpmnDocument| {
+        BpmnViewport::build(
+            d,
+            &id("diagram"),
+            Appearance::Light,
+            &mut TextEngine::new(),
+            "Noto Sans",
+            Viewport {
+                x: 0.0,
+                y: 0.0,
+                width: 300.0,
+                height: 160.0,
+                zoom: 1.0,
+            },
+        )
+        .unwrap()
+    };
+    let scene_of = |d: &BpmnDocument| {
+        BpmnScene::build(
+            d,
+            &id("diagram"),
+            Appearance::Light,
+            &mut TextEngine::new(),
+            "Noto Sans",
+        )
+        .unwrap()
+    };
+    let d = document(None, None);
+    let scene = scene_of(&d);
+    let svg = scene.scene.to_svg();
+    assert!(svg.contains(">buyer</tspan>") && svg.contains(">seller</tspan>"));
+    let viewport = view(&d);
+    for band in ["buyer", "seller"] {
+        let element = id::<processcraft_core::ids::ElementSelector>(band);
+        let label_hit = |hits: &[processcraft_render::HitRegion]| {
+            hits.iter()
+                .find(|h| h.is_label && h.key.xml_id == element)
+                .map(|h| format!("{:?}", h.geometry))
+        };
+        let (in_scene, in_viewport) = (label_hit(&scene.hits), label_hit(&viewport.hits));
+        assert!(in_scene.is_some(), "scene has a label hit for {band}");
+        assert_eq!(in_scene, in_viewport, "{band} label hit differs");
+    }
+    // The viewport draws the participant's name: renaming changes its pixels.
+    let mut renamed = d.clone();
+    renamed.choreographies[0].participants[0].name = Some("zzzzz".into());
+    assert_ne!(view(&d).pixels.data(), view(&renamed).pixels.data());
+    assert!(scene_of(&renamed).scene.to_svg().contains(">zzzzz</tspan>"));
+}

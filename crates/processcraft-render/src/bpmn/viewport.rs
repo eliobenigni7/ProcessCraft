@@ -2,35 +2,23 @@
 
 use crate::{DiagramScene, RenderError, TextEngine};
 use processcraft_core::{
-    bpmn_model::AssociationDirection,
     ids::{ElementKey, ElementSelector},
-    model::{Bounds, BpmnDocument, Capability, FlowKind, NodeKind},
+    model::{Bounds, BpmnDocument, Capability},
     overlay::Overlay,
 };
+
 use tiny_skia::PathBuilder;
 
-use super::appearance::{
-    Appearance, DARK_INK, DOTTED_DASH, MESSAGE_DASH, NON_INITIATING_FILL, STROKE_ARROW, color,
-    low_contrast,
-};
+use super::appearance::{Appearance, DARK_INK, NON_INITIATING_FILL, color, low_contrast};
+use super::edges::{EdgeFrame, draw_edge};
 use super::hit::{HitGeometry, HitRegion};
 use super::labels::{
-    LabelAlign, edge_label_layout, group_label_collision, label, label_font, label_visible,
-    message_name_label, shape_label_layout,
+    LabelAlign, group_label_collision, label, label_font, label_visible, shape_label_layout,
 };
-use super::markers::{
-    double_link, draw_default_slash, draw_flow_source_marker, envelope, open_arrow,
-    self_reference_resolves,
-};
+use super::markers::self_reference_resolves;
 use super::overlay::OverlayView;
-use super::primitives::{
-    EDGE_RADIUS, clip_segment, clipped_runs, lines, polygon, polyline_midpoint, stroke_polyline,
-};
 use super::scene::{BpmnScene, BuildOptions};
-use super::semantics::{
-    CalledTarget, DI_EXTENSION_DIAGNOSTIC, SemanticIndex, called_target, data_label,
-    has_uninterpreted_di, node_display_name,
-};
+use super::semantics::{DI_EXTENSION_DIAGNOSTIC, SemanticIndex, ShapeRefs, has_uninterpreted_di};
 
 /// Viewport scenes keep labels this far outside the visible area.
 pub(super) const CULL_MARGIN: f32 = 64.0;
@@ -243,23 +231,7 @@ impl BpmnViewport {
                 continue;
             }
             if shape.participant_band_kind.is_some() {
-                let owner = match &shape.choreography_activity_shape {
-                    Some(processcraft_core::model::DiReference::Local(id)) => {
-                        original.shapes.iter().find(|s| &s.id == id)
-                    }
-                    Some(processcraft_core::model::DiReference::Qualified(q))
-                        if document
-                            .definitions
-                            .as_ref()
-                            .is_some_and(|defs| defs.target_namespace == q.namespace) =>
-                    {
-                        original
-                            .shapes
-                            .iter()
-                            .find(|s| s.id.xml_id() == Some(&q.local))
-                    }
-                    _ => None,
-                };
+                let owner = semantics.participant_band_owner(shape, original);
                 let valid = owner
                     .and_then(|owner| semantics.choreography(&owner.element))
                     .is_some_and(|(root, activity)| {
@@ -273,84 +245,27 @@ impl BpmnViewport {
                     continue;
                 }
             }
-            let node = semantics.node(&shape.element).map(|(node, _)| node);
-            let port = semantics.port(&shape.element);
-            let store = document.data_stores.iter().find(|store| {
-                store
-                    .id
-                    .as_ref()
-                    .is_some_and(|identity| identity == &shape.element)
-            });
-            let kind = node
-                .map(|node| node.kind)
-                .or(port.map(|_| NodeKind::DataObjectReference))
-                .or(store.map(|_| NodeKind::DataStoreReference));
-            let marker_kind = match called_target(node, document) {
-                CalledTarget::Global(task_kind) => Some(task_kind),
-                _ => kind,
-            };
-            let conversation = semantics.conversation(&shape.element);
-            let choreography = semantics.choreography(&shape.element);
-            let node_name = node.map(|node| node_display_name(node, document));
-            if node_name.as_ref().is_some_and(|(_, truncated)| *truncated) {
+            let refs = ShapeRefs::resolve(semantics, document, &shape.element);
+            let ShapeRefs {
+                node,
+                kind,
+                marker_kind,
+                choreography,
+                ..
+            } = refs;
+            if refs
+                .node_name
+                .as_ref()
+                .is_some_and(|(_, truncated)| *truncated)
+            {
                 built.diagnostics.push(format!(
                     "Annotation {} text exceeds display limit",
                     shape.element
                 ));
             }
-            let group_text = semantics.group_label(&shape.element, document);
-            let mut name = group_text
-                .as_deref()
-                .or_else(|| {
-                    choreography.map(|(_, activity)| activity.name.as_deref().unwrap_or(""))
-                })
-                .or_else(|| conversation.map(|node| node.name.as_deref().unwrap_or("")))
-                .or(node_name.as_ref().map(|(text, _)| text.as_ref()))
-                .or_else(|| port.map(|(port, _)| port.name.as_deref().unwrap_or("")))
-                .or_else(|| store.map(|store| store.name.as_deref().unwrap_or("")))
-                .or_else(|| {
-                    semantics
-                        .lane(&shape.element)
-                        .map(|(lane, _)| lane.name.as_deref().unwrap_or(""))
-                })
-                .or_else(|| {
-                    semantics
-                        .choreographies
-                        .iter()
-                        .flat_map(|(c, _)| &c.participants)
-                        .find(|p| p.id == shape.element)
-                        .map(|p| p.name.as_deref().unwrap_or(""))
-                });
-            if let Some(p) = semantics.participant(&shape.element) {
-                name = Some(p.name.as_deref().unwrap_or(""));
-            }
-            let Some(name) = name else { continue };
-            let display_name = if let Some((port, _)) = port {
-                match port
-                    .item_aware
-                    .as_ref()
-                    .and_then(|item| item.data_state.as_ref())
-                    .and_then(|state| state.name.as_deref())
-                    .filter(|name| !name.is_empty())
-                {
-                    Some(state) if !name.is_empty() => format!("{name} [{state}]"),
-                    Some(state) => format!("[{state}]"),
-                    None => name.to_owned(),
-                }
-            } else if let Some(store) = store {
-                match store
-                    .item_aware
-                    .as_ref()
-                    .and_then(|item| item.data_state.as_ref())
-                    .and_then(|state| state.name.as_deref())
-                    .filter(|state| !state.is_empty())
-                {
-                    Some(state) if !name.is_empty() => format!("{name} [{state}]"),
-                    Some(state) => format!("[{state}]"),
-                    None => name.to_owned(),
-                }
-            } else {
-                data_label(node, name, semantics)
+            let Some(display_name) = refs.display_name(semantics, document, &shape.element, true)
+            else {
+                continue;
             };
             let name = display_name.as_str();
             if shape.label.is_none() && !built.hits.iter().any(|h| h.diagram_element_id == shape.id)
@@ -499,6 +414,17 @@ impl BpmnViewport {
                 });
             }
         }
+        let bg = appearance.paper();
+        let edge_frame = EdgeFrame {
+            document,
+            diagram: original,
+            semantics,
+            origin: built.origin,
+            fg,
+            bg,
+            family,
+            clip: Some(view),
+        };
         for edge in &original.edges {
             if let Some(ranks) = &paint_ranks {
                 built
@@ -508,412 +434,15 @@ impl BpmnViewport {
             if semantics.edge_visibility(edge, original).0 {
                 continue;
             }
-            if semantics.data_association(&edge.element).is_some() {
-                let stroke = color(edge.style.as_ref().and_then(|s| s.stroke.as_deref()), fg);
-                let runs = clipped_runs(&edge.waypoints, view, built.origin);
-                let visible = !runs.is_empty();
-                for (points, offset) in &runs {
-                    stroke_polyline(
-                        &mut built.scene,
-                        points,
-                        stroke,
-                        EDGE_RADIUS,
-                        Some(DOTTED_DASH),
-                        *offset,
-                    )?;
-                }
-                if let Some(end) = edge.waypoints.last()
-                    && end.x >= view.x
-                    && end.x <= view.x + view.width
-                    && end.y >= view.y
-                    && end.y <= view.y + view.height
-                    && edge.waypoints.len() > 1
-                {
-                    let pts: Vec<_> = edge
-                        .waypoints
-                        .iter()
-                        .map(|p| {
-                            (
-                                (p.x - view.x - built.origin.0) as f32,
-                                (p.y - view.y - built.origin.1) as f32,
-                            )
-                        })
-                        .collect();
-                    open_arrow(&mut built.scene, &pts, stroke)?;
-                }
-                if visible {
-                    built.hits.push(HitRegion {
-                        key: ElementKey {
-                            document_id: document.id,
-                            xml_id: edge.element.clone(),
-                        },
-                        diagram_element_id: edge.id.selector(),
-                        label_id: None,
-                        is_label: false,
-                        geometry: HitGeometry::Edge(edge.waypoints.clone()),
-                    });
-                }
-                continue;
-            }
-            if let Some(link) = semantics.conversation_link(&edge.element) {
-                let stroke = color(edge.style.as_ref().and_then(|s| s.stroke.as_deref()), fg);
-                if semantics.resolved(&link.source).is_none()
-                    || semantics.resolved(&link.target).is_none()
-                {
-                    built.diagnostics.push(format!("Conversation link {} has an unresolved endpoint; authored DI route is retained", link.id));
-                }
-                let mut visible = false;
-                for pair in edge.waypoints.windows(2) {
-                    if let Some((a, b)) = clip_segment(&pair[0], &pair[1], view) {
-                        let points = [
-                            (
-                                (a.0 - view.x - built.origin.0) as f32,
-                                (a.1 - view.y - built.origin.1) as f32,
-                            ),
-                            (
-                                (b.0 - view.x - built.origin.0) as f32,
-                                (b.1 - view.y - built.origin.1) as f32,
-                            ),
-                        ];
-                        double_link(&mut built.scene, &points, stroke)?;
-                        visible = true;
-                    }
-                }
-                if label_visible(edge.label.as_ref(), edge.label_visibility)
-                    && link.name.as_deref().is_some_and(|name| !name.is_empty())
-                    && let Some((bounds, align)) = edge_label_layout(edge)
-                {
-                    let bounds = &bounds;
-                    if inside(bounds) {
-                        label(
-                            &mut built.scene,
-                            fonts,
-                            family,
-                            link.name.as_deref().unwrap_or(""),
-                            bounds,
-                            (view.x + built.origin.0, view.y + built.origin.1),
-                            edge.label
-                                .as_ref()
-                                .and_then(|l| l.style.as_ref())
-                                .or(edge.style.as_ref()),
-                            label_font(
-                                document,
-                                original,
-                                edge.label.as_ref(),
-                                &mut built.diagnostics,
-                            ),
-                            fg,
-                            align,
-                            &mut built.diagnostics,
-                        )?;
-                        if label_visible(edge.label.as_ref(), edge.label_visibility) {
-                            let mut local = bounds.clone();
-                            rebase(&mut local);
-                            built.hits.push(HitRegion {
-                                key: ElementKey {
-                                    document_id: document.id,
-                                    xml_id: edge.element.clone(),
-                                },
-                                diagram_element_id: edge.id.selector(),
-                                label_id: edge
-                                    .label
-                                    .as_ref()
-                                    .and_then(|label| label.id.as_ref())
-                                    .map(|id| id.selector()),
-                                is_label: true,
-                                geometry: HitGeometry::Shape(local),
-                            });
-                        }
-                    }
-                }
-                if visible {
-                    built.hits.push(HitRegion {
-                        key: ElementKey {
-                            document_id: document.id,
-                            xml_id: edge.element.clone(),
-                        },
-                        diagram_element_id: edge.id.selector(),
-                        label_id: None,
-                        is_label: false,
-                        geometry: HitGeometry::Edge(edge.waypoints.clone()),
-                    });
-                }
-                continue;
-            }
-            let Some(flow) = semantics.flow(&edge.element) else {
-                continue;
-            };
-            if semantics.resolved(&flow.source).is_none()
-                || semantics.resolved(&flow.target).is_none()
-            {
-                built.diagnostics.push(format!(
-                    "Flow {} has an unresolved endpoint; authored DI route is retained",
-                    flow.id
-                ));
-            }
-            let stroke = color(edge.style.as_ref().and_then(|s| s.stroke.as_deref()), fg);
-            let dash = match flow.kind {
-                FlowKind::Sequence => None,
-                FlowKind::Message => Some(MESSAGE_DASH),
-                _ => Some(DOTTED_DASH),
-            };
-            let runs = clipped_runs(&edge.waypoints, view, built.origin);
-            let segments = runs.len();
-            for (points, offset) in &runs {
-                stroke_polyline(&mut built.scene, points, stroke, EDGE_RADIUS, dash, *offset)?;
-            }
-            if matches!(flow.kind, FlowKind::Message)
-                && let Some(visible) = edge.message_visible_kind
-            {
-                let points: Vec<_> = edge
-                    .waypoints
-                    .iter()
-                    .map(|p| {
-                        (
-                            (p.x - view.x - built.origin.0) as f32,
-                            (p.y - view.y - built.origin.1) as f32,
-                        )
-                    })
-                    .collect();
-                if let Some((cx, cy)) = polyline_midpoint(&points)
-                    && cx >= -CULL_MARGIN
-                    && cy >= -CULL_MARGIN
-                    && cx <= view.width as f32 + CULL_MARGIN
-                    && cy <= view.height as f32 + CULL_MARGIN
-                {
-                    let background = appearance.paper();
-                    let filled = matches!(
-                        visible,
-                        processcraft_core::model::MessageVisibleKind::NonInitiating
-                    );
-                    let explicit = edge.style.as_ref().and_then(|s| s.stroke.as_deref());
-                    let envelope_stroke = if filled && explicit.is_none() {
-                        DARK_INK
-                    } else {
-                        stroke
-                    };
-                    if filled
-                        && explicit.is_some()
-                        && low_contrast(envelope_stroke, NON_INITIATING_FILL)
-                    {
-                        built.diagnostics.push(format!("Message edge {} explicit stroke has low contrast against the envelope fill", edge.id));
-                    }
-                    envelope(
-                        &mut built.scene,
-                        cx,
-                        cy,
-                        envelope_stroke,
-                        filled,
-                        background,
-                    )?;
-                    if let Some(text) = semantics.message_name(flow) {
-                        message_name_label(
-                            &mut built.scene,
-                            fonts,
-                            family,
-                            text,
-                            (cx, cy),
-                            (view.x + built.origin.0, view.y + built.origin.1),
-                            fg,
-                            &mut built.diagnostics,
-                        )?;
-                    }
-                }
-            }
-            if segments > 0
-                && matches!(flow.kind, FlowKind::Sequence)
-                && semantics.is_default_flow(flow)
-                && edge.waypoints.len() > 1
-            {
-                let a = &edge.waypoints[0];
-                if a.x >= view.x
-                    && a.x <= view.x + view.width
-                    && a.y >= view.y
-                    && a.y <= view.y + view.height
-                {
-                    let points: Vec<_> = edge.waypoints[..2]
-                        .iter()
-                        .map(|p| {
-                            (
-                                (p.x - view.x - built.origin.0) as f32,
-                                (p.y - view.y - built.origin.1) as f32,
-                            )
-                        })
-                        .collect();
-                    draw_default_slash(&mut built.scene, &points, stroke)?;
-                }
-            }
-            if segments > 0
-                && edge.waypoints.len() > 1
-                && (matches!(flow.kind, FlowKind::Message)
-                    || semantics.conditional_flow_marker(flow))
-            {
-                let a = &edge.waypoints[0];
-                if a.x >= view.x
-                    && a.x <= view.x + view.width
-                    && a.y >= view.y
-                    && a.y <= view.y + view.height
-                {
-                    let points: Vec<_> = edge.waypoints[..2]
-                        .iter()
-                        .map(|p| {
-                            (
-                                (p.x - view.x - built.origin.0) as f32,
-                                (p.y - view.y - built.origin.1) as f32,
-                            )
-                        })
-                        .collect();
-                    draw_flow_source_marker(
-                        &mut built.scene,
-                        &points,
-                        stroke,
-                        appearance.paper(),
-                        matches!(flow.kind, FlowKind::Message),
-                    )?;
-                }
-            }
-            if segments > 0
-                && edge.waypoints.len() > 1
-                && (!matches!(flow.kind, FlowKind::Association)
-                    || matches!(
-                        flow.association_direction,
-                        Some(AssociationDirection::One | AssociationDirection::Both)
-                    ))
-            {
-                let b = &edge.waypoints[edge.waypoints.len() - 1];
-                let a = edge
-                    .waypoints
-                    .iter()
-                    .rev()
-                    .find(|p| p.x != b.x || p.y != b.y)
-                    .unwrap_or(&edge.waypoints[edge.waypoints.len() - 2]);
-                if b.x >= view.x
-                    && b.x <= view.x + view.width
-                    && b.y >= view.y
-                    && b.y <= view.y + view.height
-                {
-                    let end = (
-                        (b.x - view.x - built.origin.0) as f32,
-                        (b.y - view.y - built.origin.1) as f32,
-                    );
-                    let angle = (b.y - a.y).atan2(b.x - a.x) as f32;
-                    let wing = |v: f32| {
-                        (
-                            end.0 - 9.0 * (angle + v).cos(),
-                            end.1 - 9.0 * (angle + v).sin(),
-                        )
-                    };
-                    if matches!(flow.kind, FlowKind::Sequence) {
-                        let mut p = PathBuilder::new();
-                        polygon(&mut p, &[wing(0.5), end, wing(-0.5)]);
-                        if let Some(p) = p.finish() {
-                            built.scene.add_path(p, stroke)?;
-                        }
-                    } else {
-                        lines(
-                            &mut built.scene,
-                            &[wing(0.5), end, wing(-0.5)],
-                            stroke,
-                            STROKE_ARROW,
-                        )?;
-                    }
-                }
-            }
-            if segments > 0
-                && edge.waypoints.len() > 1
-                && matches!(flow.kind, FlowKind::Association)
-                && matches!(flow.association_direction, Some(AssociationDirection::Both))
-            {
-                let b = &edge.waypoints[0];
-                let a = edge
-                    .waypoints
-                    .iter()
-                    .find(|p| p.x != b.x || p.y != b.y)
-                    .unwrap_or(&edge.waypoints[1]);
-                if b.x >= view.x
-                    && b.x <= view.x + view.width
-                    && b.y >= view.y
-                    && b.y <= view.y + view.height
-                {
-                    let end = (
-                        (b.x - view.x - built.origin.0) as f32,
-                        (b.y - view.y - built.origin.1) as f32,
-                    );
-                    let angle = (b.y - a.y).atan2(b.x - a.x) as f32;
-                    let wing = |v: f32| {
-                        (
-                            end.0 - 9.0 * (angle + v).cos(),
-                            end.1 - 9.0 * (angle + v).sin(),
-                        )
-                    };
-                    lines(
-                        &mut built.scene,
-                        &[wing(0.5), end, wing(-0.5)],
-                        stroke,
-                        STROKE_ARROW,
-                    )?;
-                }
-            }
-            if label_visible(edge.label.as_ref(), edge.label_visibility)
-                && flow.name.as_deref().is_some_and(|name| !name.is_empty())
-                && let Some((bounds, align)) = edge_label_layout(edge)
-            {
-                let bounds = &bounds;
-                if inside(bounds) {
-                    let mut local = bounds.clone();
-                    rebase(&mut local);
-                    built.hits.push(HitRegion {
-                        key: ElementKey {
-                            document_id: document.id,
-                            xml_id: edge.element.clone(),
-                        },
-                        diagram_element_id: edge.id.selector(),
-                        label_id: edge
-                            .label
-                            .as_ref()
-                            .and_then(|label| label.id.as_ref())
-                            .map(|id| id.selector()),
-                        is_label: true,
-                        geometry: HitGeometry::Shape(local),
-                    });
-                    label(
-                        &mut built.scene,
-                        fonts,
-                        family,
-                        flow.name.as_deref().unwrap_or(""),
-                        bounds,
-                        (view.x + built.origin.0, view.y + built.origin.1),
-                        edge.label
-                            .as_ref()
-                            .and_then(|l| l.style.as_ref())
-                            .or(edge.style.as_ref()),
-                        label_font(
-                            document,
-                            original,
-                            edge.label.as_ref(),
-                            &mut built.diagnostics,
-                        ),
-                        fg,
-                        align,
-                        &mut built.diagnostics,
-                    )?;
-                }
-            }
-            if segments == 0 {
-                continue;
-            }
-            built.hits.push(HitRegion {
-                key: ElementKey {
-                    document_id: document.id,
-                    xml_id: edge.element.clone(),
-                },
-                diagram_element_id: edge.id.selector(),
-                label_id: None,
-                is_label: false,
-                geometry: HitGeometry::Edge(edge.waypoints.clone()),
-            });
+            draw_edge(
+                &edge_frame,
+                &mut built.scene,
+                &mut built.hits,
+                &mut built.diagnostics,
+                fonts,
+                edge,
+            )?;
         }
-        let bg = appearance.paper();
         if appearance.is_canvas() {
             // Dots stay 1.5 px on screen and vanish when closer than 10 px.
             let zoom = f64::from(view.zoom);

@@ -4,6 +4,7 @@
 //! canvas uses. Appearance colours, stroke widths and dash lengths are named constants here.
 
 mod appearance;
+mod edges;
 mod hit;
 mod labels;
 mod markers;

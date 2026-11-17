@@ -4374,3 +4374,99 @@ fn canvas_appearance_adds_dots_and_keeps_export_appearances_plain() {
         vec![(250, 251, 252)]
     );
 }
+
+/// Group labels are drawn by `draw_group` in the scene and by the label pass in the viewport;
+/// both must show the same category text and the same label hit.
+#[test]
+fn group_label_agrees_between_scene_and_viewport() {
+    use processcraft_core::{
+        bpmn_model::{Category, CategoryValue, Group},
+        model::Label,
+    };
+    use processcraft_render::{BpmnViewport, Viewport};
+    let make = |text: &str| {
+        let mut d = fixture();
+        d.categories.push(Category {
+            base: None,
+            id: id("category"),
+            name: None,
+            values: vec![CategoryValue {
+                base: None,
+                id: id("value"),
+                value: Some(text.into()),
+            }],
+        });
+        d.processes[0].groups.push(Group {
+            base: None,
+            id: id("group"),
+            category_value_ref: Some(processcraft_core::bpmn_activity::ModelReference::Local(id(
+                "value",
+            ))),
+        });
+        d.diagrams[0].shapes.push(Shape {
+            di_metadata: None,
+            is_message_visible: None,
+            participant_band_kind: None,
+            choreography_activity_shape: None,
+            label_visibility: None,
+            is_horizontal: None,
+            is_marker_visible: None,
+            is_expanded: None,
+            id: id("group_shape"),
+            element: id("group"),
+            bounds: Bounds {
+                x: 500.,
+                y: 500.,
+                width: 180.,
+                height: 120.,
+            },
+            label: Some(Label {
+                di_metadata: None,
+                id: None,
+                style_ref: None,
+                bounds: Some(Bounds {
+                    x: 510.,
+                    y: 510.,
+                    width: 140.,
+                    height: 30.,
+                }),
+                style: None,
+            }),
+            style: None,
+        });
+        d
+    };
+    let view = |d: &BpmnDocument| {
+        BpmnViewport::build(
+            d,
+            &id("diagram"),
+            Appearance::Light,
+            &mut TextEngine::new(),
+            "Noto Sans",
+            Viewport {
+                x: 480.,
+                y: 480.,
+                width: 300.,
+                height: 200.,
+                zoom: 1.,
+            },
+        )
+        .unwrap()
+    };
+    let d = make("Compliance");
+    let scene = build(&d, Appearance::Light);
+    assert!(scene.scene.to_svg().contains(">Compliance</tspan>"));
+    let group = id::<processcraft_core::ids::ElementSelector>("group");
+    let label_hit = |hits: &[processcraft_render::HitRegion]| {
+        hits.iter()
+            .find(|h| h.is_label && h.key.xml_id == group)
+            .map(|h| format!("{:?}", h.geometry))
+    };
+    let viewport = view(&d);
+    assert!(label_hit(&scene.hits).is_some());
+    assert_eq!(label_hit(&scene.hits), label_hit(&viewport.hits));
+    assert_ne!(
+        viewport.pixels.data(),
+        view(&make("Other text")).pixels.data()
+    );
+}
