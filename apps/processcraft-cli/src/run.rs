@@ -446,19 +446,19 @@ pub fn execute(command: Command) -> Result<(), Error> {
             acknowledge_diagnostics,
             overlay_attribute,
             overlay_mode,
-        } => export_image_cli(
-            &input,
-            &document_id,
-            &diagram_id,
+        } => export_image_cli(ImageCli {
+            input: &input,
+            document_id: &document_id,
+            diagram_id: &diagram_id,
             format,
-            &out,
+            out: &out,
             scale,
             dark,
             overwrite,
             acknowledge_diagnostics,
-            overlay_attribute.as_deref(),
+            overlay_attribute: overlay_attribute.as_deref(),
             overlay_mode,
-        ),
+        }),
         Command::ImportBpmn {
             input,
             out,
@@ -651,22 +651,7 @@ fn query_project(path: &Path, query: Query) -> Result<(), Error> {
             let document: DocumentId = document_id.parse().map_err(|e| error(exit::USAGE, e))?;
             let rows = queries::identified_elements(project, document)
                 .ok_or_else(|| error(exit::DATA, "document not found"))?;
-            let total = rows.len();
-            let mut page = bounded_page(
-                rows.into_iter()
-                    .skip(offset)
-                    .take(limit)
-                    .map(|row| json!(row)),
-                total,
-                offset,
-                limit,
-            )?;
-            page["contentId"] = json!(
-                project
-                    .content_identity()
-                    .map_err(|e| error(exit::DATA, e))?
-            );
-            page
+            content_page(project, rows, offset, limit)?
         }
         Query::Data {
             document_id,
@@ -676,22 +661,7 @@ fn query_project(path: &Path, query: Query) -> Result<(), Error> {
             let document: DocumentId = document_id.parse().map_err(|e| error(exit::USAGE, e))?;
             let rows = queries::data_fields(project, document)
                 .ok_or_else(|| error(exit::DATA, "document not found"))?;
-            let total = rows.len();
-            let mut page = bounded_page(
-                rows.into_iter()
-                    .skip(offset)
-                    .take(limit)
-                    .map(|row| json!(row)),
-                total,
-                offset,
-                limit,
-            )?;
-            page["contentId"] = json!(
-                project
-                    .content_identity()
-                    .map_err(|e| error(exit::DATA, e))?
-            );
-            page
+            content_page(project, rows, offset, limit)?
         }
         Query::Catalog {
             document_id,
@@ -701,22 +671,7 @@ fn query_project(path: &Path, query: Query) -> Result<(), Error> {
             let document: DocumentId = document_id.parse().map_err(|e| error(exit::USAGE, e))?;
             let rows = queries::supporting_catalog_fields(project, document)
                 .ok_or_else(|| error(exit::DATA, "document not found"))?;
-            let total = rows.len();
-            let mut page = bounded_page(
-                rows.into_iter()
-                    .skip(offset)
-                    .take(limit)
-                    .map(|row| json!(row)),
-                total,
-                offset,
-                limit,
-            )?;
-            page["contentId"] = json!(
-                project
-                    .content_identity()
-                    .map_err(|e| error(exit::DATA, e))?
-            );
-            page
+            content_page(project, rows, offset, limit)?
         }
         Query::Comments { offset, limit } => {
             let total = project.comments.len();
@@ -725,12 +680,17 @@ fn query_project(path: &Path, query: Query) -> Result<(), Error> {
                 .iter()
                 .skip(offset)
                 .take(limit)
-                .map(|c| json!({"comment":c,"orphan":queries::comment_is_orphan(project,c)}));
+                .map(|c| queries::comment_row(project, c));
             bounded_page(values, total, offset, limit)?
         }
         Query::Checkpoints { offset, limit } => {
             let total = project.checkpoints.len();
-            let values = project.checkpoints.iter().skip(offset).take(limit).map(|c| json!({"id":c.id,"name":c.name,"createdUnixMs":c.created_unix_ms,"reference":project.reference_checkpoint == Some(c.id)}));
+            let values = project
+                .checkpoints
+                .iter()
+                .skip(offset)
+                .take(limit)
+                .map(|c| queries::checkpoint_row(project, c));
             bounded_page(values, total, offset, limit)?
         }
         Query::CompareCheckpoint { checkpoint_id } => {
@@ -753,7 +713,7 @@ fn query_project(path: &Path, query: Query) -> Result<(), Error> {
             let process: ElementSelector = process_id.parse().map_err(|e| error(exit::USAGE, e))?;
             let rows = queries::activity_table(project, document, &process)
                 .ok_or_else(|| error(exit::DATA, "process not found"))?;
-            let rows: Vec<_> = rows.into_iter().map(|row| json!({"key":row.key,"name":row.name,"lane":row.lane,"role":row.role,"systems":row.systems,"documents":row.documents,"attributes":row.attributes,"outgoing":row.outgoing.into_iter().map(|flow| json!({"id":flow.id,"target":flow.target,"condition":flow.condition})).collect::<Vec<_>>() })).collect();
+            let rows: Vec<_> = rows.into_iter().map(queries::activity_row).collect();
             json!({"rows":rows})
         }
         Query::Raci {
@@ -812,18 +772,13 @@ pub(crate) fn replace_options(
     )
 }
 
-fn query_fields_page(
+/// A bounded page of `rows` tagged with the project's content identity.
+fn content_page(
     project: &ProjectData,
-    document_id: &str,
+    rows: Vec<impl serde::Serialize>,
     offset: usize,
     limit: usize,
-    projection: fn(
-        &ProjectData,
-        processcraft_core::ids::DocumentId,
-    ) -> Option<Vec<processcraft_core::queries::ModelField>>,
 ) -> Result<Value, Error> {
-    let id = document_id.parse().map_err(|e| error(exit::USAGE, e))?;
-    let rows = projection(project, id).ok_or_else(|| error(exit::DATA, "document not found"))?;
     let total = rows.len();
     let mut page = bounded_page(
         rows.into_iter()
@@ -840,6 +795,20 @@ fn query_fields_page(
             .map_err(|e| error(exit::DATA, e))?
     );
     Ok(page)
+}
+fn query_fields_page(
+    project: &ProjectData,
+    document_id: &str,
+    offset: usize,
+    limit: usize,
+    projection: fn(
+        &ProjectData,
+        processcraft_core::ids::DocumentId,
+    ) -> Option<Vec<processcraft_core::queries::ModelField>>,
+) -> Result<Value, Error> {
+    let id = document_id.parse().map_err(|e| error(exit::USAGE, e))?;
+    let rows = projection(project, id).ok_or_else(|| error(exit::DATA, "document not found"))?;
+    content_page(project, rows, offset, limit)
 }
 
 fn layout_preview_file(
@@ -1174,90 +1143,69 @@ fn write_export(out: &Path, bytes: &[u8], report: Value, must_be_new: bool) -> R
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-fn export_image_cli(
-    input: &Path,
-    document_id: &str,
-    diagram_id: &str,
+struct ImageCli<'a> {
+    input: &'a Path,
+    document_id: &'a str,
+    diagram_id: &'a str,
     format: crate::args::ImageFormat,
-    out: &Path,
+    out: &'a Path,
     scale: f32,
     dark: bool,
     overwrite: bool,
     acknowledge_diagnostics: bool,
-    overlay_attribute: Option<&str>,
+    overlay_attribute: Option<&'a str>,
     overlay_mode: Option<crate::args::OverlayModeArg>,
-) -> Result<(), Error> {
-    use processcraft_render::{Appearance, ExportFormat, ExportOptions, TextEngine};
+}
+
+fn export_image_cli(o: ImageCli) -> Result<(), Error> {
+    use crate::export::{ExportFailure, ImageExport, render_export};
+    use processcraft_render::ExportFormat;
     // Mirrors the renderer's limit so a bad scale is reported before diagnostics.
-    if !scale.is_finite() || !processcraft_render::ZOOM_RANGE.contains(&scale) {
+    if !o.scale.is_finite() || !processcraft_render::ZOOM_RANGE.contains(&o.scale) {
         return Err(error(exit::USAGE, "--scale must be finite within 0.125..8"));
     }
-    if out.exists() && !overwrite {
+    if o.out.exists() && !o.overwrite {
         return Err(error(
             exit::CONFLICT,
             "output exists; --overwrite is required",
         ));
     }
-    distinct_files(input, out)?;
-    let loaded = native::load_bytes(&read_native(input)?).map_err(|e| error(exit::DATA, e))?;
-    let id = document_id.parse().map_err(|e| error(exit::USAGE, e))?;
-    let diagram = diagram_id.parse().map_err(|e| error(exit::USAGE, e))?;
-    let doc = loaded
-        .project
-        .documents
-        .iter()
-        .find(|d| d.id == id)
-        .ok_or_else(|| error(exit::DATA, "document not found"))?;
-    let overlay = overlay_attribute
-        .map(|attribute| {
-            let definition = attribute.parse().map_err(|e| error(exit::USAGE, e))?;
-            let mode = overlay_mode.map(Into::into);
-            processcraft_core::overlay::export_overlay(&loaded.project, id, definition, mode)
-                .map_err(|e| error(exit::USAGE, e))
-        })
-        .transpose()?;
-    let mut fonts = TextEngine::new();
-    let appearance = if dark {
-        Appearance::Dark
-    } else {
-        Appearance::Light
-    };
-    let diagnostics =
-        processcraft_render::preflight_diagram(doc, &diagram, appearance, &mut fonts, FONT_FAMILY)
-            .map_err(|e| error(exit::DATA, e))?;
-    if !diagnostics.is_empty() && !acknowledge_diagnostics {
-        return Err(error(
-            exit::DATA,
-            format!(
-                "export diagnostics require acknowledgement (pass --acknowledge-diagnostics): {diagnostics:?}"
-            ),
-        ));
-    }
-    let output = processcraft_render::export_diagram_with_overlay(
-        doc,
-        &diagram,
-        ExportOptions {
-            format: match format {
-                crate::args::ImageFormat::Svg => ExportFormat::Svg,
-                crate::args::ImageFormat::Png => ExportFormat::Png,
-                crate::args::ImageFormat::Pdf => ExportFormat::Pdf,
-            },
-            appearance,
-            scale,
-            acknowledge_diagnostics,
+    distinct_files(o.input, o.out)?;
+    let loaded = native::load_bytes(&read_native(o.input)?).map_err(|e| error(exit::DATA, e))?;
+    let diagram = o.diagram_id.parse().map_err(|e| error(exit::USAGE, e))?;
+    let options = ImageExport {
+        document_id: o.document_id.parse().map_err(|e| error(exit::USAGE, e))?,
+        diagram_id: Some(&diagram),
+        format: match o.format {
+            crate::args::ImageFormat::Svg => ExportFormat::Svg,
+            crate::args::ImageFormat::Png => ExportFormat::Png,
+            crate::args::ImageFormat::Pdf => ExportFormat::Pdf,
         },
-        &mut fonts,
-        FONT_FAMILY,
-        overlay.as_ref(),
-    )
-    .map_err(|e| error(exit::DATA, e))?;
-    write_export(
-        out,
-        &output.bytes,
-        json!({"origin":output.origin,"logicalSize":output.logical_size,"pixelSize":output.pixel_size,"diagnostics":output.diagnostics}),
-        false,
-    )
+        dark: o.dark,
+        scale: o.scale,
+        acknowledge_diagnostics: o.acknowledge_diagnostics,
+        overlay: o.overlay_attribute.map(|attribute| {
+            let definition = attribute
+                .parse()
+                .map_err(|e: processcraft_core::ids::InvalidId| e.to_string())?;
+            Ok((definition, o.overlay_mode.map(Into::into)))
+        }),
+    };
+    let (bytes, report) =
+        render_export(&loaded.project, options).map_err(|failure| match failure {
+            ExportFailure::DocumentNotFound => error(exit::DATA, "document not found"),
+            // Unreachable: the CLI always passes a diagram.
+            ExportFailure::DiagramRequired => error(exit::USAGE, "--diagram-id is required"),
+            ExportFailure::Overlay(e) => error(exit::USAGE, e),
+            ExportFailure::Render(e) => error(exit::DATA, e),
+            ExportFailure::AcknowledgementRequired(diagnostics) => error(
+                exit::DATA,
+                format!(
+                    "export diagnostics require acknowledgement (pass --acknowledge-diagnostics): {diagnostics:?}"
+                ),
+            ),
+        })?;
+    write_export(o.out, &bytes, report, false)
 }
 
 #[cfg(test)]

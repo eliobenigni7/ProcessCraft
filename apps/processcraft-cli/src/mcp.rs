@@ -378,456 +378,19 @@ impl ServerHandler for Server {
             .expect("standalone state")
             .lock()
             .map_err(|_| ErrorData::internal_error("session lock poisoned", None))?;
-        let response = match params.name.as_ref() {
-            "inspect" if args == json!({}) => {
-                let s = state.session.snapshot();
-                json!({
-                    "sessionId":state.session.id(),"generation":s.generation,
-                    "contentId":s.content_id,"projectId":s.project.id,
-                    "name":s.project.name,"documents":s.project.documents.len()
-                })
-            }
-            "validate" if args == json!({}) => {
-                let s = state.session.snapshot();
-                match s.project.validate() {
-                    Ok(()) => {
-                        let diagnostics = s.project.diagnostics();
-                        let errors = diagnostics
-                            .iter()
-                            .filter(|d| d.severity == processcraft_core::DiagnosticSeverity::Error)
-                            .count();
-                        json!({"valid":true,"errorCount":errors,"warningCount":diagnostics.len() - errors})
-                    }
-                    Err(e) => json!({"valid":false,"error":e.to_string()}),
+        let name = params.name.as_ref();
+        let response = match name {
+            "inspect" if args == json!({}) => tool_inspect(&state),
+            "validate" if args == json!({}) => tool_validate(&state),
+            "query" => match tool_query(&state, args)? {
+                QueryReply::Unbounded(value) => {
+                    return Ok(CallToolResult::structured(value).into());
                 }
-            }
-            "query" => {
-                let query: Query = serde_json::from_value(args)
-                    .map_err(|e| ErrorData::invalid_params(e.to_string(), None))?;
-                let snapshot = state.session.snapshot();
-                let catalog_query = matches!(
-                    &query,
-                    Query::Model { .. }
-                        | Query::CheckpointFields { .. }
-                        | Query::Catalog { .. }
-                        | Query::Data { .. }
-                        | Query::Identities { .. }
-                        | Query::Events { .. }
-                        | Query::Diagrams { .. }
-                );
-                let (items, offset, limit) = match query {
-                    Query::Model { document_id, offset, limit } => {
-                        let page = processcraft_core::queries::document_fields_page(&snapshot.project, document_id, offset, limit)
-                            .map_err(|e| ErrorData::invalid_params(e.to_string(), None))?
-                            .ok_or_else(|| ErrorData::invalid_params("document not found", None))?;
-                        let mut result = json!(page);
-                        result["generation"] = json!(snapshot.generation);
-                        result["contentId"] = json!(snapshot.content_id);
-                        return Ok(CallToolResult::structured(result).into());
-                    },
-                    Query::CheckpointFields { checkpoint_id, offset, limit } => {
-                        let page = processcraft_core::queries::checkpoint_fields_page(&snapshot.project, checkpoint_id, offset, limit)
-                            .map_err(|e| ErrorData::invalid_params(e.to_string(), None))?
-                            .ok_or_else(|| ErrorData::invalid_params("checkpoint not found", None))?;
-                        let mut result = json!(page);
-                        result["generation"] = json!(snapshot.generation);
-                        result["contentId"] = json!(snapshot.content_id);
-                        return Ok(CallToolResult::structured(result).into());
-                    },
-                    Query::Events { document_id, offset, limit } => (
-                        processcraft_core::queries::event_fields(&snapshot.project, document_id)
-                            .ok_or_else(|| ErrorData::invalid_params("document not found", None))?
-                            .into_iter().map(|row| json!(row)).collect(), offset, limit),
-                    Query::Diagrams { document_id, offset, limit } => (
-                        processcraft_core::queries::diagram_fields(&snapshot.project, document_id)
-                            .ok_or_else(|| ErrorData::invalid_params("document not found", None))?
-                            .into_iter().map(|row| json!(row)).collect(), offset, limit),
-                    Query::Identities { document_id, offset, limit } => (
-                        processcraft_core::queries::identified_elements(&snapshot.project, document_id)
-                            .ok_or_else(|| ErrorData::invalid_params("document not found", None))?
-                            .into_iter().map(|row| json!(row)).collect(), offset, limit),
-                    Query::Data { document_id, offset, limit } => (
-                        processcraft_core::queries::data_fields(&snapshot.project, document_id)
-                            .ok_or_else(|| ErrorData::invalid_params("document not found", None))?
-                            .into_iter().map(|row| json!(row)).collect(), offset, limit),
-                    Query::Catalog { document_id, offset, limit } => (
-                        processcraft_core::queries::supporting_catalog_fields(&snapshot.project, document_id)
-                            .ok_or_else(|| ErrorData::invalid_params("document not found", None))?
-                            .into_iter().map(|row| json!(row)).collect(), offset, limit),
-                    Query::Comments { offset, limit } => {
-                        let rows = snapshot.project.comments.iter().map(|c| {
-                            let orphan = processcraft_core::queries::comment_is_orphan(&snapshot.project, c);
-                            json!({"comment":c,"orphan":orphan})
-                        });
-                        (rows.collect(), offset, limit)
-                    }
-                    Query::Checkpoints { offset, limit } => {
-                        let rows = snapshot.project.checkpoints.iter().map(|c| {
-                            json!({
-                                "id":c.id,"name":c.name,"createdUnixMs":c.created_unix_ms,
-                                "reference":snapshot.project.reference_checkpoint == Some(c.id)
-                            })
-                        });
-                        (rows.collect(), offset, limit)
-                    }
-                    Query::CompareCheckpoint { checkpoint_id, offset, limit } => {
-                        let comparison = processcraft_core::queries::compare_checkpoint(&snapshot.project, checkpoint_id)
-                            .ok_or_else(|| ErrorData::invalid_params("checkpoint not found", None))?;
-                        (vec![json!(comparison)], offset, limit)
-                    }
-                    Query::LayoutPreview { session_id, expected_generation, document_id, diagram_id, choreography_scope_shape } => {
-                        if session_id != state.session.id() || expected_generation != snapshot.generation {
-                            return Err(ErrorData::invalid_params("session or generation mismatch", None));
-                        }
-                        let doc = snapshot.project.documents.iter().find(|d| d.id == document_id)
-                            .ok_or_else(|| ErrorData::invalid_params("document not found", None))?;
-                        let cancel = std::sync::atomic::AtomicBool::new(false);
-                        let proposal = match choreography_scope_shape {
-                            Some(shape) => processcraft_core::layout::propose_choreography_scope_layout(
-                                doc, &diagram_id, &shape, &session_id, expected_generation, &cancel,
-                            ),
-                            None => processcraft_core::layout::propose_layout(
-                                doc, &diagram_id, &session_id, expected_generation, &cancel,
-                            ),
-                        }.map_err(|e| ErrorData::invalid_params(e.to_string(), None))?;
-                        let value = json!({"proposal":proposal});
-                        let too_large = serde_json::to_vec(&value).map_or(true, |v| v.len() > 3 * 1024 * 1024);
-                        if too_large {
-                            return Err(ErrorData::invalid_params("proposal exceeds response limit", None));
-                        }
-                        return Ok(CallToolResult::structured(value).into());
-                    }
-                    Query::Library {
-                        text,
-                        offset,
-                        limit,
-                    } => (
-                        processcraft_core::queries::library_search(&snapshot.project, &text)
-                            .into_iter()
-                            .map(|v| json!(v))
-                            .collect::<Vec<_>>(),
-                        offset,
-                        limit,
-                    ),
-                    Query::Documents { offset, limit } => (
-                        processcraft_core::queries::document_overview(&snapshot.project),
-                        offset,
-                        limit,
-                    ),
-                    Query::Conventions {} => {
-                        return Ok(CallToolResult::structured(json!({"conventions":snapshot.project.conventions})).into());
-                    }
-                    Query::Diagnostics { offset, limit } => (
-                        snapshot.project.diagnostics().iter().map(|d| json!(d)).collect(),
-                        offset,
-                        limit,
-                    ),
-                    Query::Dictionary { offset, limit } => (
-                        snapshot
-                            .project
-                            .dictionary_entries
-                            .iter()
-                            .map(|e| json!({"id":e.id,"kind":e.kind,"name":e.name}))
-                            .collect(),
-                        offset,
-                        limit,
-                    ),
-                    Query::Usages {
-                        entry_id,
-                        offset,
-                        limit,
-                    } => (
-                        processcraft_core::queries::dictionary_usages(&snapshot.project, entry_id)
-                            .into_iter()
-                            .map(|v| json!(v))
-                            .collect(),
-                        offset,
-                        limit,
-                    ),
-                    Query::Table { document_id, process_id, offset, limit } => (
-                        processcraft_core::queries::activity_table(&snapshot.project, document_id, &process_id)
-                            .ok_or_else(|| ErrorData::invalid_params("process not found", None))?
-                            .into_iter().map(|row| {
-                                let outgoing = row.outgoing.into_iter()
-                                    .map(|f| json!({"id":f.id,"target":f.target,"condition":f.condition}))
-                                    .collect::<Vec<_>>();
-                                json!({
-                                    "key":row.key,"name":row.name,"lane":row.lane,"role":row.role,
-                                    "systems":row.systems,"documents":row.documents,
-                                    "attributes":row.attributes,"outgoing":outgoing
-                                })
-                            }).collect(), offset, limit),
-                    Query::Raci { document_id, process_id, offset, limit } => {
-                        let matrix = processcraft_core::queries::raci_matrix(&snapshot.project, document_id, &process_id)
-                            .ok_or_else(|| ErrorData::invalid_params("process not found", None))?;
-                        let total = matrix.rows.len();
-                        let columns = json!(matrix.columns);
-                        let reserved = serde_json::to_vec(&columns)
-                            .map_err(|e| ErrorData::internal_error(e.to_string(), None))?
-                            .len();
-                        let mut result = crate::run::bounded_page_reserved(
-                            matrix.rows.into_iter().skip(offset).map(|row| json!(row)),
-                            total,
-                            offset,
-                            limit,
-                            reserved,
-                        )
-                        .map_err(|error| ErrorData::invalid_params(error.message, None))?;
-                        result["columns"] = columns;
-                        return Ok(CallToolResult::structured(result).into());
-                    }
-                    Query::Attributes { document_id, offset, limit } => {
-                        let definitions =
-                            processcraft_core::queries::attribute_definitions(&snapshot.project);
-                        let rows = processcraft_core::queries::element_attributes(&snapshot.project, document_id)
-                            .ok_or_else(|| ErrorData::invalid_params("document not found", None))?;
-                        let total = rows.len();
-                        let definitions = json!(definitions);
-                        let reserved = serde_json::to_vec(&definitions)
-                            .map_err(|e| ErrorData::internal_error(e.to_string(), None))?
-                            .len();
-                        let mut result = crate::run::bounded_page_reserved(
-                            rows.into_iter().skip(offset).map(|row| json!(row)),
-                            total,
-                            offset,
-                            limit,
-                            reserved,
-                        )
-                        .map_err(|error| ErrorData::invalid_params(error.message, None))?;
-                        result["definitions"] = definitions;
-                        return Ok(CallToolResult::structured(result).into());
-                    }
-                    Query::ReplaceOptions { document_id, element_id, offset, limit } => (
-                        crate::run::replace_options(&snapshot.project, document_id, &element_id)
-                            .ok_or_else(|| ErrorData::invalid_params("document not found", None))?,
-                        offset, limit),
-                };
-                let total = items.len();
-                let mut result =
-                    crate::run::bounded_page(items.into_iter().skip(offset), total, offset, limit)
-                        .map_err(|error| ErrorData::invalid_params(error.message, None))?;
-                if catalog_query {
-                    result["generation"] = json!(snapshot.generation);
-                    result["contentId"] = json!(snapshot.content_id);
-                }
-                result
-            }
-            "apply" => {
-                let parsed: Apply = serde_json::from_value(args.clone())
-                    .map_err(|e| ErrorData::invalid_params(e.to_string(), None))?;
-                let bytes =
-                    serde_json::to_vec(&(params.name.as_ref(), &args)).expect("JSON serializes");
-                match admit_write(&mut state, &parsed.session_id, &parsed.request_id, &bytes) {
-                    Admission::Completed(v) => v,
-                    Admission::New => {
-                        let result = state.session.apply(
-                            Envelope {
-                                request_id: parsed.request_id.clone(),
-                                session_id: parsed.session_id,
-                                expected_generation: Some(parsed.expected_generation),
-                            },
-                            parsed.request,
-                        );
-                        let value = match result {
-                            Ok(r) => {
-                                let mut value =
-                                    serde_json::to_value(r).expect("core change set serializes");
-                                value["ok"] = json!(true);
-                                value
-                            }
-                            Err(e) => json!({"ok":false,"error":format!("{e:?}")}),
-                        };
-                        state.ledger.complete(&parsed.request_id, value.clone());
-                        value
-                    }
-                    other => {
-                        json!({"ok":false,"status":format!("{other:?}"),"reconciliationRequired":true})
-                    }
-                }
-            }
-            "save" => {
-                let parsed: Save = serde_json::from_value(args.clone())
-                    .map_err(|e| ErrorData::invalid_params(e.to_string(), None))?;
-                let bytes =
-                    serde_json::to_vec(&(params.name.as_ref(), &args)).expect("JSON serializes");
-                match admit_write(&mut state, &parsed.session_id, &parsed.request_id, &bytes) {
-                    Admission::Completed(v) => v,
-                    Admission::New => {
-                        let value = if !state.reconcile_ledger.has_capacity() {
-                            json!({"ok":false,"status":"manualInvestigationRequired","manualInvestigationRequired":true})
-                        } else if parsed.expected_generation != state.session.snapshot().generation
-                        {
-                            json!({"ok":false,"status":"generationConflict"})
-                        } else if let Some(pending) = &state.pending {
-                            pending.blocked()
-                        } else {
-                            let same = state
-                                .file
-                                .as_ref()
-                                .is_some_and(|f| f.target() == parsed.path);
-                            // Authorize before touching the path, so existence never leaks
-                            // outside the write roots.
-                            let grant = state
-                                .write
-                                .iter()
-                                .find_map(|root| root.grant(&parsed.path, Access::Write).ok());
-                            if grant.is_some() && !same && parsed.path.exists() && !parsed.overwrite
-                            {
-                                json!({"ok":false,"status":"overwriteRequiresAuthorization"})
-                            } else if let Some(grant) = grant {
-                                let project = state.session.snapshot().project;
-                                let outcome = if let Some(file) = state.file.as_mut() {
-                                    if same {
-                                        file.save(&project)
-                                    } else {
-                                        file.save_as(grant, &project)
-                                    }
-                                } else {
-                                    match FileSession::create(parsed.session_id.clone(), grant) {
-                                        Ok(mut file) => {
-                                            let outcome = file.save(&project);
-                                            state.file = Some(file);
-                                            outcome
-                                        }
-                                        Err(e) => ProjectSaveOutcome::NotCommitted { error: e },
-                                    }
-                                };
-                                if let ProjectSaveOutcome::Indeterminate {
-                                    attempted,
-                                    stage,
-                                    backup,
-                                    ..
-                                } = &outcome
-                                {
-                                    state.pending = Some(PendingEffect::Native {
-                                        receipt: attempted.clone(),
-                                        stage: stage.clone(),
-                                        backup: backup.clone(),
-                                    });
-                                }
-                                if let ProjectSaveOutcome::Committed { receipt, .. } = &outcome {
-                                    state.session.mark_saved(receipt.saved_content_id);
-                                }
-                                save_outcome(outcome)
-                            } else {
-                                json!({"ok":false,"status":"pathNotAuthorized"})
-                            }
-                        };
-                        state.ledger.complete(&parsed.request_id, value.clone());
-                        value
-                    }
-                    other => {
-                        json!({"ok":false,"status":format!("{other:?}"),"reconciliationRequired":true})
-                    }
-                }
-            }
-            "export" => {
-                let parsed: Export = serde_json::from_value(args.clone())
-                    .map_err(|e| ErrorData::invalid_params(e.to_string(), None))?;
-                let bytes =
-                    serde_json::to_vec(&(params.name.as_ref(), &args)).expect("JSON serializes");
-                match admit_write(&mut state, &parsed.session_id, &parsed.request_id, &bytes) {
-                    Admission::Completed(v) => v,
-                    Admission::New => {
-                        let value = if !state.reconcile_ledger.has_capacity() {
-                            json!({"ok":false,"status":"manualInvestigationRequired","manualInvestigationRequired":true})
-                        } else {
-                            let snapshot = state.session.snapshot();
-                            let grant = state
-                                .write
-                                .iter()
-                                .find_map(|root| root.grant(&parsed.path, Access::Write).ok());
-                            if parsed.expected_generation != snapshot.generation {
-                                json!({"ok":false,"status":"generationConflict"})
-                            } else if let Some(pending) = &state.pending {
-                                pending.blocked()
-                            } else if grant.is_some() && parsed.path.exists() && !parsed.overwrite {
-                                json!({"ok":false,"status":"overwriteRequiresAuthorization"})
-                            } else if let Some(grant) = grant {
-                                if state
-                                    .file
-                                    .as_ref()
-                                    .is_some_and(|file| file.same_target(&grant).unwrap_or(true))
-                                {
-                                    json!({"ok":false,"status":"exportTargetsActiveNativeFile"})
-                                } else {
-                                    match prepare_export(&snapshot.project, &parsed) {
-                                        Err(e) => e,
-                                        Ok(export) => {
-                                            let operation = uuid::Uuid::new_v4();
-                                            let disk_digest: [u8; 32] =
-                                                Sha256::digest(&export.0).into();
-                                            match WriterSession::open(&grant) {
-                                                Ok(OpenSession::Writable(mut writer)) => {
-                                                    match writer.save(&export.0) {
-                                                        SaveOutcome::Committed { warning } => {
-                                                            json!({
-                                                                "ok":true,"status":"committed",
-                                                                "operationId":operation,"contentId":snapshot.content_id,
-                                                                "diskDigest":disk_digest,
-                                                                "warning":warning.map(|e|e.to_string()),
-                                                                "report":export.1
-                                                            })
-                                                        }
-                                                        SaveOutcome::NotCommitted { error } => {
-                                                            json!({
-                                                                "ok":false,"status":"notCommitted",
-                                                                "operationId":operation,"error":error.to_string()
-                                                            })
-                                                        }
-                                                        SaveOutcome::Indeterminate {
-                                                            error,
-                                                            stage,
-                                                            backup,
-                                                        } => {
-                                                            let result = json!({
-                                                                "ok":false,"status":"indeterminate",
-                                                                "operationId":operation,"sessionId":parsed.session_id,
-                                                                "target":parsed.path,"contentId":snapshot.content_id,
-                                                                "diskDigest":disk_digest,"error":error.to_string(),
-                                                                "stage":stage,"backup":backup,
-                                                                "reconciliationRequired":true
-                                                            });
-                                                            state.pending =
-                                                                Some(PendingEffect::Export {
-                                                                    operation_id: operation,
-                                                                    session_id: parsed
-                                                                        .session_id
-                                                                        .clone(),
-                                                                    target: parsed.path.clone(),
-                                                                    disk_digest,
-                                                                    content_id: snapshot.content_id,
-                                                                    stage,
-                                                                    backup,
-                                                                    writer,
-                                                                    bytes: export.0,
-                                                                });
-                                                            result
-                                                        }
-                                                    }
-                                                }
-                                                Ok(OpenSession::ReadOnly) => {
-                                                    json!({"ok":false,"status":"notCommitted","error":"writer unavailable"})
-                                                }
-                                                Err(e) => {
-                                                    json!({"ok":false,"status":"notCommitted","error":e.to_string()})
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            } else {
-                                json!({"ok":false,"status":"pathNotAuthorized"})
-                            }
-                        };
-                        state.ledger.complete(&parsed.request_id, value.clone());
-                        value
-                    }
-                    other => {
-                        json!({"ok":false,"status":format!("{other:?}"),"reconciliationRequired":true})
-                    }
-                }
-            }
+                QueryReply::Bounded(value) => value,
+            },
+            "apply" => tool_apply(&mut state, name, &args)?,
+            "save" => tool_save(&mut state, name, &args)?,
+            "export" => tool_export(&mut state, name, &args)?,
             "reconcile" => {
                 let parsed: Reconcile = serde_json::from_value(args.clone())
                     .map_err(|e| ErrorData::invalid_params(e.to_string(), None))?;
@@ -850,8 +413,582 @@ impl ServerHandler for Server {
     }
 }
 
+/// `Unbounded` replies skip the generic response-size check (they enforce their own limits).
+enum QueryReply {
+    Bounded(Value),
+    Unbounded(Value),
+}
+
+fn tool_inspect(state: &State) -> Value {
+    let s = state.session.snapshot();
+    json!({
+        "sessionId":state.session.id(),"generation":s.generation,
+        "contentId":s.content_id,"projectId":s.project.id,
+        "name":s.project.name,"documents":s.project.documents.len()
+    })
+}
+
+fn tool_validate(state: &State) -> Value {
+    let s = state.session.snapshot();
+    match s.project.validate() {
+        Ok(()) => {
+            let diagnostics = s.project.diagnostics();
+            let errors = diagnostics
+                .iter()
+                .filter(|d| d.severity == processcraft_core::DiagnosticSeverity::Error)
+                .count();
+            json!({"valid":true,"errorCount":errors,"warningCount":diagnostics.len() - errors})
+        }
+        Err(e) => json!({"valid":false,"error":e.to_string()}),
+    }
+}
+
+fn tool_query(state: &State, args: Value) -> Result<QueryReply, ErrorData> {
+    let query: Query =
+        serde_json::from_value(args).map_err(|e| ErrorData::invalid_params(e.to_string(), None))?;
+    let snapshot = state.session.snapshot();
+    let catalog_query = matches!(
+        &query,
+        Query::Model { .. }
+            | Query::CheckpointFields { .. }
+            | Query::Catalog { .. }
+            | Query::Data { .. }
+            | Query::Identities { .. }
+            | Query::Events { .. }
+            | Query::Diagrams { .. }
+    );
+    let (items, offset, limit) = match query {
+        Query::Model {
+            document_id,
+            offset,
+            limit,
+        } => {
+            let page = processcraft_core::queries::document_fields_page(
+                &snapshot.project,
+                document_id,
+                offset,
+                limit,
+            )
+            .map_err(|e| ErrorData::invalid_params(e.to_string(), None))?
+            .ok_or_else(|| ErrorData::invalid_params("document not found", None))?;
+            let mut result = json!(page);
+            result["generation"] = json!(snapshot.generation);
+            result["contentId"] = json!(snapshot.content_id);
+            return Ok(QueryReply::Unbounded(result));
+        }
+        Query::CheckpointFields {
+            checkpoint_id,
+            offset,
+            limit,
+        } => {
+            let page = processcraft_core::queries::checkpoint_fields_page(
+                &snapshot.project,
+                checkpoint_id,
+                offset,
+                limit,
+            )
+            .map_err(|e| ErrorData::invalid_params(e.to_string(), None))?
+            .ok_or_else(|| ErrorData::invalid_params("checkpoint not found", None))?;
+            let mut result = json!(page);
+            result["generation"] = json!(snapshot.generation);
+            result["contentId"] = json!(snapshot.content_id);
+            return Ok(QueryReply::Unbounded(result));
+        }
+        Query::Events {
+            document_id,
+            offset,
+            limit,
+        } => (
+            processcraft_core::queries::event_fields(&snapshot.project, document_id)
+                .ok_or_else(|| ErrorData::invalid_params("document not found", None))?
+                .into_iter()
+                .map(|row| json!(row))
+                .collect(),
+            offset,
+            limit,
+        ),
+        Query::Diagrams {
+            document_id,
+            offset,
+            limit,
+        } => (
+            processcraft_core::queries::diagram_fields(&snapshot.project, document_id)
+                .ok_or_else(|| ErrorData::invalid_params("document not found", None))?
+                .into_iter()
+                .map(|row| json!(row))
+                .collect(),
+            offset,
+            limit,
+        ),
+        Query::Identities {
+            document_id,
+            offset,
+            limit,
+        } => (
+            processcraft_core::queries::identified_elements(&snapshot.project, document_id)
+                .ok_or_else(|| ErrorData::invalid_params("document not found", None))?
+                .into_iter()
+                .map(|row| json!(row))
+                .collect(),
+            offset,
+            limit,
+        ),
+        Query::Data {
+            document_id,
+            offset,
+            limit,
+        } => (
+            processcraft_core::queries::data_fields(&snapshot.project, document_id)
+                .ok_or_else(|| ErrorData::invalid_params("document not found", None))?
+                .into_iter()
+                .map(|row| json!(row))
+                .collect(),
+            offset,
+            limit,
+        ),
+        Query::Catalog {
+            document_id,
+            offset,
+            limit,
+        } => (
+            processcraft_core::queries::supporting_catalog_fields(&snapshot.project, document_id)
+                .ok_or_else(|| ErrorData::invalid_params("document not found", None))?
+                .into_iter()
+                .map(|row| json!(row))
+                .collect(),
+            offset,
+            limit,
+        ),
+        Query::Comments { offset, limit } => {
+            let rows = snapshot
+                .project
+                .comments
+                .iter()
+                .map(|c| processcraft_core::queries::comment_row(&snapshot.project, c));
+            (rows.collect(), offset, limit)
+        }
+        Query::Checkpoints { offset, limit } => {
+            let rows = snapshot
+                .project
+                .checkpoints
+                .iter()
+                .map(|c| processcraft_core::queries::checkpoint_row(&snapshot.project, c));
+            (rows.collect(), offset, limit)
+        }
+        Query::CompareCheckpoint {
+            checkpoint_id,
+            offset,
+            limit,
+        } => {
+            let comparison =
+                processcraft_core::queries::compare_checkpoint(&snapshot.project, checkpoint_id)
+                    .ok_or_else(|| ErrorData::invalid_params("checkpoint not found", None))?;
+            (vec![json!(comparison)], offset, limit)
+        }
+        Query::LayoutPreview {
+            session_id,
+            expected_generation,
+            document_id,
+            diagram_id,
+            choreography_scope_shape,
+        } => {
+            if session_id != state.session.id() || expected_generation != snapshot.generation {
+                return Err(ErrorData::invalid_params(
+                    "session or generation mismatch",
+                    None,
+                ));
+            }
+            let doc = snapshot
+                .project
+                .documents
+                .iter()
+                .find(|d| d.id == document_id)
+                .ok_or_else(|| ErrorData::invalid_params("document not found", None))?;
+            let cancel = std::sync::atomic::AtomicBool::new(false);
+            let proposal = match choreography_scope_shape {
+                Some(shape) => processcraft_core::layout::propose_choreography_scope_layout(
+                    doc,
+                    &diagram_id,
+                    &shape,
+                    &session_id,
+                    expected_generation,
+                    &cancel,
+                ),
+                None => processcraft_core::layout::propose_layout(
+                    doc,
+                    &diagram_id,
+                    &session_id,
+                    expected_generation,
+                    &cancel,
+                ),
+            }
+            .map_err(|e| ErrorData::invalid_params(e.to_string(), None))?;
+            let value = json!({"proposal":proposal});
+            let too_large = serde_json::to_vec(&value).map_or(true, |v| v.len() > 3 * 1024 * 1024);
+            if too_large {
+                return Err(ErrorData::invalid_params(
+                    "proposal exceeds response limit",
+                    None,
+                ));
+            }
+            return Ok(QueryReply::Unbounded(value));
+        }
+        Query::Library {
+            text,
+            offset,
+            limit,
+        } => (
+            processcraft_core::queries::library_search(&snapshot.project, &text)
+                .into_iter()
+                .map(|v| json!(v))
+                .collect::<Vec<_>>(),
+            offset,
+            limit,
+        ),
+        Query::Documents { offset, limit } => (
+            processcraft_core::queries::document_overview(&snapshot.project),
+            offset,
+            limit,
+        ),
+        Query::Conventions {} => {
+            return Ok(QueryReply::Unbounded(
+                json!({"conventions":snapshot.project.conventions}),
+            ));
+        }
+        Query::Diagnostics { offset, limit } => (
+            snapshot
+                .project
+                .diagnostics()
+                .iter()
+                .map(|d| json!(d))
+                .collect(),
+            offset,
+            limit,
+        ),
+        Query::Dictionary { offset, limit } => (
+            snapshot
+                .project
+                .dictionary_entries
+                .iter()
+                .map(|e| json!({"id":e.id,"kind":e.kind,"name":e.name}))
+                .collect(),
+            offset,
+            limit,
+        ),
+        Query::Usages {
+            entry_id,
+            offset,
+            limit,
+        } => (
+            processcraft_core::queries::dictionary_usages(&snapshot.project, entry_id)
+                .into_iter()
+                .map(|v| json!(v))
+                .collect(),
+            offset,
+            limit,
+        ),
+        Query::Table {
+            document_id,
+            process_id,
+            offset,
+            limit,
+        } => (
+            processcraft_core::queries::activity_table(&snapshot.project, document_id, &process_id)
+                .ok_or_else(|| ErrorData::invalid_params("process not found", None))?
+                .into_iter()
+                .map(processcraft_core::queries::activity_row)
+                .collect(),
+            offset,
+            limit,
+        ),
+        Query::Raci {
+            document_id,
+            process_id,
+            offset,
+            limit,
+        } => {
+            let matrix = processcraft_core::queries::raci_matrix(
+                &snapshot.project,
+                document_id,
+                &process_id,
+            )
+            .ok_or_else(|| ErrorData::invalid_params("process not found", None))?;
+            let total = matrix.rows.len();
+            let columns = json!(matrix.columns);
+            let reserved = serde_json::to_vec(&columns)
+                .map_err(|e| ErrorData::internal_error(e.to_string(), None))?
+                .len();
+            let mut result = crate::run::bounded_page_reserved(
+                matrix.rows.into_iter().skip(offset).map(|row| json!(row)),
+                total,
+                offset,
+                limit,
+                reserved,
+            )
+            .map_err(|error| ErrorData::invalid_params(error.message, None))?;
+            result["columns"] = columns;
+            return Ok(QueryReply::Unbounded(result));
+        }
+        Query::Attributes {
+            document_id,
+            offset,
+            limit,
+        } => {
+            let definitions = processcraft_core::queries::attribute_definitions(&snapshot.project);
+            let rows =
+                processcraft_core::queries::element_attributes(&snapshot.project, document_id)
+                    .ok_or_else(|| ErrorData::invalid_params("document not found", None))?;
+            let total = rows.len();
+            let definitions = json!(definitions);
+            let reserved = serde_json::to_vec(&definitions)
+                .map_err(|e| ErrorData::internal_error(e.to_string(), None))?
+                .len();
+            let mut result = crate::run::bounded_page_reserved(
+                rows.into_iter().skip(offset).map(|row| json!(row)),
+                total,
+                offset,
+                limit,
+                reserved,
+            )
+            .map_err(|error| ErrorData::invalid_params(error.message, None))?;
+            result["definitions"] = definitions;
+            return Ok(QueryReply::Unbounded(result));
+        }
+        Query::ReplaceOptions {
+            document_id,
+            element_id,
+            offset,
+            limit,
+        } => (
+            crate::run::replace_options(&snapshot.project, document_id, &element_id)
+                .ok_or_else(|| ErrorData::invalid_params("document not found", None))?,
+            offset,
+            limit,
+        ),
+    };
+    let total = items.len();
+    let mut result = crate::run::bounded_page(items.into_iter().skip(offset), total, offset, limit)
+        .map_err(|error| ErrorData::invalid_params(error.message, None))?;
+    if catalog_query {
+        result["generation"] = json!(snapshot.generation);
+        result["contentId"] = json!(snapshot.content_id);
+    }
+    Ok(QueryReply::Bounded(result))
+}
+
+fn tool_apply(state: &mut State, name: &str, args: &Value) -> Result<Value, ErrorData> {
+    let parsed: Apply = serde_json::from_value(args.clone())
+        .map_err(|e| ErrorData::invalid_params(e.to_string(), None))?;
+    let bytes = serde_json::to_vec(&(name, &args)).expect("JSON serializes");
+    let value = match admit_write(state, &parsed.session_id, &parsed.request_id, &bytes) {
+        Admission::Completed(v) => v,
+        Admission::New => {
+            let result = state.session.apply(
+                Envelope {
+                    request_id: parsed.request_id.clone(),
+                    session_id: parsed.session_id,
+                    expected_generation: Some(parsed.expected_generation),
+                },
+                parsed.request,
+            );
+            let value = match result {
+                Ok(r) => {
+                    let mut value = serde_json::to_value(r).expect("core change set serializes");
+                    value["ok"] = json!(true);
+                    value
+                }
+                Err(e) => json!({"ok":false,"error":format!("{e:?}")}),
+            };
+            state.ledger.complete(&parsed.request_id, value.clone());
+            value
+        }
+        other => {
+            json!({"ok":false,"status":format!("{other:?}"),"reconciliationRequired":true})
+        }
+    };
+    Ok(value)
+}
+
+fn tool_save(state: &mut State, name: &str, args: &Value) -> Result<Value, ErrorData> {
+    let parsed: Save = serde_json::from_value(args.clone())
+        .map_err(|e| ErrorData::invalid_params(e.to_string(), None))?;
+    let bytes = serde_json::to_vec(&(name, &args)).expect("JSON serializes");
+    let value = match admit_write(state, &parsed.session_id, &parsed.request_id, &bytes) {
+        Admission::Completed(v) => v,
+        Admission::New => {
+            let value = if !state.reconcile_ledger.has_capacity() {
+                json!({"ok":false,"status":"manualInvestigationRequired","manualInvestigationRequired":true})
+            } else if parsed.expected_generation != state.session.snapshot().generation {
+                json!({"ok":false,"status":"generationConflict"})
+            } else if let Some(pending) = &state.pending {
+                pending.blocked()
+            } else {
+                let same = state
+                    .file
+                    .as_ref()
+                    .is_some_and(|f| f.target() == parsed.path);
+                // Authorize before touching the path, so existence never leaks
+                // outside the write roots.
+                let grant = state
+                    .write
+                    .iter()
+                    .find_map(|root| root.grant(&parsed.path, Access::Write).ok());
+                if grant.is_some() && !same && parsed.path.exists() && !parsed.overwrite {
+                    json!({"ok":false,"status":"overwriteRequiresAuthorization"})
+                } else if let Some(grant) = grant {
+                    let project = state.session.snapshot().project;
+                    let outcome = if let Some(file) = state.file.as_mut() {
+                        if same {
+                            file.save(&project)
+                        } else {
+                            file.save_as(grant, &project)
+                        }
+                    } else {
+                        match FileSession::create(parsed.session_id.clone(), grant) {
+                            Ok(mut file) => {
+                                let outcome = file.save(&project);
+                                state.file = Some(file);
+                                outcome
+                            }
+                            Err(e) => ProjectSaveOutcome::NotCommitted { error: e },
+                        }
+                    };
+                    if let ProjectSaveOutcome::Indeterminate {
+                        attempted,
+                        stage,
+                        backup,
+                        ..
+                    } = &outcome
+                    {
+                        state.pending = Some(PendingEffect::Native {
+                            receipt: attempted.clone(),
+                            stage: stage.clone(),
+                            backup: backup.clone(),
+                        });
+                    }
+                    if let ProjectSaveOutcome::Committed { receipt, .. } = &outcome {
+                        state.session.mark_saved(receipt.saved_content_id);
+                    }
+                    save_outcome(outcome)
+                } else {
+                    json!({"ok":false,"status":"pathNotAuthorized"})
+                }
+            };
+            state.ledger.complete(&parsed.request_id, value.clone());
+            value
+        }
+        other => {
+            json!({"ok":false,"status":format!("{other:?}"),"reconciliationRequired":true})
+        }
+    };
+    Ok(value)
+}
+
+fn tool_export(state: &mut State, name: &str, args: &Value) -> Result<Value, ErrorData> {
+    let parsed: Export = serde_json::from_value(args.clone())
+        .map_err(|e| ErrorData::invalid_params(e.to_string(), None))?;
+    let bytes = serde_json::to_vec(&(name, &args)).expect("JSON serializes");
+    let value = match admit_write(state, &parsed.session_id, &parsed.request_id, &bytes) {
+        Admission::Completed(v) => v,
+        Admission::New => {
+            let value = if !state.reconcile_ledger.has_capacity() {
+                json!({"ok":false,"status":"manualInvestigationRequired","manualInvestigationRequired":true})
+            } else {
+                let snapshot = state.session.snapshot();
+                let grant = state
+                    .write
+                    .iter()
+                    .find_map(|root| root.grant(&parsed.path, Access::Write).ok());
+                if parsed.expected_generation != snapshot.generation {
+                    json!({"ok":false,"status":"generationConflict"})
+                } else if let Some(pending) = &state.pending {
+                    pending.blocked()
+                } else if grant.is_some() && parsed.path.exists() && !parsed.overwrite {
+                    json!({"ok":false,"status":"overwriteRequiresAuthorization"})
+                } else if let Some(grant) = grant {
+                    if state
+                        .file
+                        .as_ref()
+                        .is_some_and(|file| file.same_target(&grant).unwrap_or(true))
+                    {
+                        json!({"ok":false,"status":"exportTargetsActiveNativeFile"})
+                    } else {
+                        match prepare_export(&snapshot.project, &parsed) {
+                            Err(e) => e,
+                            Ok(export) => {
+                                let operation = uuid::Uuid::new_v4();
+                                let disk_digest: [u8; 32] = Sha256::digest(&export.0).into();
+                                match WriterSession::open(&grant) {
+                                    Ok(OpenSession::Writable(mut writer)) => {
+                                        match writer.save(&export.0) {
+                                            SaveOutcome::Committed { warning } => {
+                                                json!({
+                                                    "ok":true,"status":"committed",
+                                                    "operationId":operation,"contentId":snapshot.content_id,
+                                                    "diskDigest":disk_digest,
+                                                    "warning":warning.map(|e|e.to_string()),
+                                                    "report":export.1
+                                                })
+                                            }
+                                            SaveOutcome::NotCommitted { error } => {
+                                                json!({
+                                                    "ok":false,"status":"notCommitted",
+                                                    "operationId":operation,"error":error.to_string()
+                                                })
+                                            }
+                                            SaveOutcome::Indeterminate {
+                                                error,
+                                                stage,
+                                                backup,
+                                            } => {
+                                                let result = json!({
+                                                    "ok":false,"status":"indeterminate",
+                                                    "operationId":operation,"sessionId":parsed.session_id,
+                                                    "target":parsed.path,"contentId":snapshot.content_id,
+                                                    "diskDigest":disk_digest,"error":error.to_string(),
+                                                    "stage":stage,"backup":backup,
+                                                    "reconciliationRequired":true
+                                                });
+                                                state.pending = Some(PendingEffect::Export {
+                                                    operation_id: operation,
+                                                    session_id: parsed.session_id.clone(),
+                                                    target: parsed.path.clone(),
+                                                    disk_digest,
+                                                    content_id: snapshot.content_id,
+                                                    stage,
+                                                    backup,
+                                                    writer,
+                                                    bytes: export.0,
+                                                });
+                                                result
+                                            }
+                                        }
+                                    }
+                                    Ok(OpenSession::ReadOnly) => {
+                                        json!({"ok":false,"status":"notCommitted","error":"writer unavailable"})
+                                    }
+                                    Err(e) => {
+                                        json!({"ok":false,"status":"notCommitted","error":e.to_string()})
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    json!({"ok":false,"status":"pathNotAuthorized"})
+                }
+            };
+            state.ledger.complete(&parsed.request_id, value.clone());
+            value
+        }
+        other => {
+            json!({"ok":false,"status":format!("{other:?}"),"reconciliationRequired":true})
+        }
+    };
+    Ok(value)
+}
+
 fn prepare_export(project: &ProjectData, args: &Export) -> Result<(Vec<u8>, Value), Value> {
-    use processcraft_render::{Appearance, ExportFormat, ExportOptions, TextEngine};
     if matches!(args.format, ExportKind::Bpmn) {
         let result = processcraft_io::interchange::export_bpmn(project, args.document_id, args.acknowledge_native_fields)
             .map_err(|e| json!({"ok":false,"status":"exportBlocked","blocked":e.report.blocked,"omitted":e.report.omitted}))?;
@@ -860,70 +997,32 @@ fn prepare_export(project: &ProjectData, args: &Export) -> Result<(Vec<u8>, Valu
             json!({"retained":result.report.retained,"transformed":result.report.transformed,"omitted":result.report.omitted}),
         ));
     }
-    let document = project
-        .documents
-        .iter()
-        .find(|d| d.id == args.document_id)
-        .ok_or_else(|| json!({"ok":false,"status":"documentNotFound"}))?;
-    let diagram = args
-        .diagram_id
-        .as_ref()
-        .ok_or_else(|| json!({"ok":false,"status":"diagramRequired"}))?;
-    let appearance = if args.dark {
-        Appearance::Dark
-    } else {
-        Appearance::Light
-    };
-    let overlay = args
-        .overlay_attribute
-        .map(|definition| {
-            processcraft_core::overlay::export_overlay(
-                project,
-                args.document_id,
-                definition,
-                args.overlay_mode,
-            )
-        })
-        .transpose()
-        .map_err(|e| json!({"ok":false,"status":"overlayBlocked","error":e}))?;
-    let mut fonts = TextEngine::new();
-    let diagnostics = processcraft_render::preflight_diagram(
-        document,
-        diagram,
-        appearance,
-        &mut fonts,
-        crate::run::FONT_FAMILY,
-    )
-    .map_err(|e| json!({"ok":false,"status":"exportBlocked","error":e.to_string()}))?;
-    if !args.acknowledge_diagnostics && !diagnostics.is_empty() {
-        return Err(
-            json!({"ok":false,"status":"acknowledgementRequired","diagnostics":diagnostics}),
-        );
-    }
-    let output = processcraft_render::export_diagram_with_overlay(
-        document,
-        diagram,
-        ExportOptions {
-            format: if matches!(args.format, ExportKind::Svg) {
-                ExportFormat::Svg
-            } else if matches!(args.format, ExportKind::Pdf) {
-                ExportFormat::Pdf
-            } else {
-                ExportFormat::Png
-            },
-            appearance,
-            scale: args.scale.unwrap_or(1.0),
-            acknowledge_diagnostics: args.acknowledge_diagnostics,
+    use crate::export::{ExportFailure, ImageExport, render_export};
+    use processcraft_render::ExportFormat;
+    let options = ImageExport {
+        document_id: args.document_id,
+        diagram_id: args.diagram_id.as_ref(),
+        format: match args.format {
+            ExportKind::Svg => ExportFormat::Svg,
+            ExportKind::Pdf => ExportFormat::Pdf,
+            _ => ExportFormat::Png,
         },
-        &mut fonts,
-        crate::run::FONT_FAMILY,
-        overlay.as_ref(),
-    )
-    .map_err(|e| json!({"ok":false,"status":"exportBlocked","error":e.to_string()}))?;
-    Ok((
-        output.bytes,
-        json!({"origin":output.origin,"logicalSize":output.logical_size,"pixelSize":output.pixel_size,"diagnostics":output.diagnostics}),
-    ))
+        dark: args.dark,
+        scale: args.scale.unwrap_or(1.0),
+        acknowledge_diagnostics: args.acknowledge_diagnostics,
+        overlay: args
+            .overlay_attribute
+            .map(|definition| Ok((definition, args.overlay_mode))),
+    };
+    render_export(project, options).map_err(|failure| match failure {
+        ExportFailure::DocumentNotFound => json!({"ok":false,"status":"documentNotFound"}),
+        ExportFailure::DiagramRequired => json!({"ok":false,"status":"diagramRequired"}),
+        ExportFailure::Overlay(e) => json!({"ok":false,"status":"overlayBlocked","error":e}),
+        ExportFailure::Render(e) => json!({"ok":false,"status":"exportBlocked","error":e}),
+        ExportFailure::AcknowledgementRequired(diagnostics) => {
+            json!({"ok":false,"status":"acknowledgementRequired","diagnostics":diagnostics})
+        }
+    })
 }
 
 fn admit_write(state: &mut State, session: &str, request_id: &str, payload: &[u8]) -> Admission {
