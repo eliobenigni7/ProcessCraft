@@ -12,13 +12,13 @@ use crate::interchange::import::tree::{
     Elem, attrs, documentation, element_identity, mixed_body, optional_bool, optional_id, selector,
     structured_documentation,
 };
-use crate::interchange::refusal::at;
+use crate::interchange::refusal::{at, refused};
 use crate::ns::BPMN;
 use processcraft_core::bpmn_model::{EventReference, NodeDetails};
 use processcraft_core::model::*;
 pub(super) fn parse_container(e: &Elem, depth: usize, target_namespace: &str) -> Option<Process> {
     if depth > 32 {
-        return None;
+        return refused(|| "process or sub-process nesting deeper than 32 levels".into());
     }
     let mut p = Process {
         activity_metadata: None,
@@ -47,7 +47,7 @@ pub(super) fn parse_container(e: &Elem, depth: usize, target_namespace: &str) ->
             Some("None") => Some(processcraft_core::bpmn_activity::ProcessType::None),
             Some("Public") => Some(processcraft_core::bpmn_activity::ProcessType::Public),
             Some("Private") => Some(processcraft_core::bpmn_activity::ProcessType::Private),
-            _ => return None,
+            _ => return refused(|| "unsupported processType value".into()),
         };
         process_metadata.is_closed = optional_bool(e.attrs.get("isClosed"))?;
         process_metadata.definitional_collaboration_ref = e
@@ -129,12 +129,12 @@ pub(super) fn parse_container(e: &Elem, depth: usize, target_namespace: &str) ->
             continue;
         }
         if n.ns != BPMN {
-            return None;
+            return refused(|| "child element outside the BPMN namespace".into());
         }
         if n.name == "ioSpecification" {
             if e.name == "process" {
                 if p.io_specification.is_some() {
-                    return None;
+                    return refused(|| "more than one <ioSpecification> in a <process>".into());
                 }
                 p.io_specification = Some(parse_io_specification(n)?);
             }
@@ -157,7 +157,7 @@ pub(super) fn parse_container(e: &Elem, depth: usize, target_namespace: &str) ->
         }
         if n.name == "laneSet" {
             if seen_lane_set {
-                return None;
+                return refused(|| "more than one <laneSet>".into());
             }
             seen_lane_set = true;
             p.lane_set_id = optional_id(n)?;
@@ -175,7 +175,7 @@ pub(super) fn parse_container(e: &Elem, depth: usize, target_namespace: &str) ->
         }
         if n.name == "group" {
             if !attrs(n, &["id", "categoryValueRef"]) || !n.children.is_empty() {
-                return None;
+                return refused(|| "<group> with unsupported attributes or children".into());
             }
             p.groups.push(processcraft_core::bpmn_model::Group {
                 base: take_anonymous_base(n),
@@ -189,7 +189,7 @@ pub(super) fn parse_container(e: &Elem, depth: usize, target_namespace: &str) ->
         }
         if n.name == "textAnnotation" {
             if !attrs(n, &["id", "textFormat"]) {
-                return None;
+                return refused(|| "<textAnnotation> with unsupported attributes".into());
             }
             let mut text = None;
             let mut doc = String::new();
@@ -197,7 +197,7 @@ pub(super) fn parse_container(e: &Elem, depth: usize, target_namespace: &str) ->
             let mut seen_doc = false;
             for c in &n.children {
                 if c.ns != BPMN {
-                    return None;
+                    return refused(|| "<textAnnotation> child outside the BPMN namespace".into());
                 }
                 match c.name.as_str() {
                     "text" if !seen_text => {
@@ -211,12 +211,20 @@ pub(super) fn parse_container(e: &Elem, depth: usize, target_namespace: &str) ->
                     }
                     "documentation" if !seen_doc => {
                         if !c.attrs.is_empty() || !c.children.is_empty() {
-                            return None;
+                            return refused(|| {
+                                "<textAnnotation> <documentation> with attributes or children"
+                                    .into()
+                            });
                         }
                         doc = c.text.clone();
                         seen_doc = true;
                     }
-                    _ => return None,
+                    _ => {
+                        return refused(|| {
+                            "<textAnnotation> child other than one <text> and one <documentation>"
+                                .into()
+                        });
+                    }
                 }
             }
             p.nodes.push(Node {
@@ -241,14 +249,14 @@ pub(super) fn parse_container(e: &Elem, depth: usize, target_namespace: &str) ->
         }
         if n.name == "association" {
             if !attrs(n, &["id", "sourceRef", "targetRef", "associationDirection"]) {
-                return None;
+                return refused(|| "<association> with unsupported attributes".into());
             }
             let direction = match n.attrs.get("associationDirection").map(String::as_str) {
                 None => None,
                 Some("None") => Some(processcraft_core::bpmn_model::AssociationDirection::None),
                 Some("One") => Some(processcraft_core::bpmn_model::AssociationDirection::One),
                 Some("Both") => Some(processcraft_core::bpmn_model::AssociationDirection::Both),
-                _ => return None,
+                _ => return refused(|| "unsupported associationDirection value".into()),
             };
             p.flows.push(Flow {
                 message_ref: None,
@@ -275,7 +283,7 @@ pub(super) fn parse_container(e: &Elem, depth: usize, target_namespace: &str) ->
             if !attrs(n, &["id", "name", "isCollection", "itemSubjectRef"])
                 || n.children.iter().any(|c| c.name != "dataState")
             {
-                return None;
+                return refused(|| "<dataObject> with unsupported attributes or children".into());
             }
             p.data_objects
                 .push(processcraft_core::bpmn_data::DataObject {
@@ -301,7 +309,9 @@ pub(super) fn parse_container(e: &Elem, depth: usize, target_namespace: &str) ->
                     &["id", "name", "dataStoreRef", "itemSubjectRef"]
                 },
             ) {
-                return None;
+                return refused(|| {
+                    "<dataObjectReference>/<dataStoreReference> with unsupported attributes".into()
+                });
             }
             let object_reference = if object {
                 n.attrs

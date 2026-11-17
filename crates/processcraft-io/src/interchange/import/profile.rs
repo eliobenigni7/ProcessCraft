@@ -199,7 +199,9 @@ pub(in crate::interchange) fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument
             _ => 2,
         };
         if phase < root_phase {
-            return None;
+            return refused(|| {
+                "root elements out of order: expected <import>, <extension>, other root elements, <BPMNDiagram>, <relationship>".into()
+            });
         }
         root_phase = phase;
         if e.ns == BPMN && e.name == "import" {
@@ -208,11 +210,14 @@ pub(in crate::interchange) fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument
                 || !e.children.is_empty()
                 || !e.text.trim().is_empty()
             {
-                return None;
+                return refused(|| {
+                    "<import> after another root element, or with unsupported attributes or content"
+                        .into()
+                });
             }
             let imports = &mut d.definitions.as_mut()?.imports;
             if imports.len() >= 256 {
-                return None;
+                return refused(|| "more than 256 <import> elements".into());
             }
             let namespace = e.attrs.get("namespace")?.clone();
             let location = e.attrs.get("location")?.clone();
@@ -221,7 +226,7 @@ pub(in crate::interchange) fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument
                 .iter()
                 .any(|value| value.len() > 16_384)
             {
-                return None;
+                return refused(|| "<import> attribute longer than 16384 bytes".into());
             }
             imports.push(DefinitionsImport {
                 namespace,
@@ -250,11 +255,13 @@ pub(in crate::interchange) fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument
             }
             (BPMN, "extension") => {
                 if !attrs(e, &["definition", "mustUnderstand"]) || d.extensions.len() >= 256 {
-                    return None;
+                    return refused(|| {
+                        "unsupported <extension> attributes, or more than 256 extensions".into()
+                    });
                 }
                 let must_understand = optional_bool(e.attrs.get("mustUnderstand"))?;
                 if must_understand == Some(true) {
-                    return None;
+                    return refused(|| "<extension> with mustUnderstand=\"true\"".into());
                 }
                 let documentation = e
                     .children
@@ -269,7 +276,10 @@ pub(in crate::interchange) fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument
             }
             (BPMN, "relationship") => {
                 if !attrs(e, &["id", "type", "direction"]) || d.relationships.len() >= 256 {
-                    return None;
+                    return refused(|| {
+                        "unsupported <relationship> attributes, or more than 256 relationships"
+                            .into()
+                    });
                 }
                 let direction = match e.attrs.get("direction").map(String::as_str) {
                     None => None,
@@ -277,24 +287,30 @@ pub(in crate::interchange) fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument
                     Some("Forward") => Some(RelationshipDirection::Forward),
                     Some("Backward") => Some(RelationshipDirection::Backward),
                     Some("Both") => Some(RelationshipDirection::Both),
-                    _ => return None,
+                    _ => return refused(|| "unsupported <relationship> direction value".into()),
                 };
                 let mut sources = Vec::new();
                 let mut targets = Vec::new();
                 for child in &e.children {
                     if child.ns != BPMN || !attrs(child, &[]) || !child.children.is_empty() {
-                        return None;
+                        return refused(|| {
+                            "<relationship> child that is not a plain BPMN element".into()
+                        });
                     }
                     match child.name.as_str() {
                         "source" if targets.is_empty() => {
                             sources.push(child.catalog_text_qname.clone()?)
                         }
                         "target" => targets.push(child.catalog_text_qname.clone()?),
-                        _ => return None,
+                        _ => {
+                            return refused(|| {
+                                "<relationship> child other than <source>, or <source> after <target>".into()
+                            });
+                        }
                     }
                 }
                 if sources.is_empty() || targets.is_empty() {
-                    return None;
+                    return refused(|| "<relationship> without both <source> and <target>".into());
                 }
                 d.relationships.push(DefinitionsRelationship {
                     id: optional_id(e)?,
@@ -332,7 +348,7 @@ pub(in crate::interchange) fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument
             }
             (BPMN, "category") => {
                 if !attrs(e, &["id", "name"]) {
-                    return None;
+                    return refused(|| "unsupported <category> attributes".into());
                 }
                 let mut values = Vec::new();
                 for child in &e.children {
@@ -341,7 +357,9 @@ pub(in crate::interchange) fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument
                         || !attrs(child, &["id", "value"])
                         || !child.children.is_empty()
                     {
-                        return None;
+                        return refused(|| {
+                            "<category> child that is not a plain <categoryValue>".into()
+                        });
                     }
                     values.push(processcraft_core::bpmn_model::CategoryValue {
                         base: take_anonymous_base(child),
@@ -362,7 +380,9 @@ pub(in crate::interchange) fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument
                     &["id", "name", "capacity", "isUnlimited", "itemSubjectRef"],
                 ) || e.children.iter().any(|c| c.name != "dataState")
                 {
-                    return None;
+                    return refused(|| {
+                        "<dataStore> with unsupported attributes or children".into()
+                    });
                 }
                 d.data_stores.push(processcraft_core::bpmn_data::DataStore {
                     base: take_anonymous_base(e),
@@ -379,7 +399,9 @@ pub(in crate::interchange) fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument
                     &["id", "name", "errorCode", "escalationCode", "structureRef"],
                 ) || !e.children.is_empty()
                 {
-                    return None;
+                    return refused(|| {
+                        "<error>/<escalation> with unsupported attributes or children".into()
+                    });
                 }
                 let root_id = element_identity(e)?;
                 let name = e.attrs.get("name").cloned();
@@ -396,7 +418,9 @@ pub(in crate::interchange) fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument
                 } else {
                     "errorCode"
                 }) {
-                    return None;
+                    return refused(|| {
+                        "<error>/<escalation> carrying the other element's code attribute".into()
+                    });
                 }
                 d.event_resources.push(if e.name == "error" {
                     EventResource::Error {
@@ -448,7 +472,9 @@ pub(in crate::interchange) fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument
             }
             (BPMN, "partnerEntity" | "partnerRole") => {
                 if !attrs(e, &["id", "name"]) {
-                    return None;
+                    return refused(|| {
+                        "<partnerEntity>/<partnerRole> with unsupported attributes".into()
+                    });
                 }
                 let refs = parse_partner_refs(e, &target_namespace)?;
                 if e.name == "partnerEntity" {
@@ -471,7 +497,7 @@ pub(in crate::interchange) fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument
             }
             (BPMN, "endPoint") => {
                 if !attrs(e, &["id"]) || !e.text.trim().is_empty() || !e.children.is_empty() {
-                    return None;
+                    return refused(|| "<endPoint> with unsupported attributes or content".into());
                 }
                 d.endpoints
                     .push(processcraft_core::bpmn_collaboration::EndPoint {
@@ -504,7 +530,9 @@ pub(in crate::interchange) fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument
                     ],
                 ) || optional_bool(e.attrs.get("isExecutable")).is_none()
                 {
-                    return None;
+                    return refused(|| {
+                        "<process> with unsupported attributes or a non-boolean isExecutable".into()
+                    });
                 }
                 let p = parse_container(e, 0, root.attrs.get("targetNamespace")?)?;
                 d.processes.push(p);
@@ -513,14 +541,18 @@ pub(in crate::interchange) fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument
                 if !attrs(e, &["id", "name", "documentation", "resolution"])
                     || e.children.is_empty()
                 {
-                    return None;
+                    return refused(|| {
+                        "<BPMNDiagram> with unsupported attributes or without a <BPMNPlane>".into()
+                    });
                 }
                 let plane = &e.children[0];
                 if plane.ns != BPMNDI
                     || plane.name != "BPMNPlane"
                     || !di_attrs(plane, &["id", "bpmnElement"])
                 {
-                    return None;
+                    return refused(|| {
+                        "first <BPMNDiagram> child is not a <BPMNPlane> with id and bpmnElement only".into()
+                    });
                 }
                 let (plane_metadata, plane_offset) = parse_di_metadata(plane)?;
                 let mut diagram = Diagram {
@@ -547,7 +579,10 @@ pub(in crate::interchange) fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument
                         || !attrs(style, &["id"])
                         || style.children.len() != 1
                     {
-                        return None;
+                        return refused(|| {
+                            "<BPMNDiagram> child other than a <BPMNLabelStyle> with one <dc:Font>"
+                                .into()
+                        });
                     }
                     let font = &style.children[0];
                     if font.ns != DC
@@ -565,7 +600,7 @@ pub(in crate::interchange) fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument
                         )
                         || !font.children.is_empty()
                     {
-                        return None;
+                        return refused(|| "unsupported <dc:Font> in <BPMNLabelStyle>".into());
                     }
                     diagram.label_styles.push(LabelStyle {
                         id: optional_id(style)?,
@@ -742,12 +777,17 @@ pub(in crate::interchange) fn parse_profile(bytes: &[u8]) -> Option<BpmnDocument
                                 style: None,
                             });
                         }
-                        _ => return None,
+                        _ => {
+                            return refused(|| {
+                                "<BPMNPlane> child that is neither a <BPMNShape> nor a <BPMNEdge>"
+                                    .into()
+                            });
+                        }
                     }
                 }
                 d.diagrams.push(diagram);
             }
-            _ => return None,
+            _ => return refused(|| "root element outside the qualified profile".into()),
         }
         if phase == 2 {
             imported_order.push(imported_root_selector(&mut d, &e.name)?);

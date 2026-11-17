@@ -12,6 +12,7 @@ use crate::interchange::import::metadata::{
 use crate::interchange::import::tree::{
     Elem, attrs, documentation, element_identity, optional_bool, selector,
 };
+use crate::interchange::refusal::refused;
 use crate::interchange::shared::MAX_CHOREOGRAPHY_DEPTH;
 use crate::ns::BPMN;
 use processcraft_core::bpmn_model::EventReference;
@@ -27,7 +28,9 @@ fn parse_choreography_flow(
         ChoreographyFlowElement as Element, ChoreographyGraph, ChoreographyLoopType,
     };
     if depth > MAX_CHOREOGRAPHY_DEPTH || e.ns != BPMN {
-        return None;
+        return refused(|| {
+            "choreography element outside the BPMN namespace or nested too deeply".into()
+        });
     }
     if matches!(
         e.name.as_str(),
@@ -44,7 +47,9 @@ fn parse_choreography_flow(
             ],
         ) || (e.name != "callChoreography" && e.attrs.contains_key("calledChoreographyRef"))
         {
-            return None;
+            return refused(|| {
+                "choreography activity with unsupported attributes or calledChoreographyRef outside <callChoreography>".into()
+            });
         }
         let mut participants = Vec::new();
         let mut messages = Vec::new();
@@ -106,7 +111,9 @@ fn parse_choreography_flow(
         if participants.len() < 2
             || (e.name == "choreographyTask" && !(1..=2).contains(&messages.len()))
         {
-            return None;
+            return refused(|| {
+                "choreography activity with fewer than two participants, or a <choreographyTask> without one or two message references".into()
+            });
         }
         let details = match e.name.as_str() {
             "subChoreography" => Some(Details::Sub {
@@ -212,7 +219,7 @@ fn parse_choreography_flow(
             &["id", "name"]
         },
     ) {
-        return None;
+        return refused(|| "choreography event with unsupported attributes".into());
     }
     let id = element_identity(e)?;
     let (doc, details) = if gateway {
@@ -254,7 +261,7 @@ pub(super) fn parse_choreography(
         || !attrs(e, &["id", "name", "isClosed", "initiatingParticipantRef"])
         || (e.name != "globalChoreographyTask" && e.attrs.contains_key("initiatingParticipantRef"))
     {
-        return None;
+        return refused(|| "<choreography> with unsupported attributes or content".into());
     }
     let mut extras = processcraft_core::bpmn_collaboration::CollaborationExtras {
         is_closed: optional_bool(e.attrs.get("isClosed"))?,
@@ -291,7 +298,7 @@ pub(super) fn parse_choreography(
     for child in &e.children {
         let next = collaboration_child_phase(&child.name).unwrap_or(10);
         if next < phase {
-            return None;
+            return refused(|| "<choreography> children out of order".into());
         }
         phase = next;
         if child.ns != BPMN {
@@ -387,7 +394,7 @@ pub(super) fn parse_choreography(
         }
     }
     if e.name == "globalChoreographyTask" && !graph.flow_elements.is_empty() {
-        return None;
+        return refused(|| "<globalChoreographyTask> with a flow-element graph".into());
     }
     if needs_graph {
         c.graph = Some(graph);

@@ -6,6 +6,7 @@ use crate::interchange::import::metadata::{
 use crate::interchange::import::tree::{
     Elem, attrs, documentation, element_identity, mixed_body, optional_bool, optional_id,
 };
+use crate::interchange::refusal::refused;
 use crate::ns::BPMN;
 use processcraft_core::bpmn_model::{EventReference, NodeDetails};
 use processcraft_core::ids::ElementSelector;
@@ -19,7 +20,9 @@ pub(super) fn parse_participant_association(
         || !attrs(e, &["id"])
         || e.children.len() != 2
     {
-        return None;
+        return refused(|| {
+            "<participantAssociation> without exactly one inner and one outer reference".into()
+        });
     }
     let reference = |child: &Elem, name: &str| -> Option<EventReference> {
         if child.ns != BPMN
@@ -55,13 +58,15 @@ pub(super) fn parse_conversation(
         || !e.text.trim().is_empty()
         || !attrs(e, &["id", "name", "calledCollaborationRef"])
     {
-        return None;
+        return refused(|| {
+            "conversation node with unsupported attributes, content or nesting deeper than 32 levels".into()
+        });
     }
     let kind = match e.name.as_str() {
         "conversation" => ConversationKind::Conversation,
         "subConversation" => ConversationKind::SubConversation,
         "callConversation" => ConversationKind::CallConversation,
-        _ => return None,
+        _ => return refused(|| "unsupported conversation node element".into()),
     };
     let node_id = element_identity(e)?;
     let mut refs = Vec::new();
@@ -76,7 +81,7 @@ pub(super) fn parse_conversation(
         }
     });
     if call.is_none() && e.attrs.contains_key("calledCollaborationRef") {
-        return None;
+        return refused(|| "calledCollaborationRef outside a <callConversation>".into());
     }
     let mut correlation_keys = Vec::new();
     let mut phase = 0;
@@ -126,7 +131,7 @@ pub(super) fn parse_conversation(
 }
 pub(super) fn parse_participant(e: &Elem, namespace: &str) -> Option<Participant> {
     if !e.text.trim().is_empty() || !attrs(e, &["id", "name", "processRef"]) {
-        return None;
+        return refused(|| "<participant> with unsupported attributes or content".into());
     }
     let mut interface_refs = Vec::new();
     let mut endpoint_refs = Vec::new();
@@ -288,7 +293,9 @@ pub(super) fn parse_collaboration_extras_child(
                 || !e.text.trim().is_empty()
                 || !e.children.is_empty()
             {
-                return None;
+                return refused(|| {
+                    "collaboration association with unsupported attributes or content".into()
+                });
             }
             let inner = Some(event_reference(e.catalog_qnames.get(inner)?, namespace));
             let outer = Some(event_reference(e.catalog_qnames.get(outer)?, namespace));
@@ -357,7 +364,7 @@ pub(super) fn collaboration_child_phase(name: &str) -> Option<u8> {
 pub(super) fn parse_collaboration(e: &Elem, namespace: &str) -> Option<Collaboration> {
     use processcraft_core::bpmn_collaboration::ConversationLink;
     if !e.text.trim().is_empty() || !attrs(e, &["id", "name", "isClosed"]) {
-        return None;
+        return refused(|| "<collaboration> with unsupported attributes or content".into());
     }
     let mut extras = processcraft_core::bpmn_collaboration::CollaborationExtras {
         is_closed: optional_bool(e.attrs.get("isClosed"))?,
@@ -381,7 +388,7 @@ pub(super) fn parse_collaboration(e: &Elem, namespace: &str) -> Option<Collabora
     for child in &e.children {
         let next = collaboration_child_phase(&child.name)?;
         if next < phase {
-            return None;
+            return refused(|| "<collaboration> children out of order".into());
         }
         phase = next;
         if child.ns != BPMN {

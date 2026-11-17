@@ -5,6 +5,7 @@ use crate::interchange::import::metadata::{
 use crate::interchange::import::tree::{
     Elem, attrs, element_identity, mixed_body, optional_bool, optional_id, selector,
 };
+use crate::interchange::refusal::refused;
 use crate::ns::BPMN;
 use processcraft_core::bpmn_model::{
     EventDefinition, EventGatewayType, EventIo, EventProperty, EventReference, GatewayDirection,
@@ -34,7 +35,9 @@ pub(super) fn parse_correlation_key(
             || !attrs(child, &[])
             || !child.children.is_empty()
         {
-            return None;
+            return refused(|| {
+                "<correlationKey> child other than a plain <correlationPropertyRef>".into()
+            });
         }
         refs.push(event_reference(
             child.catalog_text_qname.as_ref()?,
@@ -58,7 +61,10 @@ pub(super) fn parse_correlation_property(
         || !attrs(e, &["id", "name", "type"])
         || e.children.is_empty()
     {
-        return None;
+        return refused(|| {
+            "<correlationProperty> with unsupported attributes or without retrieval expressions"
+                .into()
+        });
     }
     let mut retrieval_expressions = Vec::new();
     for child in &e.children {
@@ -68,7 +74,9 @@ pub(super) fn parse_correlation_property(
             || child.children.len() != 1
             || child.children[0].name != "messagePath"
         {
-            return None;
+            return refused(|| {
+                "<correlationPropertyRetrievalExpression> without exactly one <messagePath>".into()
+            });
         }
         retrieval_expressions.push(CorrelationRetrieval {
             id: optional_id(child)?,
@@ -97,7 +105,7 @@ pub(super) fn parse_correlation_subscription(
         || e.name != "correlationSubscription"
         || !attrs(e, &["id", "correlationKeyRef"])
     {
-        return None;
+        return refused(|| "<correlationSubscription> with unsupported attributes".into());
     }
     let mut bindings = Vec::new();
     for child in &e.children {
@@ -107,7 +115,9 @@ pub(super) fn parse_correlation_subscription(
             || child.children.len() != 1
             || child.children[0].name != "dataPath"
         {
-            return None;
+            return refused(|| {
+                "<correlationPropertyBinding> without exactly one <dataPath>".into()
+            });
         }
         bindings.push(CorrelationPropertyBinding {
             id: optional_id(child)?,
@@ -137,7 +147,9 @@ pub(super) fn parse_audit_monitor(
         || !attrs(e, &["id"])
         || !e.children.is_empty()
     {
-        return None;
+        return refused(|| {
+            "<auditing>/<monitoring> with unsupported attributes or children".into()
+        });
     }
     Some(processcraft_core::bpmn_activity::BaseOwner {
         id: optional_id(e)?,
@@ -146,7 +158,7 @@ pub(super) fn parse_audit_monitor(
 }
 pub(super) fn parse_property(e: &Elem) -> Option<processcraft_core::bpmn_model::EventProperty> {
     if e.ns != BPMN || e.name != "property" || !attrs(e, &["id", "name", "itemSubjectRef"]) {
-        return None;
+        return refused(|| "<property> with unsupported attributes".into());
     }
     Some(processcraft_core::bpmn_model::EventProperty {
         id: optional_id(e)?,
@@ -195,14 +207,14 @@ pub(super) fn parse_resource_role(
         ResourceRoleAssignment, ResourceRoleKind,
     };
     if e.ns != BPMN || !attrs(e, &["id", "name"]) {
-        return None;
+        return refused(|| "resource role with unsupported attributes".into());
     }
     let kind = match e.name.as_str() {
         "resourceRole" => ResourceRoleKind::ResourceRole,
         "performer" => ResourceRoleKind::Performer,
         "humanPerformer" => ResourceRoleKind::HumanPerformer,
         "potentialOwner" => ResourceRoleKind::PotentialOwner,
-        _ => return None,
+        _ => return refused(|| "unsupported resource role element".into()),
     };
     let assignment = if e.children.is_empty() {
         ResourceRoleAssignment::None
@@ -366,7 +378,7 @@ pub(super) fn parse_global_task(
 }
 pub(super) fn parse_event_definition(e: &Elem, target_namespace: &str) -> Option<EventDefinition> {
     if e.ns != BPMN {
-        return None;
+        return refused(|| "event definition outside the BPMN namespace".into());
     }
     let id = optional_id(e)?;
     let reference = |key: &str| {
@@ -458,7 +470,11 @@ pub(super) fn parse_event_definition(e: &Elem, target_namespace: &str) -> Option
                     "timeDate" => TimerKind::Date,
                     "timeDuration" => TimerKind::Duration,
                     "timeCycle" => TimerKind::Cycle,
-                    _ => return None,
+                    _ => {
+                        return refused(|| {
+                            "<timerEventDefinition> child other than timeDate, timeDuration or timeCycle".into()
+                        });
+                    }
                 };
                 (Some(kind), Some(parse_expression(child, false)?))
             } else {
@@ -483,7 +499,11 @@ pub(super) fn parse_event_definition(e: &Elem, target_namespace: &str) -> Option
                 match child.name.as_str() {
                     "source" if target.is_none() => sources.push(reference),
                     "target" if target.is_none() => target = Some(reference),
-                    _ => return None,
+                    _ => {
+                        return refused(|| {
+                            "<linkEventDefinition> child other than <source>, or <source> after <target>".into()
+                        });
+                    }
                 }
             }
             EventDefinition::Link {
@@ -504,13 +524,13 @@ pub(super) fn gateway_details(e: &Elem) -> Option<(String, Option<NodeDetails>)>
         Some("Converging") => Some(GatewayDirection::Converging),
         Some("Diverging") => Some(GatewayDirection::Diverging),
         Some("Mixed") => Some(GatewayDirection::Mixed),
-        _ => return None,
+        _ => return refused(|| "unsupported gatewayDirection value".into()),
     };
     let event_gateway_type = match e.attrs.get("eventGatewayType").map(String::as_str) {
         None => None,
         Some("Exclusive") => Some(EventGatewayType::Exclusive),
         Some("Parallel") => Some(EventGatewayType::Parallel),
-        _ => return None,
+        _ => return refused(|| "unsupported eventGatewayType value".into()),
     };
     let default_flow = e.attrs.get("default").map(|v| v.parse()).transpose().ok()?;
     let instantiate = optional_bool(e.attrs.get("instantiate"))?;
@@ -685,11 +705,16 @@ pub(super) fn loop_characteristics(e: &Elem, namespace: &str) -> Option<LoopChar
     use processcraft_core::bpmn_activity::{ComplexBehaviorDefinition, MultiInstanceFlowCondition};
     if e.name == "standardLoopCharacteristics" {
         if !attrs(e, &["id", "testBefore", "loopMaximum"]) || e.children.len() > 1 {
-            return None;
+            return refused(|| {
+                "<standardLoopCharacteristics> with unsupported attributes or more than one child"
+                    .into()
+            });
         }
         let condition = if let Some(child) = e.children.first() {
             if child.ns != BPMN || child.name != "loopCondition" {
-                return None;
+                return refused(|| {
+                    "<standardLoopCharacteristics> child other than <loopCondition>".into()
+                });
             }
             Some(parse_expression(child, false)?)
         } else {
@@ -730,7 +755,7 @@ pub(super) fn loop_characteristics(e: &Elem, namespace: &str) -> Option<LoopChar
         Some("One") => Some(MultiInstanceFlowCondition::One),
         Some("All") => Some(MultiInstanceFlowCondition::All),
         Some("Complex") => Some(MultiInstanceFlowCondition::Complex),
-        _ => return None,
+        _ => return refused(|| "unsupported multi-instance behavior value".into()),
     };
     let reference = |name: &str| {
         e.catalog_qnames
