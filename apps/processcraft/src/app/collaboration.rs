@@ -1,3 +1,5 @@
+//! Collaboration, conversation and choreography section of the inspector, and the shared `update_root` mutation builder.
+//! Emits collaboration, participant, conversation, choreography and data-association mutations.
 use super::*;
 use processcraft_core::bpmn_collaboration::{ConversationKind, ConversationLink, ConversationNode};
 
@@ -129,30 +131,6 @@ fn conversation_rows(nodes: &[ConversationNode]) -> Vec<(usize, &ConversationNod
         }
     }
     out
-}
-
-fn valid_conversation_parent(
-    nodes: &[ConversationNode],
-    current: Option<&ElementSelector>,
-    candidate: &ConversationNode,
-) -> bool {
-    let Some(current) = current else {
-        return true;
-    };
-    let mut cursor = Some(candidate.id.selector());
-    for _ in 0..=nodes.len() {
-        let Some(id) = cursor else {
-            return true;
-        };
-        if &id == current {
-            return false;
-        }
-        cursor = nodes
-            .iter()
-            .find(|node| node.id == id)
-            .and_then(|node| node.parent.clone());
-    }
-    false
 }
 
 fn choreography_task_shapes(
@@ -375,7 +353,7 @@ impl ProcessCraft {
             self.select(None);
         }
         self.show_right = true;
-        self.view = 0;
+        self.view = View::Model;
     }
     /// Whether a menu command asked to open the section since the last frame.
     pub(super) fn take_collaboration_request(&mut self) -> bool {
@@ -397,7 +375,7 @@ impl ProcessCraft {
     }
     pub(super) fn collaboration_contents(&mut self, ui: &mut egui::Ui) {
         let snap = self.ctl.session.snapshot();
-        let Some(doc) = snap.project.documents.get(self.doc) else {
+        let Some(doc) = self.current_document(&snap) else {
             ui.label("Open a model to manage collaboration.");
             return;
         };
@@ -618,7 +596,7 @@ impl ProcessCraft {
                 }
                 for parent in collaboration.conversation_nodes.iter().filter(|n| {
                     matches!(n.kind, ConversationKind::SubConversation)
-                        && valid_conversation_parent(
+                        && processcraft_core::modeling::valid_conversation_parent(
                             &collaboration.conversation_nodes,
                             self.collaboration.node_id.as_ref(),
                             n,

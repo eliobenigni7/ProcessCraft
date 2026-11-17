@@ -1,6 +1,7 @@
 //! GUI-owned attachment dispatcher. No worker accesses or copies the live session.
 use crate::controller::Controller;
 use processcraft_core::commands::{Envelope, Request};
+use processcraft_core::queries;
 use processcraft_io::{
     Access,
     automation_ledger::{Admission, RequestLedger},
@@ -26,7 +27,14 @@ struct ExportContext {
 }
 impl ExportContext {
     fn disconnected(&self) -> Value {
-        json!({"ok":false,"status":"indeterminate","operationId":self.operation,"sessionId":self.session_id,"target":self.target,"contentId":self.content_id,"diskDigest":self.disk_digest,"stage":null,"backup":null,"error":"export worker stopped unexpectedly","reconciliationRequired":true})
+        json!({
+            "ok": false, "status": "indeterminate",
+            "operationId": self.operation, "sessionId": self.session_id,
+            "target": self.target, "contentId": self.content_id,
+            "diskDigest": self.disk_digest, "stage": null, "backup": null,
+            "error": "export worker stopped unexpectedly",
+            "reconciliationRequired": true,
+        })
     }
 }
 type SharedExportContext = Arc<Mutex<ExportContext>>;
@@ -292,13 +300,34 @@ impl Attachment {
             let response = match controller.take_save_report() {
                 Some(report) => match report.receipt {
                     Some(receipt) => {
-                        json!({"ok":true,"status":"committed","operationId":receipt.operation_id,"sessionId":receipt.session_id,"contentId":receipt.saved_content_id,"diskDigest":receipt.disk_digest,"warning":report.error})
+                        json!({
+                            "ok": true, "status": "committed",
+                            "operationId": receipt.operation_id,
+                            "sessionId": receipt.session_id,
+                            "contentId": receipt.saved_content_id,
+                            "diskDigest": receipt.disk_digest,
+                            "warning": report.error,
+                        })
                     }
                     None if report.uncertain => {
                         if let Some(details) = report.details {
-                            json!({"ok":false,"status":"indeterminate","operationId":details.attempted.operation_id,"sessionId":details.attempted.session_id,"contentId":details.attempted.saved_content_id,"diskDigest":details.attempted.disk_digest,"target":details.attempted.target,"stage":details.stage,"backup":details.backup,"error":report.error,"reconciliationRequired":true})
+                            let attempted = details.attempted;
+                            json!({
+                                "ok": false, "status": "indeterminate",
+                                "operationId": attempted.operation_id,
+                                "sessionId": attempted.session_id,
+                                "contentId": attempted.saved_content_id,
+                                "diskDigest": attempted.disk_digest,
+                                "target": attempted.target,
+                                "stage": details.stage, "backup": details.backup,
+                                "error": report.error,
+                                "reconciliationRequired": true,
+                            })
                         } else {
-                            json!({"ok":false,"status":"indeterminate","error":report.error,"reconciliationRequired":true})
+                            json!({
+                                "ok": false, "status": "indeterminate",
+                                "error": report.error, "reconciliationRequired": true,
+                            })
                         }
                     }
                     None => json!({"ok":false,"status":"notCommitted","error":report.error}),
@@ -431,10 +460,23 @@ impl Attachment {
                                 writer.save(&data)
                             })) {
                                 Ok(SaveOutcome::Committed { warning }) => {
-                                    json!({"ok":true,"status":"committed","operationId":operation,"sessionId":args.session_id,"target":args.path,"contentId":snapshot.content_id,"diskDigest":disk_digest,"warning":warning.map(|e|e.to_string()),"report":report})
+                                    json!({
+                                        "ok": true, "status": "committed",
+                                        "operationId": operation,
+                                        "sessionId": args.session_id,
+                                        "target": args.path,
+                                        "contentId": snapshot.content_id,
+                                        "diskDigest": disk_digest,
+                                        "warning": warning.map(|e| e.to_string()),
+                                        "report": report,
+                                    })
                                 }
                                 Ok(SaveOutcome::NotCommitted { error }) => {
-                                    json!({"ok":false,"status":"notCommitted","operationId":operation,"error":error.to_string()})
+                                    json!({
+                                        "ok": false, "status": "notCommitted",
+                                        "operationId": operation,
+                                        "error": error.to_string(),
+                                    })
                                 }
                                 Ok(SaveOutcome::Indeterminate {
                                     error,
@@ -442,11 +484,31 @@ impl Attachment {
                                     backup,
                                 }) => {
                                     uncertain = Some((writer, data));
-                                    json!({"ok":false,"status":"indeterminate","operationId":operation,"sessionId":args.session_id,"target":args.path,"contentId":snapshot.content_id,"diskDigest":disk_digest,"error":error.to_string(),"stage":stage,"backup":backup,"reconciliationRequired":true})
+                                    json!({
+                                        "ok": false, "status": "indeterminate",
+                                        "operationId": operation,
+                                        "sessionId": args.session_id,
+                                        "target": args.path,
+                                        "contentId": snapshot.content_id,
+                                        "diskDigest": disk_digest,
+                                        "error": error.to_string(),
+                                        "stage": stage, "backup": backup,
+                                        "reconciliationRequired": true,
+                                    })
                                 }
                                 Err(_) => {
                                     uncertain = Some((writer, data));
-                                    json!({"ok":false,"status":"indeterminate","operationId":operation,"sessionId":args.session_id,"target":args.path,"contentId":snapshot.content_id,"diskDigest":disk_digest,"error":"export worker panicked during write","stage":null,"backup":null,"reconciliationRequired":true})
+                                    json!({
+                                        "ok": false, "status": "indeterminate",
+                                        "operationId": operation,
+                                        "sessionId": args.session_id,
+                                        "target": args.path,
+                                        "contentId": snapshot.content_id,
+                                        "diskDigest": disk_digest,
+                                        "error": "export worker panicked during write",
+                                        "stage": null, "backup": null,
+                                        "reconciliationRequired": true,
+                                    })
                                 }
                             }
                         }
@@ -531,7 +593,14 @@ impl Attachment {
         match req.method.as_str() {
             "inspect" if req.params == json!({}) => {
                 let s = controller.session.snapshot();
-                json!({"sessionId":controller.session.id(),"generation":s.generation,"contentId":s.content_id,"projectId":s.project.id,"name":s.project.name,"documents":s.project.documents.len()})
+                json!({
+                    "sessionId": controller.session.id(),
+                    "generation": s.generation,
+                    "contentId": s.content_id,
+                    "projectId": s.project.id,
+                    "name": s.project.name,
+                    "documents": s.project.documents.len(),
+                })
             }
             "validate" if req.params == json!({}) => {
                 let s = controller.session.snapshot();
@@ -542,7 +611,11 @@ impl Attachment {
                             .iter()
                             .filter(|d| d.severity == processcraft_core::DiagnosticSeverity::Error)
                             .count();
-                        json!({"valid":true,"errorCount":errors,"warningCount":diagnostics.len() - errors})
+                        json!({
+                            "valid": true,
+                            "errorCount": errors,
+                            "warningCount": diagnostics.len() - errors,
+                        })
                     }
                     Err(e) => json!({"valid":false,"error":e.to_string()}),
                 }
@@ -564,60 +637,196 @@ impl Attachment {
                         | Query::CheckpointFields { .. }
                 );
                 let (items, offset, limit): (Vec<Value>, usize, usize) = match q {
-                    Query::Model { document_id, offset, limit } => {
-                        let page = match processcraft_core::queries::document_fields_page(&snapshot.project, document_id, offset, limit) {
+                    Query::Model {
+                        document_id,
+                        offset,
+                        limit,
+                    } => {
+                        let project = &snapshot.project;
+                        let page = match queries::document_fields_page(
+                            project,
+                            document_id,
+                            offset,
+                            limit,
+                        ) {
                             Ok(Some(page)) => page,
                             Ok(None) => return json!({"ok":false,"error":"document not found"}),
                             Err(error) => return json!({"ok":false,"error":error.to_string()}),
                         };
-                        return json!({"total":page.total,"items":page.items,"nextOffset":page.next_offset,"generation":snapshot.generation,"contentId":snapshot.content_id});
-                    },
-                    Query::CheckpointFields { checkpoint_id, offset, limit } => {
-                        let page = match processcraft_core::queries::checkpoint_fields_page(&snapshot.project, checkpoint_id, offset, limit) {
+                        return json!({
+                            "total": page.total,
+                            "items": page.items,
+                            "nextOffset": page.next_offset,
+                            "generation": snapshot.generation,
+                            "contentId": snapshot.content_id,
+                        });
+                    }
+                    Query::CheckpointFields {
+                        checkpoint_id,
+                        offset,
+                        limit,
+                    } => {
+                        let project = &snapshot.project;
+                        let page = match queries::checkpoint_fields_page(
+                            project,
+                            checkpoint_id,
+                            offset,
+                            limit,
+                        ) {
                             Ok(Some(page)) => page,
                             Ok(None) => return json!({"ok":false,"error":"checkpoint not found"}),
                             Err(error) => return json!({"ok":false,"error":error.to_string()}),
                         };
-                        return json!({"total":page.total,"items":page.items,"nextOffset":page.next_offset,"generation":snapshot.generation,"contentId":snapshot.content_id});
-                    },
-                    Query::Events { document_id, offset, limit } => {
-                        let Some(rows) = processcraft_core::queries::event_fields(&snapshot.project, document_id) else { return json!({"ok":false,"error":"document not found"}); };
-                        (rows.into_iter().map(|row| json!(row)).collect(), offset, limit)
-                    },
-                    Query::Diagrams { document_id, offset, limit } => {
-                        let Some(rows) = processcraft_core::queries::diagram_fields(&snapshot.project, document_id) else { return json!({"ok":false,"error":"document not found"}); };
-                        (rows.into_iter().map(|row| json!(row)).collect(), offset, limit)
-                    },
-                    Query::Identities { document_id, offset, limit } => {
-                        let Some(rows) = processcraft_core::queries::identified_elements(&snapshot.project, document_id) else {
+                        return json!({
+                            "total": page.total,
+                            "items": page.items,
+                            "nextOffset": page.next_offset,
+                            "generation": snapshot.generation,
+                            "contentId": snapshot.content_id,
+                        });
+                    }
+                    Query::Events {
+                        document_id,
+                        offset,
+                        limit,
+                    } => {
+                        let Some(rows) = queries::event_fields(&snapshot.project, document_id)
+                        else {
                             return json!({"ok":false,"error":"document not found"});
                         };
-                        (rows.into_iter().map(|row| json!(row)).collect(), offset, limit)
-                    },
-                    Query::Data { document_id, offset, limit } => {
-                        let Some(rows) = processcraft_core::queries::data_fields(&snapshot.project, document_id) else {
+                        (
+                            rows.into_iter().map(|row| json!(row)).collect(),
+                            offset,
+                            limit,
+                        )
+                    }
+                    Query::Diagrams {
+                        document_id,
+                        offset,
+                        limit,
+                    } => {
+                        let Some(rows) = queries::diagram_fields(&snapshot.project, document_id)
+                        else {
                             return json!({"ok":false,"error":"document not found"});
                         };
-                        (rows.into_iter().map(|row| json!(row)).collect(), offset, limit)
-                    },
-                    Query::Catalog { document_id, offset, limit } => {
-                        let Some(rows) = processcraft_core::queries::supporting_catalog_fields(&snapshot.project, document_id) else {
+                        (
+                            rows.into_iter().map(|row| json!(row)).collect(),
+                            offset,
+                            limit,
+                        )
+                    }
+                    Query::Identities {
+                        document_id,
+                        offset,
+                        limit,
+                    } => {
+                        let Some(rows) =
+                            queries::identified_elements(&snapshot.project, document_id)
+                        else {
                             return json!({"ok":false,"error":"document not found"});
                         };
-                        (rows.into_iter().map(|row| json!(row)).collect(), offset, limit)
-                    },
-                    Query::Comments { offset, limit } => (snapshot.project.comments.iter().map(|c| json!({"comment":c,"orphan":processcraft_core::queries::comment_is_orphan(&snapshot.project,c)})).collect(), offset, limit),
-                    Query::Checkpoints { offset, limit } => (snapshot.project.checkpoints.iter().map(|c| json!({"id":c.id,"name":c.name,"createdUnixMs":c.created_unix_ms,"reference":snapshot.project.reference_checkpoint == Some(c.id)})).collect(), offset, limit),
-                    Query::CompareCheckpoint { checkpoint_id, offset, limit } => {
-                        let Some(comparison) = processcraft_core::queries::compare_checkpoint(&snapshot.project, checkpoint_id) else { return json!({"ok":false,"error":"checkpoint not found"}); };
+                        (
+                            rows.into_iter().map(|row| json!(row)).collect(),
+                            offset,
+                            limit,
+                        )
+                    }
+                    Query::Data {
+                        document_id,
+                        offset,
+                        limit,
+                    } => {
+                        let Some(rows) = queries::data_fields(&snapshot.project, document_id)
+                        else {
+                            return json!({"ok":false,"error":"document not found"});
+                        };
+                        (
+                            rows.into_iter().map(|row| json!(row)).collect(),
+                            offset,
+                            limit,
+                        )
+                    }
+                    Query::Catalog {
+                        document_id,
+                        offset,
+                        limit,
+                    } => {
+                        let Some(rows) =
+                            queries::supporting_catalog_fields(&snapshot.project, document_id)
+                        else {
+                            return json!({"ok":false,"error":"document not found"});
+                        };
+                        (
+                            rows.into_iter().map(|row| json!(row)).collect(),
+                            offset,
+                            limit,
+                        )
+                    }
+                    Query::Comments { offset, limit } => {
+                        let project = &snapshot.project;
+                        let rows = project.comments.iter().map(|c| {
+                            json!({"comment": c, "orphan": queries::comment_is_orphan(project, c)})
+                        });
+                        (rows.collect(), offset, limit)
+                    }
+                    Query::Checkpoints { offset, limit } => {
+                        let project = &snapshot.project;
+                        let rows = project.checkpoints.iter().map(|c| {
+                            json!({
+                                "id": c.id,
+                                "name": c.name,
+                                "createdUnixMs": c.created_unix_ms,
+                                "reference": project.reference_checkpoint == Some(c.id),
+                            })
+                        });
+                        (rows.collect(), offset, limit)
+                    }
+                    Query::CompareCheckpoint {
+                        checkpoint_id,
+                        offset,
+                        limit,
+                    } => {
+                        let Some(comparison) =
+                            queries::compare_checkpoint(&snapshot.project, checkpoint_id)
+                        else {
+                            return json!({"ok":false,"error":"checkpoint not found"});
+                        };
                         (vec![json!(comparison)], offset, limit)
-                    },
-                    Query::LayoutPreview { session_id, expected_generation, document_id, diagram_id } => {
-                        if session_id != controller.session.id() || expected_generation != snapshot.generation { return json!({"ok":false,"error":"session or generation mismatch"}); }
-                        let Some(doc) = snapshot.project.documents.iter().find(|d| d.id == document_id) else { return json!({"ok":false,"error":"document not found"}); };
-                        let proposal = match processcraft_core::layout::propose_layout(doc, &diagram_id, &session_id, expected_generation, &std::sync::atomic::AtomicBool::new(false)) { Ok(v) => v, Err(e) => return json!({"ok":false,"error":e.to_string()}) };
+                    }
+                    Query::LayoutPreview {
+                        session_id,
+                        expected_generation,
+                        document_id,
+                        diagram_id,
+                    } => {
+                        if session_id != controller.session.id()
+                            || expected_generation != snapshot.generation
+                        {
+                            return json!({"ok":false,"error":"session or generation mismatch"});
+                        }
+                        let Some(doc) = snapshot
+                            .project
+                            .documents
+                            .iter()
+                            .find(|d| d.id == document_id)
+                        else {
+                            return json!({"ok":false,"error":"document not found"});
+                        };
+                        let never_cancelled = std::sync::atomic::AtomicBool::new(false);
+                        let proposal = match processcraft_core::layout::propose_layout(
+                            doc,
+                            &diagram_id,
+                            &session_id,
+                            expected_generation,
+                            &never_cancelled,
+                        ) {
+                            Ok(v) => v,
+                            Err(e) => return json!({"ok":false,"error":e.to_string()}),
+                        };
                         let value = json!({"proposal":proposal});
-                        if serde_json::to_vec(&value).map_or(true, |v| v.len() > 3 * 1024 * 1024) { return json!({"ok":false,"error":"proposal exceeds response limit"}); }
+                        if serde_json::to_vec(&value).map_or(true, |v| v.len() > 3 * 1024 * 1024) {
+                            return json!({"ok":false,"error":"proposal exceeds response limit"});
+                        }
                         return value;
                     }
                     Query::Library {
@@ -625,23 +834,26 @@ impl Attachment {
                         offset,
                         limit,
                     } => (
-                        processcraft_core::queries::library_search(&snapshot.project, &text)
+                        queries::library_search(&snapshot.project, &text)
                             .into_iter()
                             .map(|v| json!(v))
                             .collect(),
                         offset,
                         limit,
                     ),
-                    Query::Documents { offset, limit } => (
-                        processcraft_core::queries::document_overview(&snapshot.project),
-                        offset,
-                        limit,
-                    ),
+                    Query::Documents { offset, limit } => {
+                        (queries::document_overview(&snapshot.project), offset, limit)
+                    }
                     Query::Conventions {} => {
                         return json!({"conventions":snapshot.project.conventions});
                     }
                     Query::Diagnostics { offset, limit } => (
-                        snapshot.project.diagnostics().iter().map(|d| json!(d)).collect(),
+                        snapshot
+                            .project
+                            .diagnostics()
+                            .iter()
+                            .map(|d| json!(d))
+                            .collect(),
                         offset,
                         limit,
                     ),
@@ -660,7 +872,7 @@ impl Attachment {
                         offset,
                         limit,
                     } => (
-                        processcraft_core::queries::dictionary_usages(&snapshot.project, entry_id)
+                        queries::dictionary_usages(&snapshot.project, entry_id)
                             .into_iter()
                             .map(|v| json!(v))
                             .collect(),
@@ -673,17 +885,37 @@ impl Attachment {
                         offset,
                         limit,
                     } => {
-                        let Some(rows) = processcraft_core::queries::activity_table(
-                            &snapshot.project,
-                            document_id,
-                            &process_id,
-                        ) else {
+                        let Some(rows) =
+                            queries::activity_table(&snapshot.project, document_id, &process_id)
+                        else {
                             return json!({"ok":false,"error":"process not found"});
                         };
-                        (rows.into_iter().map(|row| json!({"key":row.key,"name":row.name,"lane":row.lane,"role":row.role,"systems":row.systems,"documents":row.documents,"attributes":row.attributes,"outgoing":row.outgoing.into_iter().map(|f| json!({"id":f.id,"target":f.target,"condition":f.condition})).collect::<Vec<_>>() })).collect(),offset,limit)
+                        let rows = rows.into_iter().map(|row| {
+                            let outgoing = row.outgoing.into_iter().map(|f| {
+                                json!({"id": f.id, "target": f.target, "condition": f.condition})
+                            });
+                            json!({
+                                "key": row.key,
+                                "name": row.name,
+                                "lane": row.lane,
+                                "role": row.role,
+                                "systems": row.systems,
+                                "documents": row.documents,
+                                "attributes": row.attributes,
+                                "outgoing": outgoing.collect::<Vec<_>>(),
+                            })
+                        });
+                        (rows.collect(), offset, limit)
                     }
-                    Query::Raci { document_id, process_id, offset, limit } => {
-                        let Some(matrix) = processcraft_core::queries::raci_matrix(&snapshot.project, document_id, &process_id) else {
+                    Query::Raci {
+                        document_id,
+                        process_id,
+                        offset,
+                        limit,
+                    } => {
+                        let Some(matrix) =
+                            queries::raci_matrix(&snapshot.project, document_id, &process_id)
+                        else {
                             return json!({"ok":false,"error":"process not found"});
                         };
                         if !(1..=100).contains(&limit) {
@@ -691,14 +923,22 @@ impl Attachment {
                         }
                         let columns = json!(matrix.columns);
                         // The columns share the 3 MiB response budget with the page.
-                        let mut bytes = serde_json::to_vec(&columns).map_or(3 * 1024 * 1024 + 1, |v| v.len());
+                        let mut bytes =
+                            serde_json::to_vec(&columns).map_or(3 * 1024 * 1024 + 1, |v| v.len());
                         if bytes > 3 * 1024 * 1024 {
                             return json!({"ok":false,"error":"query header exceeds response limit"});
                         }
                         let total = matrix.rows.len();
                         let mut page = Vec::new();
-                        for item in matrix.rows.into_iter().skip(offset).take(limit).map(|row| json!(row)) {
-                            let size = serde_json::to_vec(&item).map_or(3 * 1024 * 1024 + 1, |v| v.len());
+                        for item in matrix
+                            .rows
+                            .into_iter()
+                            .skip(offset)
+                            .take(limit)
+                            .map(|row| json!(row))
+                        {
+                            let size =
+                                serde_json::to_vec(&item).map_or(3 * 1024 * 1024 + 1, |v| v.len());
                             if bytes.saturating_add(size) > 3 * 1024 * 1024 {
                                 if page.is_empty() {
                                     return json!({"ok":false,"error":"item exceeds response limit"});
@@ -709,25 +949,44 @@ impl Attachment {
                             page.push(item);
                         }
                         let next = offset.saturating_add(page.len());
-                        return json!({"columns":columns,"total":total,"items":page,"nextOffset":if next < total { Some(next) } else { None }});
+                        let next_offset = if next < total { Some(next) } else { None };
+                        return json!({
+                            "columns": columns,
+                            "total": total,
+                            "items": page,
+                            "nextOffset": next_offset,
+                        });
                     }
-                    Query::Attributes { document_id, offset, limit } => {
-                        let Some(rows) = processcraft_core::queries::element_attributes(&snapshot.project, document_id) else {
+                    Query::Attributes {
+                        document_id,
+                        offset,
+                        limit,
+                    } => {
+                        let Some(rows) =
+                            queries::element_attributes(&snapshot.project, document_id)
+                        else {
                             return json!({"ok":false,"error":"document not found"});
                         };
                         if !(1..=100).contains(&limit) {
                             return json!({"ok":false,"error":"limit must be 1..100"});
                         }
-                        let definitions = json!(processcraft_core::queries::attribute_definitions(&snapshot.project));
+                        let definitions = json!(queries::attribute_definitions(&snapshot.project));
                         // The definitions share the 3 MiB response budget with the page.
-                        let mut bytes = serde_json::to_vec(&definitions).map_or(3 * 1024 * 1024 + 1, |v| v.len());
+                        let mut bytes = serde_json::to_vec(&definitions)
+                            .map_or(3 * 1024 * 1024 + 1, |v| v.len());
                         if bytes > 3 * 1024 * 1024 {
                             return json!({"ok":false,"error":"query header exceeds response limit"});
                         }
                         let total = rows.len();
                         let mut page = Vec::new();
-                        for item in rows.into_iter().skip(offset).take(limit).map(|row| json!(row)) {
-                            let size = serde_json::to_vec(&item).map_or(3 * 1024 * 1024 + 1, |v| v.len());
+                        for item in rows
+                            .into_iter()
+                            .skip(offset)
+                            .take(limit)
+                            .map(|row| json!(row))
+                        {
+                            let size =
+                                serde_json::to_vec(&item).map_or(3 * 1024 * 1024 + 1, |v| v.len());
                             if bytes.saturating_add(size) > 3 * 1024 * 1024 {
                                 if page.is_empty() {
                                     return json!({"ok":false,"error":"item exceeds response limit"});
@@ -738,7 +997,13 @@ impl Attachment {
                             page.push(item);
                         }
                         let next = offset.saturating_add(page.len());
-                        return json!({"definitions":definitions,"total":total,"items":page,"nextOffset":if next < total { Some(next) } else { None }});
+                        let next_offset = if next < total { Some(next) } else { None };
+                        return json!({
+                            "definitions": definitions,
+                            "total": total,
+                            "items": page,
+                            "nextOffset": next_offset,
+                        });
                     }
                 };
                 if !(1..=100).contains(&limit) {
@@ -759,7 +1024,8 @@ impl Attachment {
                     page.push(item);
                 }
                 let next = offset.saturating_add(page.len());
-                let mut result = json!({"total":total,"items":page,"nextOffset":if next < total { Some(next) } else { None }});
+                let next_offset = if next < total { Some(next) } else { None };
+                let mut result = json!({"total": total, "items": page, "nextOffset": next_offset});
                 if catalog_query {
                     result["generation"] = json!(snapshot.generation);
                     result["contentId"] = json!(snapshot.content_id);
@@ -840,7 +1106,13 @@ mod tests {
             request_id: "preview".into(),
             expected_generation: snapshot.generation,
             method: "query".into(),
-            params: json!({"kind":"layoutPreview","sessionId":session,"expectedGeneration":snapshot.generation,"documentId":document_id,"diagramId":diagram_id}),
+            params: json!({
+                "kind": "layoutPreview",
+                "sessionId": session,
+                "expectedGeneration": snapshot.generation,
+                "documentId": document_id,
+                "diagramId": diagram_id,
+            }),
         };
         let result = attachment.dispatch(&mut controller, &request);
         assert!(result.get("proposal").is_some(), "{result}");
@@ -861,7 +1133,15 @@ mod tests {
             request_id: "one".into(),
             expected_generation: generation,
             method: "apply".into(),
-            params: json!({"sessionId":session,"requestId":"one","expectedGeneration":generation,"request":{"type":"batch","mutations":[{"type":"renameProject","name":"Attached"}]}}),
+            params: json!({
+                "sessionId": session,
+                "requestId": "one",
+                "expectedGeneration": generation,
+                "request": {
+                    "type": "batch",
+                    "mutations": [{"type": "renameProject", "name": "Attached"}],
+                },
+            }),
         };
         let first = attachment.dispatch(&mut controller, &request);
         assert_eq!(first["ok"], true);
@@ -886,12 +1166,23 @@ fn prepare_export(
 ) -> Result<(Vec<u8>, Value), Value> {
     use processcraft_render::{Appearance, ExportFormat, ExportOptions, TextEngine};
     if matches!(args.format, ExportKind::Bpmn) {
-        let result = processcraft_io::interchange::export_bpmn(project, args.document_id, args.acknowledge_native_fields)
-            .map_err(|e| json!({"ok":false,"status":"exportBlocked","blocked":e.report.blocked,"omitted":e.report.omitted}))?;
-        return Ok((
-            result.bytes,
-            json!({"retained":result.report.retained,"transformed":result.report.transformed,"omitted":result.report.omitted}),
-        ));
+        let acknowledge = args.acknowledge_native_fields;
+        let result =
+            processcraft_io::interchange::export_bpmn(project, args.document_id, acknowledge)
+                .map_err(|e| {
+                    json!({
+                        "ok": false,
+                        "status": "exportBlocked",
+                        "blocked": e.report.blocked,
+                        "omitted": e.report.omitted,
+                    })
+                })?;
+        let report = json!({
+            "retained": result.report.retained,
+            "transformed": result.report.transformed,
+            "omitted": result.report.omitted,
+        });
+        return Ok((result.bytes, report));
     }
     let document = project
         .documents
@@ -955,7 +1246,12 @@ fn prepare_export(
     .map_err(|e| json!({"ok":false,"status":"exportBlocked","error":e.to_string()}))?;
     Ok((
         output.bytes,
-        json!({"origin":output.origin,"logicalSize":output.logical_size,"pixelSize":output.pixel_size,"diagnostics":output.diagnostics}),
+        json!({
+            "origin": output.origin,
+            "logicalSize": output.logical_size,
+            "pixelSize": output.pixel_size,
+            "diagnostics": output.diagnostics,
+        }),
     ))
 }
 #[cfg(test)]
@@ -977,7 +1273,13 @@ mod effect_tests {
             request_id: "save-1".into(),
             expected_generation: generation,
             method: "save".into(),
-            params: json!({"sessionId":session,"requestId":"save-1","expectedGeneration":generation,"path":path,"overwrite":false}),
+            params: json!({
+                "sessionId": session,
+                "requestId": "save-1",
+                "expectedGeneration": generation,
+                "path": path,
+                "overwrite": false,
+            }),
         };
         assert_eq!(
             attachment.begin_save(&mut ctl, &request).unwrap_err()["status"],
@@ -1026,7 +1328,15 @@ mod export_tests {
             request_id: "export-1".into(),
             expected_generation: snap.generation,
             method: "export".into(),
-            params: json!({"sessionId":session,"requestId":"export-1","expectedGeneration":snap.generation,"path":path,"documentId":snap.project.documents[0].id,"overwrite":false,"acknowledgeNativeFields":true}),
+            params: json!({
+                "sessionId": session,
+                "requestId": "export-1",
+                "expectedGeneration": snap.generation,
+                "path": path,
+                "documentId": snap.project.documents[0].id,
+                "overwrite": false,
+                "acknowledgeNativeFields": true,
+            }),
         };
         assert_eq!(
             attachment.begin_export(&ctl, &req).unwrap_err()["status"],
@@ -1088,7 +1398,15 @@ mod native_export_guard_tests {
                 request_id: id.clone(),
                 expected_generation: snapshot.generation,
                 method: "export".into(),
-                params: json!({"sessionId":session,"requestId":id,"expectedGeneration":snapshot.generation,"path":target,"documentId":snapshot.project.documents[0].id,"overwrite":true,"acknowledgeNativeFields":true}),
+                params: json!({
+                    "sessionId": session,
+                    "requestId": id,
+                    "expectedGeneration": snapshot.generation,
+                    "path": target,
+                    "documentId": snapshot.project.documents[0].id,
+                    "overwrite": true,
+                    "acknowledgeNativeFields": true,
+                }),
             };
             let status = attachment.begin_export(&ctl, &req).unwrap_err();
             assert_eq!(

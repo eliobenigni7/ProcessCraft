@@ -1,3 +1,5 @@
+//! Editor for diagram-level styles, metadata and plane order.
+//! Emits `SetDiagramLabelStyles`, `SetDiagramMetadata`, `SetDiagramPlaneMetadata` and `SetDiagramPlaneOrder`.
 use super::catalog::{optional_bool, optional_text};
 use super::*;
 use processcraft_core::model::{DiFont, Diagram, LabelStyle};
@@ -210,7 +212,7 @@ impl ProcessCraft {
         diagram: &Diagram,
         editable: bool,
     ) {
-        if self.style_draft.is_none() {
+        if self.drafts.style_draft.is_none() {
             if ui
                 .add_enabled(
                     editable && !self.draft_dirty,
@@ -219,11 +221,11 @@ impl ProcessCraft {
                 .clicked()
                 && self.commit_draft()
             {
-                self.style_draft = Some(StyleDraft::new(diagram));
+                self.drafts.style_draft = Some(StyleDraft::new(diagram));
             }
             return;
         }
-        let draft = self.style_draft.as_mut().unwrap();
+        let draft = self.drafts.style_draft.as_mut().unwrap();
         if draft.diagram != diagram.id.selector() {
             return;
         }
@@ -239,12 +241,12 @@ impl ProcessCraft {
             let _ = self.apply_style_draft();
         }
         if ui.button("Cancel diagram fonts and details").clicked() {
-            self.style_draft = None;
+            self.drafts.style_draft = None;
         }
     }
     pub(super) fn apply_style_draft(&mut self) -> Result<(), String> {
         self.apply_typed_draft(
-            |app| &mut app.style_draft,
+            |app| &mut app.drafts.style_draft,
             |draft, document| {
                 draft
                     .changes(document.id)

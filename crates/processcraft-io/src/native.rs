@@ -46,6 +46,138 @@ const QUALIFIED_BOUNDARY_CAPABILITY: &str = "bpmn-qualified-boundary-reference-v
 const ANALYST_ATTRIBUTES_CAPABILITY: &str = "analyst-attributes-v1";
 const MODELING_CONVENTIONS_CAPABILITY: &str = "modeling-conventions-v1";
 
+const BASE_CAPABILITIES: &[&str] = &["comments", "checkpoints"];
+
+/// The persistent content of the live project or of one frozen checkpoint.
+struct Scope<'a> {
+    documents: &'a [Arc<BpmnDocument>],
+    links: &'a [NavigationLink],
+    dictionary_links: &'a [DictionaryLink],
+    comments: &'a [Comment],
+    attribute_definitions: &'a [AttributeDefinition],
+    attribute_values: &'a [AttributeAssignment],
+    has_conventions: bool,
+}
+
+macro_rules! scope {
+    ($x:expr) => {
+        Scope {
+            documents: &$x.documents,
+            links: &$x.links,
+            dictionary_links: &$x.dictionary_links,
+            comments: &$x.comments,
+            attribute_definitions: &$x.attribute_definitions,
+            attribute_values: &$x.attribute_values,
+            has_conventions: $x.conventions.is_some(),
+        }
+    };
+}
+
+impl Scope<'_> {
+    fn any_doc(&self, f: impl Fn(&BpmnDocument) -> bool) -> bool {
+        self.documents.iter().any(|d| f(d))
+    }
+}
+
+/// One feature gate: written to the manifest when `used` holds for the project or any
+/// checkpoint, and required on load whenever `used` holds (refusal text otherwise).
+struct Capability {
+    name: &'static str,
+    used: fn(&Scope) -> bool,
+    refusal: &'static str,
+}
+
+/// Single source of truth; the order is the order written to the manifest.
+const CAPABILITIES: &[Capability] = &[
+    Capability {
+        name: DEFINITIONS_CAPABILITY,
+        used: |s| s.any_doc(|d| d.definitions.is_some()),
+        refusal: "definitions metadata requires capability",
+    },
+    Capability {
+        name: EXPRESSIONS_CAPABILITY,
+        used: |s| s.any_doc(|d| d.has_structured_expressions()),
+        refusal: "structured expressions require capability",
+    },
+    Capability {
+        name: EVENT_CAPABILITY,
+        used: |s| s.any_doc(has_extended_event_definitions),
+        refusal: "link, cancel and compensation events require capability",
+    },
+    Capability {
+        name: CATALOG_CAPABILITY,
+        used: |s| s.any_doc(|d| !d.catalog.is_empty()),
+        refusal: "supporting catalog requires capability",
+    },
+    Capability {
+        name: EMPTY_ACTIVITY_BINDING_CAPABILITY,
+        used: |s| s.any_doc(has_empty_activity_bindings),
+        refusal: "empty namespace activity bindings require capability",
+    },
+    Capability {
+        name: EXPANDED_DATA_CAPABILITY,
+        used: |s| s.any_doc(|d| d.has_expanded_data()),
+        refusal: "expanded data requires capability",
+    },
+    Capability {
+        name: NATIVE_IDENTITY_CAPABILITY,
+        used: |s| {
+            has_native_identity_features(s.documents, s.links, s.dictionary_links, s.comments)
+        },
+        refusal: "native element identities require capability",
+    },
+    Capability {
+        name: EXPANDED_EVENTS_DI_CAPABILITY,
+        used: |s| s.any_doc(|d| d.has_expanded_events_and_di()),
+        refusal: "expanded events and diagram metadata require capability",
+    },
+    Capability {
+        name: COMMON_METADATA_CAPABILITY,
+        used: |s| s.any_doc(|d| d.has_common_metadata_features()),
+        refusal: "common metadata requires capability",
+    },
+    Capability {
+        name: EXPANDED_ACTIVITIES_CAPABILITY,
+        used: |s| s.any_doc(|d| d.has_expanded_activities()),
+        refusal: "expanded activities require capability",
+    },
+    Capability {
+        name: DI_CHOREOGRAPHY_CAPABILITY,
+        used: |s| s.any_doc(|d| d.has_di_choreography_features()),
+        refusal: "DI and choreography representation requires capability",
+    },
+    Capability {
+        name: EXPANDED_COLLABORATION_CAPABILITY,
+        used: |s| s.any_doc(|d| d.has_expanded_collaboration()),
+        refusal: "expanded collaboration requires capability",
+    },
+    Capability {
+        name: CHOREOGRAPHY_GRAPH_CAPABILITY,
+        used: |s| s.any_doc(has_choreography_graph_features),
+        refusal: "choreography graph requires capability",
+    },
+    Capability {
+        name: QUALIFIED_BOUNDARY_CAPABILITY,
+        used: |s| s.any_doc(has_qualified_boundary_reference),
+        refusal: "qualified boundary reference requires capability",
+    },
+    Capability {
+        name: ANALYST_ATTRIBUTES_CAPABILITY,
+        used: |s| has_analyst_attributes(s.attribute_definitions, s.attribute_values),
+        refusal: "analyst attributes require capability",
+    },
+    Capability {
+        name: MODELING_CONVENTIONS_CAPABILITY,
+        used: |s| s.has_conventions,
+        refusal: "modeling conventions require capability",
+    },
+];
+const MIMETYPE_ENTRY_LIMIT: usize = 128;
+/// Maximum width x height of the `preview.png` thumbnail.
+const PREVIEW_PIXEL_LIMIT: u64 = 4_000_000;
+/// Maximum decoded (raw RGBA) size of `preview.png`, in bytes.
+const PREVIEW_DECODED_LIMIT: usize = 32 * 1024 * 1024;
+
 fn has_analyst_attributes(
     definitions: &[AttributeDefinition],
     values: &[AttributeAssignment],
@@ -338,193 +470,15 @@ pub fn write_bytes(project: &ProjectData) -> Result<Vec<u8>, NativeError> {
             })
             .collect(),
     };
-    let mut required_capabilities = vec!["comments".into(), "checkpoints".into()];
-    if project.documents.iter().any(|d| d.definitions.is_some())
-        || project
-            .checkpoints
-            .iter()
-            .any(|c| c.content.documents.iter().any(|d| d.definitions.is_some()))
-    {
-        required_capabilities.push(DEFINITIONS_CAPABILITY.into());
-    }
-    if project
-        .documents
-        .iter()
-        .any(|d| d.has_structured_expressions())
-        || project.checkpoints.iter().any(|c| {
-            c.content
-                .documents
-                .iter()
-                .any(|d| d.has_structured_expressions())
-        })
-    {
-        required_capabilities.push(EXPRESSIONS_CAPABILITY.into());
-    }
-    if project
-        .documents
-        .iter()
-        .any(|d| has_extended_event_definitions(d))
-        || project.checkpoints.iter().any(|c| {
-            c.content
-                .documents
-                .iter()
-                .any(|d| has_extended_event_definitions(d))
-        })
-    {
-        required_capabilities.push(EVENT_CAPABILITY.into());
-    }
-    if project.documents.iter().any(|d| !d.catalog.is_empty())
-        || project
-            .checkpoints
-            .iter()
-            .any(|c| c.content.documents.iter().any(|d| !d.catalog.is_empty()))
-    {
-        required_capabilities.push(CATALOG_CAPABILITY.into());
-    }
-    if project
-        .documents
-        .iter()
-        .any(|d| has_empty_activity_bindings(d))
-        || project.checkpoints.iter().any(|c| {
-            c.content
-                .documents
-                .iter()
-                .any(|d| has_empty_activity_bindings(d))
-        })
-    {
-        required_capabilities.push(EMPTY_ACTIVITY_BINDING_CAPABILITY.into());
-    }
-    if project.documents.iter().any(|d| d.has_expanded_data())
-        || project
-            .checkpoints
-            .iter()
-            .any(|c| c.content.documents.iter().any(|d| d.has_expanded_data()))
-    {
-        required_capabilities.push(EXPANDED_DATA_CAPABILITY.into());
-    }
-    if has_native_identity_features(
-        &project.documents,
-        &project.links,
-        &project.dictionary_links,
-        &project.comments,
-    ) || project.checkpoints.iter().any(|c| {
-        has_native_identity_features(
-            &c.content.documents,
-            &c.content.links,
-            &c.content.dictionary_links,
-            &c.content.comments,
-        )
-    }) {
-        required_capabilities.push(NATIVE_IDENTITY_CAPABILITY.into());
-    }
-    if project
-        .documents
-        .iter()
-        .any(|d| d.has_expanded_events_and_di())
-        || project.checkpoints.iter().any(|c| {
-            c.content
-                .documents
-                .iter()
-                .any(|d| d.has_expanded_events_and_di())
-        })
-    {
-        required_capabilities.push(EXPANDED_EVENTS_DI_CAPABILITY.into());
-    }
-    if project
-        .documents
-        .iter()
-        .any(|d| d.has_common_metadata_features())
-        || project.checkpoints.iter().any(|c| {
-            c.content
-                .documents
-                .iter()
-                .any(|d| d.has_common_metadata_features())
-        })
-    {
-        required_capabilities.push(COMMON_METADATA_CAPABILITY.into());
-    }
-    if project
-        .documents
-        .iter()
-        .any(|d| d.has_expanded_activities())
-        || project.checkpoints.iter().any(|c| {
-            c.content
-                .documents
-                .iter()
-                .any(|d| d.has_expanded_activities())
-        })
-    {
-        required_capabilities.push(EXPANDED_ACTIVITIES_CAPABILITY.into());
-    }
-    if project
-        .documents
-        .iter()
-        .any(|d| d.has_di_choreography_features())
-        || project.checkpoints.iter().any(|c| {
-            c.content
-                .documents
-                .iter()
-                .any(|d| d.has_di_choreography_features())
-        })
-    {
-        required_capabilities.push(DI_CHOREOGRAPHY_CAPABILITY.into());
-    }
-    if project
-        .documents
-        .iter()
-        .any(|d| d.has_expanded_collaboration())
-        || project.checkpoints.iter().any(|c| {
-            c.content
-                .documents
-                .iter()
-                .any(|d| d.has_expanded_collaboration())
-        })
-    {
-        required_capabilities.push(EXPANDED_COLLABORATION_CAPABILITY.into());
-    }
-    if project
-        .documents
-        .iter()
-        .any(|d| has_choreography_graph_features(d))
-        || project.checkpoints.iter().any(|c| {
-            c.content
-                .documents
-                .iter()
-                .any(|d| has_choreography_graph_features(d))
-        })
-    {
-        required_capabilities.push(CHOREOGRAPHY_GRAPH_CAPABILITY.into());
-    }
-    if project
-        .documents
-        .iter()
-        .any(|d| has_qualified_boundary_reference(d))
-        || project.checkpoints.iter().any(|c| {
-            c.content
-                .documents
-                .iter()
-                .any(|d| has_qualified_boundary_reference(d))
-        })
-    {
-        required_capabilities.push(QUALIFIED_BOUNDARY_CAPABILITY.into());
-    }
-    if has_analyst_attributes(&project.attribute_definitions, &project.attribute_values)
-        || project.checkpoints.iter().any(|c| {
-            has_analyst_attributes(
-                &c.content.attribute_definitions,
-                &c.content.attribute_values,
-            )
-        })
-    {
-        required_capabilities.push(ANALYST_ATTRIBUTES_CAPABILITY.into());
-    }
-    if project.conventions.is_some()
-        || project
-            .checkpoints
-            .iter()
-            .any(|c| c.content.conventions.is_some())
-    {
-        required_capabilities.push(MODELING_CONVENTIONS_CAPABILITY.into());
+    let mut required_capabilities: Vec<String> =
+        BASE_CAPABILITIES.iter().map(|c| (*c).into()).collect();
+    let save_scopes: Vec<Scope> = std::iter::once(scope!(project))
+        .chain(project.checkpoints.iter().map(|c| scope!(c.content)))
+        .collect();
+    for cap in CAPABILITIES {
+        if save_scopes.iter().any(|s| (cap.used)(s)) {
+            required_capabilities.push(cap.name.into());
+        }
     }
     let manifest = Manifest {
         format: "processcraft".into(),
@@ -677,7 +631,7 @@ fn load_with_limits(
             return Err(err("duplicate entry"));
         }
         let cap = if name == "mimetype" {
-            128
+            MIMETYPE_ENTRY_LIMIT
         } else if name == "manifest.json"
             || name == "project.json"
             || (name.starts_with("checkpoints/") && name.ends_with(".json"))
@@ -720,24 +674,8 @@ fn load_with_limits(
         || manifest.schema > 3
         || manifest.min_reader > 3
         || manifest.required_capabilities.iter().any(|cap| {
-            cap != "comments"
-                && cap != "checkpoints"
-                && cap != DEFINITIONS_CAPABILITY
-                && cap != EXPRESSIONS_CAPABILITY
-                && cap != EVENT_CAPABILITY
-                && cap != CATALOG_CAPABILITY
-                && cap != EMPTY_ACTIVITY_BINDING_CAPABILITY
-                && cap != EXPANDED_DATA_CAPABILITY
-                && cap != NATIVE_IDENTITY_CAPABILITY
-                && cap != EXPANDED_EVENTS_DI_CAPABILITY
-                && cap != COMMON_METADATA_CAPABILITY
-                && cap != EXPANDED_ACTIVITIES_CAPABILITY
-                && cap != DI_CHOREOGRAPHY_CAPABILITY
-                && cap != EXPANDED_COLLABORATION_CAPABILITY
-                && cap != CHOREOGRAPHY_GRAPH_CAPABILITY
-                && cap != QUALIFIED_BOUNDARY_CAPABILITY
-                && cap != ANALYST_ATTRIBUTES_CAPABILITY
-                && cap != MODELING_CONVENTIONS_CAPABILITY
+            !(BASE_CAPABILITIES.contains(&cap.as_str())
+                || CAPABILITIES.iter().any(|c| c.name == cap))
         })
         || (manifest.schema < 3 && !manifest.required_capabilities.is_empty())
         || (manifest.schema == 3
@@ -807,7 +745,7 @@ fn load_with_limits(
     {
         return Err(err("comments require schema 3"));
     }
-    if dto.checkpoints.len() > 20 {
+    if dto.checkpoints.len() > processcraft_core::MAX_CHECKPOINTS {
         return Err(err("checkpoint limit exceeded"));
     }
     let mut frozen = Vec::new();
@@ -819,208 +757,15 @@ fn load_with_limits(
         let payload: FrozenDto = parse_json(&raw)?;
         frozen.push((meta, payload));
     }
-    if (dto.documents.iter().any(|d| d.definitions.is_some())
-        || frozen
-            .iter()
-            .any(|(_, c)| c.documents.iter().any(|d| d.definitions.is_some())))
-        && !manifest
-            .required_capabilities
-            .iter()
-            .any(|cap| cap == DEFINITIONS_CAPABILITY)
-    {
-        return Err(err("definitions metadata requires capability"));
-    }
-    if (dto.documents.iter().any(|d| d.has_structured_expressions())
-        || frozen
-            .iter()
-            .any(|(_, c)| c.documents.iter().any(|d| d.has_structured_expressions())))
-        && !manifest
-            .required_capabilities
-            .iter()
-            .any(|cap| cap == EXPRESSIONS_CAPABILITY)
-    {
-        return Err(err("structured expressions require capability"));
-    }
-    if (dto
-        .documents
-        .iter()
-        .any(|d| has_extended_event_definitions(d))
-        || frozen.iter().any(|(_, c)| {
-            c.documents
-                .iter()
-                .any(|d| has_extended_event_definitions(d))
-        }))
-        && !manifest
-            .required_capabilities
-            .iter()
-            .any(|cap| cap == EVENT_CAPABILITY)
-    {
-        return Err(err(
-            "link, cancel and compensation events require capability",
-        ));
-    }
-    if (dto.documents.iter().any(|d| !d.catalog.is_empty())
-        || frozen
-            .iter()
-            .any(|(_, c)| c.documents.iter().any(|d| !d.catalog.is_empty())))
-        && !manifest
-            .required_capabilities
-            .iter()
-            .any(|cap| cap == CATALOG_CAPABILITY)
-    {
-        return Err(err("supporting catalog requires capability"));
-    }
-    if (dto.documents.iter().any(|d| has_empty_activity_bindings(d))
-        || frozen
-            .iter()
-            .any(|(_, c)| c.documents.iter().any(|d| has_empty_activity_bindings(d))))
-        && !manifest
-            .required_capabilities
-            .iter()
-            .any(|cap| cap == EMPTY_ACTIVITY_BINDING_CAPABILITY)
-    {
-        return Err(err("empty namespace activity bindings require capability"));
-    }
-    if (dto.documents.iter().any(|d| d.has_expanded_data())
-        || frozen
-            .iter()
-            .any(|(_, c)| c.documents.iter().any(|d| d.has_expanded_data())))
-        && !manifest
-            .required_capabilities
-            .iter()
-            .any(|cap| cap == EXPANDED_DATA_CAPABILITY)
-    {
-        return Err(err("expanded data requires capability"));
-    }
-    if (has_native_identity_features(
-        &dto.documents,
-        &dto.links,
-        &dto.dictionary_links,
-        &dto.comments,
-    ) || frozen.iter().any(|(_, c)| {
-        has_native_identity_features(&c.documents, &c.links, &c.dictionary_links, &c.comments)
-    })) && !manifest
-        .required_capabilities
-        .iter()
-        .any(|cap| cap == NATIVE_IDENTITY_CAPABILITY)
-    {
-        return Err(err("native element identities require capability"));
-    }
-    if (dto.documents.iter().any(|d| d.has_expanded_events_and_di())
-        || frozen
-            .iter()
-            .any(|(_, c)| c.documents.iter().any(|d| d.has_expanded_events_and_di())))
-        && !manifest
-            .required_capabilities
-            .iter()
-            .any(|cap| cap == EXPANDED_EVENTS_DI_CAPABILITY)
-    {
-        return Err(err(
-            "expanded events and diagram metadata require capability",
-        ));
-    }
-    if (dto
-        .documents
-        .iter()
-        .any(|d| d.has_common_metadata_features())
-        || frozen
-            .iter()
-            .any(|(_, c)| c.documents.iter().any(|d| d.has_common_metadata_features())))
-        && !manifest
-            .required_capabilities
-            .iter()
-            .any(|cap| cap == COMMON_METADATA_CAPABILITY)
-    {
-        return Err(err("common metadata requires capability"));
-    }
-    if (dto.documents.iter().any(|d| d.has_expanded_activities())
-        || frozen
-            .iter()
-            .any(|(_, c)| c.documents.iter().any(|d| d.has_expanded_activities())))
-        && !manifest
-            .required_capabilities
-            .iter()
-            .any(|cap| cap == EXPANDED_ACTIVITIES_CAPABILITY)
-    {
-        return Err(err("expanded activities require capability"));
-    }
-    if (dto
-        .documents
-        .iter()
-        .any(|d| d.has_di_choreography_features())
-        || frozen
-            .iter()
-            .any(|(_, c)| c.documents.iter().any(|d| d.has_di_choreography_features())))
-        && !manifest
-            .required_capabilities
-            .iter()
-            .any(|cap| cap == DI_CHOREOGRAPHY_CAPABILITY)
-    {
-        return Err(err(
-            "DI and choreography representation requires capability",
-        ));
-    }
-    if (dto.documents.iter().any(|d| d.has_expanded_collaboration())
-        || frozen
-            .iter()
-            .any(|(_, c)| c.documents.iter().any(|d| d.has_expanded_collaboration())))
-        && !manifest
-            .required_capabilities
-            .iter()
-            .any(|cap| cap == EXPANDED_COLLABORATION_CAPABILITY)
-    {
-        return Err(err("expanded collaboration requires capability"));
-    }
-    if (dto
-        .documents
-        .iter()
-        .any(|d| has_choreography_graph_features(d))
-        || frozen.iter().any(|(_, c)| {
-            c.documents
-                .iter()
-                .any(|d| has_choreography_graph_features(d))
-        }))
-        && !manifest
-            .required_capabilities
-            .iter()
-            .any(|cap| cap == CHOREOGRAPHY_GRAPH_CAPABILITY)
-    {
-        return Err(err("choreography graph requires capability"));
-    }
-    if (dto
-        .documents
-        .iter()
-        .any(|d| has_qualified_boundary_reference(d))
-        || frozen.iter().any(|(_, c)| {
-            c.documents
-                .iter()
-                .any(|d| has_qualified_boundary_reference(d))
-        }))
-        && !manifest
-            .required_capabilities
-            .iter()
-            .any(|cap| cap == QUALIFIED_BOUNDARY_CAPABILITY)
-    {
-        return Err(err("qualified boundary reference requires capability"));
-    }
-    if (has_analyst_attributes(&dto.attribute_definitions, &dto.attribute_values)
-        || frozen
-            .iter()
-            .any(|(_, c)| has_analyst_attributes(&c.attribute_definitions, &c.attribute_values)))
-        && !manifest
-            .required_capabilities
-            .iter()
-            .any(|cap| cap == ANALYST_ATTRIBUTES_CAPABILITY)
-    {
-        return Err(err("analyst attributes require capability"));
-    }
-    if (dto.conventions.is_some() || frozen.iter().any(|(_, c)| c.conventions.is_some()))
-        && !manifest
-            .required_capabilities
-            .iter()
-            .any(|cap| cap == MODELING_CONVENTIONS_CAPABILITY)
-    {
-        return Err(err("modeling conventions require capability"));
+    let load_scopes: Vec<Scope> = std::iter::once(scope!(dto))
+        .chain(frozen.iter().map(|(_, c)| scope!(c)))
+        .collect();
+    for cap in CAPABILITIES {
+        if load_scopes.iter().any(|s| (cap.used)(s))
+            && !manifest.required_capabilities.iter().any(|c| c == cap.name)
+        {
+            return Err(err(cap.refusal));
+        }
     }
     for resources in std::iter::once(&dto.resources).chain(frozen.iter().map(|(_, c)| &c.resources))
     {
@@ -1195,11 +940,11 @@ fn validate_preview(data: &[u8]) -> Result<(), NativeError> {
     let decoder = png::Decoder::new(Cursor::new(data));
     let mut reader = decoder.read_info().map_err(err)?;
     let info = reader.info();
-    if u64::from(info.width) * u64::from(info.height) > 4_000_000 {
+    if u64::from(info.width) * u64::from(info.height) > PREVIEW_PIXEL_LIMIT {
         return Err(err("preview exceeds pixel limit"));
     }
     let size = reader.output_buffer_size();
-    if size > 32 * 1024 * 1024 {
+    if size > PREVIEW_DECODED_LIMIT {
         return Err(err("preview exceeds decoded limit"));
     }
     let mut buffer = vec![0; size];
@@ -1210,6 +955,36 @@ fn validate_preview(data: &[u8]) -> Result<(), NativeError> {
 #[cfg(test)]
 mod limit_tests {
     use super::*;
+
+    #[test]
+    fn every_capability_constant_is_in_the_table_exactly_once() {
+        let constants = [
+            DEFINITIONS_CAPABILITY,
+            EXPRESSIONS_CAPABILITY,
+            EVENT_CAPABILITY,
+            CATALOG_CAPABILITY,
+            EMPTY_ACTIVITY_BINDING_CAPABILITY,
+            EXPANDED_DATA_CAPABILITY,
+            NATIVE_IDENTITY_CAPABILITY,
+            EXPANDED_EVENTS_DI_CAPABILITY,
+            COMMON_METADATA_CAPABILITY,
+            EXPANDED_ACTIVITIES_CAPABILITY,
+            DI_CHOREOGRAPHY_CAPABILITY,
+            EXPANDED_COLLABORATION_CAPABILITY,
+            CHOREOGRAPHY_GRAPH_CAPABILITY,
+            QUALIFIED_BOUNDARY_CAPABILITY,
+            ANALYST_ATTRIBUTES_CAPABILITY,
+            MODELING_CONVENTIONS_CAPABILITY,
+        ];
+        assert_eq!(CAPABILITIES.len(), constants.len());
+        for name in constants {
+            assert_eq!(
+                CAPABILITIES.iter().filter(|c| c.name == name).count(),
+                1,
+                "{name}"
+            );
+        }
+    }
 
     #[test]
     fn choreography_graph_capability_detects_presence_without_changing_legacy() {

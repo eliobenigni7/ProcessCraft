@@ -7,6 +7,33 @@ versions; such changes are listed here.
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-11-17
+
+Unsigned Windows build (x64): MSI installer and portable ZIP.
+
+### Changed
+
+- **Faster canvas:** the canvas is rasterised with a margin around the view, so panning and zooming
+  (within 0.8–1.25 of the rendered scale) only move or scale the image on the GPU; a full-quality
+  render follows 100 ms after the view settles. Finished renders show at once instead of waiting
+  for a 30 ms poll, the texture is reused, and text layouts are cached. Exports are unchanged.
+- **Clearer BPMN import fallbacks:** when an import falls back to preserved, non-editable source,
+  the report now names the reason in many more cases (for example root elements out of order, an
+  `<extension>` with `mustUnderstand="true"`, or more than one `<laneSet>`) instead of the generic
+  "content outside the qualified profile". The same files are refused as before.
+- Internal: the code base was reorganised for readability (large modules split, duplicated logic
+  shared between the CLI and MCP and between canvas and export rendering). CLI and export output
+  are unchanged.
+
+### Added
+
+- `CANVAS_PROBE=1` in the `workbench_qualify` example measures canvas render times;
+  `PROCESSCRAFT_CANVAS_TRACE=1` logs how long a render takes to reach the screen.
+
+### Fixed
+
+- The XML ID of a lane's partition element can now be edited; before, the edit could not reach it.
+
 ## [0.2.2] - 2026-11-14
 
 Unsigned Windows build (x64): MSI installer and portable ZIP.
@@ -126,7 +153,8 @@ First public prerelease: an unsigned Windows build (MSI installer and portable Z
   server, standalone or attached to the open desktop session.
 - Per-user Windows installer with file association.
 
-[Unreleased]: https://github.com/eliobenigni7/ProcessCraft/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/eliobenigni7/ProcessCraft/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/eliobenigni7/ProcessCraft/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/eliobenigni7/ProcessCraft/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/eliobenigni7/ProcessCraft/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/eliobenigni7/ProcessCraft/compare/v0.1.0-rc.1...v0.2.0

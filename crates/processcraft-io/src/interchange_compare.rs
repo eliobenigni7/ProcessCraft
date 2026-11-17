@@ -4,6 +4,7 @@
 //! projection only removes import-local handles: it never grants export eligibility,
 //! invents an XML ID, resolves an external QName, or rewrites payload text. Callers
 //! validate their project and XML reference requirements before using it.
+use crate::ns::{BPMN, XML, XSI};
 use processcraft_core::{
     bpmn_model::NodeDetails,
     bpmn_xml::MixedXml,
@@ -145,8 +146,7 @@ fn normalize_namespaces(object: &mut serde_json::Map<String, Value>) -> Result<(
             Value::Object(value) => value.get("uri").and_then(Value::as_str),
             _ => None,
         };
-        !(namespace_prefix(binding) == Some("xml")
-            && uri == Some("http://www.w3.org/XML/1998/namespace"))
+        !(namespace_prefix(binding) == Some("xml") && uri == Some(XML))
     });
     bindings.sort_by(|a, b| namespace_prefix(a).cmp(&namespace_prefix(b)));
     Ok(())
@@ -185,13 +185,8 @@ fn simple_bpmn_scope(value: &Value) -> bool {
     bindings.len() == 1
         && namespace_prefix(&bindings[0]) == Some("")
         && match &bindings[0] {
-            Value::Array(pair) => {
-                pair[1].as_str() == Some("http://www.omg.org/spec/BPMN/20100524/MODEL")
-            }
-            Value::Object(binding) => {
-                binding.get("uri").and_then(Value::as_str)
-                    == Some("http://www.omg.org/spec/BPMN/20100524/MODEL")
-            }
+            Value::Array(pair) => pair[1].as_str() == Some(BPMN),
+            Value::Object(binding) => binding.get("uri").and_then(Value::as_str) == Some(BPMN),
             _ => false,
         }
 }
@@ -258,13 +253,11 @@ fn binding_pair(binding: &Value) -> Option<(&str, &str)> {
     }
 }
 fn legacy_formal_scope(value: &Value) -> bool {
-    const B: &str = "http://www.omg.org/spec/BPMN/20100524/MODEL";
-    const XSI: &str = "http://www.w3.org/2001/XMLSchema-instance";
     let Some(bindings) = value.as_array() else {
         return false;
     };
     bindings.iter().map(binding_pair).collect::<Vec<_>>()
-        == [Some(("", B)), Some(("bpmn", B)), Some(("xsi", XSI))]
+        == [Some(("", BPMN)), Some(("bpmn", BPMN)), Some(("xsi", XSI))]
 }
 fn bare_expression(object: &serde_json::Map<String, Value>) -> Option<Value> {
     if object.contains_key("id") || object.contains_key("foreign_attributes") {

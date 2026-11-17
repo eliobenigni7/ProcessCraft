@@ -86,6 +86,11 @@ fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(Some(0)).collect()
 }
 fn create_pipe(name: &str) -> io::Result<std::fs::File> {
+    // SAFETY: every Win32 call below receives valid out-pointers or buffers sized by the preceding
+    // size query, and null where the API allows it. The token handle is wrapped in a File (closed on
+    // drop). `buf` is pointer-aligned and outlives the SID read from it. `text` and `descriptor` come
+    // from LocalAlloc-backed APIs and are each freed exactly once (`descriptor` also on the error path,
+    // after CreateNamedPipeW has copied the ACL). The final handle is valid and owned by nobody else.
     unsafe {
         let mut token = std::ptr::null_mut();
         if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) == 0 {
@@ -201,6 +206,8 @@ fn transfer(
             ));
         }
         let mut count = 0;
+        // SAFETY: `file` owns a live handle; the pointer/length pair is the in-bounds tail of `data`
+        // (`offset <= data.len()`), and `count` is a valid out-pointer; OVERLAPPED is null (synchronous).
         let ok = unsafe {
             if writing {
                 WriteFile(
@@ -279,6 +286,7 @@ fn serve(
 ) {
     // ponytail: One client at a time bounds resources; expand only if needed.
     while !stop.load(Ordering::Acquire) {
+        // SAFETY: `pipe` owns a live handle; a null OVERLAPPED selects synchronous (NOWAIT) mode.
         let connected = unsafe { ConnectNamedPipe(pipe.as_raw_handle(), std::ptr::null_mut()) };
         if connected == 0 {
             let e = io::Error::last_os_error();
@@ -324,6 +332,7 @@ fn serve(
             transfer(&pipe, &mut [0u8; 1], false, &stop, deadline)
         })();
         let _ = result;
+        // SAFETY: `pipe` owns a live handle; DisconnectNamedPipe only resets this server instance.
         unsafe {
             DisconnectNamedPipe(pipe.as_raw_handle());
         }
@@ -345,6 +354,8 @@ pub fn call(endpoint: &str, token: &str, request: &AttachmentRequest) -> io::Res
     let stop = AtomicBool::new(false);
     let deadline = Instant::now() + TIMEOUT;
     let handle = loop {
+        // SAFETY: the endpoint is a NUL-terminated UTF-16 string kept alive by the temporary for the
+        // whole call; the security-attributes and template-handle arguments may be null.
         let handle = unsafe {
             CreateFileW(
                 wide(endpoint).as_ptr(),
@@ -365,8 +376,12 @@ pub fn call(endpoint: &str, token: &str, request: &AttachmentRequest) -> io::Res
         }
         paused(&stop, deadline)?;
     };
+    // SAFETY: CreateFileW returned a valid handle (INVALID_HANDLE_VALUE was handled above) that
+    // nothing else owns, so File takes over closing it.
     let file = unsafe { std::fs::File::from_raw_handle(handle) };
     let mode = PIPE_READMODE_BYTE | PIPE_NOWAIT;
+    // SAFETY: `file` owns a live pipe handle; `mode` outlives the call and the two optional
+    // (collection) arguments are allowed to be null.
     if unsafe {
         SetNamedPipeHandleState(
             file.as_raw_handle(),

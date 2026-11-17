@@ -1,3 +1,5 @@
+//! Draft editor for a callable's input/output specification (data inputs, outputs and sets).
+//! Builds the value; the owning editor submits it.
 use super::catalog::{
     IdentityDraft, id_build, id_selector, id_string, optional_bool, optional_text,
 };

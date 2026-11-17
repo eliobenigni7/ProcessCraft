@@ -68,7 +68,7 @@ pub fn export_diagram_with_overlay(
             "Document does not have a qualified editable scene",
         ));
     }
-    if !options.scale.is_finite() || !(0.125..=8.0).contains(&options.scale) {
+    if !options.scale.is_finite() || !crate::ZOOM_RANGE.contains(&options.scale) {
         return Err(RenderError("Export scale must be finite within 0.125..8"));
     }
     let mut built = BpmnScene::build_with_overlay(

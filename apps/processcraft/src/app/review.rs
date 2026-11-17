@@ -1,7 +1,9 @@
+//! Review tools: comments, checkpoints, checkpoint comparison and auto-layout preview.
 use super::*;
 use processcraft_core::{
     ids::{CheckpointId, CommentId, ElementKey},
     layout::{LayoutProposal, propose_choreography_scope_layout, propose_layout},
+    queries,
 };
 use std::sync::{
     Arc,
@@ -19,11 +21,7 @@ pub(super) struct State {
     editing: Option<CommentId>,
     checkpoint: Option<CheckpointId>,
     checkpoint_name: String,
-    comparison: Option<(
-        u64,
-        CheckpointId,
-        processcraft_core::queries::CheckpointComparison,
-    )>,
+    comparison: Option<(u64, CheckpointId, queries::CheckpointComparison)>,
     restore: Option<CheckpointId>,
     reference_view: Option<(CheckpointId, usize)>,
     reference_page: usize,
@@ -86,10 +84,7 @@ fn copy_value(value: &serde_json::Value) -> String {
         value => value.to_string(),
     }
 }
-fn property_detail_ui(
-    ui: &mut egui::Ui,
-    property: &processcraft_core::queries::PropertyDifference,
-) {
+fn property_detail_ui(ui: &mut egui::Ui, property: &queries::PropertyDifference) {
     let (before, before_short) = value_preview(&property.before);
     let (after, after_short) = value_preview(&property.after);
     let label = property
@@ -119,15 +114,9 @@ fn property_detail_ui(
     });
 }
 fn semantic_property_page(
-    changes: &[processcraft_core::queries::ElementChange],
+    changes: &[queries::ElementChange],
     page: usize,
-) -> impl Iterator<
-    Item = (
-        usize,
-        &processcraft_core::queries::ElementChange,
-        &processcraft_core::queries::PropertyDifference,
-    ),
-> {
+) -> impl Iterator<Item = (usize, &queries::ElementChange, &queries::PropertyDifference)> {
     changes
         .iter()
         .flat_map(|change| {
@@ -142,15 +131,9 @@ fn semantic_property_page(
         .map(|(index, (change, property))| (index, change, property))
 }
 fn diagram_property_page(
-    changes: &[processcraft_core::queries::DiagramChange],
+    changes: &[queries::DiagramChange],
     page: usize,
-) -> impl Iterator<
-    Item = (
-        usize,
-        &processcraft_core::queries::DiagramChange,
-        &processcraft_core::queries::PropertyDifference,
-    ),
-> {
+) -> impl Iterator<Item = (usize, &queries::DiagramChange, &queries::PropertyDifference)> {
     changes
         .iter()
         .flat_map(|change| {
@@ -218,9 +201,59 @@ fn diagram_representation_label(
     }
     "Unavailable representation".into()
 }
+/// RGBA bytes with width and height.
+type ReferencePixels = (Vec<u8>, usize, usize);
 struct ReferenceImage {
     key: String,
-    pixels: Result<(Vec<u8>, usize, usize), String>,
+    pixels: Result<ReferencePixels, String>,
+}
+
+/// Target raster box of the frozen checkpoint preview, in pixels.
+const REFERENCE_WIDTH: f64 = 1024.0;
+const REFERENCE_HEIGHT: f64 = 600.0;
+/// Empty margin around the diagram extents, in diagram units.
+const REFERENCE_MARGIN: f64 = 20.0;
+/// Extents (x, y, right, bottom) used when a diagram has no shapes.
+const REFERENCE_EMPTY_EXTENTS: (f64, f64, f64, f64) = (0.0, 0.0, 500.0, 300.0);
+
+/// Renders one frozen diagram, fitted into the reference raster box.
+fn render_reference(
+    document: &BpmnDocument,
+    diagram: &ElementSelector,
+    appearance: Appearance,
+) -> Result<ReferencePixels, String> {
+    let selected = document.diagrams.iter().find(|d| d.id == *diagram).unwrap();
+    let (x, y, right, bottom) = diagram_extents(selected).unwrap_or(REFERENCE_EMPTY_EXTENTS);
+    let pad = 2.0 * REFERENCE_MARGIN;
+    let zoom = (REFERENCE_WIDTH / (right - x + pad))
+        .min(REFERENCE_HEIGHT / (bottom - y + pad))
+        .clamp(
+            f64::from(*processcraft_render::ZOOM_RANGE.start()),
+            f64::from(*processcraft_render::ZOOM_RANGE.end()),
+        ) as f32;
+    let view = processcraft_render::Viewport {
+        x: x - REFERENCE_MARGIN,
+        y: y - REFERENCE_MARGIN,
+        width: REFERENCE_WIDTH / zoom as f64,
+        height: REFERENCE_HEIGHT / zoom as f64,
+        zoom,
+    };
+    processcraft_render::BpmnViewport::build(
+        document,
+        diagram,
+        appearance,
+        &mut processcraft_render::TextEngine::new(),
+        "Noto Sans",
+        view,
+    )
+    .map(|r| {
+        (
+            r.pixels.data().to_vec(),
+            r.pixels.width() as usize,
+            r.pixels.height() as usize,
+        )
+    })
+    .map_err(|e| e.to_string())
 }
 impl State {
     pub(super) fn has_draft(&self) -> bool {
@@ -261,7 +294,9 @@ impl ProcessCraft {
                             if proposal.session_id != self.ctl.session.id()
                                 || proposal.generation != snap.generation
                             {
-                                self.ctl.error="Auto-layout result is stale. Preview again on the current model.".into();
+                                self.ctl.error =
+                                    "Auto-layout result is stale. Preview again on the current model."
+                                        .into();
                             } else if let Some(doc) = snap
                                 .project
                                 .documents
@@ -380,7 +415,7 @@ impl ProcessCraft {
                     .find(|shape| {
                         shape.id == self.representation_selection[0]
                             && shape.is_expanded == Some(true)
-                            && processcraft_core::queries::choreography_scopes(&doc)
+                            && queries::choreography_scopes(&doc)
                                 .iter()
                                 .any(|scope| scope.parent.is_some() && scope.owner == shape.element)
                     })
@@ -389,7 +424,9 @@ impl ProcessCraft {
                 None
             };
             let Some(shape) = shape else {
-                self.ctl.error = "Select one expanded sub-choreography representation before arranging its contents.".into();
+                self.ctl.error = "Select one expanded sub-choreography representation \
+                                  before arranging its contents."
+                    .into();
                 return;
             };
             Some(shape)
@@ -497,19 +534,44 @@ impl ProcessCraft {
 
     pub(super) fn review_windows(&mut self, ctx: &egui::Context) {
         self.reference_window(ctx);
-        if let Some(id) = self.review.restore {
-            egui::Window::new("Restore checkpoint?").collapsible(false).show(ctx,|ui| {
-                ui.label("This replaces the current project content with the selected checkpoint, including dictionary and comments. The checkpoint catalog stays available. Restore is one undoable change.");
+        let Some(id) = self.review.restore else {
+            return;
+        };
+        egui::Window::new("Restore checkpoint?")
+            .collapsible(false)
+            .show(ctx, |ui| {
+                ui.label(
+                    "This replaces the current project content with the selected checkpoint, \
+                     including dictionary and comments. The checkpoint catalog stays available. \
+                     Restore is one undoable change.",
+                );
                 ui.horizontal(|ui| {
-                    if ui.button("Cancel restore").clicked() {self.review.restore=None;}
-                    if ui.button("Restore project content").clicked() && self.prepare_navigation()
-                        && self.ctl.mutate(vec![Mutation::RestoreCheckpoint{id}]) {
-                        self.doc=self.doc.min(self.ctl.session.snapshot().project.documents.len().saturating_sub(1));
-                        self.selected=None;self.multi.clear();self.process_id=None;self.diagram_id=None;self.review.preview=None;self.review.target=None;self.review.editing=None;self.select(None);self.refresh_dictionary_editor();self.review.restore=None;
+                    if ui.button("Cancel restore").clicked() {
+                        self.review.restore = None;
+                    }
+                    if ui.button("Restore project content").clicked()
+                        && self.prepare_navigation()
+                        && self.ctl.mutate(vec![Mutation::RestoreCheckpoint { id }])
+                    {
+                        self.reset_after_restore();
                     }
                 });
             });
-        }
+    }
+    /// Clears selection, previews and drafts that referred to the pre-restore content.
+    fn reset_after_restore(&mut self) {
+        let documents = self.ctl.session.snapshot().project.documents.len();
+        self.doc = self.doc.min(documents.saturating_sub(1));
+        self.selected = None;
+        self.multi.clear();
+        self.process_id = None;
+        self.diagram_id = None;
+        self.review.preview = None;
+        self.review.target = None;
+        self.review.editing = None;
+        self.select(None);
+        self.refresh_dictionary_editor();
+        self.review.restore = None;
     }
     pub(super) fn comments_ui(&mut self, ui: &mut egui::Ui) {
         let snap = self.ctl.session.snapshot();
@@ -561,7 +623,7 @@ impl ProcessCraft {
                         "{} / {}",
                         comment.target.document_id, comment.target.xml_id
                     ));
-                    if processcraft_core::queries::comment_is_orphan(&snap.project, comment) {
+                    if queries::comment_is_orphan(&snap.project, comment) {
                         ui.colored_label(self.theme.palette().warning, "Orphaned target");
                     }
                 });
@@ -669,59 +731,212 @@ impl ProcessCraft {
             return;
         };
         let mut open = true;
-        egui::Window::new(format!("Frozen checkpoint · {}", checkpoint.name)).open(&mut open).default_width(760.0).max_width((ctx.content_rect().width()-32.0).max(150.0)).max_height((ctx.content_rect().height()-64.0).max(100.0)).vscroll(true).show(ctx, |ui| {
-            ui.label("Read-only snapshot. Names, dictionary values and comments come from this checkpoint.");
-            egui::ComboBox::from_label("Frozen model").selected_text(checkpoint.content.documents.get(index).map_or("No models", |d| d.name.as_str())).show_ui(ui, |ui| {
-                for (i, doc) in checkpoint.content.documents.iter().enumerate() { ui.selectable_value(&mut index, i, &doc.name); }
-            });
-            let node_count = checkpoint.content.documents.get(index).map_or(0,|d|processcraft_core::queries::scopes(d).iter().map(|s|s.nodes.len()).sum::<usize>());
-            let pages = node_count.max(checkpoint.content.dictionary_entries.len()).max(checkpoint.content.comments.len()).div_ceil(COMPARISON_PAGE_SIZE).max(1);
-            self.review.reference_page = self.review.reference_page.min(pages-1);
-            ui.horizontal(|ui| {
-                if ui.add_enabled(self.review.reference_page > 0,egui::Button::new("Previous frozen details")).clicked() {self.review.reference_page-=1;}
-                ui.label(format!("Details page {} of {} · 100 entries per section",self.review.reference_page+1,pages));
-                if ui.add_enabled(self.review.reference_page+1 < pages,egui::Button::new("Next frozen details")).clicked() {self.review.reference_page+=1;}
-            });
-            if let Some(document) = checkpoint.content.documents.get(index) {
-                egui::ComboBox::from_label("Frozen diagram").selected_text(self.review.reference_diagram.as_ref().map_or("First diagram".into(), ToString::to_string)).show_ui(ui, |ui| {
-                    ui.selectable_value(&mut self.review.reference_diagram, None, "First diagram");
-                    for diagram in &document.diagrams { ui.selectable_value(&mut self.review.reference_diagram, Some(diagram.id.selector()), diagram.id.to_string()); }
+        let max_width = (ctx.content_rect().width() - 32.0).max(150.0);
+        let max_height = (ctx.content_rect().height() - 64.0).max(100.0);
+        egui::Window::new(format!("Frozen checkpoint · {}", checkpoint.name))
+            .open(&mut open)
+            .default_width(760.0)
+            .max_width(max_width)
+            .max_height(max_height)
+            .vscroll(true)
+            .show(ctx, |ui| {
+                ui.label(
+                    "Read-only snapshot. Names, dictionary values and comments come from this checkpoint.",
+                );
+                let content = &checkpoint.content;
+                let model_name = content
+                    .documents
+                    .get(index)
+                    .map_or("No models", |d| d.name.as_str());
+                egui::ComboBox::from_label("Frozen model")
+                    .selected_text(model_name)
+                    .show_ui(ui, |ui| {
+                        for (i, doc) in content.documents.iter().enumerate() {
+                            ui.selectable_value(&mut index, i, &doc.name);
+                        }
+                    });
+                let node_count = content.documents.get(index).map_or(0, |d| {
+                    queries::scopes(d).iter().map(|s| s.nodes.len()).sum::<usize>()
                 });
-                if let Some(diagram) = document.diagrams.iter().find(|d| self.review.reference_diagram.as_ref().is_none_or(|id| &d.id == id)).or_else(|| document.diagrams.first()) {
-                    let key = format!("{id}:{index}:{}:{}", diagram.id, self.theme == Theme::Dark);
-                    if self.review.reference_key != key && self.review.reference_worker.is_none() {
-                        self.review.reference_key = key.clone(); self.review.reference_image = None; self.review.reference_error.clear();
-                        let (tx, rx) = mpsc::sync_channel(1); self.review.reference_worker = Some(rx);
-                        let document = document.clone(); let diagram = diagram.id.selector(); let appearance = if self.theme == Theme::Dark { Appearance::Dark } else { Appearance::Light }; let wake = ctx.clone();
-                        let worker_key = key.clone();
-                        std::thread::spawn(move || {
-                            let selected = document.diagrams.iter().find(|d| d.id == diagram).unwrap();
-                            let (x, y, right, bottom) = diagram_extents(selected).unwrap_or((0.0,0.0,500.0,300.0));
-                            let zoom = (1024.0/(right-x+40.0)).min(600.0/(bottom-y+40.0)).clamp(0.125,8.0) as f32;
-                            let view = processcraft_render::Viewport { x:x-20.0,y:y-20.0,width:1024.0/zoom as f64,height:600.0/zoom as f64,zoom };
-                            let pixels = processcraft_render::BpmnViewport::build(&document,&diagram,appearance,&mut processcraft_render::TextEngine::new(),"Noto Sans",view).map(|r|(r.pixels.data().to_vec(),r.pixels.width() as usize,r.pixels.height() as usize)).map_err(|e|e.to_string());
-                            let _ = tx.send(ReferenceImage { key: worker_key,pixels }); wake.request_repaint();
-                        });
+                let pages = node_count
+                    .max(content.dictionary_entries.len())
+                    .max(content.comments.len())
+                    .div_ceil(COMPARISON_PAGE_SIZE)
+                    .max(1);
+                self.review.reference_page = self.review.reference_page.min(pages - 1);
+                ui.horizontal(|ui| {
+                    let previous = egui::Button::new("Previous frozen details");
+                    if ui
+                        .add_enabled(self.review.reference_page > 0, previous)
+                        .clicked()
+                    {
+                        self.review.reference_page -= 1;
                     }
-                    if let Some(rx) = &self.review.reference_worker && let Ok(result) = rx.try_recv() {
-                        self.review.reference_worker = None;
-                        if result.key == key { match result.pixels { Ok((pixels,w,h)) => self.review.reference_image = Some(ctx.load_texture("frozen-checkpoint",egui::ColorImage::from_rgba_unmultiplied([w,h],&pixels),Default::default())), Err(error) => { self.review.reference_error = error; } } }
+                    ui.label(format!(
+                        "Details page {} of {} · {COMPARISON_PAGE_SIZE} entries per section",
+                        self.review.reference_page + 1,
+                        pages
+                    ));
+                    let next = egui::Button::new("Next frozen details");
+                    if ui
+                        .add_enabled(self.review.reference_page + 1 < pages, next)
+                        .clicked()
+                    {
+                        self.review.reference_page += 1;
                     }
-                    if self.review.reference_key == key && !self.review.reference_error.is_empty() {
-                        ui.label(&self.review.reference_error);
-                    } else if self.review.reference_key == key && let Some(texture) = &self.review.reference_image { ui.add(egui::Image::new(texture).max_width(ui.available_width()).maintain_aspect_ratio(true)); } else { ui.spinner(); ctx.request_repaint_after(std::time::Duration::from_millis(50)); }
+                });
+                let first = self.review.reference_page * COMPARISON_PAGE_SIZE;
+                if let Some(document) = content.documents.get(index) {
+                    self.frozen_diagram_ui(ui, ctx, document, (id, index));
+                    ui.collapsing("Frozen element properties", |ui| {
+                        let nodes = queries::scopes(document)
+                            .into_iter()
+                            .flat_map(|scope| scope.nodes.iter().map(move |node| (scope.name, node)))
+                            .skip(first)
+                            .take(COMPARISON_PAGE_SIZE);
+                        for (scope, node) in nodes {
+                            ui.label(format!(
+                                "{} / {} · {} · {}",
+                                scope,
+                                node_kind_label(node.kind),
+                                node.name.as_deref().unwrap_or(""),
+                                node.documentation
+                                    .plain_text()
+                                    .unwrap_or("Structured documentation")
+                            ));
+                        }
+                    });
                 }
-                ui.collapsing("Frozen element properties", |ui| {
-                    for (scope, node) in processcraft_core::queries::scopes(document).into_iter().flat_map(|scope| scope.nodes.iter().map(move |node| (scope.name, node))).skip(self.review.reference_page*100).take(100) { ui.label(format!("{} / {} · {} · {}",scope,node_kind_label(node.kind),node.name.as_deref().unwrap_or(""),node.documentation.plain_text().unwrap_or("Structured documentation"))); }
+                ui.collapsing(
+                    format!("Frozen dictionary · {} entries", content.dictionary_entries.len()),
+                    |ui| {
+                        let entries = content
+                            .dictionary_entries
+                            .iter()
+                            .skip(first)
+                            .take(COMPARISON_PAGE_SIZE);
+                        for entry in entries {
+                            ui.label(format!(
+                                "{} · {} · {}",
+                                super::analyst_views::dictionary_kind_label(entry.kind),
+                                entry.name,
+                                entry.description
+                            ));
+                        }
+                    },
+                );
+                ui.collapsing(format!("Frozen comments · {}", content.comments.len()), |ui| {
+                    for comment in content.comments.iter().skip(first).take(COMPARISON_PAGE_SIZE) {
+                        ui.strong(&comment.author);
+                        ui.label(format!(
+                            "{} / {}",
+                            comment.target.document_id, comment.target.xml_id
+                        ));
+                        ui.label(&comment.text);
+                        ui.separator();
+                    }
                 });
-            }
-            ui.collapsing(format!("Frozen dictionary · {} entries",checkpoint.content.dictionary_entries.len()), |ui| { for entry in checkpoint.content.dictionary_entries.iter().skip(self.review.reference_page*100).take(100) { ui.label(format!("{} · {} · {}",super::analyst_views::dictionary_kind_label(entry.kind),entry.name,entry.description)); } });
-            ui.collapsing(format!("Frozen comments · {}",checkpoint.content.comments.len()), |ui| {
-                for comment in checkpoint.content.comments.iter().skip(self.review.reference_page*100).take(100) { ui.strong(&comment.author); ui.label(format!("{} / {}",comment.target.document_id,comment.target.xml_id)); ui.label(&comment.text); ui.separator(); }
+                ui.label(format!("{} linked resources", content.resources.len()));
             });
-            ui.label(format!("{} linked resources",checkpoint.content.resources.len()));
-        });
         self.review.reference_view = open.then_some((id, index));
+    }
+
+    /// Diagram picker plus the rendered raster of a frozen checkpoint model.
+    fn frozen_diagram_ui(
+        &mut self,
+        ui: &mut egui::Ui,
+        ctx: &egui::Context,
+        document: &Arc<BpmnDocument>,
+        (checkpoint_id, index): (CheckpointId, usize),
+    ) {
+        let selected_text = self
+            .review
+            .reference_diagram
+            .as_ref()
+            .map_or("First diagram".into(), ToString::to_string);
+        egui::ComboBox::from_label("Frozen diagram")
+            .selected_text(selected_text)
+            .show_ui(ui, |ui| {
+                let choice = &mut self.review.reference_diagram;
+                ui.selectable_value(choice, None, "First diagram");
+                for diagram in &document.diagrams {
+                    let value = Some(diagram.id.selector());
+                    ui.selectable_value(choice, value, diagram.id.to_string());
+                }
+            });
+        let wanted = self.review.reference_diagram.as_ref();
+        let diagram = document
+            .diagrams
+            .iter()
+            .find(|d| wanted.is_none_or(|id| &d.id == id))
+            .or_else(|| document.diagrams.first());
+        let Some(diagram) = diagram else {
+            return;
+        };
+        let key = format!(
+            "{checkpoint_id}:{index}:{}:{}",
+            diagram.id,
+            self.theme == Theme::Dark
+        );
+        if self.review.reference_key != key && self.review.reference_worker.is_none() {
+            self.spawn_reference_render(ctx, document, diagram.id.selector(), key.clone());
+        }
+        if let Some(rx) = &self.review.reference_worker
+            && let Ok(result) = rx.try_recv()
+        {
+            self.review.reference_worker = None;
+            if result.key == key {
+                match result.pixels {
+                    Ok((pixels, w, h)) => {
+                        let image = egui::ColorImage::from_rgba_unmultiplied([w, h], &pixels);
+                        let texture =
+                            ctx.load_texture("frozen-checkpoint", image, Default::default());
+                        self.review.reference_image = Some(texture);
+                    }
+                    Err(error) => self.review.reference_error = error,
+                }
+            }
+        }
+        let current = self.review.reference_key == key;
+        if current && !self.review.reference_error.is_empty() {
+            ui.label(&self.review.reference_error);
+        } else if current && let Some(texture) = &self.review.reference_image {
+            ui.add(
+                egui::Image::new(texture)
+                    .max_width(ui.available_width())
+                    .maintain_aspect_ratio(true),
+            );
+        } else {
+            ui.spinner();
+            ctx.request_repaint_after(std::time::Duration::from_millis(50));
+        }
+    }
+
+    /// Starts rendering `diagram` of `document` off the UI thread for the frozen view.
+    fn spawn_reference_render(
+        &mut self,
+        ctx: &egui::Context,
+        document: &Arc<BpmnDocument>,
+        diagram: ElementSelector,
+        key: String,
+    ) {
+        self.review.reference_key = key.clone();
+        self.review.reference_image = None;
+        self.review.reference_error.clear();
+        let (tx, rx) = mpsc::sync_channel(1);
+        self.review.reference_worker = Some(rx);
+        let document = document.clone();
+        let appearance = if self.theme == Theme::Dark {
+            Appearance::Dark
+        } else {
+            Appearance::Light
+        };
+        let wake = ctx.clone();
+        std::thread::spawn(move || {
+            let pixels = render_reference(&document, &diagram, appearance);
+            let _ = tx.send(ReferenceImage { key, pixels });
+            wake.request_repaint();
+        });
     }
     pub(super) fn checkpoints_ui(&mut self, ui: &mut egui::Ui) {
         let snap = self.ctl.session.snapshot();
@@ -797,9 +1012,8 @@ impl ProcessCraft {
                     *generation != snap.generation || *selected != id
                 })
             {
-                self.review.comparison =
-                    processcraft_core::queries::compare_checkpoint(&snap.project, id)
-                        .map(|diff| (snap.generation, id, diff));
+                self.review.comparison = queries::compare_checkpoint(&snap.project, id)
+                    .map(|diff| (snap.generation, id, diff));
             }
             if let Some((_, _, diff)) = &self.review.comparison {
                 ui.label(format!(
@@ -921,7 +1135,7 @@ impl ProcessCraft {
                                     .or_else(|| {
                                         document
                                             .and_then(|document| {
-                                                processcraft_core::queries::element_identity(
+                                                queries::element_identity(
                                                     document,
                                                     &change.key.xml_id,
                                                 )
@@ -978,10 +1192,7 @@ impl ProcessCraft {
                             .or_else(|| {
                                 document
                                     .and_then(|document| {
-                                        processcraft_core::queries::element_identity(
-                                            document,
-                                            &change.key.xml_id,
-                                        )
+                                        queries::element_identity(document, &change.key.xml_id)
                                     })
                                     .and_then(|identity| identity.xml_id())
                                     .map(ToString::to_string)
@@ -1064,10 +1275,7 @@ impl ProcessCraft {
                                 );
                                 let element = document
                                     .and_then(|document| {
-                                        processcraft_core::queries::element_name(
-                                            document,
-                                            &change.element_id,
-                                        )
+                                        queries::element_name(document, &change.element_id)
                                     })
                                     .filter(|name| !name.is_empty())
                                     .map(str::to_owned)
@@ -1195,7 +1403,7 @@ mod tests {
     use super::*;
     #[test]
     fn comparison_property_pages_bound_both_owner_types() {
-        use processcraft_core::queries::{DiagramChange, ElementChange, PropertyDifference};
+        use queries::{DiagramChange, ElementChange, PropertyDifference};
         let app = ProcessCraft::default();
         let snapshot = app.ctl.session.snapshot();
         let document = &snapshot.project.documents[0];
@@ -1244,11 +1452,8 @@ mod tests {
             diagram_id,
             metadata: Some(processcraft_core::model::DiElementMetadata::default())
         }]));
-        let comparison = processcraft_core::queries::compare_checkpoint(
-            &app.ctl.session.snapshot().project,
-            checkpoint,
-        )
-        .unwrap();
+        let comparison =
+            queries::compare_checkpoint(&app.ctl.session.snapshot().project, checkpoint).unwrap();
         let rows = diagram_property_page(&comparison.changed_diagrams, 0).collect::<Vec<_>>();
         assert!(!rows.is_empty());
         assert!(
@@ -1418,8 +1623,8 @@ mod tests {
         assert!(app.review.worker.is_none());
         let session = app.ctl.session.id();
         app.review.text = "Unposted local note".into();
-        app.new_or_open("new");
-        assert_eq!(app.confirm, Some("new"));
+        app.new_or_open(PendingAction::New);
+        assert_eq!(app.confirm, Some(PendingAction::New));
         assert_eq!(app.ctl.session.id(), session);
         assert_eq!(app.ctl.session.snapshot().content_id, before.content_id);
         assert_eq!(app.review.text, "Unposted local note");

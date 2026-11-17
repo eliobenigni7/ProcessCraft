@@ -1,4 +1,7 @@
 //! Read-only projections of the current in-memory project.
+//!
+//! Pure functions over a project snapshot (dictionary, element lists, RACI matrix, checkpoint
+//! summaries, ...) shared by the GUI, CLI and MCP so none of them re-derive project facts.
 use crate::{
     ids::{
         CheckpointId, DictionaryEntryId, DocumentId, ElementIdentity, ElementKey, ElementSelector,
@@ -1114,6 +1117,33 @@ pub fn comment_is_orphan(project: &ProjectData, comment: &Comment) -> bool {
         .iter()
         .find(|doc| doc.id == comment.target.document_id)
         .is_some_and(|doc| crate::identity::semantic_ids(doc).contains(&comment.target.xml_id))
+}
+
+/// Row of the `comments` query: the comment and whether its target is gone.
+pub fn comment_row(project: &ProjectData, comment: &Comment) -> serde_json::Value {
+    serde_json::json!({"comment":comment,"orphan":comment_is_orphan(project, comment)})
+}
+
+/// Row of the `checkpoints` query; `reference` marks the project's reference checkpoint.
+pub fn checkpoint_row(project: &ProjectData, checkpoint: &Checkpoint) -> serde_json::Value {
+    serde_json::json!({
+        "id":checkpoint.id,"name":checkpoint.name,"createdUnixMs":checkpoint.created_unix_ms,
+        "reference":project.reference_checkpoint == Some(checkpoint.id)
+    })
+}
+
+/// Row of the `table` query. `attributes` is always present, unlike the serde form of `ActivityRow`.
+pub fn activity_row(row: ActivityRow) -> serde_json::Value {
+    let outgoing = row
+        .outgoing
+        .into_iter()
+        .map(|f| serde_json::json!({"id":f.id,"target":f.target,"condition":f.condition}))
+        .collect::<Vec<_>>();
+    serde_json::json!({
+        "key":row.key,"name":row.name,"lane":row.lane,"role":row.role,
+        "systems":row.systems,"documents":row.documents,
+        "attributes":row.attributes,"outgoing":outgoing
+    })
 }
 
 /// Changes are grouped by semantic IDs independently of diagram geometry and frozen context.

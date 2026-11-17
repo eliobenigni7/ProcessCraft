@@ -1,6 +1,13 @@
-use super::event::{ReferenceDraft, ref_ui};
+//! Editor for the partner entities, partner roles and endpoints of a document.
+use super::event::{ReferenceDraft, local_choice_label, ref_ui};
 use super::*;
 use processcraft_core::bpmn_collaboration::{EndPoint, PartnerEntity, PartnerRole};
+use processcraft_core::ids::ElementIdentity;
+
+/// Upper bound on the entries of each partner list in a draft.
+const MAX_ENTRIES: usize = 256;
+const STALE_DRAFT: &str =
+    "The model changed while this draft was open. Discard it and reopen the editor.";
 
 struct PartnerDraft<T> {
     value: T,
@@ -104,7 +111,7 @@ fn references_ui(
     }
     if ui
         .add_enabled(
-            references.len() < 256,
+            references.len() < MAX_ENTRIES,
             egui::Button::new("Add participant reference"),
         )
         .clicked()
@@ -112,6 +119,35 @@ fn references_ui(
         references.push(Some(ReferenceDraft::Local(None)));
     }
 }
+
+/// One collapsible entity/role editor; returns true when "Remove" was clicked.
+fn partner_ui<T>(
+    ui: &mut egui::Ui,
+    (id_salt, title, remove_label): (&str, String, &str),
+    index: usize,
+    partner: &mut PartnerDraft<T>,
+    name: impl FnOnce(&mut T) -> &mut Option<String>,
+    choices: &[(ElementSelector, String)],
+) -> bool {
+    let mut remove = false;
+    ui.push_id((id_salt, index), |ui| {
+        ui.collapsing(title, |ui| {
+            super::catalog::optional_text(ui, "Name", name(&mut partner.value));
+            references_ui(ui, &mut partner.references, choices);
+            if ui.button(remove_label).clicked() {
+                remove = true;
+            }
+        });
+    });
+    remove
+}
+
+/// An "Add ..." button that is disabled once a list reaches its bound.
+fn add_button(ui: &mut egui::Ui, len: usize, label: &str) -> bool {
+    ui.add_enabled(len < MAX_ENTRIES, egui::Button::new(label))
+        .clicked()
+}
+
 impl ProcessCraft {
     pub(super) fn partner_catalog_ui(
         &mut self,
@@ -121,59 +157,159 @@ impl ProcessCraft {
     ) {
         ui.collapsing("Partners and endpoints", |ui| {
             if self.collaboration.partner_catalog.is_none() {
-                for (kind, name, identity) in doc.partner_entities.iter().map(|value| ("Partner entity", value.name.as_deref(), value.id.as_ref())).chain(doc.partner_roles.iter().map(|value| ("Partner role", value.name.as_deref(), value.id.as_ref()))).chain(doc.endpoints.iter().map(|value| ("Endpoint", None, value.id.as_ref()))) {
-                    if let Some(identity) = identity { let label = super::event::local_choice_label(name, kind, identity, 1); if ui.add_enabled(!self.collaboration.has_draft(), egui::Button::new(format!("Select {label} properties"))).clicked() && self.commit_draft() { self.select(Some(identity.selector())); } }
-                    else { ui.label(format!("{kind}: select and promote its identity in document Properties to edit its metadata or reference it.")); }
+                let entities = doc
+                    .partner_entities
+                    .iter()
+                    .map(|value| ("Partner entity", value.name.as_deref(), value.id.as_ref()));
+                let roles = doc
+                    .partner_roles
+                    .iter()
+                    .map(|value| ("Partner role", value.name.as_deref(), value.id.as_ref()));
+                let endpoints = doc
+                    .endpoints
+                    .iter()
+                    .map(|value| ("Endpoint", None, value.id.as_ref()));
+                for (kind, name, identity) in entities.chain(roles).chain(endpoints) {
+                    let Some(identity) = identity else {
+                        ui.label(format!(
+                            "{kind}: select and promote its identity in document Properties \
+                             to edit its metadata or reference it."
+                        ));
+                        continue;
+                    };
+                    let label = local_choice_label(name, kind, identity, 1);
+                    let select = egui::Button::new(format!("Select {label} properties"));
+                    let idle = !self.collaboration.has_draft();
+                    if ui.add_enabled(idle, select).clicked() && self.commit_draft() {
+                        self.select(Some(identity.selector()));
+                    }
                 }
-                if ui.add_enabled(!self.collaboration.has_draft(), egui::Button::new("Edit partners and endpoints…")).clicked() && self.commit_draft() {
+                let edit = egui::Button::new("Edit partners and endpoints…");
+                if ui
+                    .add_enabled(!self.collaboration.has_draft(), edit)
+                    .clicked()
+                    && self.commit_draft()
+                {
                     self.collaboration.document = Some(doc.id);
-                    self.collaboration.partner_catalog = Some(PartnerCatalogDraft::new(doc, generation));
+                    self.collaboration.partner_catalog =
+                        Some(PartnerCatalogDraft::new(doc, generation));
                 }
                 return;
             }
-            let choices: Vec<_> = doc.collaboration.iter().chain(doc.additional_collaborations.iter()).flat_map(|root| root.participants.iter()).chain(doc.choreographies.iter().flat_map(|root| root.participants.iter())).enumerate().map(|(index, participant)| (participant.id.selector(), super::event::local_choice_label(participant.name.as_deref(), "Participant", &participant.id, index + 1))).collect();
+            let participants = doc
+                .collaboration
+                .iter()
+                .chain(doc.additional_collaborations.iter())
+                .flat_map(|root| root.participants.iter())
+                .chain(
+                    doc.choreographies
+                        .iter()
+                        .flat_map(|root| root.participants.iter()),
+                );
+            let choices: Vec<_> = participants
+                .enumerate()
+                .map(|(index, participant)| {
+                    let label = local_choice_label(
+                        participant.name.as_deref(),
+                        "Participant",
+                        &participant.id,
+                        index + 1,
+                    );
+                    (participant.id.selector(), label)
+                })
+                .collect();
             let mut draft = self.collaboration.partner_catalog.take().expect("open");
             let mut close = false;
             ui.strong("Partner entities");
             let mut remove = None;
             for (index, partner) in draft.entities.iter_mut().enumerate() {
-                ui.push_id(("entity", index), |ui| { ui.collapsing(format!("Entity {}", index + 1), |ui| {
-                    super::catalog::optional_text(ui, "Name", &mut partner.value.name);
-                    references_ui(ui, &mut partner.references, &choices);
-                    if ui.button("Remove entity").clicked() { remove = Some(index); }
-                }); });
+                let title = format!("Entity {}", index + 1);
+                let labels = ("entity", title, "Remove entity");
+                if partner_ui(ui, labels, index, partner, |v| &mut v.name, &choices) {
+                    remove = Some(index);
+                }
             }
-            if let Some(index) = remove { draft.entities.remove(index); }
-            if ui.add_enabled(draft.entities.len() < 256, egui::Button::new("Add entity")).clicked() { draft.entities.push(PartnerDraft { value: PartnerEntity { id: Some(processcraft_core::ids::ElementIdentity::anonymous()), base: None, name: None, participant_refs: vec![] }, references: vec![] }); }
+            if let Some(index) = remove {
+                draft.entities.remove(index);
+            }
+            if add_button(ui, draft.entities.len(), "Add entity") {
+                draft.entities.push(PartnerDraft {
+                    value: PartnerEntity {
+                        id: Some(ElementIdentity::anonymous()),
+                        base: None,
+                        name: None,
+                        participant_refs: vec![],
+                    },
+                    references: vec![],
+                });
+            }
             ui.strong("Partner roles");
             let mut remove = None;
             for (index, partner) in draft.roles.iter_mut().enumerate() {
-                ui.push_id(("role", index), |ui| { ui.collapsing(format!("Role {}", index + 1), |ui| {
-                    super::catalog::optional_text(ui, "Name", &mut partner.value.name);
-                    references_ui(ui, &mut partner.references, &choices);
-                    if ui.button("Remove role").clicked() { remove = Some(index); }
-                }); });
+                let title = format!("Role {}", index + 1);
+                let labels = ("role", title, "Remove role");
+                if partner_ui(ui, labels, index, partner, |v| &mut v.name, &choices) {
+                    remove = Some(index);
+                }
             }
-            if let Some(index) = remove { draft.roles.remove(index); }
-            if ui.add_enabled(draft.roles.len() < 256, egui::Button::new("Add role")).clicked() { draft.roles.push(PartnerDraft { value: PartnerRole { id: Some(processcraft_core::ids::ElementIdentity::anonymous()), base: None, name: None, participant_refs: vec![] }, references: vec![] }); }
+            if let Some(index) = remove {
+                draft.roles.remove(index);
+            }
+            if add_button(ui, draft.roles.len(), "Add role") {
+                draft.roles.push(PartnerDraft {
+                    value: PartnerRole {
+                        id: Some(ElementIdentity::anonymous()),
+                        base: None,
+                        name: None,
+                        participant_refs: vec![],
+                    },
+                    references: vec![],
+                });
+            }
             ui.strong("Endpoints");
             let mut remove = None;
             for (index, endpoint) in draft.endpoints.iter().enumerate() {
-                ui.push_id(("endpoint", index), |ui| ui.horizontal(|ui| {
-                    ui.label(endpoint.id.as_ref().and_then(|id| id.xml_id()).map_or_else(|| format!("Endpoint {}", index + 1), ToString::to_string));
-                    if ui.button("Remove endpoint").clicked() { remove = Some(index); }
-                }));
+                ui.push_id(("endpoint", index), |ui| {
+                    ui.horizontal(|ui| {
+                        let label = endpoint
+                            .id
+                            .as_ref()
+                            .and_then(|id| id.xml_id())
+                            .map_or_else(|| format!("Endpoint {}", index + 1), ToString::to_string);
+                        ui.label(label);
+                        if ui.button("Remove endpoint").clicked() {
+                            remove = Some(index);
+                        }
+                    })
+                });
             }
-            if let Some(index) = remove { draft.endpoints.remove(index); }
-            if ui.add_enabled(draft.endpoints.len() < 256, egui::Button::new("Add endpoint")).clicked() { draft.endpoints.push(EndPoint { id: Some(processcraft_core::ids::ElementIdentity::anonymous()), base: None }); }
+            if let Some(index) = remove {
+                draft.endpoints.remove(index);
+            }
+            if add_button(ui, draft.endpoints.len(), "Add endpoint") {
+                draft.endpoints.push(EndPoint {
+                    id: Some(ElementIdentity::anonymous()),
+                    base: None,
+                });
+            }
             ui.horizontal(|ui| {
                 if ui.button("Apply partners and endpoints").clicked() {
-                    if draft.generation != self.ctl.session.snapshot().generation { self.ctl.error = "The model changed while this draft was open. Discard it and reopen the editor.".into(); }
-                    else { match draft.build(doc.id) { Ok(mutation) => { if self.ctl.mutate(vec![mutation]) { close = true; } }, Err(error) => self.ctl.error = error } }
+                    if draft.generation != self.ctl.session.snapshot().generation {
+                        self.ctl.error = STALE_DRAFT.into();
+                    } else {
+                        match draft.build(doc.id) {
+                            Ok(mutation) => close |= self.ctl.mutate(vec![mutation]),
+                            Err(error) => self.ctl.error = error,
+                        }
+                    }
                 }
-                if ui.button("Discard partner draft").clicked() { close = true; }
+                if ui.button("Discard partner draft").clicked() {
+                    close = true;
+                }
             });
-            if !close { self.collaboration.partner_catalog = Some(draft); }
+            if !close {
+                self.collaboration.partner_catalog = Some(draft);
+            }
         });
     }
 }

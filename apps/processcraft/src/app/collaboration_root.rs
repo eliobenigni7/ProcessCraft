@@ -1,3 +1,5 @@
+//! Editor for collaboration root order and root deletion.
+//! Emits `SetDocumentRootOrder`, `InitializeDocumentRootOrder`, `UpdateChoreography`, `DeleteChoreography` and `DeleteCollaborationRoot`.
 use super::*;
 use processcraft_core::bpmn_collaboration::CollaborationRootKind;
 

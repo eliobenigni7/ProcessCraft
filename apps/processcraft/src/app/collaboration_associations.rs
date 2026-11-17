@@ -1,3 +1,5 @@
+//! Editor for collaboration-level associations and extras.
+//! Writes back through `collaboration::update_root`.
 use super::event::{ReferenceDraft, build_ref, ref_ui};
 use super::*;
 use processcraft_core::bpmn_collaboration::{

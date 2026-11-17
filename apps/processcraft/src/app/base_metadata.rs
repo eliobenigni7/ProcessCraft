@@ -1,3 +1,5 @@
+//! Inspector editor for the common BPMN base metadata and extras of an element.
+//! Emits `SetBaseMetadata` and `SetBaseExtras`.
 use super::documentation::EntryDraft;
 use super::xml::{AttributeDraft, ContentDraft, bindings_ui};
 use super::*;
@@ -195,7 +197,7 @@ impl ProcessCraft {
         value: OwnerMetadata,
         editable: bool,
     ) {
-        if self.metadata_draft.is_none() {
+        if self.drafts.metadata_draft.is_none() {
             if ui
                 .add_enabled(
                     editable && !self.draft_dirty,
@@ -204,11 +206,11 @@ impl ProcessCraft {
                 .clicked()
                 && self.commit_draft()
             {
-                self.metadata_draft = Some(MetadataDraft::new(target, value));
+                self.drafts.metadata_draft = Some(MetadataDraft::new(target, value));
             }
             return;
         }
-        let draft = self.metadata_draft.as_mut().unwrap();
+        let draft = self.drafts.metadata_draft.as_mut().unwrap();
         if draft.target != target {
             return;
         }
@@ -220,12 +222,12 @@ impl ProcessCraft {
             self.restore_selection();
         }
         if ui.button("Cancel advanced metadata").clicked() {
-            self.metadata_draft = None;
+            self.drafts.metadata_draft = None;
         }
     }
     pub(super) fn apply_metadata_draft(&mut self) -> Result<(), String> {
         self.apply_typed_draft(
-            |app| &mut app.metadata_draft,
+            |app| &mut app.drafts.metadata_draft,
             |draft, document| {
                 draft
                     .mutation(document.id)

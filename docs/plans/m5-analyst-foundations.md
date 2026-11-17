@@ -48,7 +48,7 @@ These were verified by reading the code on 2026-11-13; each one changes a task b
 2. **`Node.owner` and `Node.contact` already exist** (`model.rs`), with `Mutation::SetNodeOwnerContact`,
    an inspector section ("Responsibility & systems", `apps/processcraft/src/app/inspector.rs`) and a
    BPMN export rule that treats them as native-only fields requiring `acknowledge_native_fields`
-   (`interchange.rs`, "Node owner and contact are native-only fields"). An "Owner" starter template
+   (`interchange/`, "Node owner and contact are native-only fields"). An "Owner" starter template
    would overlap them (Decision 2).
 3. **IT systems are already dictionary links** (`DictionaryKind::System`, `DictionaryLink`,
    `ActivityRow.systems`). An "IT system" starter attribute would store the same fact twice
@@ -90,7 +90,7 @@ flowchart LR
 
 M5.1 is delivered in three phases, each one a mergeable commit set that passes the quality gates on
 its own. M5.1a has one writer for `model.rs`, `commands.rs`, `identity.rs` and `native.rs`. After it
-lands, M5.1b (`interchange.rs`), M5.1c (inspector, table, Dictionary view), M5.2 (core validation +
+lands, M5.1b (`interchange/`), M5.1c (inspector, table, Dictionary view), M5.2 (core validation +
 CLI), M5.3 (query + view) and M5.4 (render + canvas) touch mostly disjoint files and can run in
 parallel; `commands.rs`, `native.rs` and `attachment.rs` still have one writer at a time.
 
@@ -233,11 +233,11 @@ resolution.
 
 ### Phase M5.1b: BPMN interchange
 
-**Own:** `crates/processcraft-io/src/interchange.rs`; the import commit in `apps/processcraft/src/
+**Own:** `crates/processcraft-io/src/interchange/`; the import commit in `apps/processcraft/src/
 app.rs` (`ResultValue::Import`) and `import_bpmn_cli` in `apps/processcraft-cli/src/run.rs`; new
 fixtures under `tests/fixtures/bpmn/attributes/`.
 
-- [x] Namespace constant `PC_ATTRIBUTES_NS = "urn:processcraft:attributes:1"` in `interchange.rs`
+- [x] Namespace constant `PC_ATTRIBUTES_NS = "urn:processcraft:attributes:1"` in `interchange/mod.rs`
   (Decision 3). Shape, written as the last child of the owner's `extensionElements`:
 
   ```xml

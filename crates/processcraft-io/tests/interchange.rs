@@ -4198,3 +4198,15 @@ fn fixture_manifest_expected_modes_match_actual_import() {
     }
     assert!(checked >= 7);
 }
+#[test]
+fn root_order_violation_reports_a_specific_reason() {
+    let source = FLAT.replace(
+        "</process>",
+        r#"</process><import namespace="urn:x" location="x.xsd" importType="http://www.w3.org/2001/XMLSchema"/>"#,
+    );
+    let imported = prepare_import(source.as_bytes(), "order").unwrap();
+    assert!(!imported.report.editable);
+    let reason = imported.report.limitations.join(" ");
+    assert!(reason.contains("root elements out of order"), "{reason}");
+    assert!(!reason.contains("content outside the qualified profile"));
+}

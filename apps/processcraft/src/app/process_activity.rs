@@ -1,3 +1,5 @@
+//! Editor for process-activity metadata: supported processes, roles, properties and callable bindings.
+//! Emits `SetProcessActivityMetadata`.
 use super::callable::{
     BindingDraft, interface_choices, port_choices, reference_list_ui, selector_ui,
 };
@@ -462,7 +464,7 @@ impl ProcessCraft {
         document: &BpmnDocument,
         editable: bool,
     ) {
-        if self.process_activity_draft.is_none() {
+        if self.drafts.process_activity_draft.is_none() {
             if ui
                 .add_enabled(
                     editable && !self.draft_dirty,
@@ -471,22 +473,22 @@ impl ProcessCraft {
                 .clicked()
                 && self.commit_draft()
             {
-                self.process_activity_draft = Some(ProcessActivityDraft::new(process));
+                self.drafts.process_activity_draft = Some(ProcessActivityDraft::new(process));
             }
             return;
         }
-        let draft = self.process_activity_draft.as_mut().unwrap();
+        let draft = self.drafts.process_activity_draft.as_mut().unwrap();
         if draft.target != process.id.selector() {
             return;
         }
         ui.strong("Process behavior");
-        draft.ui(ui, document, process, &mut self.expression_draft);
+        draft.ui(ui, document, process, &mut self.drafts.expression_draft);
         if !draft.error.is_empty() {
             ui.label(&draft.error);
         }
         if ui
             .add_enabled(
-                self.expression_draft.is_none(),
+                self.drafts.expression_draft.is_none(),
                 egui::Button::new("Apply process behavior"),
             )
             .clicked()
@@ -496,17 +498,17 @@ impl ProcessCraft {
         }
         if ui
             .add_enabled(
-                self.expression_draft.is_none(),
+                self.drafts.expression_draft.is_none(),
                 egui::Button::new("Cancel process behavior"),
             )
             .clicked()
         {
-            self.process_activity_draft = None;
+            self.drafts.process_activity_draft = None;
         }
     }
     pub(super) fn apply_process_activity_draft(&mut self) -> Result<(), String> {
         self.apply_typed_draft(
-            |app| &mut app.process_activity_draft,
+            |app| &mut app.drafts.process_activity_draft,
             |draft, document| {
                 let metadata = draft.build().inspect_err(|e| draft.error = e.clone())?;
                 Ok(vec![Mutation::SetProcessActivityMetadata {

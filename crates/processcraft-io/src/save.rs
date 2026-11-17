@@ -1,3 +1,9 @@
+//! Atomic, crash-safe replacement of one granted file.
+//!
+//! A `WriterSession` holds a lock and pinned ancestor directories for the target of a writable
+//! `FileGrant`, stages the new bytes beside it, and replaces the target only after the content
+//! is flushed. `SaveOutcome` distinguishes not-committed, committed and indeterminate results,
+//! and `SavePoint` exposes the stages for cancellation and fault injection. Windows NTFS only.
 use crate::{Access, FileGrant};
 #[cfg(windows)]
 use std::fs::OpenOptions;

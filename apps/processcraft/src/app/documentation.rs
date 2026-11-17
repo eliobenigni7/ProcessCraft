@@ -1,3 +1,5 @@
+//! Draft editor for BPMN documentation entries.
+//! Emits `ReplaceDocumentation`.
 use super::catalog::{IdentityDraft, id_build, id_string, optional_text};
 use super::xml::MixedDraft;
 use super::*;
@@ -133,7 +135,7 @@ impl ProcessCraft {
         value: &DocumentationSet,
         editable: bool,
     ) {
-        if self.documentation_draft.is_none() {
+        if self.drafts.documentation_draft.is_none() {
             if ui
                 .add_enabled(
                     editable && !self.draft_dirty,
@@ -142,18 +144,19 @@ impl ProcessCraft {
                 .clicked()
                 && self.commit_draft()
             {
-                self.documentation_draft = Some(DocumentationDraft::new(target, value));
+                self.drafts.documentation_draft = Some(DocumentationDraft::new(target, value));
             }
             return;
         }
         if self
+            .drafts
             .documentation_draft
             .as_ref()
             .is_none_or(|draft| draft.target != target)
         {
             return;
         }
-        let draft = self.documentation_draft.as_mut().unwrap();
+        let draft = self.drafts.documentation_draft.as_mut().unwrap();
         ui.strong("Documentation entries");
         draft.ui(ui);
         if !draft.error.is_empty() {
@@ -163,12 +166,12 @@ impl ProcessCraft {
             self.restore_selection();
         }
         if ui.button("Cancel documentation editing").clicked() {
-            self.documentation_draft = None;
+            self.drafts.documentation_draft = None;
         }
     }
     pub(super) fn apply_documentation_draft(&mut self) -> Result<(), String> {
         self.apply_typed_draft(
-            |app| &mut app.documentation_draft,
+            |app| &mut app.drafts.documentation_draft,
             |draft, document| {
                 let documentation = draft.build().inspect_err(|e| draft.error = e.clone())?;
                 Ok(vec![Mutation::ReplaceDocumentation {

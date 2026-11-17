@@ -1,5 +1,6 @@
 //! Read-only XML admission checks for the expanded activity family.
 //! Missing required XML values stay editable native data; output never invents them.
+use crate::ns::BPMN;
 use processcraft_core::{
     bpmn_activity::*,
     bpmn_data::{IoSet, IoSpecification},
@@ -25,7 +26,6 @@ fn retrieval_namespace_context(
     namespace: &str,
     path: &str,
 ) -> Result<(), String> {
-    const BPMN: &str = "http://www.omg.org/spec/BPMN/20100524/MODEL";
     let reference_namespace = match reference {
         ModelReference::Local(_) => namespace,
         ModelReference::Qualified(qname) => &qname.namespace,
@@ -392,10 +392,7 @@ mod tests {
                     text: "inert".into(),
                     foreign_attributes: vec![],
                     namespaces: vec![
-                        (
-                            String::new(),
-                            "http://www.omg.org/spec/BPMN/20100524/MODEL".into(),
-                        ),
+                        (String::new(), BPMN.into()),
                         ("external".into(), "urn:external".into()),
                     ],
                 },

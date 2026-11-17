@@ -43,7 +43,7 @@ Out of scope, and not to be scaffolded:
 2. **SVG already has a searchable layer.** `DiagramScene::to_svg` draws outlines and adds a
    transparent `<text>` layer (`SVG_TEXT_NOTICE`). Inline SVG in the handbook is searchable in the
    browser without further work.
-3. **Double-click on a shape starts label editing** (`apps/processcraft/src/app/canvas.rs`, the
+3. **Double-click on a shape starts label editing** (`apps/processcraft/src/app/canvas/render.rs`, the
    `response.double_clicked()` branch that opens `label_edit`), matching bpmn-js. The roadmap's
    "double-click drills down" conflicts with it; Decision 4.
 4. **`ProjectData.links` (`NavigationLink { source, target: DocumentId, label }`) is modelled,
@@ -140,7 +140,7 @@ undo, checkpoint capture and restore, dangling targets after delete); new
 opaque, broken cases produce exactly one diagnostic, link pruned when its source is deleted — the
 existing prune sites already cover `links`). `crates/processcraft-io/tests/native.rs` (capability and
 round trip). `crates/processcraft-render/tests/render_integration.rs` (map scene deterministic, text
-within bounds, long names wrap). GUI unit tests in `process_map.rs` and `canvas.rs` (drill and return
+within bounds, long names wrap). GUI unit tests in `process_map.rs` and `canvas/tests.rs` (drill and return
 keep drafts; plain double-click still edits the label).
 
 **Acceptance:** a three-level fixture project (landscape → process → called process and a collapsed
@@ -226,7 +226,7 @@ observed, not promised (see Risks).
 ## Task M6.3: Semantic diff
 
 **Own:** `crates/processcraft-core/src/{queries,overlay}.rs`; `apps/processcraft-cli/src/{args,
-run}.rs`; `apps/processcraft/src/app/review.rs`; `crates/processcraft-render/src/bpmn.rs` (overlay
+run}.rs`; `apps/processcraft/src/app/review.rs`; `crates/processcraft-render/src/bpmn/appearance.rs` (overlay
 palette only).
 
 - [ ] Core: `queries::compare_projects(before: &ProjectData, after: &ProjectData) ->

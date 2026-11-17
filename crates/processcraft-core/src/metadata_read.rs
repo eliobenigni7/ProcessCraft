@@ -128,6 +128,9 @@ fn scope<'a>(
     }
     let _ = flows;
 }
+/// Read-only twin of `metadata_visit::visit_base_metadata_mut`: keep in sync with it (same owners,
+/// `&` vs `&mut`). Collaboration and activity owners are also exposed by `collaboration_read` and
+/// `activity_read`; checked by `tests/walker_agreement.rs`.
 pub(crate) fn visit_base_metadata<'a>(
     d: &'a BpmnDocument,
     mut visit: impl FnMut(Option<&ElementIdentity>, Option<&'a BaseMetadata>),
@@ -268,6 +271,7 @@ fn scope_legacy<'a>(
         }
     }
 }
+/// Read-only twin of `metadata_visit::visit_legacy_metadata_mut`; keep in sync with it.
 pub(crate) fn visit_legacy_metadata<'a>(
     d: &'a BpmnDocument,
     mut visit: impl FnMut(&ElementIdentity, &'a DocumentationSet, &'a Option<BaseExtras>),

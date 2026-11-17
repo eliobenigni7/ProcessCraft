@@ -1,3 +1,5 @@
+//! Event section of the inspector: event definitions, event resources and root event definitions.
+//! Emits `SetNodeDetails`, `SetRootEventDefinitions`, `SetEventResources` and `UpdateChoreographyFlowElement`.
 use super::catalog::{QNameDraft, optional_bool, optional_qname, optional_text, q_build};
 use super::inspector::{ExpressionDefault, expression_ui};
 use super::*;
@@ -1016,7 +1018,7 @@ pub(super) fn event_io_ui(ui: &mut egui::Ui, io: &mut Option<EventIoDraft>, catc
 impl ProcessCraft {
     pub(super) fn event_editor_ui(&mut self, ui: &mut egui::Ui, editable: bool) {
         let snapshot = self.ctl.session.snapshot();
-        let Some(document) = snapshot.project.documents.get(self.doc) else {
+        let Some(document) = self.current_document(&snapshot) else {
             return;
         };
         let Some(selected) = self.selected.clone() else {
@@ -1053,7 +1055,7 @@ impl ProcessCraft {
         ) {
             return;
         }
-        if self.event_draft.is_none() {
+        if self.drafts.event_draft.is_none() {
             if ui
                 .add_enabled(editable, egui::Button::new("Edit event definitions…"))
                 .clicked()
@@ -1085,8 +1087,9 @@ impl ProcessCraft {
                         io: None,
                     },
                 };
-                self.event_draft = EventDraft::new(selected, &base);
-                if let (Some(draft), Some((_, root, scope))) = (&mut self.event_draft, &graph_node)
+                self.drafts.event_draft = EventDraft::new(selected, &base);
+                if let (Some(draft), Some((_, root, scope))) =
+                    (&mut self.drafts.event_draft, &graph_node)
                 {
                     draft.choreography_scope =
                         Some((root.clone(), scope.clone(), snapshot.generation));
@@ -1157,7 +1160,7 @@ impl ProcessCraft {
         {
             allowed.push("Cancel");
         }
-        let draft = self.event_draft.as_mut().unwrap();
+        let draft = self.drafts.event_draft.as_mut().unwrap();
         ui.strong("Event properties");
         if let NodeDetails::Event {
             cancel_activity,
@@ -1191,7 +1194,7 @@ impl ProcessCraft {
                 &mut draft.new_kind,
                 document,
                 scope.as_ref(),
-                &mut self.expression_draft,
+                &mut self.drafts.expression_draft,
                 DefinitionOptions {
                     label: "Inline",
                     allowed: &allowed,
@@ -1276,7 +1279,7 @@ impl ProcessCraft {
         }
         if ui
             .add_enabled(
-                self.expression_draft.is_none(),
+                self.drafts.expression_draft.is_none(),
                 egui::Button::new("Apply event properties"),
             )
             .clicked()
@@ -1285,12 +1288,12 @@ impl ProcessCraft {
         }
         if ui
             .add_enabled(
-                self.expression_draft.is_none(),
+                self.drafts.expression_draft.is_none(),
                 egui::Button::new("Cancel event editing"),
             )
             .clicked()
         {
-            self.event_draft = None;
+            self.drafts.event_draft = None;
         }
     }
     pub(super) fn apply_event_draft(&mut self) -> Result<(), String> {
@@ -1305,7 +1308,7 @@ impl ProcessCraft {
         else {
             return Err("no model is open".into());
         };
-        let Some(draft) = &mut self.event_draft else {
+        let Some(draft) = &mut self.drafts.event_draft else {
             return Ok(());
         };
         let details = match draft.build() {
@@ -1368,27 +1371,27 @@ impl ProcessCraft {
             return Err(self.ctl.error.clone());
         }
         self.bpmn_details = Some(details);
-        self.event_draft = None;
+        self.drafts.event_draft = None;
         self.restore_selection();
         Ok(())
     }
     pub(super) fn event_catalog_ui(&mut self, ui: &mut egui::Ui, editable: bool) {
         let snapshot = self.ctl.session.snapshot();
-        let Some(document) = snapshot.project.documents.get(self.doc) else {
+        let Some(document) = self.current_document(&snapshot) else {
             return;
         };
         ui.separator();
-        if self.event_catalog_draft.is_none() {
+        if self.drafts.event_catalog_draft.is_none() {
             if ui
                 .add_enabled(editable, egui::Button::new("Edit event catalog…"))
                 .clicked()
                 && self.commit_draft()
             {
-                self.event_catalog_draft = Some(EventCatalogDraft::new(document));
+                self.drafts.event_catalog_draft = Some(EventCatalogDraft::new(document));
             }
             return;
         }
-        let draft = self.event_catalog_draft.as_mut().unwrap();
+        let draft = self.drafts.event_catalog_draft.as_mut().unwrap();
         ui.strong("Event catalog");
         ui.collapsing("Root definitions", |ui| {
             definitions_ui(
@@ -1397,7 +1400,7 @@ impl ProcessCraft {
                 &mut draft.new_kind,
                 document,
                 None,
-                &mut self.expression_draft,
+                &mut self.drafts.expression_draft,
                 DefinitionOptions {
                     label: "Root",
                     allowed: &[
@@ -1423,7 +1426,7 @@ impl ProcessCraft {
         }
         if ui
             .add_enabled(
-                self.expression_draft.is_none(),
+                self.drafts.expression_draft.is_none(),
                 egui::Button::new("Apply event catalog"),
             )
             .clicked()
@@ -1432,17 +1435,17 @@ impl ProcessCraft {
         }
         if ui
             .add_enabled(
-                self.expression_draft.is_none(),
+                self.drafts.expression_draft.is_none(),
                 egui::Button::new("Cancel event catalog editing"),
             )
             .clicked()
         {
-            self.event_catalog_draft = None;
+            self.drafts.event_catalog_draft = None;
         }
     }
     pub(super) fn apply_event_catalog_draft(&mut self) -> Result<(), String> {
         self.apply_typed_draft(
-            |app| &mut app.event_catalog_draft,
+            |app| &mut app.drafts.event_catalog_draft,
             |draft, document| {
                 let definitions = draft
                     .definitions
@@ -1570,22 +1573,22 @@ mod tests {
         assert_eq!(snapshot.redo_count, 1);
         let document = &snapshot.project.documents[0];
         let node = processcraft_core::queries::find_node(document, &selected).unwrap();
-        app.event_draft = EventDraft::new(selected.clone(), node.details.as_ref().unwrap());
+        app.drafts.event_draft = EventDraft::new(selected.clone(), node.details.as_ref().unwrap());
         assert!(app.has_drafts());
         // Simple-field commits still leave the open draft alone.
         assert!(!app.commit_draft());
         // Redo applies the unchanged draft as a no-op, so the redo step is still there.
         app.history(Request::Redo);
-        assert!(app.event_draft.is_none(), "{}", app.ctl.error);
+        assert!(app.drafts.event_draft.is_none(), "{}", app.ctl.error);
         assert_eq!(app.ctl.session.snapshot().project.name, "Renamed");
         // A selection change applies an unchanged draft without a history step.
         let node_details = node.details.clone();
         app.select(Some(selected.clone()));
-        app.event_draft = EventDraft::new(selected.clone(), node_details.as_ref().unwrap());
+        app.drafts.event_draft = EventDraft::new(selected.clone(), node_details.as_ref().unwrap());
         let undo = app.ctl.session.snapshot().undo_count;
         app.select(None);
         assert!(app.selected.is_none(), "{}", app.ctl.error);
-        assert!(app.event_draft.is_none());
+        assert!(app.drafts.event_draft.is_none());
         assert_eq!(app.ctl.session.snapshot().undo_count, undo);
     }
 
@@ -1603,7 +1606,7 @@ mod tests {
             id: None,
             signal_ref: None,
         }));
-        app.event_draft = Some(draft);
+        app.drafts.event_draft = Some(draft);
         app.draft = "Renamed".into();
         app.draft_name_present = true;
         app.draft_dirty = true;

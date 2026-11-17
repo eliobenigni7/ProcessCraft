@@ -1,12 +1,13 @@
-//! Toolkit-independent, bounded M0 text and CPU scene spike.
+//! Toolkit-independent renderer: BPMN scene building, text layout (pinned fonts), CPU
+//! raster, and SVG/PNG/PDF export. It works on immutable snapshots and never writes projects.
 mod bpmn;
 mod raster;
 mod scene;
 mod text;
 
 pub use bpmn::{
-    Appearance, BpmnScene, BpmnViewport, HitGeometry, HitRegion, Viewport, contrast_ratio,
-    overlay_fill, overlay_ink,
+    Appearance, BpmnScene, BpmnViewport, HitGeometry, HitRegion, Viewport, ZOOM_RANGE,
+    contrast_ratio, overlay_fill, overlay_ink,
 };
 pub use scene::{DiagramScene, Label, ScenePath};
 pub use text::{Glyph, TextEngine, TextLayout, TextRequest, VisibleLine};

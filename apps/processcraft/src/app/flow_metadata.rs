@@ -1,3 +1,5 @@
+//! Editor for sequence-flow and node flow metadata.
+//! Emits `SetFlowMetadata` and `SetNodeFlowMetadata`.
 use super::callable::reference_list_ui;
 use super::event::{ReferenceDraft, local_choice_label};
 use super::*;
@@ -67,7 +69,7 @@ impl ProcessCraft {
         value: Option<FlowElementMetadata>,
         editable: bool,
     ) {
-        if self.flow_metadata_draft.is_none() {
+        if self.drafts.flow_metadata_draft.is_none() {
             if ui
                 .add_enabled(
                     editable && !self.draft_dirty,
@@ -76,11 +78,11 @@ impl ProcessCraft {
                 .clicked()
                 && self.commit_draft()
             {
-                self.flow_metadata_draft = Some(FlowDraft::new(target, node, value));
+                self.drafts.flow_metadata_draft = Some(FlowDraft::new(target, node, value));
             }
             return;
         }
-        let draft = self.flow_metadata_draft.as_mut().unwrap();
+        let draft = self.drafts.flow_metadata_draft.as_mut().unwrap();
         if draft.target != target {
             return;
         }
@@ -161,12 +163,12 @@ impl ProcessCraft {
             self.restore_selection();
         }
         if ui.button("Cancel flow details").clicked() {
-            self.flow_metadata_draft = None;
+            self.drafts.flow_metadata_draft = None;
         }
     }
     pub(super) fn apply_flow_metadata_draft(&mut self) -> Result<(), String> {
         self.apply_typed_draft(
-            |app| &mut app.flow_metadata_draft,
+            |app| &mut app.drafts.flow_metadata_draft,
             |draft, document| {
                 let metadata = draft.build().inspect_err(|e| draft.error = e.clone())?;
                 Ok(vec![if draft.node {

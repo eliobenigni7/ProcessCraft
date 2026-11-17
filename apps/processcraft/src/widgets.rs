@@ -1,3 +1,4 @@
+//! Shared icons and small egui widgets.
 use egui::{
     Color32, ColorImage, Id, Response, RichText, Sense, TextureHandle, TextureOptions, Ui, Vec2,
     vec2,

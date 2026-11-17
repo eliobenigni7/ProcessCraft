@@ -1,4 +1,9 @@
 //! Non-blocking diagnostics: incomplete editing remains possible; structural validity is separate.
+//!
+//! Diagnostics are warnings and errors computed on demand over a project (they never reject a
+//! command). Hard structural validity (`ProjectData::validate`) lives in `identity.rs`; data and
+//! flow rules are in `validation_data` / `validation_flow`, and modeling-convention rules in
+//! `conventions`.
 use crate::{
     bpmn_model::{EventDefinition, EventGatewayType, EventIo, GatewayDirection, NodeDetails},
     ids::{DocumentId, ElementSelector},

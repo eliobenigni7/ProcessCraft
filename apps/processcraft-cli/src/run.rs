@@ -1,17 +1,34 @@
+//! Implementation of the one-shot CLI subcommands (and the shared [`Error`] type that carries
+//! the exit status). Every mutation goes through `processcraft_core::commands::Session`.
+
 use crate::args::{Command, FailOn, Query};
 use processcraft_core::{
     commands::{CommandError, Envelope, Request, Session, command_descriptors},
     model::ProjectData,
 };
 use processcraft_io::{Access, FileGrant, FileSession, ProjectSaveOutcome, bpmn, native};
-use serde::de::{self, DeserializeSeed, MapAccess, SeqAccess, Visitor};
 use serde_json::{Value, json};
 use std::{
-    collections::HashSet,
     fmt,
     path::{Path, PathBuf},
 };
 
+/// Font family used for labels in rendered exports and preflight checks (bundled font).
+pub const FONT_FAMILY: &str = "Noto Sans";
+
+/// Process exit codes of the CLI; success is 0.
+pub mod exit {
+    /// File system, storage or other I/O failure.
+    pub const IO: i32 = 1;
+    /// Bad arguments or unusable request input (including BPMN XML where a project is required).
+    pub const USAGE: i32 = 2;
+    /// The data is invalid or refused: failed validation, unsupported project, blocked export,
+    /// rejected command, missing document.
+    pub const DATA: i32 = 3;
+    /// A conflict: output exists without `--overwrite`, another writer, or a stale preview.
+    pub const CONFLICT: i32 = 4;
+}
+/// A failed CLI command: the message goes to stderr and `code` (see [`exit`]) is the exit status.
 pub struct Error {
     pub code: i32,
     pub message: String,
@@ -26,16 +43,18 @@ fn path(p: &Path) -> Result<PathBuf, Error> {
     if p.is_absolute() {
         Ok(p.to_path_buf())
     } else {
-        Ok(std::env::current_dir().map_err(|e| error(1, e))?.join(p))
+        Ok(std::env::current_dir()
+            .map_err(|e| error(exit::IO, e))?
+            .join(p))
     }
 }
 fn grant(p: &Path, access: Access) -> Result<FileGrant, Error> {
     FileGrant::new(path(p)?, access).map_err(|e| {
         error(
             if e.kind() == std::io::ErrorKind::WouldBlock {
-                4
+                exit::CONFLICT
             } else {
-                1
+                exit::IO
             },
             format!("{}: {e}", p.display()),
         )
@@ -44,14 +63,14 @@ fn grant(p: &Path, access: Access) -> Result<FileGrant, Error> {
 fn read(p: &Path) -> Result<Vec<u8>, Error> {
     grant(p, Access::ReadOnly)?
         .read()
-        .map_err(|e| error(1, format!("{}: {e}", p.display())))
+        .map_err(|e| error(exit::IO, format!("{}: {e}", p.display())))
 }
 /// Reads a file that must be a native project, refusing BPMN XML by content, not name.
 fn read_native(p: &Path) -> Result<Vec<u8>, Error> {
     let bytes = read(p)?;
     if is_xml(&bytes) {
         return Err(error(
-            2,
+            exit::USAGE,
             format!(
                 "{}: is BPMN XML, not a .processcraft project; convert it with import-bpmn first",
                 p.display()
@@ -97,14 +116,14 @@ fn parse_profile(
     bytes: &[u8],
 ) -> Result<processcraft_core::conventions::ConventionsProfile, Error> {
     if bytes.len() > 4 * 1024 * 1024 {
-        return Err(error(2, "profile exceeds 4 MiB"));
+        return Err(error(exit::USAGE, "profile exceeds 4 MiB"));
     }
-    let mut d = serde_json::Deserializer::from_slice(bytes);
-    Check.deserialize(&mut d).map_err(|e| error(2, e))?;
-    d.end().map_err(|e| error(2, e))?;
+    processcraft_io::strict_json::check(bytes).map_err(|e| error(exit::USAGE, e))?;
     let profile: processcraft_core::conventions::ConventionsProfile =
-        serde_json::from_slice(bytes).map_err(|e| error(2, e))?;
-    profile.validate().map_err(|e| error(2, format!("{e:?}")))?;
+        serde_json::from_slice(bytes).map_err(|e| error(exit::USAGE, e))?;
+    profile
+        .validate()
+        .map_err(|e| error(exit::USAGE, format!("{e:?}")))?;
     Ok(profile)
 }
 /// Result of `validate`: diagnostics fields to merge into the output and the exit decision.
@@ -119,14 +138,14 @@ fn inspect_with(p: &Path, validate: bool, checks: Option<Checks>) -> Result<(), 
     let bytes = read(p)?;
     let mut diagnostics = None;
     let mut output = if is_xml(&bytes) {
-        let imported = bpmn::import_bpmn(&bytes).map_err(|e| error(3, e))?;
+        let imported = bpmn::import_bpmn(&bytes).map_err(|e| error(exit::DATA, e))?;
         let r = imported.report();
         let name = p
             .file_stem()
             .and_then(|n| n.to_str())
             .unwrap_or("Imported BPMN");
-        let prepared =
-            processcraft_io::interchange::prepare_import(&bytes, name).map_err(|e| error(3, e))?;
+        let prepared = processcraft_io::interchange::prepare_import(&bytes, name)
+            .map_err(|e| error(exit::DATA, e))?;
         let editable = prepared.report.editable;
         let diagrams = diagram_ids(&prepared.document);
         let mut limitations = prepared.report.limitations;
@@ -137,7 +156,7 @@ fn inspect_with(p: &Path, validate: bool, checks: Option<Checks>) -> Result<(), 
                 .documents
                 .push(std::sync::Arc::new(prepared.document));
             project.resources = prepared.resources;
-            project.validate().map_err(|e| error(3, e))?;
+            project.validate().map_err(|e| error(exit::DATA, e))?;
             if let Some(checks) = &checks {
                 diagnostics = Some(match &checks.profile {
                     Some(profile) => project.diagnostics_with(profile),
@@ -148,10 +167,13 @@ fn inspect_with(p: &Path, validate: bool, checks: Option<Checks>) -> Result<(), 
         json!({"format":"bpmn", "valid":true, "validation":if validate {"structural import checks and core invariants of the prepared import"} else {"not requested"}, "capability":if editable {"editable"} else {"preservedSource"}, "semanticEditsAllowed":editable, "elementCount":r.element_count, "diagramCount":r.diagram_count, "diagrams":diagrams, "limitations":limitations})
     } else {
         let loaded = native::load_bytes(&bytes)
-            .map_err(|e| error(3, format!("invalid native project: {e}")))?;
-        loaded.project.validate().map_err(|e| error(3, e))?;
+            .map_err(|e| error(exit::DATA, format!("invalid native project: {e}")))?;
+        loaded
+            .project
+            .validate()
+            .map_err(|e| error(exit::DATA, e))?;
         let session = Session::new(loaded.project)
-            .map_err(|e| error(3, format!("invalid project: {e:?}")))?;
+            .map_err(|e| error(exit::DATA, format!("invalid project: {e:?}")))?;
         let s = session.snapshot();
         let documents: Vec<_> = s
             .project
@@ -178,7 +200,7 @@ fn inspect_with(p: &Path, validate: bool, checks: Option<Checks>) -> Result<(), 
     emit(&output);
     if errors > 0 || (checks.fail_on == FailOn::Warning && warnings > 0) {
         return Err(error(
-            3,
+            exit::DATA,
             format!("{errors} error and {warnings} warning diagnostics"),
         ));
     }
@@ -186,64 +208,14 @@ fn inspect_with(p: &Path, validate: bool, checks: Option<Checks>) -> Result<(), 
 }
 fn parse_batch(bytes: &[u8]) -> Result<Request, Error> {
     if bytes.len() > 4 * 1024 * 1024 {
-        return Err(error(2, "batch exceeds 4 MiB"));
+        return Err(error(exit::USAGE, "batch exceeds 4 MiB"));
     }
-    let mut d = serde_json::Deserializer::from_slice(bytes);
-    Check.deserialize(&mut d).map_err(|e| error(2, e))?;
-    d.end().map_err(|e| error(2, e))?;
-    let req: Request = serde_json::from_slice(bytes).map_err(|e| error(2, e))?;
+    processcraft_io::strict_json::check(bytes).map_err(|e| error(exit::USAGE, e))?;
+    let req: Request = serde_json::from_slice(bytes).map_err(|e| error(exit::USAGE, e))?;
     if !matches!(req, Request::Batch { .. }) {
-        return Err(error(2, "--batch requires a batch request"));
+        return Err(error(exit::USAGE, "--batch requires a batch request"));
     }
     Ok(req)
-}
-struct Check;
-impl<'de> DeserializeSeed<'de> for Check {
-    type Value = ();
-    fn deserialize<D: de::Deserializer<'de>>(self, d: D) -> Result<(), D::Error> {
-        d.deserialize_any(self)
-    }
-}
-impl<'de> Visitor<'de> for Check {
-    type Value = ();
-    fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("JSON value")
-    }
-    fn visit_bool<E: de::Error>(self, _: bool) -> Result<(), E> {
-        Ok(())
-    }
-    fn visit_i64<E: de::Error>(self, _: i64) -> Result<(), E> {
-        Ok(())
-    }
-    fn visit_u64<E: de::Error>(self, _: u64) -> Result<(), E> {
-        Ok(())
-    }
-    fn visit_f64<E: de::Error>(self, _: f64) -> Result<(), E> {
-        Ok(())
-    }
-    fn visit_str<E: de::Error>(self, _: &str) -> Result<(), E> {
-        Ok(())
-    }
-    fn visit_none<E: de::Error>(self) -> Result<(), E> {
-        Ok(())
-    }
-    fn visit_unit<E: de::Error>(self) -> Result<(), E> {
-        Ok(())
-    }
-    fn visit_seq<A: SeqAccess<'de>>(self, mut a: A) -> Result<(), A::Error> {
-        while a.next_element_seed(Check)?.is_some() {}
-        Ok(())
-    }
-    fn visit_map<A: MapAccess<'de>>(self, mut a: A) -> Result<(), A::Error> {
-        let mut keys = HashSet::new();
-        while let Some(k) = a.next_key::<String>()? {
-            if !keys.insert(k) {
-                return Err(de::Error::custom("duplicate JSON key"));
-            }
-            a.next_value_seed(Check)?;
-        }
-        Ok(())
-    }
 }
 fn same_path(a: &Path, b: &Path) -> bool {
     match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
@@ -254,8 +226,8 @@ fn same_path(a: &Path, b: &Path) -> bool {
 fn distinct_files(input: &Path, output: &Path) -> Result<(), Error> {
     let input = grant(input, Access::ReadOnly)?;
     let output = grant(output, Access::Write)?;
-    if input.same_target(&output).map_err(|e| error(1, e))? {
-        return Err(error(2, "input and output must differ"));
+    if input.same_target(&output).map_err(|e| error(exit::IO, e))? {
+        return Err(error(exit::USAGE, "input and output must differ"));
     }
     Ok(())
 }
@@ -270,50 +242,59 @@ fn run(
         .read_limited(4 * 1024 * 1024)
         .map_err(|e| {
             if e.kind() == std::io::ErrorKind::InvalidData {
-                error(2, e)
+                error(exit::USAGE, e)
             } else {
-                error(1, e)
+                error(exit::IO, e)
             }
         })?;
     let request = parse_batch(&batch_bytes)?;
     let out = path(&out)?;
     let (mut session, mut file, same) = if let Some(input) = input {
         let input = path(&input)?;
-        let initial = native::load_bytes(&read_native(&input)?).map_err(|e| error(3, e))?;
-        let core = Session::new(initial.project).map_err(|e| error(3, format!("{e:?}")))?;
+        let initial =
+            native::load_bytes(&read_native(&input)?).map_err(|e| error(exit::DATA, e))?;
+        let core =
+            Session::new(initial.project).map_err(|e| error(exit::DATA, format!("{e:?}")))?;
         let (file, loaded) =
             FileSession::open(core.id(), grant(&input, Access::Write)?).map_err(|e| {
                 error(
                     if e.kind() == std::io::ErrorKind::InvalidData {
-                        3
+                        exit::DATA
                     } else {
-                        1
+                        exit::IO
                     },
                     e,
                 )
             })?;
-        if loaded.project.content_identity().map_err(|e| error(3, e))? != core.snapshot().content_id
+        if loaded
+            .project
+            .content_identity()
+            .map_err(|e| error(exit::DATA, e))?
+            != core.snapshot().content_id
         {
-            return Err(error(4, "input changed while opening"));
+            return Err(error(exit::CONFLICT, "input changed while opening"));
         }
         if !file.is_writable() {
-            return Err(error(4, "input is owned by another writer"));
+            return Err(error(exit::CONFLICT, "input is owned by another writer"));
         }
         let same = same_path(&input, &out);
         if same && loaded.requires_save_as_or_backup {
-            return Err(error(4, "migrated project requires Save As"));
+            return Err(error(exit::CONFLICT, "migrated project requires Save As"));
         }
         (core, Some(file), same)
     } else {
         (
             Session::new(ProjectData::new(new.expect("clap requires name")))
-                .map_err(|e| error(2, format!("{e:?}")))?,
+                .map_err(|e| error(exit::USAGE, format!("{e:?}")))?,
             None,
             false,
         )
     };
     if !same && !overwrite && out.exists() {
-        return Err(error(4, "output exists; --overwrite is required"));
+        return Err(error(
+            exit::CONFLICT,
+            "output exists; --overwrite is required",
+        ));
     }
     if file.is_none() {
         session.mark_unsaved();
@@ -330,11 +311,11 @@ fn run(
         )
         .map_err(|e| {
             let code = match e {
-                CommandError::GenerationConflict | CommandError::SessionMismatch => 4,
+                CommandError::GenerationConflict | CommandError::SessionMismatch => exit::CONFLICT,
                 CommandError::InvalidParams(_)
                 | CommandError::CapabilityDenied
                 | CommandError::NothingToUndo
-                | CommandError::NothingToRedo => 3,
+                | CommandError::NothingToRedo => exit::DATA,
             };
             error(code, format!("command failed: {e:?}"))
         })?;
@@ -371,9 +352,9 @@ fn run(
         let mut f = FileSession::create(id.clone(), grant(&out, Access::Write)?).map_err(|e| {
             error(
                 if e.kind() == std::io::ErrorKind::WouldBlock {
-                    4
+                    exit::CONFLICT
                 } else {
-                    1
+                    exit::IO
                 },
                 e,
             )
@@ -410,9 +391,9 @@ fn save_result(
                     || e.to_string().contains("writer")
                     || e.to_string().contains("changed")
                 {
-                    4
+                    exit::CONFLICT
                 } else {
-                    1
+                    exit::IO
                 },
                 e,
             )),
@@ -426,7 +407,7 @@ fn save_result(
             Some(
                 json!({"ok":false,"status":"indeterminate","operationId":attempted.operation_id.to_string(),"sessionId":attempted.session_id,"target":attempted.target.to_string_lossy(),"contentId":attempted.saved_content_id,"diskDigest":attempted.disk_digest,"stage":stage.to_string_lossy(),"backup":backup.to_string_lossy(),"reconciliationRequired":true,"reconciliation":"Inspect target and retained artifacts before retrying"}),
             ),
-            Err(error(1, e)),
+            Err(error(exit::IO, e)),
         ),
     }
 }
@@ -465,19 +446,19 @@ pub fn execute(command: Command) -> Result<(), Error> {
             acknowledge_diagnostics,
             overlay_attribute,
             overlay_mode,
-        } => export_image_cli(
-            &input,
-            &document_id,
-            &diagram_id,
+        } => export_image_cli(ImageCli {
+            input: &input,
+            document_id: &document_id,
+            diagram_id: &diagram_id,
             format,
-            &out,
+            out: &out,
             scale,
             dark,
             overwrite,
             acknowledge_diagnostics,
-            overlay_attribute.as_deref(),
+            overlay_attribute: overlay_attribute.as_deref(),
             overlay_mode,
-        ),
+        }),
         Command::ImportBpmn {
             input,
             out,
@@ -575,19 +556,21 @@ pub(crate) fn bounded_page_reserved(
     reserved: usize,
 ) -> Result<Value, Error> {
     if !(1..=100).contains(&limit) {
-        return Err(error(2, "limit must be 1..100"));
+        return Err(error(exit::USAGE, "limit must be 1..100"));
     }
     if reserved > 3 * 1024 * 1024 {
-        return Err(error(3, "query header exceeds response limit"));
+        return Err(error(exit::DATA, "query header exceeds response limit"));
     }
     let mut page = Vec::new();
     let mut bytes = reserved;
     for item in items.take(limit) {
-        let size = serde_json::to_vec(&item).map_err(|e| error(3, e))?.len();
+        let size = serde_json::to_vec(&item)
+            .map_err(|e| error(exit::DATA, e))?
+            .len();
         if bytes.saturating_add(size) > 3 * 1024 * 1024 {
             if page.is_empty() {
                 return Err(error(
-                    3,
+                    exit::DATA,
                     "query item exceeds response limit; use a field projection query",
                 ));
             }
@@ -607,7 +590,7 @@ fn query_project(path: &Path, query: Query) -> Result<(), Error> {
         ids::{DictionaryEntryId, DocumentId, ElementSelector},
         queries,
     };
-    let loaded = native::load_bytes(&read_native(path)?).map_err(|e| error(3, e))?;
+    let loaded = native::load_bytes(&read_native(path)?).map_err(|e| error(exit::DATA, e))?;
     let project = &loaded.project;
     let result = match query {
         Query::Model {
@@ -615,12 +598,16 @@ fn query_project(path: &Path, query: Query) -> Result<(), Error> {
             offset,
             limit,
         } => {
-            let id = document_id.parse().map_err(|e| error(2, e))?;
+            let id = document_id.parse().map_err(|e| error(exit::USAGE, e))?;
             let rows = queries::document_fields_page(project, id, offset, limit)
-                .map_err(|e| error(3, e))?
-                .ok_or_else(|| error(3, "document not found"))?;
+                .map_err(|e| error(exit::DATA, e))?
+                .ok_or_else(|| error(exit::DATA, "document not found"))?;
             let mut page = json!(rows);
-            page["contentId"] = json!(project.content_identity().map_err(|e| error(3, e))?);
+            page["contentId"] = json!(
+                project
+                    .content_identity()
+                    .map_err(|e| error(exit::DATA, e))?
+            );
             page
         }
         Query::CheckpointFields {
@@ -628,12 +615,16 @@ fn query_project(path: &Path, query: Query) -> Result<(), Error> {
             offset,
             limit,
         } => {
-            let id = checkpoint_id.parse().map_err(|e| error(2, e))?;
+            let id = checkpoint_id.parse().map_err(|e| error(exit::USAGE, e))?;
             let rows = queries::checkpoint_fields_page(project, id, offset, limit)
-                .map_err(|e| error(3, e))?
-                .ok_or_else(|| error(3, "checkpoint not found"))?;
+                .map_err(|e| error(exit::DATA, e))?
+                .ok_or_else(|| error(exit::DATA, "checkpoint not found"))?;
             let mut page = json!(rows);
-            page["contentId"] = json!(project.content_identity().map_err(|e| error(3, e))?);
+            page["contentId"] = json!(
+                project
+                    .content_identity()
+                    .map_err(|e| error(exit::DATA, e))?
+            );
             page
         }
         Query::Events {
@@ -657,63 +648,30 @@ fn query_project(path: &Path, query: Query) -> Result<(), Error> {
             offset,
             limit,
         } => {
-            let document: DocumentId = document_id.parse().map_err(|e| error(2, e))?;
+            let document: DocumentId = document_id.parse().map_err(|e| error(exit::USAGE, e))?;
             let rows = queries::identified_elements(project, document)
-                .ok_or_else(|| error(3, "document not found"))?;
-            let total = rows.len();
-            let mut page = bounded_page(
-                rows.into_iter()
-                    .skip(offset)
-                    .take(limit)
-                    .map(|row| json!(row)),
-                total,
-                offset,
-                limit,
-            )?;
-            page["contentId"] = json!(project.content_identity().map_err(|e| error(3, e))?);
-            page
+                .ok_or_else(|| error(exit::DATA, "document not found"))?;
+            content_page(project, rows, offset, limit)?
         }
         Query::Data {
             document_id,
             offset,
             limit,
         } => {
-            let document: DocumentId = document_id.parse().map_err(|e| error(2, e))?;
+            let document: DocumentId = document_id.parse().map_err(|e| error(exit::USAGE, e))?;
             let rows = queries::data_fields(project, document)
-                .ok_or_else(|| error(3, "document not found"))?;
-            let total = rows.len();
-            let mut page = bounded_page(
-                rows.into_iter()
-                    .skip(offset)
-                    .take(limit)
-                    .map(|row| json!(row)),
-                total,
-                offset,
-                limit,
-            )?;
-            page["contentId"] = json!(project.content_identity().map_err(|e| error(3, e))?);
-            page
+                .ok_or_else(|| error(exit::DATA, "document not found"))?;
+            content_page(project, rows, offset, limit)?
         }
         Query::Catalog {
             document_id,
             offset,
             limit,
         } => {
-            let document: DocumentId = document_id.parse().map_err(|e| error(2, e))?;
+            let document: DocumentId = document_id.parse().map_err(|e| error(exit::USAGE, e))?;
             let rows = queries::supporting_catalog_fields(project, document)
-                .ok_or_else(|| error(3, "document not found"))?;
-            let total = rows.len();
-            let mut page = bounded_page(
-                rows.into_iter()
-                    .skip(offset)
-                    .take(limit)
-                    .map(|row| json!(row)),
-                total,
-                offset,
-                limit,
-            )?;
-            page["contentId"] = json!(project.content_identity().map_err(|e| error(3, e))?);
-            page
+                .ok_or_else(|| error(exit::DATA, "document not found"))?;
+            content_page(project, rows, offset, limit)?
         }
         Query::Comments { offset, limit } => {
             let total = project.comments.len();
@@ -722,65 +680,70 @@ fn query_project(path: &Path, query: Query) -> Result<(), Error> {
                 .iter()
                 .skip(offset)
                 .take(limit)
-                .map(|c| json!({"comment":c,"orphan":queries::comment_is_orphan(project,c)}));
+                .map(|c| queries::comment_row(project, c));
             bounded_page(values, total, offset, limit)?
         }
         Query::Checkpoints { offset, limit } => {
             let total = project.checkpoints.len();
-            let values = project.checkpoints.iter().skip(offset).take(limit).map(|c| json!({"id":c.id,"name":c.name,"createdUnixMs":c.created_unix_ms,"reference":project.reference_checkpoint == Some(c.id)}));
+            let values = project
+                .checkpoints
+                .iter()
+                .skip(offset)
+                .take(limit)
+                .map(|c| queries::checkpoint_row(project, c));
             bounded_page(values, total, offset, limit)?
         }
         Query::CompareCheckpoint { checkpoint_id } => {
-            let id = checkpoint_id.parse().map_err(|e| error(2, e))?;
-            json!({"comparison":queries::compare_checkpoint(project,id).ok_or_else(|| error(3,"checkpoint not found"))?})
+            let id = checkpoint_id.parse().map_err(|e| error(exit::USAGE, e))?;
+            json!({"comparison":queries::compare_checkpoint(project,id).ok_or_else(|| error(exit::DATA,"checkpoint not found"))?})
         }
         Query::Library { text } => json!({"documents": queries::library_search(project, &text)}),
         Query::Dictionary => json!({"entries": project.dictionary_entries}),
         Query::Documents => json!({"documents": queries::document_overview(project)}),
         Query::Conventions => json!({"conventions": project.conventions}),
         Query::Usages { entry_id } => {
-            let id: DictionaryEntryId = entry_id.parse().map_err(|e| error(2, e))?;
+            let id: DictionaryEntryId = entry_id.parse().map_err(|e| error(exit::USAGE, e))?;
             json!({"usages": queries::dictionary_usages(project, id)})
         }
         Query::Table {
             document_id,
             process_id,
         } => {
-            let document: DocumentId = document_id.parse().map_err(|e| error(2, e))?;
-            let process: ElementSelector = process_id.parse().map_err(|e| error(2, e))?;
+            let document: DocumentId = document_id.parse().map_err(|e| error(exit::USAGE, e))?;
+            let process: ElementSelector = process_id.parse().map_err(|e| error(exit::USAGE, e))?;
             let rows = queries::activity_table(project, document, &process)
-                .ok_or_else(|| error(3, "process not found"))?;
-            let rows: Vec<_> = rows.into_iter().map(|row| json!({"key":row.key,"name":row.name,"lane":row.lane,"role":row.role,"systems":row.systems,"documents":row.documents,"attributes":row.attributes,"outgoing":row.outgoing.into_iter().map(|flow| json!({"id":flow.id,"target":flow.target,"condition":flow.condition})).collect::<Vec<_>>() })).collect();
+                .ok_or_else(|| error(exit::DATA, "process not found"))?;
+            let rows: Vec<_> = rows.into_iter().map(queries::activity_row).collect();
             json!({"rows":rows})
         }
         Query::Raci {
             document_id,
             process_id,
         } => {
-            let document: DocumentId = document_id.parse().map_err(|e| error(2, e))?;
-            let process: ElementSelector = process_id.parse().map_err(|e| error(2, e))?;
+            let document: DocumentId = document_id.parse().map_err(|e| error(exit::USAGE, e))?;
+            let process: ElementSelector = process_id.parse().map_err(|e| error(exit::USAGE, e))?;
             json!({"raci": queries::raci_matrix(project, document, &process)
-                .ok_or_else(|| error(3, "process not found"))?})
+                .ok_or_else(|| error(exit::DATA,"process not found"))?})
         }
         Query::Diagnostics => {
             let (list, errors, warnings) = diagnostics_fields(&project.diagnostics());
             json!({"diagnostics": list, "errorCount": errors, "warningCount": warnings})
         }
         Query::Attributes { document_id } => {
-            let document: DocumentId = document_id.parse().map_err(|e| error(2, e))?;
+            let document: DocumentId = document_id.parse().map_err(|e| error(exit::USAGE, e))?;
             let definitions = queries::attribute_definitions(project);
             let rows = queries::element_attributes(project, document)
-                .ok_or_else(|| error(3, "document not found"))?;
+                .ok_or_else(|| error(exit::DATA, "document not found"))?;
             json!({"definitions": definitions, "rows": rows})
         }
         Query::ReplaceOptions {
             document_id,
             element_id,
         } => {
-            let document: DocumentId = document_id.parse().map_err(|e| error(2, e))?;
-            let element: ElementSelector = element_id.parse().map_err(|e| error(2, e))?;
+            let document: DocumentId = document_id.parse().map_err(|e| error(exit::USAGE, e))?;
+            let element: ElementSelector = element_id.parse().map_err(|e| error(exit::USAGE, e))?;
             json!({"options": replace_options(project, document, &element)
-                .ok_or_else(|| error(3, "document not found"))?})
+                .ok_or_else(|| error(exit::DATA,"document not found"))?})
         }
     };
     emit(&result);
@@ -809,18 +772,13 @@ pub(crate) fn replace_options(
     )
 }
 
-fn query_fields_page(
+/// A bounded page of `rows` tagged with the project's content identity.
+fn content_page(
     project: &ProjectData,
-    document_id: &str,
+    rows: Vec<impl serde::Serialize>,
     offset: usize,
     limit: usize,
-    projection: fn(
-        &ProjectData,
-        processcraft_core::ids::DocumentId,
-    ) -> Option<Vec<processcraft_core::queries::ModelField>>,
 ) -> Result<Value, Error> {
-    let id = document_id.parse().map_err(|e| error(2, e))?;
-    let rows = projection(project, id).ok_or_else(|| error(3, "document not found"))?;
     let total = rows.len();
     let mut page = bounded_page(
         rows.into_iter()
@@ -831,8 +789,26 @@ fn query_fields_page(
         offset,
         limit,
     )?;
-    page["contentId"] = json!(project.content_identity().map_err(|e| error(3, e))?);
+    page["contentId"] = json!(
+        project
+            .content_identity()
+            .map_err(|e| error(exit::DATA, e))?
+    );
     Ok(page)
+}
+fn query_fields_page(
+    project: &ProjectData,
+    document_id: &str,
+    offset: usize,
+    limit: usize,
+    projection: fn(
+        &ProjectData,
+        processcraft_core::ids::DocumentId,
+    ) -> Option<Vec<processcraft_core::queries::ModelField>>,
+) -> Result<Value, Error> {
+    let id = document_id.parse().map_err(|e| error(exit::USAGE, e))?;
+    let rows = projection(project, id).ok_or_else(|| error(exit::DATA, "document not found"))?;
+    content_page(project, rows, offset, limit)
 }
 
 fn layout_preview_file(
@@ -844,28 +820,31 @@ fn layout_preview_file(
     overwrite: bool,
 ) -> Result<(), Error> {
     if out.exists() && !overwrite {
-        return Err(error(4, "output exists; --overwrite is required"));
+        return Err(error(
+            exit::CONFLICT,
+            "output exists; --overwrite is required",
+        ));
     }
     distinct_files(input, out)?;
     let project = native::load_bytes(&read_native(input)?)
-        .map_err(|e| error(3, e))?
+        .map_err(|e| error(exit::DATA, e))?
         .project;
-    let session = Session::new(project).map_err(|e| error(3, format!("{e:?}")))?;
+    let session = Session::new(project).map_err(|e| error(exit::DATA, format!("{e:?}")))?;
     let snapshot = session.snapshot();
-    let id = document_id.parse().map_err(|e| error(2, e))?;
-    let diagram = diagram_id.parse().map_err(|e| error(2, e))?;
+    let id = document_id.parse().map_err(|e| error(exit::USAGE, e))?;
+    let diagram = diagram_id.parse().map_err(|e| error(exit::USAGE, e))?;
     let doc = snapshot
         .project
         .documents
         .iter()
         .find(|d| d.id == id)
-        .ok_or_else(|| error(3, "document not found"))?;
+        .ok_or_else(|| error(exit::DATA, "document not found"))?;
     let cancel = std::sync::atomic::AtomicBool::new(false);
     let proposal = match choreography_scope_shape {
         Some(shape) => processcraft_core::layout::propose_choreography_scope_layout(
             doc,
             &diagram,
-            &shape.parse().map_err(|e| error(2, e))?,
+            &shape.parse().map_err(|e| error(exit::USAGE, e))?,
             &session.id(),
             snapshot.generation,
             &cancel,
@@ -878,15 +857,15 @@ fn layout_preview_file(
             &cancel,
         ),
     }
-    .map_err(|e| error(3, e))?;
+    .map_err(|e| error(exit::DATA, e))?;
     let report = json!({"kind":"layoutPreview","warnings":proposal.warnings.len(),"metrics":proposal.metrics});
     let bytes = serde_json::to_vec(&FileLayoutProposal {
         base_content_id: snapshot.content_id,
         proposal,
     })
-    .map_err(|e| error(3, e))?;
+    .map_err(|e| error(exit::DATA, e))?;
     if bytes.len() > 4 * 1024 * 1024 {
-        return Err(error(3, "proposal exceeds 4 MiB"));
+        return Err(error(exit::DATA, "proposal exceeds 4 MiB"));
     }
     write_export(out, &bytes, report, !overwrite)
 }
@@ -897,31 +876,34 @@ fn layout_apply_file(
     overwrite: bool,
 ) -> Result<(), Error> {
     if out.exists() && !overwrite {
-        return Err(error(4, "output exists; --overwrite is required"));
+        return Err(error(
+            exit::CONFLICT,
+            "output exists; --overwrite is required",
+        ));
     }
     distinct_files(input, out)?;
     distinct_files(proposal, out)?;
     let bytes = grant(proposal, Access::ReadOnly)?
         .read_limited(4 * 1024 * 1024)
-        .map_err(|e| error(2, e))?;
-    let mut check = serde_json::Deserializer::from_slice(&bytes);
-    Check.deserialize(&mut check).map_err(|e| error(2, e))?;
-    check.end().map_err(|e| error(2, e))?;
-    let mut file: FileLayoutProposal = serde_json::from_slice(&bytes).map_err(|e| error(2, e))?;
-    let loaded = native::load_bytes(&read_native(input)?).map_err(|e| error(3, e))?;
-    let mut session = Session::new(loaded.project).map_err(|e| error(3, format!("{e:?}")))?;
+        .map_err(|e| error(exit::USAGE, e))?;
+    processcraft_io::strict_json::check(&bytes).map_err(|e| error(exit::USAGE, e))?;
+    let mut file: FileLayoutProposal =
+        serde_json::from_slice(&bytes).map_err(|e| error(exit::USAGE, e))?;
+    let loaded = native::load_bytes(&read_native(input)?).map_err(|e| error(exit::DATA, e))?;
+    let mut session =
+        Session::new(loaded.project).map_err(|e| error(exit::DATA, format!("{e:?}")))?;
     let snapshot = session.snapshot();
     if file.base_content_id != snapshot.content_id {
-        return Err(error(4, "project changed since preview"));
+        return Err(error(exit::CONFLICT, "project changed since preview"));
     }
     let document = snapshot
         .project
         .documents
         .iter()
         .find(|d| d.id == file.proposal.document_id)
-        .ok_or_else(|| error(3, "document not found"))?;
+        .ok_or_else(|| error(exit::DATA, "document not found"))?;
     processcraft_core::layout::validate_proposal(document, &file.proposal)
-        .map_err(|e| error(3, e))?;
+        .map_err(|e| error(exit::DATA, e))?;
     // A file opens in a fresh ephemeral session. Only after checking the full content identity
     // and unchanged geometry do we rebind the proposal to this process's session epoch.
     file.proposal.session_id = session.id();
@@ -939,12 +921,15 @@ fn layout_apply_file(
                 }],
             },
         )
-        .map_err(|e| error(3, format!("{e:?}")))?;
+        .map_err(|e| error(exit::DATA, format!("{e:?}")))?;
     let id = session.id();
-    let mut target =
-        FileSession::create(id.clone(), grant(out, Access::Write)?).map_err(|e| error(1, e))?;
+    let mut target = FileSession::create(id.clone(), grant(out, Access::Write)?)
+        .map_err(|e| error(exit::IO, e))?;
     if out.exists() && !overwrite {
-        return Err(error(4, "output exists; --overwrite is required"));
+        return Err(error(
+            exit::CONFLICT,
+            "output exists; --overwrite is required",
+        ));
     }
     let (result, status) = save_result(
         target.save(&session.snapshot().project),
@@ -960,7 +945,7 @@ fn layout_apply_file(
 fn import_bpmn_cli(input: &Path, out: &Path, overwrite: bool) -> Result<(), Error> {
     if bpmn_path(out) {
         return Err(error(
-            2,
+            exit::USAGE,
             format!(
                 "{}: import-bpmn writes a .processcraft package (ZIP), not BPMN XML; choose a .processcraft output",
                 out.display()
@@ -968,7 +953,10 @@ fn import_bpmn_cli(input: &Path, out: &Path, overwrite: bool) -> Result<(), Erro
         ));
     }
     if out.exists() && !overwrite {
-        return Err(error(4, "output exists; --overwrite is required"));
+        return Err(error(
+            exit::CONFLICT,
+            "output exists; --overwrite is required",
+        ));
     }
     distinct_files(input, out)?;
     let bytes = read(input)?;
@@ -976,8 +964,8 @@ fn import_bpmn_cli(input: &Path, out: &Path, overwrite: bool) -> Result<(), Erro
         .file_stem()
         .and_then(|n| n.to_str())
         .unwrap_or("Imported BPMN");
-    let mut prepared =
-        processcraft_io::interchange::prepare_import(&bytes, name).map_err(|e| error(3, e))?;
+    let mut prepared = processcraft_io::interchange::prepare_import(&bytes, name)
+        .map_err(|e| error(exit::DATA, e))?;
     let editable = prepared.report.editable;
     let mut limitations = prepared.report.limitations;
     let document_id = prepared.document.id;
@@ -993,7 +981,7 @@ fn import_bpmn_cli(input: &Path, out: &Path, overwrite: bool) -> Result<(), Erro
         .documents
         .push(std::sync::Arc::new(prepared.document));
     project.resources = prepared.resources;
-    let mut session = Session::new(project).map_err(|e| error(3, format!("{e:?}")))?;
+    let mut session = Session::new(project).map_err(|e| error(exit::DATA, format!("{e:?}")))?;
     if !plan.mutations.is_empty() {
         let envelope = processcraft_core::commands::Envelope {
             request_id: "import-attributes".into(),
@@ -1007,13 +995,13 @@ fn import_bpmn_cli(input: &Path, out: &Path, overwrite: bool) -> Result<(), Erro
                     mutations: plan.mutations,
                 },
             )
-            .map_err(|e| error(3, format!("attribute import failed: {e:?}")))?;
+            .map_err(|e| error(exit::DATA, format!("attribute import failed: {e:?}")))?;
     }
     limitations.extend(plan.notes);
     session.mark_unsaved();
     let id = session.id();
-    let mut file =
-        FileSession::create(id.clone(), grant(out, Access::Write)?).map_err(|e| error(1, e))?;
+    let mut file = FileSession::create(id.clone(), grant(out, Access::Write)?)
+        .map_err(|e| error(exit::IO, e))?;
     let outcome = file.save(&session.snapshot().project);
     let (result, status) = save_result(outcome, &id, session.snapshot().generation);
     if let Some(mut result) = result {
@@ -1033,15 +1021,18 @@ fn export_bpmn_cli(
     acknowledge: bool,
 ) -> Result<(), Error> {
     if out.exists() && !overwrite {
-        return Err(error(4, "output exists; --overwrite is required"));
+        return Err(error(
+            exit::CONFLICT,
+            "output exists; --overwrite is required",
+        ));
     }
     distinct_files(input, out)?;
-    let loaded = native::load_bytes(&read_native(input)?).map_err(|e| error(3, e))?;
-    let id = document_id.parse().map_err(|e| error(2, e))?;
+    let loaded = native::load_bytes(&read_native(input)?).map_err(|e| error(exit::DATA, e))?;
+    let id = document_id.parse().map_err(|e| error(exit::USAGE, e))?;
     let result = processcraft_io::interchange::export_bpmn(&loaded.project, id, acknowledge)
         .map_err(|e| {
             error(
-                3,
+                exit::DATA,
                 format!(
                     "export blocked: {:?}; omitted: {:?}",
                     e.report.blocked, e.report.omitted
@@ -1064,20 +1055,24 @@ fn export_drawio_cli(
     overwrite: bool,
 ) -> Result<(), Error> {
     if out.exists() && !overwrite {
-        return Err(error(4, "output exists; --overwrite is required"));
+        return Err(error(
+            exit::CONFLICT,
+            "output exists; --overwrite is required",
+        ));
     }
     distinct_files(input, out)?;
-    let loaded = native::load_bytes(&read_native(input)?).map_err(|e| error(3, e))?;
-    let id: processcraft_core::ids::DocumentId = document_id.parse().map_err(|e| error(2, e))?;
-    let diagram = diagram_id.parse().map_err(|e| error(2, e))?;
+    let loaded = native::load_bytes(&read_native(input)?).map_err(|e| error(exit::DATA, e))?;
+    let id: processcraft_core::ids::DocumentId =
+        document_id.parse().map_err(|e| error(exit::USAGE, e))?;
+    let diagram = diagram_id.parse().map_err(|e| error(exit::USAGE, e))?;
     let document = loaded
         .project
         .documents
         .iter()
         .find(|d| d.id == id)
-        .ok_or_else(|| error(2, "document not found"))?;
-    let result =
-        processcraft_io::drawio::export_drawio(document, &diagram).map_err(|e| error(3, e))?;
+        .ok_or_else(|| error(exit::USAGE, "document not found"))?;
+    let result = processcraft_io::drawio::export_drawio(document, &diagram)
+        .map_err(|e| error(exit::DATA, e))?;
     write_export(
         out,
         &result.bytes,
@@ -1094,14 +1089,17 @@ fn export_raci_cli(
     overwrite: bool,
 ) -> Result<(), Error> {
     if out.exists() && !overwrite {
-        return Err(error(4, "output exists; --overwrite is required"));
+        return Err(error(
+            exit::CONFLICT,
+            "output exists; --overwrite is required",
+        ));
     }
     distinct_files(input, out)?;
-    let loaded = native::load_bytes(&read_native(input)?).map_err(|e| error(3, e))?;
-    let document = document_id.parse().map_err(|e| error(2, e))?;
-    let process = process_id.parse().map_err(|e| error(2, e))?;
+    let loaded = native::load_bytes(&read_native(input)?).map_err(|e| error(exit::DATA, e))?;
+    let document = document_id.parse().map_err(|e| error(exit::USAGE, e))?;
+    let process = process_id.parse().map_err(|e| error(exit::USAGE, e))?;
     let matrix = processcraft_core::queries::raci_matrix(&loaded.project, document, &process)
-        .ok_or_else(|| error(3, "process not found"))?;
+        .ok_or_else(|| error(exit::DATA, "process not found"))?;
     write_export(
         out,
         processcraft_core::queries::raci_csv(&matrix).as_bytes(),
@@ -1117,12 +1115,12 @@ fn write_export(out: &Path, bytes: &[u8], report: Value, must_be_new: bool) -> R
     let session = uuid::Uuid::new_v4();
     let digest: [u8; 32] = Sha256::digest(bytes).into();
     let grant = grant(out, Access::Write)?;
-    let mut writer = match WriterSession::open(&grant).map_err(|e| error(1, e))? {
+    let mut writer = match WriterSession::open(&grant).map_err(|e| error(exit::IO, e))? {
         OpenSession::Writable(w) => w,
-        OpenSession::ReadOnly => return Err(error(4, "output has another writer")),
+        OpenSession::ReadOnly => return Err(error(exit::CONFLICT, "output has another writer")),
     };
     if must_be_new && out.exists() {
-        return Err(error(4, "output exists"));
+        return Err(error(exit::CONFLICT, "output exists"));
     }
     match writer.save(bytes) {
         SaveOutcome::Committed { warning } => {
@@ -1131,7 +1129,7 @@ fn write_export(out: &Path, bytes: &[u8], report: Value, must_be_new: bool) -> R
             );
             Ok(())
         }
-        SaveOutcome::NotCommitted { error: e } => Err(error(1, e)),
+        SaveOutcome::NotCommitted { error: e } => Err(error(exit::IO, e)),
         SaveOutcome::Indeterminate {
             error: e,
             stage,
@@ -1140,99 +1138,74 @@ fn write_export(out: &Path, bytes: &[u8], report: Value, must_be_new: bool) -> R
             emit(
                 &json!({"ok":false,"status":"indeterminate","operationId":operation,"sessionId":session,"target":out,"diskDigest":digest,"stage":stage,"backup":backup,"reconciliationRequired":true,"reconciliation":"Inspect target and retained artifacts before retrying"}),
             );
-            Err(error(1, e))
+            Err(error(exit::IO, e))
         }
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-fn export_image_cli(
-    input: &Path,
-    document_id: &str,
-    diagram_id: &str,
+struct ImageCli<'a> {
+    input: &'a Path,
+    document_id: &'a str,
+    diagram_id: &'a str,
     format: crate::args::ImageFormat,
-    out: &Path,
+    out: &'a Path,
     scale: f32,
     dark: bool,
     overwrite: bool,
     acknowledge_diagnostics: bool,
-    overlay_attribute: Option<&str>,
+    overlay_attribute: Option<&'a str>,
     overlay_mode: Option<crate::args::OverlayModeArg>,
-) -> Result<(), Error> {
-    use processcraft_render::{Appearance, ExportFormat, ExportOptions, TextEngine};
+}
+
+fn export_image_cli(o: ImageCli) -> Result<(), Error> {
+    use crate::export::{ExportFailure, ImageExport, render_export};
+    use processcraft_render::ExportFormat;
     // Mirrors the renderer's limit so a bad scale is reported before diagnostics.
-    if !scale.is_finite() || !(0.125..=8.0).contains(&scale) {
-        return Err(error(2, "--scale must be finite within 0.125..8"));
+    if !o.scale.is_finite() || !processcraft_render::ZOOM_RANGE.contains(&o.scale) {
+        return Err(error(exit::USAGE, "--scale must be finite within 0.125..8"));
     }
-    if out.exists() && !overwrite {
-        return Err(error(4, "output exists; --overwrite is required"));
-    }
-    distinct_files(input, out)?;
-    let loaded = native::load_bytes(&read_native(input)?).map_err(|e| error(3, e))?;
-    let id = document_id.parse().map_err(|e| error(2, e))?;
-    let diagram = diagram_id.parse().map_err(|e| error(2, e))?;
-    let doc = loaded
-        .project
-        .documents
-        .iter()
-        .find(|d| d.id == id)
-        .ok_or_else(|| error(3, "document not found"))?;
-    let overlay = overlay_attribute
-        .map(|attribute| {
-            let definition = attribute.parse().map_err(|e| error(2, e))?;
-            let mode = overlay_mode.map(|mode| match mode {
-                crate::args::OverlayModeArg::Heatmap => {
-                    processcraft_core::overlay::OverlayMode::Heatmap
-                }
-                crate::args::OverlayModeArg::Badge => {
-                    processcraft_core::overlay::OverlayMode::Badge
-                }
-            });
-            processcraft_core::overlay::export_overlay(&loaded.project, id, definition, mode)
-                .map_err(|e| error(2, e))
-        })
-        .transpose()?;
-    let mut fonts = TextEngine::new();
-    let appearance = if dark {
-        Appearance::Dark
-    } else {
-        Appearance::Light
-    };
-    let diagnostics =
-        processcraft_render::preflight_diagram(doc, &diagram, appearance, &mut fonts, "Noto Sans")
-            .map_err(|e| error(3, e))?;
-    if !diagnostics.is_empty() && !acknowledge_diagnostics {
+    if o.out.exists() && !o.overwrite {
         return Err(error(
-            3,
-            format!(
-                "export diagnostics require acknowledgement (pass --acknowledge-diagnostics): {diagnostics:?}"
-            ),
+            exit::CONFLICT,
+            "output exists; --overwrite is required",
         ));
     }
-    let output = processcraft_render::export_diagram_with_overlay(
-        doc,
-        &diagram,
-        ExportOptions {
-            format: match format {
-                crate::args::ImageFormat::Svg => ExportFormat::Svg,
-                crate::args::ImageFormat::Png => ExportFormat::Png,
-                crate::args::ImageFormat::Pdf => ExportFormat::Pdf,
-            },
-            appearance,
-            scale,
-            acknowledge_diagnostics,
+    distinct_files(o.input, o.out)?;
+    let loaded = native::load_bytes(&read_native(o.input)?).map_err(|e| error(exit::DATA, e))?;
+    let diagram = o.diagram_id.parse().map_err(|e| error(exit::USAGE, e))?;
+    let options = ImageExport {
+        document_id: o.document_id.parse().map_err(|e| error(exit::USAGE, e))?,
+        diagram_id: Some(&diagram),
+        format: match o.format {
+            crate::args::ImageFormat::Svg => ExportFormat::Svg,
+            crate::args::ImageFormat::Png => ExportFormat::Png,
+            crate::args::ImageFormat::Pdf => ExportFormat::Pdf,
         },
-        &mut fonts,
-        "Noto Sans",
-        overlay.as_ref(),
-    )
-    .map_err(|e| error(3, e))?;
-    write_export(
-        out,
-        &output.bytes,
-        json!({"origin":output.origin,"logicalSize":output.logical_size,"pixelSize":output.pixel_size,"diagnostics":output.diagnostics}),
-        false,
-    )
+        dark: o.dark,
+        scale: o.scale,
+        acknowledge_diagnostics: o.acknowledge_diagnostics,
+        overlay: o.overlay_attribute.map(|attribute| {
+            let definition = attribute
+                .parse()
+                .map_err(|e: processcraft_core::ids::InvalidId| e.to_string())?;
+            Ok((definition, o.overlay_mode.map(Into::into)))
+        }),
+    };
+    let (bytes, report) =
+        render_export(&loaded.project, options).map_err(|failure| match failure {
+            ExportFailure::DocumentNotFound => error(exit::DATA, "document not found"),
+            // Unreachable: the CLI always passes a diagram.
+            ExportFailure::DiagramRequired => error(exit::USAGE, "--diagram-id is required"),
+            ExportFailure::Overlay(e) => error(exit::USAGE, e),
+            ExportFailure::Render(e) => error(exit::DATA, e),
+            ExportFailure::AcknowledgementRequired(diagnostics) => error(
+                exit::DATA,
+                format!(
+                    "export diagnostics require acknowledgement (pass --acknowledge-diagnostics): {diagnostics:?}"
+                ),
+            ),
+        })?;
+    write_export(o.out, &bytes, report, false)
 }
 
 #[cfg(test)]

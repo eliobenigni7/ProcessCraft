@@ -1,3 +1,7 @@
+//! Persistent project model: `ProjectData` (documents, dictionary, comments, checkpoints,
+//! attribute definitions and values), its immutable `FrozenProject` snapshot form, and the
+//! per-document BPMN content (`BpmnDocument`, processes, nodes, flows, lanes, diagrams).
+//! Mutation goes through `commands`; structural validity is checked in `identity.rs`.
 use crate::ids::{
     CheckpointId, CommentId, DictionaryEntryId, DocumentId, ElementKey, ProjectId, XmlId,
 };
@@ -392,6 +396,10 @@ impl BpmnDocument {
             })
     }
     /// All modeled semantic and diagram identities, including optional child IDs.
+    ///
+    /// Read-only identity walker. Keep in sync with `element_identity_edit::document_ids`
+    /// (same set, mutable), `activity_read`, `collaboration_read` and `metadata_read`; checked by
+    /// `tests/walker_agreement.rs`.
     pub fn element_identities(&self) -> Vec<&crate::ids::ElementIdentity> {
         use crate::bpmn_model::{EventDefinition, EventResource, Expression, NodeDetails};
         fn io_ids<'a>(
@@ -835,6 +843,9 @@ impl BpmnDocument {
             .find(|id| id.selector() == *selector)
             .and_then(|id| id.xml_id())
     }
+    /// Whether the document needs native identity (any native ID or reference). Derives from
+    /// `element_identities`, `activity_read` and `collaboration_read`; keep in sync with them;
+    /// checked by `tests/walker_agreement.rs`.
     pub fn has_native_identity_features(&self) -> bool {
         use crate::ids::ElementIdentity;
         if self

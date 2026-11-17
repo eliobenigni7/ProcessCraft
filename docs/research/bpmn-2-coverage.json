@@ -14976,7 +14976,7 @@
         "crates/processcraft-io/tests/interchange.rs:definitions_metadata_roundtrips_with_presence_and_namespace_identity",
         "crates/processcraft-io/tests/native.rs:definitions_metadata_requires_capability_in_live_and_checkpoint_documents",
         "crates/processcraft-core/tests/commands.rs:definitions_metadata_is_undoable_and_validated_atomically",
-        "apps/processcraft/src/app.rs:definitions_draft_is_guarded_and_uses_history",
+        "apps/processcraft/src/app/tests.rs:definitions_draft_is_guarded_and_uses_history",
         "apps/processcraft-cli/tests/definitions_mcp.rs:definitions_metadata_uses_discovered_mcp_command_and_exact_history"
       ],
       "limitations": "Bounded typed definitions-attribute profile; optional language omission is retained. Shared commands, desktop drafts, history and MCP have focused evidence. Full native interaction, semantic validation, external references and definitions children remain unverified."
@@ -15006,7 +15006,7 @@
         "crates/processcraft-io/tests/interchange.rs:definitions_metadata_roundtrips_with_presence_and_namespace_identity",
         "crates/processcraft-io/tests/native.rs:definitions_metadata_requires_capability_in_live_and_checkpoint_documents",
         "crates/processcraft-core/tests/commands.rs:definitions_metadata_is_undoable_and_validated_atomically",
-        "apps/processcraft/src/app.rs:definitions_draft_is_guarded_and_uses_history",
+        "apps/processcraft/src/app/tests.rs:definitions_draft_is_guarded_and_uses_history",
         "apps/processcraft-cli/tests/definitions_mcp.rs:definitions_metadata_uses_discovered_mcp_command_and_exact_history"
       ],
       "limitations": "Bounded typed definitions-attribute profile; optional language omission is retained. Shared commands, desktop drafts, history and MCP have focused evidence. Full native interaction, semantic validation, external references and definitions children remain unverified."
@@ -15036,7 +15036,7 @@
         "crates/processcraft-io/tests/interchange.rs:definitions_metadata_roundtrips_with_presence_and_namespace_identity",
         "crates/processcraft-io/tests/native.rs:definitions_metadata_requires_capability_in_live_and_checkpoint_documents",
         "crates/processcraft-core/tests/commands.rs:definitions_metadata_is_undoable_and_validated_atomically",
-        "apps/processcraft/src/app.rs:definitions_draft_is_guarded_and_uses_history",
+        "apps/processcraft/src/app/tests.rs:definitions_draft_is_guarded_and_uses_history",
         "apps/processcraft-cli/tests/definitions_mcp.rs:definitions_metadata_uses_discovered_mcp_command_and_exact_history"
       ],
       "limitations": "Bounded typed definitions-attribute profile; optional language omission is retained. Shared commands, desktop drafts, history and MCP have focused evidence. Full native interaction, semantic validation, external references and definitions children remain unverified."
@@ -15066,7 +15066,7 @@
         "crates/processcraft-io/tests/interchange.rs:definitions_metadata_roundtrips_with_presence_and_namespace_identity",
         "crates/processcraft-io/tests/native.rs:definitions_metadata_requires_capability_in_live_and_checkpoint_documents",
         "crates/processcraft-core/tests/commands.rs:definitions_metadata_is_undoable_and_validated_atomically",
-        "apps/processcraft/src/app.rs:definitions_draft_is_guarded_and_uses_history",
+        "apps/processcraft/src/app/tests.rs:definitions_draft_is_guarded_and_uses_history",
         "apps/processcraft-cli/tests/definitions_mcp.rs:definitions_metadata_uses_discovered_mcp_command_and_exact_history"
       ],
       "limitations": "Bounded typed definitions-attribute profile; optional language omission is retained. Shared commands, desktop drafts, history and MCP have focused evidence. Full native interaction, semantic validation, external references and definitions children remain unverified."
@@ -15096,7 +15096,7 @@
         "crates/processcraft-io/tests/interchange.rs:definitions_metadata_roundtrips_with_presence_and_namespace_identity",
         "crates/processcraft-io/tests/native.rs:definitions_metadata_requires_capability_in_live_and_checkpoint_documents",
         "crates/processcraft-core/tests/commands.rs:definitions_metadata_is_undoable_and_validated_atomically",
-        "apps/processcraft/src/app.rs:definitions_draft_is_guarded_and_uses_history",
+        "apps/processcraft/src/app/tests.rs:definitions_draft_is_guarded_and_uses_history",
         "apps/processcraft-cli/tests/definitions_mcp.rs:definitions_metadata_uses_discovered_mcp_command_and_exact_history"
       ],
       "limitations": "Bounded typed definitions-attribute profile; optional language omission is retained. Shared commands, desktop drafts, history and MCP have focused evidence. Full native interaction, semantic validation, external references and definitions children remain unverified."
@@ -15126,7 +15126,7 @@
         "crates/processcraft-io/tests/interchange.rs:definitions_metadata_roundtrips_with_presence_and_namespace_identity",
         "crates/processcraft-io/tests/native.rs:definitions_metadata_requires_capability_in_live_and_checkpoint_documents",
         "crates/processcraft-core/tests/commands.rs:definitions_metadata_is_undoable_and_validated_atomically",
-        "apps/processcraft/src/app.rs:definitions_draft_is_guarded_and_uses_history",
+        "apps/processcraft/src/app/tests.rs:definitions_draft_is_guarded_and_uses_history",
         "apps/processcraft-cli/tests/definitions_mcp.rs:definitions_metadata_uses_discovered_mcp_command_and_exact_history"
       ],
       "limitations": "Bounded typed definitions-attribute profile; optional language omission is retained. Shared commands, desktop drafts, history and MCP have focused evidence. Full native interaction, semantic validation, external references and definitions children remain unverified."
@@ -27035,7 +27035,7 @@
       ],
       "verified_evidence": {
         "edit": [
-          "apps/processcraft/src/app.rs:graph_gateway_properties_keep_metadata_and_representation_through_history"
+          "apps/processcraft/src/app/tests.rs:graph_gateway_properties_keep_metadata_and_representation_through_history"
         ],
         "export": [
           "crates/processcraft-io/tests/bpmn_gateways.rs:gateway_fixture_export_reimports_equal_and_keeps_attributes"
@@ -27351,7 +27351,7 @@
         ]
       },
       "verified_notes": {
-        "render": "BPMN 2.0.2 §11.5.4 specifies no standalone notation for a Global Choreography Task; the renderer emits a diagnostic and omits it (crates/processcraft-render/src/bpmn.rs)."
+        "render": "BPMN 2.0.2 §11.5.4 specifies no standalone notation for a Global Choreography Task; the renderer emits a diagnostic and omits it (crates/processcraft-render/src/bpmn/scene.rs)."
       }
     },
     {

@@ -1,3 +1,5 @@
+//! Editor for the participants of a collaboration.
+//! Writes back through `collaboration::update_root`.
 use super::event::{ReferenceDraft, build_ref, ref_ui};
 use super::*;
 

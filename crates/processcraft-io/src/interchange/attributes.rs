@@ -6,7 +6,8 @@
 //! is named in the import limitations (preserved, never reinterpreted).
 //! Import input is a trust boundary: every value goes through the same
 //! validators as the command pipeline (`attributes::check_value`).
-use super::{B, PC_ATTRIBUTES_NS as NS};
+use super::PC_ATTRIBUTES_NS as NS;
+use crate::ns::BPMN;
 use processcraft_core::{
     attributes::{
         AttributeAssignment, AttributeDefinition, AttributeTarget, AttributeType, AttributeValue,
@@ -527,7 +528,7 @@ fn append(extension: &mut Option<ExtensionElements>, element: XmlElement) {
             content: XmlContent {
                 namespaces: vec![NamespaceBinding {
                     prefix: String::new(),
-                    uri: B.into(),
+                    uri: BPMN.into(),
                 }],
                 nodes: Vec::new(),
             },

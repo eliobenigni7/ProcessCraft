@@ -1,4 +1,8 @@
 //! Deterministic, explicitly requested BPMN geometry proposals.
+//!
+//! Auto-layout only computes a proposal (new bounds and waypoints) from a snapshot; nothing is
+//! changed until the caller submits it as a batch through `commands`. The same input always
+//! yields the same proposal.
 use crate::{
     geometry::{valid_bounds, valid_point},
     ids::{DocumentId, ElementSelector},

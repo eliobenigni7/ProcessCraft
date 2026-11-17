@@ -1,3 +1,5 @@
+//! Inspector editor for the called element of a call activity.
+//! Emits `SetNodeDetails`.
 use super::catalog::{QNameDraft, optional_qname, q_build};
 use super::*;
 use processcraft_core::bpmn_model::{NodeDetails, QNameRef};
@@ -14,7 +16,7 @@ impl ProcessCraft {
         document: &BpmnDocument,
         editable: bool,
     ) {
-        if self.call_draft.is_none() {
+        if self.drafts.call_draft.is_none() {
             if ui
                 .add_enabled(
                     editable && !self.draft_dirty,
@@ -29,7 +31,7 @@ impl ProcessCraft {
                     }
                     _ => None,
                 };
-                self.call_draft = Some(CallDraft {
+                self.drafts.call_draft = Some(CallDraft {
                     target: node.id.selector(),
                     called,
                     error: String::new(),
@@ -37,7 +39,7 @@ impl ProcessCraft {
             }
             return;
         }
-        let draft = self.call_draft.as_mut().unwrap();
+        let draft = self.drafts.call_draft.as_mut().unwrap();
         if draft.target != node.id.selector() {
             return;
         }
@@ -102,11 +104,11 @@ impl ProcessCraft {
             self.restore_selection();
         }
         if ui.button("Cancel called element").clicked() {
-            self.call_draft = None;
+            self.drafts.call_draft = None;
         }
     }
     pub(super) fn apply_call_draft(&mut self) -> Result<(), String> {
-        let Some(draft) = self.call_draft.as_mut() else {
+        let Some(draft) = self.drafts.call_draft.as_mut() else {
             return Ok(());
         };
         let called_element = q_build(&draft.called).inspect_err(|e| draft.error = e.clone())?;
@@ -118,7 +120,7 @@ impl ProcessCraft {
         }]) {
             return Err(self.ctl.error.clone());
         }
-        self.call_draft = None;
+        self.drafts.call_draft = None;
         Ok(())
     }
 }

@@ -1,3 +1,9 @@
+//! Trust boundary for file access: a `FileGrant` is the only way this crate touches a user file.
+//!
+//! Grants are created by the trusted entry point (GUI dialog, CLI argument, MCP root), never from
+//! document content. Creation validates the path (absolute local-disk, no UNC/device/ADS/link
+//! components) and pins its ancestor directories; the read/write helpers then act only on that
+//! one target.
 use std::fs::File;
 use std::io;
 use std::path::{Component, Path, PathBuf, Prefix};

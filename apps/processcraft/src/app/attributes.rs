@@ -635,7 +635,7 @@ impl ProcessCraft {
     /// False for element kinds that carry no attributes and hold no values.
     pub(super) fn attributes_section_visible(&self, element: &ElementSelector) -> bool {
         let snap = self.ctl.session.snapshot();
-        let Some(document) = snap.project.documents.get(self.doc) else {
+        let Some(document) = self.current_document(&snap) else {
             return false;
         };
         core::target_of(document, element).is_some()
@@ -1479,7 +1479,7 @@ mod tests {
     #[test]
     fn marked_rows_are_limited_to_visible_rows_each_frame() {
         let (mut app, document_id, tasks, _) = app_with_tasks(2);
-        app.view = 3;
+        app.view = View::Table;
         app.attributes.marked = vec![
             ElementKey {
                 document_id,
@@ -1609,11 +1609,11 @@ mod tests {
         let before = generation(&app);
         let ctx = egui::Context::default();
         for (view, tab) in [
-            (3, Tab::Entries),
-            (1, Tab::Entries),
-            (2, Tab::Attributes),
-            (2, Tab::Entries),
-            (3, Tab::Entries),
+            (View::Table, Tab::Entries),
+            (View::Library, Tab::Entries),
+            (View::Dictionary, Tab::Attributes),
+            (View::Dictionary, Tab::Entries),
+            (View::Table, Tab::Entries),
         ] {
             app.view = view;
             app.attributes.tab = tab;

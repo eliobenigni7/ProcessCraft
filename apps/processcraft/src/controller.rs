@@ -1,3 +1,5 @@
+//! `Controller`: wraps the core `Session` with the save lifecycle, recovery and error state.
+//! All GUI mutations pass through `Controller::mutate`; blank-project helpers also live here.
 use processcraft_core::{
     commands::{ChangeSet, CommandError, Envelope, Mutation, Request, Session},
     ids::XmlId,

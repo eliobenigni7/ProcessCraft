@@ -1,3 +1,5 @@
+//! Editor for the correlation keys of choreography activities and flow elements.
+//! Emits `UpdateChoreographyActivity` and `UpdateChoreographyFlowElement`.
 use super::callable::reference_list_ui;
 use super::catalog::optional_text;
 use super::event::{ReferenceDraft, local_choice_label};
@@ -58,7 +60,7 @@ impl ProcessCraft {
         document: &BpmnDocument,
         editable: bool,
     ) {
-        if self.correlation_keys_draft.is_none() {
+        if self.drafts.correlation_keys_draft.is_none() {
             ui.menu_button("Edit correlation keys…", |ui| {
                 for scope in processcraft_core::queries::choreography_scopes(document)
                     .into_iter()
@@ -79,7 +81,7 @@ impl ProcessCraft {
                             .clicked()
                             && self.commit_draft()
                         {
-                            self.correlation_keys_draft = Some(CorrelationKeysDraft::new(
+                            self.drafts.correlation_keys_draft = Some(CorrelationKeysDraft::new(
                                 KeyOwner::Graph(
                                     scope.root.id.selector(),
                                     scope.owner.clone(),
@@ -118,7 +120,7 @@ impl ProcessCraft {
                         .clicked()
                         && self.commit_draft()
                     {
-                        self.correlation_keys_draft = Some(CorrelationKeysDraft::new(
+                        self.drafts.correlation_keys_draft = Some(CorrelationKeysDraft::new(
                             KeyOwner::Collaboration(Box::new(root.clone())),
                             &root.correlation_keys,
                             self.ctl.session.snapshot().generation,
@@ -140,7 +142,7 @@ impl ProcessCraft {
                             .clicked()
                             && self.commit_draft()
                         {
-                            self.correlation_keys_draft = Some(CorrelationKeysDraft::new(
+                            self.drafts.correlation_keys_draft = Some(CorrelationKeysDraft::new(
                                 KeyOwner::Conversation(
                                     Box::new(root.clone()),
                                     Box::new(node.clone()),
@@ -165,7 +167,7 @@ impl ProcessCraft {
                             .clicked()
                             && self.commit_draft()
                         {
-                            self.correlation_keys_draft = Some(CorrelationKeysDraft::new(
+                            self.drafts.correlation_keys_draft = Some(CorrelationKeysDraft::new(
                                 KeyOwner::Choreography(
                                     choreography.id.selector(),
                                     Box::new(activity.clone()),
@@ -180,7 +182,7 @@ impl ProcessCraft {
             });
             return;
         }
-        let draft = self.correlation_keys_draft.as_mut().unwrap();
+        let draft = self.drafts.correlation_keys_draft.as_mut().unwrap();
         ui.strong("Correlation keys");
         let choices = super::process_activity::correlation_properties(document);
         let mut remove = None;
@@ -230,13 +232,13 @@ impl ProcessCraft {
             self.restore_selection();
         }
         if ui.button("Cancel correlation keys").clicked() {
-            self.correlation_keys_draft = None;
+            self.drafts.correlation_keys_draft = None;
         }
     }
     pub(super) fn apply_correlation_keys_draft(&mut self) -> Result<(), String> {
         let generation = self.ctl.session.snapshot().generation;
         self.apply_typed_draft(
-            |app| &mut app.correlation_keys_draft,
+            |app| &mut app.drafts.correlation_keys_draft,
             |draft, document| {
                 let keys = draft.build().inspect_err(|e| draft.error = e.clone())?;
                     if draft.generation != generation {
