@@ -275,6 +275,10 @@ fn add_node<'a>(v: &mut ActivityRead<'a>, n: &'a crate::model::Node) {
         }
     }
 }
+/// Read-only traversal of activity/callable owners. Its ids must be a subset of
+/// `element_identities`, its qnames a subset of `element_identity_edit::document_qnames`; keep in
+/// sync with `node_activity_read` (used by `commands::access::collect_node_ids`) and the mutable
+/// walkers; checked by `tests/walker_agreement.rs`.
 pub(crate) fn activity_read(d: &BpmnDocument) -> ActivityRead<'_> {
     let mut v = ActivityRead::default();
     for p in &d.correlation_properties {

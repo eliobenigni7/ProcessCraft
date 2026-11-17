@@ -275,6 +275,8 @@ fn scope(
         flow_metadata(&mut flow.flow_metadata, visit);
     }
 }
+/// Mutable twin of `metadata_read::visit_base_metadata`; keep in sync with it and with
+/// `activity_read`/`collaboration_read`; checked by `tests/walker_agreement.rs`.
 pub fn visit_base_metadata_mut(
     d: &mut BpmnDocument,
     mut visit: impl FnMut(Option<&ElementIdentity>, &mut Option<BaseMetadata>),
@@ -553,6 +555,7 @@ fn extras_legacy(
         }
     }
 }
+/// Mutable twin of `metadata_read::visit_legacy_metadata`; keep in sync with it.
 pub fn visit_legacy_metadata_mut(
     d: &mut BpmnDocument,
     mut visit: impl FnMut(&ElementIdentity, &mut DocumentationSet, &mut Option<BaseExtras>),

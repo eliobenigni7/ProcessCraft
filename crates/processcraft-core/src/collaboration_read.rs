@@ -115,6 +115,9 @@ impl<'a> CollaborationRead<'a> {
         self.extras(&c.extras)
     }
 }
+/// Read-only traversal of collaboration owners. Its ids must be a subset of `element_identities`;
+/// keep in sync with `element_identity_edit::document_ids` and `metadata_visit`; checked by
+/// `tests/walker_agreement.rs`.
 pub(crate) fn collaboration_read(d: &BpmnDocument) -> CollaborationRead<'_> {
     let mut out = CollaborationRead::default();
     for p in &d.partner_entities {

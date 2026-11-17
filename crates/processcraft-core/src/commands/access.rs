@@ -206,6 +206,9 @@ pub(super) fn collect_base_documentation_ids(
         }
     }
 }
+/// Collects every identity owned by a node subtree (for pruning on delete). It must stay within
+/// `element_identities` and mirror `activity_read::node_activity_read`; it is private to
+/// `commands`, so `tests/walker_agreement.rs` does not check it directly.
 pub(super) fn collect_node_ids(
     node: &Node,
     ids: &mut std::collections::HashSet<ElementSelector>,

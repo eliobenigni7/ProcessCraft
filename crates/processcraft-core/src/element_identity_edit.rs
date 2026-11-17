@@ -266,6 +266,7 @@ fn collaboration_root_selectors(
 }
 
 /// Visit selectors held by process and subprocess flow containers.
+/// Per-scope part of `document_selectors`; keep in sync with `scope_ids`/`scope_qnames`.
 fn scope_selectors(
     nodes: &mut [Node],
     lanes: &mut [Lane],
@@ -526,6 +527,10 @@ fn io_selectors(
         }
     }
 }
+/// Mutable walker over every selector reference. Visits references, so it legitimately differs
+/// from `document_ids`; each reference must resolve to an identity of `element_identities`.
+/// Keep in sync with `scope_selectors` and the id/qname walkers; checked by
+/// `tests/walker_agreement.rs`.
 fn document_selectors(d: &mut BpmnDocument, visit: &mut impl FnMut(&mut ElementSelector)) {
     if let Some(order) = &mut d.root_order {
         for selector in order {
@@ -987,6 +992,7 @@ fn choreography_graph_ids(
     }
 }
 #[allow(clippy::too_many_arguments)]
+/// Per-scope part of `document_ids`; keep in sync with `scope_selectors`/`scope_qnames`.
 fn scope_ids(
     nodes: &mut [Node],
     lanes: &mut [Lane],
@@ -1001,6 +1007,9 @@ fn scope_ids(
     for lane in lanes {
         visit(&mut lane.id);
         optional_identity(&mut lane.child_lane_set_id, visit);
+        if let Some(partition) = &mut lane.partition_element {
+            visit(&mut partition.id);
+        }
     }
     for flow in flows {
         flow_id(flow, visit);
@@ -1187,6 +1196,9 @@ fn event_io_ids(io: &mut crate::bpmn_model::EventIo, visit: &mut impl FnMut(&mut
         optional_identity(&mut set.id, visit);
     }
 }
+/// Mutable walker over every element identity. Must visit exactly the identities of
+/// `BpmnDocument::element_identities`; keep in sync with it and with `scope_ids`; checked by
+/// `tests/walker_agreement.rs`.
 fn document_ids(d: &mut BpmnDocument, visit: &mut impl FnMut(&mut ElementIdentity)) {
     for partner in &mut d.partner_entities {
         optional_identity(&mut partner.id, visit);
@@ -1725,6 +1737,7 @@ fn choreography_graph_qnames(
         }
     }
 }
+/// Per-scope part of `document_qnames`; keep in sync with `scope_ids`/`scope_selectors`.
 fn scope_qnames(
     nodes: &mut [Node],
     groups: &mut [crate::bpmn_model::Group],
@@ -1976,6 +1989,9 @@ fn event_io_qnames(
         meta_qnames(&mut port.item_aware, visit);
     }
 }
+/// Mutable walker over every qualified-name reference. Must be a superset of the qnames of
+/// `activity_read` and `collaboration_qnames`; keep in sync with `scope_qnames`; checked by
+/// `tests/walker_agreement.rs`.
 fn document_qnames(
     d: &mut BpmnDocument,
     visit: &mut impl FnMut(&mut crate::bpmn_model::QNameRef, QNameKind),
@@ -2655,4 +2671,155 @@ pub(crate) fn promote_null_identity(
     }
     *doc = std::sync::Arc::new(candidate);
     Ok(ElementSelector::Native { native_id })
+}
+
+fn sel_all<'a>(
+    out: &mut std::collections::HashSet<ElementSelector>,
+    ids: impl Iterator<Item = &'a Option<ElementIdentity>>,
+) {
+    out.extend(ids.flatten().map(|i| i.selector()));
+}
+
+/// Test-only read access to the private traversals above, so that `tests/walker_agreement.rs`
+/// can check them against their read-only siblings. No behavior of its own.
+impl BpmnDocument {
+    /// Every identity visited by `document_ids` (the mutable identity walker).
+    #[doc(hidden)]
+    pub fn walker_probe_edit_ids(&self) -> Vec<ElementSelector> {
+        let mut out = Vec::new();
+        document_ids(&mut self.clone(), &mut |id| out.push(id.selector()));
+        out
+    }
+    /// Every selector reference visited by `document_selectors`.
+    #[doc(hidden)]
+    pub fn walker_probe_edit_selectors(&self) -> Vec<ElementSelector> {
+        let mut out = Vec::new();
+        document_selectors(&mut self.clone(), &mut |selector| {
+            out.push(selector.clone())
+        });
+        out
+    }
+    /// Debug rendering of every qualified name visited by `document_qnames`.
+    #[doc(hidden)]
+    pub fn walker_probe_edit_qnames(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        document_qnames(&mut self.clone(), &mut |q, _| out.push(format!("{q:?}")));
+        out
+    }
+    /// Debug rendering of the qualified names the read-only walkers (`activity_read`,
+    /// `collaboration_qnames`) report.
+    #[doc(hidden)]
+    pub fn walker_probe_read_qnames(&self) -> Vec<String> {
+        let mut out: Vec<String> = crate::activity_read::activity_read(self)
+            .qnames
+            .iter()
+            .map(|q| format!("{q:?}"))
+            .collect();
+        out.extend(
+            crate::collaboration_read::collaboration_qnames(self)
+                .iter()
+                .map(|q| format!("{q:?}")),
+        );
+        out
+    }
+    /// Runs every walker-agreement assertion (see `tests/walker_agreement.rs`) on this document.
+    #[doc(hidden)]
+    pub fn check_walker_agreement(&self) -> Result<(), String> {
+        use std::collections::HashSet;
+        let sel = |ids: &mut HashSet<ElementSelector>, id: &Option<ElementIdentity>| {
+            ids.extend(id.iter().map(|i| i.selector()));
+        };
+        let ids: HashSet<ElementSelector> = self
+            .element_identities()
+            .into_iter()
+            .map(|id| id.selector())
+            .collect();
+        let edit: HashSet<ElementSelector> = self.walker_probe_edit_ids().into_iter().collect();
+        if ids != edit {
+            return Err(format!(
+                "element_identities vs document_ids: only read {:?}, only edit {:?}",
+                ids.difference(&edit).collect::<Vec<_>>(),
+                edit.difference(&ids).collect::<Vec<_>>()
+            ));
+        }
+        for s in self.walker_probe_edit_selectors() {
+            if !ids.contains(&s) {
+                return Err(format!("document_selectors visits unknown {s:?}"));
+            }
+        }
+        for s in self.walker_probe_read_ids() {
+            if !ids.contains(&s) {
+                return Err(format!("activity_read/collaboration_read id {s:?} unknown"));
+            }
+        }
+        let qnames: HashSet<String> = self.walker_probe_edit_qnames().into_iter().collect();
+        for q in self.walker_probe_read_qnames() {
+            if !qnames.contains(&q) {
+                return Err(format!("document_qnames misses {q}"));
+            }
+        }
+        let mut visited = HashSet::new();
+        let mut copy = self.clone();
+        crate::metadata_visit::visit_base_metadata_mut(&mut copy, |_, base| {
+            for doc in base.iter().flat_map(|b| &b.documentation) {
+                sel(&mut visited, &doc.id);
+            }
+        });
+        crate::metadata_visit::visit_legacy_metadata_mut(&mut copy, |_, docs, _| {
+            if let crate::bpmn_metadata::DocumentationSet::Structured(items) = docs {
+                for doc in items.iter() {
+                    sel(&mut visited, &doc.id);
+                }
+            }
+        });
+        let mut excluded = self.base_element_selectors();
+        excluded.insert(self.definitions_id.selector());
+        for diagram in &self.diagrams {
+            excluded.insert(diagram.id.selector());
+            excluded.insert(diagram.plane_id.selector());
+            sel_all(&mut excluded, diagram.label_styles.iter().map(|s| &s.id));
+            for shape in &diagram.shapes {
+                excluded.insert(shape.id.selector());
+                sel_all(&mut excluded, shape.label.iter().map(|l| &l.id));
+            }
+            for edge in &diagram.edges {
+                excluded.insert(edge.id.selector());
+                sel_all(&mut excluded, edge.label.iter().map(|l| &l.id));
+            }
+        }
+        for s in &visited {
+            if excluded.contains(s) || !ids.contains(s) {
+                return Err(format!(
+                    "metadata_visit sees {s:?}, not documentation per element_identities"
+                ));
+            }
+        }
+        if self
+            .element_identities()
+            .iter()
+            .any(|id| matches!(id, ElementIdentity::Native { .. }))
+            && !self.has_native_identity_features()
+        {
+            return Err(
+                "native identities present but has_native_identity_features is false".into(),
+            );
+        }
+        Ok(())
+    }
+    /// Identities reported by the read-only `activity_read` and `collaboration_read` walkers.
+    #[doc(hidden)]
+    pub fn walker_probe_read_ids(&self) -> Vec<ElementSelector> {
+        let mut out: Vec<ElementSelector> = crate::activity_read::activity_read(self)
+            .ids
+            .iter()
+            .map(|id| id.selector())
+            .collect();
+        out.extend(
+            crate::collaboration_read::collaboration_read(self)
+                .ids
+                .iter()
+                .map(|id| id.selector()),
+        );
+        out
+    }
 }
