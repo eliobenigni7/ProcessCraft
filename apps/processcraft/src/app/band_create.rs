@@ -42,7 +42,7 @@ impl ProcessCraft {
         diagram: &Diagram,
         editable: bool,
     ) {
-        if self.band_draft.is_none() {
+        if self.drafts.band_draft.is_none() {
             if ui
                 .add_enabled(
                     editable && !self.draft_dirty,
@@ -51,7 +51,7 @@ impl ProcessCraft {
                 .clicked()
                 && self.commit_draft()
             {
-                self.band_draft = Some(BandDraft {
+                self.drafts.band_draft = Some(BandDraft {
                     diagram: diagram.id.selector(),
                     id: processcraft_core::ids::ElementIdentity::anonymous(),
                     owner: None,
@@ -69,7 +69,7 @@ impl ProcessCraft {
             }
             return;
         }
-        let draft = self.band_draft.as_mut().unwrap();
+        let draft = self.drafts.band_draft.as_mut().unwrap();
         if draft.diagram != diagram.id.selector() {
             return;
         }
@@ -244,18 +244,19 @@ impl ProcessCraft {
             let _ = self.apply_band_draft();
         }
         if ui.button("Cancel participant band").clicked() {
-            self.band_draft = None;
+            self.drafts.band_draft = None;
         }
     }
     /// A band draft where nothing was chosen yet.
     pub(super) fn band_draft_untouched(&self) -> bool {
-        self.band_draft
+        self.drafts
+            .band_draft
             .as_ref()
             .is_some_and(|d| d.owner.is_none() && d.participant.is_none() && d.kind.is_none())
     }
     pub(super) fn apply_band_draft(&mut self) -> Result<(), String> {
         self.apply_typed_draft(
-            |app| &mut app.band_draft,
+            |app| &mut app.drafts.band_draft,
             |draft, document| {
                 let shape = draft.build().inspect_err(|e| draft.error = e.clone())?;
                 Ok(vec![Mutation::CreateShape {

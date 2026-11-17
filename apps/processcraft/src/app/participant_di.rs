@@ -57,7 +57,7 @@ impl ProcessCraft {
         document: &BpmnDocument,
         editable: bool,
     ) {
-        if self.multiplicity_draft.is_none() {
+        if self.drafts.multiplicity_draft.is_none() {
             ui.menu_button("Edit participant multiplicity…", |ui| {
                 let participants = document
                     .collaboration
@@ -71,14 +71,14 @@ impl ProcessCraft {
                         .clicked()
                         && self.commit_draft()
                     {
-                        self.multiplicity_draft = Some(MultiplicityDraft::new(p));
+                        self.drafts.multiplicity_draft = Some(MultiplicityDraft::new(p));
                         ui.close();
                     }
                 }
             });
             return;
         }
-        let draft = self.multiplicity_draft.as_mut().unwrap();
+        let draft = self.drafts.multiplicity_draft.as_mut().unwrap();
         ui.strong("Participant multiplicity");
         let mut present = draft.value.is_some();
         ui.checkbox(&mut present, "Multiplicity present");
@@ -96,7 +96,7 @@ impl ProcessCraft {
             let _ = self.apply_multiplicity_draft();
         }
         if ui.button("Cancel multiplicity").clicked() {
-            self.multiplicity_draft = None;
+            self.drafts.multiplicity_draft = None;
         }
     }
     pub(super) fn message_reference_ui(
@@ -105,7 +105,7 @@ impl ProcessCraft {
         document: &BpmnDocument,
         editable: bool,
     ) {
-        if self.message_ref_draft.is_none() {
+        if self.drafts.message_ref_draft.is_none() {
             ui.menu_button("Edit message flow reference…", |ui| {
                 let flows = document
                     .collaboration
@@ -126,7 +126,7 @@ impl ProcessCraft {
                         .clicked()
                         && self.commit_draft()
                     {
-                        self.message_ref_draft = Some(MessageRefDraft {
+                        self.drafts.message_ref_draft = Some(MessageRefDraft {
                             target: flow.id.selector(),
                             value: flow.message_ref.as_ref().map(ReferenceDraft::new),
                             error: String::new(),
@@ -137,7 +137,7 @@ impl ProcessCraft {
             });
             return;
         }
-        let draft = self.message_ref_draft.as_mut().unwrap();
+        let draft = self.drafts.message_ref_draft.as_mut().unwrap();
         ui.strong("Message flow reference");
         ref_ui(
             ui,
@@ -152,12 +152,12 @@ impl ProcessCraft {
             let _ = self.apply_message_ref_draft();
         }
         if ui.button("Cancel message reference").clicked() {
-            self.message_ref_draft = None;
+            self.drafts.message_ref_draft = None;
         }
     }
     pub(super) fn apply_multiplicity_draft(&mut self) -> Result<(), String> {
         self.apply_typed_draft(
-            |app| &mut app.multiplicity_draft,
+            |app| &mut app.drafts.multiplicity_draft,
             |draft, document| {
                 let multiplicity = draft.build().inspect_err(|e| draft.error = e.clone())?;
                 Ok(vec![Mutation::SetParticipantMultiplicity {
@@ -170,7 +170,7 @@ impl ProcessCraft {
     }
     pub(super) fn apply_message_ref_draft(&mut self) -> Result<(), String> {
         self.apply_typed_draft(
-            |app| &mut app.message_ref_draft,
+            |app| &mut app.drafts.message_ref_draft,
             |draft, document| {
                 let message_ref =
                     build_ref(&draft.value).inspect_err(|e| draft.error = e.clone())?;

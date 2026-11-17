@@ -193,7 +193,7 @@ pub(super) struct XmlIdDraft {
 impl ProcessCraft {
     /// Apply an open XML ID draft (selection change, history): same mutation as its button.
     pub(super) fn apply_xml_id_draft(&mut self) -> Result<(), String> {
-        let Some(current) = self.xml_id_draft.as_mut() else {
+        let Some(current) = self.drafts.xml_id_draft.as_mut() else {
             return Ok(());
         };
         let xml_id = current
@@ -226,13 +226,13 @@ impl ProcessCraft {
             .ctl
             .mutate_changes(vec![mutation])
             .ok_or_else(|| self.ctl.error.clone())?;
-        self.xml_id_draft = None;
+        self.drafts.xml_id_draft = None;
         self.remap_context(&changes.selector_mappings);
         Ok(())
     }
     /// Apply open message/operation references into the activity properties draft.
     pub(super) fn apply_binding_draft(&mut self) -> Result<(), String> {
-        let Some(draft) = self.binding_draft.as_mut() else {
+        let Some(draft) = self.drafts.binding_draft.as_mut() else {
             return Ok(());
         };
         let (message, operation) = match (
@@ -253,7 +253,7 @@ impl ProcessCraft {
             self.bpmn_activity = Some(value);
             self.draft_dirty = true;
         }
-        self.binding_draft = None;
+        self.drafts.binding_draft = None;
         Ok(())
     }
 }
@@ -1049,9 +1049,9 @@ impl ProcessCraft {
         // XML ID editors are available only while no other property edit is pending.
         let id_edit_ok = editable
             && !self.draft_dirty
-            && self.expression_draft.is_none()
-            && self.binding_draft.is_none()
-            && (self.xml_id_draft.is_some() || !self.ordinary_property_locked());
+            && self.drafts.expression_draft.is_none()
+            && self.drafts.binding_draft.is_none()
+            && (self.drafts.xml_id_draft.is_some() || !self.ordinary_property_locked());
         // Built once per frame and shared by every choreography lookup below.
         let scopes = snap
             .project
@@ -1224,7 +1224,7 @@ impl ProcessCraft {
                                     "Condition",
                                     &mut self.condition,
                                     true,
-                                    &mut self.expression_draft,
+                                    &mut self.drafts.expression_draft,
                                     ExpressionDefault::SequenceFlow,
                                 )
                             })
@@ -1317,7 +1317,7 @@ impl ProcessCraft {
                         let document_id = snap.project.documents[self.doc].id;
                         let edited = xml_id_editor(
                             side,
-                            &mut self.xml_id_draft,
+                            &mut self.drafts.xml_id_draft,
                             &mut self.ctl,
                             document_id,
                             selected,
@@ -1669,7 +1669,7 @@ impl ProcessCraft {
                                     self.xml_id_row(ui, document.id, &identity.selector(), identity.xml_id(), enabled)
                                 } else {
                                     ui.label("XML ID · Not assigned");
-                                    let draft = &mut self.xml_id_draft;
+                                    let draft = &mut self.drafts.xml_id_draft;
                                     anonymous_xml_id_editor(ui, draft, &mut self.ctl, document.id, &path, enabled)
                                 };
                                 selector_mappings = mappings.or_else(|| selector_mappings.take());
@@ -1689,7 +1689,7 @@ impl ProcessCraft {
                         let pages = rows.len().div_ceil(50).max(1);
                         self.identity_page = self.identity_page.min(pages - 1);
                         ui.horizontal(|ui| {
-                            let no_draft = self.xml_id_draft.is_none();
+                            let no_draft = self.drafts.xml_id_draft.is_none();
                             let previous = egui::Button::new("Previous IDs");
                             if ui.add_enabled(no_draft && self.identity_page > 0, previous).clicked() {
                                 self.identity_page -= 1;
@@ -1802,7 +1802,7 @@ impl ProcessCraft {
         xml_id: Option<&processcraft_core::ids::XmlId>,
         enabled: bool,
     ) -> Option<Vec<processcraft_core::commands::SelectorMapping>> {
-        let draft = &mut self.xml_id_draft;
+        let draft = &mut self.drafts.xml_id_draft;
         xml_id_editor(
             ui,
             draft,
@@ -1901,7 +1901,7 @@ impl ProcessCraft {
                         Some(L::MultiInstance { .. }) => "Parallel instances",
                     };
                     let old_tag = tag;
-                    ui.add_enabled_ui(self.expression_draft.is_none(), |ui| {
+                    ui.add_enabled_ui(self.drafts.expression_draft.is_none(), |ui| {
                         egui::ComboBox::from_label("Repetition")
                             .selected_text(tag)
                             .show_ui(ui, |ui| {
@@ -1985,7 +1985,7 @@ impl ProcessCraft {
                                 "Loop condition",
                                 condition,
                                 false,
-                                &mut self.expression_draft,
+                                &mut self.drafts.expression_draft,
                             );
                             text(ui, "Maximum iterations", maximum);
                         }
@@ -2001,14 +2001,14 @@ impl ProcessCraft {
                                 "Cardinality expression",
                                 cardinality,
                                 false,
-                                &mut self.expression_draft,
+                                &mut self.drafts.expression_draft,
                             );
                             optional_expression_ui(
                                 ui,
                                 "Completion condition",
                                 completion_condition,
                                 false,
-                                &mut self.expression_draft,
+                                &mut self.drafts.expression_draft,
                             );
                         }
                         None => {}
@@ -2129,7 +2129,7 @@ impl ProcessCraft {
                             "Activation condition",
                             activation_condition,
                             true,
-                            &mut self.expression_draft,
+                            &mut self.drafts.expression_draft,
                         );
                     }
                 }
@@ -2218,7 +2218,7 @@ impl ProcessCraft {
                         "Ad-hoc completion condition",
                         &mut value.completion_condition,
                         true,
-                        &mut self.expression_draft,
+                        &mut self.drafts.expression_draft,
                     );
                 }
                 if node.kind == K::Transaction {
@@ -2231,16 +2231,16 @@ impl ProcessCraft {
                     text(ui, "Implementation", &mut value.implementation);
                 }
                 if matches!(node.kind, K::ServiceTask | K::SendTask | K::ReceiveTask) {
-                    if self.binding_draft.is_none() {
+                    if self.drafts.binding_draft.is_none() {
                         let edit_label = if node.kind == K::ServiceTask {
                             "Edit operation reference…"
                         } else {
                             "Edit message and operation references…"
                         };
                         if ui.button(edit_label).clicked() {
-                            self.binding_draft = Some(BindingDraft::new(&value));
+                            self.drafts.binding_draft = Some(BindingDraft::new(&value));
                         }
-                    } else if let Some(draft) = &mut self.binding_draft {
+                    } else if let Some(draft) = &mut self.drafts.binding_draft {
                         if matches!(node.kind, K::SendTask | K::ReceiveTask) {
                             super::catalog::optional_qname(ui, "Message reference", &mut draft.message);
                         }
@@ -2265,7 +2265,7 @@ impl ProcessCraft {
                             clear = true;
                         }
                         if clear {
-                            self.binding_draft = None;
+                            self.drafts.binding_draft = None;
                         }
                     }
                 }
@@ -2677,13 +2677,14 @@ mod expression_draft_tests {
             local: "bad name".into(),
         });
         assert!(super::super::catalog::q_build(&draft.message).is_err());
-        app.binding_draft = Some(draft);
+        app.drafts.binding_draft = Some(draft);
         app.draft_dirty = true;
         app.select(None);
         app.history(processcraft_core::commands::Request::Undo);
         assert_eq!(app.selected, selected);
         assert_eq!(
-            app.binding_draft
+            app.drafts
+                .binding_draft
                 .as_ref()
                 .unwrap()
                 .message
@@ -2703,14 +2704,20 @@ mod expression_draft_tests {
             ExpressionDraft::new("Expression", &"PT1M".into(), ExpressionDefault::Base);
         metadata.id.value = Some("invalid id".into());
         assert!(metadata.build().is_err());
-        app.expression_draft = Some(metadata);
+        app.drafts.expression_draft = Some(metadata);
         app.draft_dirty = true;
         assert!(!app.commit_draft());
         app.select(None);
         app.history(processcraft_core::commands::Request::Undo);
         assert_eq!(app.selected, selected);
         assert_eq!(
-            app.expression_draft.as_ref().unwrap().id.value.as_deref(),
+            app.drafts
+                .expression_draft
+                .as_ref()
+                .unwrap()
+                .id
+                .value
+                .as_deref(),
             Some("invalid id")
         );
         assert!(app.has_drafts());

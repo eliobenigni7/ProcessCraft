@@ -1316,7 +1316,7 @@ impl ProcessCraft {
             return;
         };
         ui.separator();
-        if self.data_draft.is_none() {
+        if self.drafts.data_draft.is_none() {
             ui.collapsing("Show ports on diagram", |ui| {
                 let process_ports = document
                     .processes
@@ -1470,20 +1470,20 @@ impl ProcessCraft {
                 .clicked()
                 && self.commit_draft()
             {
-                self.data_draft = Some(DataDraft::new(document, scope));
+                self.drafts.data_draft = Some(DataDraft::new(document, scope));
                 self.draft_dirty = true;
             }
             return;
         }
-        let draft = self.data_draft.as_mut().unwrap();
+        let draft = self.drafts.data_draft.as_mut().unwrap();
         ui.strong("Data declarations");
-        draft.ui(ui, &mut self.expression_draft, document);
+        draft.ui(ui, &mut self.drafts.expression_draft, document);
         if !draft.error.is_empty() {
             ui.label(&draft.error);
         }
         if ui
             .add_enabled(
-                self.expression_draft.is_none(),
+                self.drafts.expression_draft.is_none(),
                 egui::Button::new("Apply data declarations"),
             )
             .clicked()
@@ -1492,20 +1492,20 @@ impl ProcessCraft {
         }
         if ui
             .add_enabled(
-                self.expression_draft.is_none(),
+                self.drafts.expression_draft.is_none(),
                 egui::Button::new("Cancel data editing"),
             )
             .clicked()
         {
-            self.data_draft = None;
+            self.drafts.data_draft = None;
         }
     }
     pub(super) fn apply_data_draft(&mut self) -> Result<(), String> {
-        if self.data_draft.is_none() {
+        if self.drafts.data_draft.is_none() {
             return Ok(());
         }
         self.apply_typed_draft(
-            |app| &mut app.data_draft,
+            |app| &mut app.drafts.data_draft,
             |draft, document| {
                 let (data_stores, data_objects, data_associations) =
                     draft.build().inspect_err(|e| draft.error = e.clone())?;
@@ -1845,28 +1845,28 @@ mod tests {
                 .next()
                 .unwrap()
         };
-        app.data_draft = Some(DataDraft::new(document, scope()));
+        app.drafts.data_draft = Some(DataDraft::new(document, scope()));
         app.draft_dirty = false;
         let session = app.ctl.session.id();
         // An unchanged draft applies as a no-op on a selection change: the selection moves,
         // and history, redo, and the saved state are untouched.
         app.select(None);
         assert!(app.selected.is_none(), "{}", app.ctl.error);
-        assert!(app.data_draft.is_none());
+        assert!(app.drafts.data_draft.is_none());
         let after = app.ctl.session.snapshot();
         assert!(!after.dirty);
         assert_eq!(after.undo_count, snapshot.undo_count);
-        app.data_draft = Some(DataDraft::new(document, scope()));
+        app.drafts.data_draft = Some(DataDraft::new(document, scope()));
         app.new_or_open(PendingAction::New);
         assert_eq!(app.confirm, Some(PendingAction::New));
         assert_eq!(app.ctl.session.id(), session);
-        assert!(app.data_draft.is_some());
+        assert!(app.drafts.data_draft.is_some());
         app.open_selected_path(None);
-        assert!(app.data_draft.is_some());
+        assert!(app.drafts.data_draft.is_some());
         let action = app.discard_transition().unwrap();
         app.execute(action);
         assert_ne!(app.ctl.session.id(), session);
-        assert!(app.data_draft.is_none());
+        assert!(app.drafts.data_draft.is_none());
         assert!(app.selected.is_none());
         assert!(!app.has_drafts());
     }
@@ -1895,12 +1895,12 @@ mod tests {
             id: IdentityDraft::default(),
             item: None,
         });
-        app.data_draft = Some(draft);
+        app.drafts.data_draft = Some(draft);
         app.draft_dirty = true;
         assert!(!app.commit_draft());
         // Undo first applies the valid draft (one step), then undoes it.
         app.history(Request::Undo);
-        assert!(app.data_draft.is_none(), "{}", app.ctl.error);
+        assert!(app.drafts.data_draft.is_none(), "{}", app.ctl.error);
         assert!(
             app.ctl.session.snapshot().project.documents[0].processes[0]
                 .data_objects

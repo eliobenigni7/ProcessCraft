@@ -331,7 +331,7 @@ impl ProcessCraft {
         document: &BpmnDocument,
         editable: bool,
     ) {
-        if self.choreography_flow_draft.is_none() {
+        if self.drafts.choreography_flow_draft.is_none() {
             ui.menu_button("Edit choreography flow details…", |ui| {
                 for scope in processcraft_core::queries::choreography_scopes(document)
                     .into_iter()
@@ -355,7 +355,7 @@ impl ProcessCraft {
                             );
                             draft.scope = Some(scope.owner.clone());
                             draft.generation = self.ctl.session.snapshot().generation;
-                            self.choreography_flow_draft = Some(draft);
+                            self.drafts.choreography_flow_draft = Some(draft);
                             ui.close();
                         }
                     }
@@ -375,7 +375,7 @@ impl ProcessCraft {
                                 ChoreographyFlowDraft::new_sequence(scope.root.id.selector(), flow);
                             draft.scope = Some(scope.owner.clone());
                             draft.generation = self.ctl.session.snapshot().generation;
-                            self.choreography_flow_draft = Some(draft);
+                            self.drafts.choreography_flow_draft = Some(draft);
                             ui.close();
                         }
                     }
@@ -393,7 +393,7 @@ impl ProcessCraft {
                             .clicked()
                             && self.commit_draft()
                         {
-                            self.choreography_flow_draft = Some(ChoreographyFlowDraft::new(
+                            self.drafts.choreography_flow_draft = Some(ChoreographyFlowDraft::new(
                                 choreography.id.selector(),
                                 activity.clone(),
                             ));
@@ -412,7 +412,7 @@ impl ProcessCraft {
                             .clicked()
                             && self.commit_draft()
                         {
-                            self.choreography_flow_draft =
+                            self.drafts.choreography_flow_draft =
                                 Some(ChoreographyFlowDraft::new_sequence(
                                     choreography.id.selector(),
                                     flow,
@@ -424,7 +424,7 @@ impl ProcessCraft {
             });
             return;
         }
-        let draft = self.choreography_flow_draft.as_mut().unwrap();
+        let draft = self.drafts.choreography_flow_draft.as_mut().unwrap();
         ui.strong("Choreography flow details");
         if let (Some(scope_id), Some(flow)) = (&draft.scope, &mut draft.sequence_flow) {
             let mut named = flow.name.is_some();
@@ -656,7 +656,7 @@ impl ProcessCraft {
             self.restore_selection();
         }
         if ui.button("Cancel choreography details").clicked() {
-            self.choreography_flow_draft = None;
+            self.drafts.choreography_flow_draft = None;
         }
     }
     pub(super) fn apply_choreography_flow_draft(&mut self) -> Result<(), String> {
@@ -664,7 +664,7 @@ impl ProcessCraft {
         let Some(document) = self.current_document(&snap) else {
             return Err("no model is open".into());
         };
-        let Some(draft) = self.choreography_flow_draft.as_mut() else {
+        let Some(draft) = self.drafts.choreography_flow_draft.as_mut() else {
             return Ok(());
         };
         let metadata = draft.build().inspect_err(|e| draft.error = e.clone())?;
@@ -849,7 +849,7 @@ impl ProcessCraft {
             },
             mutations,
         ) {
-            self.choreography_flow_draft = None;
+            self.drafts.choreography_flow_draft = None;
             if let Some(reason) = route_warning {
                 self.ctl.error =
                     format!("Sequence flow saved; no diagram edge was created: {reason}.");

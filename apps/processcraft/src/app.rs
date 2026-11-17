@@ -257,32 +257,7 @@ pub struct ProcessCraft {
     docs: String,
     docs_dirty: bool,
     condition: Option<processcraft_core::bpmn_model::Expression>,
-    expression_draft: Option<inspector::ExpressionDraft>,
-    catalog_draft: Option<catalog::CatalogDraft>,
-    binding_draft: Option<inspector::BindingDraft>,
-    data_draft: Option<data::DataDraft>,
-    graph_data_draft: Option<graph_data::GraphDataDraft>,
-    xml_id_draft: Option<inspector::XmlIdDraft>,
-    di_draft: Option<di::DiDraft>,
-    documentation_draft: Option<documentation::DocumentationDraft>,
-    body_draft: Option<mixed_body::BodyDraft>,
-    metadata_draft: Option<base_metadata::MetadataDraft>,
-    style_draft: Option<di_style::StyleDraft>,
-    definitions_extra_draft: Option<definitions_extra::DefinitionsExtraDraft>,
-    correlation_catalog_draft: Option<correlation::CorrelationCatalogDraft>,
-    activity_roles_draft: Option<roles::ActivityRolesDraft>,
-    callable_catalog_draft: Option<callable::CallableCatalogDraft>,
-    call_draft: Option<call::CallDraft>,
-    process_activity_draft: Option<process_activity::ProcessActivityDraft>,
-    flow_metadata_draft: Option<flow_metadata::FlowDraft>,
-    correlation_keys_draft: Option<correlation_keys::CorrelationKeysDraft>,
-    loop_advanced_draft: Option<loop_advanced::LoopAdvancedDraft>,
-    choreography_flow_draft: Option<choreography_flow::ChoreographyFlowDraft>,
-    multiplicity_draft: Option<participant_di::MultiplicityDraft>,
-    message_ref_draft: Option<participant_di::MessageRefDraft>,
-    band_draft: Option<band_create::BandDraft>,
-    event_draft: Option<event::EventDraft>,
-    event_catalog_draft: Option<event::EventCatalogDraft>,
+    drafts: drafts::Drafts,
     identity_page: usize,
     association_direction: Option<processcraft_core::bpmn_model::AssociationDirection>,
     owner: String,
@@ -407,32 +382,7 @@ impl Default for ProcessCraft {
             docs: String::new(),
             docs_dirty: false,
             condition: None,
-            expression_draft: None,
-            catalog_draft: None,
-            binding_draft: None,
-            data_draft: None,
-            graph_data_draft: None,
-            xml_id_draft: None,
-            di_draft: None,
-            documentation_draft: None,
-            body_draft: None,
-            metadata_draft: None,
-            style_draft: None,
-            definitions_extra_draft: None,
-            correlation_catalog_draft: None,
-            activity_roles_draft: None,
-            callable_catalog_draft: None,
-            call_draft: None,
-            process_activity_draft: None,
-            flow_metadata_draft: None,
-            correlation_keys_draft: None,
-            loop_advanced_draft: None,
-            choreography_flow_draft: None,
-            multiplicity_draft: None,
-            message_ref_draft: None,
-            band_draft: None,
-            event_draft: None,
-            event_catalog_draft: None,
+            drafts: drafts::Drafts::default(),
             identity_page: 0,
             association_direction: None,
             owner: String::new(),
@@ -517,34 +467,10 @@ impl ProcessCraft {
         self.settings.save();
     }
     fn select(&mut self, id: Option<ElementSelector>) {
-        if (self.draft_dirty
-            || self.attributes.has_cell_drafts()
-            || self.expression_draft.is_some()
-            || self.catalog_draft.is_some()
-            || self.binding_draft.is_some()
-            || self.data_draft.is_some()
-            || self.graph_data_draft.is_some()
-            || self.xml_id_draft.is_some()
-            || self.di_draft.is_some()
-            || self.documentation_draft.is_some()
-            || self.body_draft.is_some()
-            || self.metadata_draft.is_some()
-            || self.style_draft.is_some()
-            || self.definitions_extra_draft.is_some()
-            || self.correlation_catalog_draft.is_some()
-            || self.activity_roles_draft.is_some()
-            || self.callable_catalog_draft.is_some()
-            || self.call_draft.is_some()
-            || self.process_activity_draft.is_some()
-            || self.flow_metadata_draft.is_some()
-            || self.correlation_keys_draft.is_some()
-            || self.loop_advanced_draft.is_some()
-            || self.choreography_flow_draft.is_some()
-            || self.multiplicity_draft.is_some()
-            || self.message_ref_draft.is_some()
-            || self.band_draft.is_some()
-            || self.event_draft.is_some()
-            || self.event_catalog_draft.is_some())
+        // Selection-bound drafts only: collaboration, review and dictionary drafts survive a
+        // selection change (see `has_drafts` for the full set), and attribute definition drafts
+        // are not tied to the selected element.
+        if (self.draft_dirty || self.attributes.has_cell_drafts() || self.drafts.any())
             && !self.commit_all_drafts()
         {
             return;
@@ -939,136 +865,22 @@ impl ProcessCraft {
     /// an unchanged draft applies as a no-op (history and redo stay intact); an invalid one is
     /// refused with its reason and stays open. Untouched creation drafts just close.
     fn commit_typed_drafts(&mut self) -> bool {
-        type Apply = fn(&mut ProcessCraft) -> Result<(), String>;
-        let drafts: [(&str, bool, Apply); 25] = [
-            (
-                "activity reference",
-                self.binding_draft.is_some(),
-                Self::apply_binding_draft,
-            ),
-            (
-                "XML ID",
-                self.xml_id_draft.is_some(),
-                Self::apply_xml_id_draft,
-            ),
-            (
-                "supporting catalog",
-                self.catalog_draft.is_some(),
-                Self::apply_catalog_draft,
-            ),
-            ("data", self.data_draft.is_some(), Self::apply_data_draft),
-            (
-                "choreography data association",
-                self.graph_data_draft.is_some(),
-                Self::apply_graph_data_draft,
-            ),
-            (
-                "diagram properties",
-                self.di_draft.is_some(),
-                Self::apply_di_draft,
-            ),
-            (
-                "documentation",
-                self.documentation_draft.is_some(),
-                Self::apply_documentation_draft,
-            ),
-            ("content", self.body_draft.is_some(), Self::apply_body_draft),
-            (
-                "advanced metadata",
-                self.metadata_draft.is_some(),
-                Self::apply_metadata_draft,
-            ),
-            (
-                "diagram font",
-                self.style_draft.is_some(),
-                Self::apply_style_draft,
-            ),
-            (
-                "definitions details",
-                self.definitions_extra_draft.is_some(),
-                Self::apply_definitions_extra_draft,
-            ),
-            (
-                "correlation",
-                self.correlation_catalog_draft.is_some(),
-                Self::apply_correlation_catalog_draft,
-            ),
-            (
-                "activity roles",
-                self.activity_roles_draft.is_some(),
-                Self::apply_activity_roles_draft,
-            ),
-            (
-                "global task",
-                self.callable_catalog_draft.is_some(),
-                Self::apply_callable_catalog_draft,
-            ),
-            (
-                "called element",
-                self.call_draft.is_some(),
-                Self::apply_call_draft,
-            ),
-            (
-                "process behavior",
-                self.process_activity_draft.is_some(),
-                Self::apply_process_activity_draft,
-            ),
-            (
-                "flow details",
-                self.flow_metadata_draft.is_some(),
-                Self::apply_flow_metadata_draft,
-            ),
-            (
-                "correlation keys",
-                self.correlation_keys_draft.is_some(),
-                Self::apply_correlation_keys_draft,
-            ),
-            (
-                "multi-instance",
-                self.loop_advanced_draft.is_some(),
-                Self::apply_loop_advanced_draft,
-            ),
-            (
-                "choreography details",
-                self.choreography_flow_draft.is_some(),
-                Self::apply_choreography_flow_draft,
-            ),
-            (
-                "multiplicity",
-                self.multiplicity_draft.is_some(),
-                Self::apply_multiplicity_draft,
-            ),
-            (
-                "message reference",
-                self.message_ref_draft.is_some(),
-                Self::apply_message_ref_draft,
-            ),
-            (
-                "participant band",
-                self.band_draft.is_some(),
-                Self::apply_band_draft,
-            ),
-            ("event", self.event_draft.is_some(), Self::apply_event_draft),
-            (
-                "event catalog",
-                self.event_catalog_draft.is_some(),
-                Self::apply_event_catalog_draft,
-            ),
-        ];
-        if !drafts.iter().any(|(_, open, _)| *open) {
+        // NOTE: the early exit ignores the expression draft, so it only blocks below when another
+        // typed draft is also open; `commit_draft` refuses it otherwise. Kept as it was.
+        if !self.drafts.any_typed() {
             return true;
         }
         // The expression metadata editor writes into its owner's field, which only its panel can
         // reach, so it is the one draft that must be finished by hand.
-        if self.expression_draft.is_some() {
+        if self.drafts.expression_draft.is_some() {
             self.ctl.error = "Apply or cancel the expression metadata draft first.".into();
             return false;
         }
         if self.band_draft_untouched() {
-            self.band_draft = None;
+            self.drafts.band_draft = None;
         }
         if self.graph_data_draft_untouched() {
-            self.graph_data_draft = None;
+            self.drafts.graph_data_draft = None;
         }
         // Simple-field mirrors the user did not edit follow what the drafts change.
         let mirrored = |app: &Self| {
@@ -1084,7 +896,7 @@ impl ProcessCraft {
             ))
         };
         let before = mirrored(self);
-        for (name, _, apply) in drafts {
+        for &(name, apply) in drafts::Drafts::COMMIT {
             if let Err(reason) = apply(self) {
                 self.ctl.error = format!(
                     "The {name} draft is not valid: {}. Fix it or cancel it first.",
@@ -1114,100 +926,100 @@ impl ProcessCraft {
         self.commit_typed_drafts() && self.commit_attribute_drafts() && self.commit_draft()
     }
     fn commit_draft(&mut self) -> bool {
-        if self.event_draft.is_some() || self.event_catalog_draft.is_some() {
+        if self.drafts.event_draft.is_some() || self.drafts.event_catalog_draft.is_some() {
             self.ctl.error = "Apply or cancel the event draft first.".into();
             return false;
         }
-        if self.multiplicity_draft.is_some()
-            || self.message_ref_draft.is_some()
-            || self.band_draft.is_some()
+        if self.drafts.multiplicity_draft.is_some()
+            || self.drafts.message_ref_draft.is_some()
+            || self.drafts.band_draft.is_some()
         {
             self.ctl.error =
                 "Apply or cancel the participant, band, or message draft first.".into();
             return false;
         }
-        if self.choreography_flow_draft.is_some() {
+        if self.drafts.choreography_flow_draft.is_some() {
             self.ctl.error = "Apply or cancel the choreography details draft first.".into();
             return false;
         }
-        if self.loop_advanced_draft.is_some() {
+        if self.drafts.loop_advanced_draft.is_some() {
             self.ctl.error = "Apply or cancel the multi-instance draft first.".into();
             return false;
         }
-        if self.correlation_keys_draft.is_some() {
+        if self.drafts.correlation_keys_draft.is_some() {
             self.ctl.error = "Apply or cancel the correlation keys draft first.".into();
             return false;
         }
-        if self.flow_metadata_draft.is_some() {
+        if self.drafts.flow_metadata_draft.is_some() {
             self.ctl.error = "Apply or cancel the flow details draft first.".into();
             return false;
         }
-        if self.process_activity_draft.is_some() {
+        if self.drafts.process_activity_draft.is_some() {
             self.ctl.error = "Apply or cancel the process behavior draft first.".into();
             return false;
         }
-        if self.call_draft.is_some() {
+        if self.drafts.call_draft.is_some() {
             self.ctl.error = "Apply or cancel the called element draft first.".into();
             return false;
         }
-        if self.callable_catalog_draft.is_some() {
+        if self.drafts.callable_catalog_draft.is_some() {
             self.ctl.error = "Apply or cancel the global task draft first.".into();
             return false;
         }
-        if self.activity_roles_draft.is_some() {
+        if self.drafts.activity_roles_draft.is_some() {
             self.ctl.error = "Apply or cancel the activity roles draft first.".into();
             return false;
         }
-        if self.correlation_catalog_draft.is_some() {
+        if self.drafts.correlation_catalog_draft.is_some() {
             self.ctl.error = "Apply or cancel the correlation draft first.".into();
             return false;
         }
-        if self.definitions_extra_draft.is_some() {
+        if self.drafts.definitions_extra_draft.is_some() {
             self.ctl.error = "Apply or cancel the definitions details draft first.".into();
             return false;
         }
-        if self.style_draft.is_some() {
+        if self.drafts.style_draft.is_some() {
             self.ctl.error = "Apply or cancel the diagram font draft first.".into();
             return false;
         }
-        if self.metadata_draft.is_some() {
+        if self.drafts.metadata_draft.is_some() {
             self.ctl.error = "Apply or cancel the advanced metadata draft first.".into();
             return false;
         }
-        if self.body_draft.is_some() {
+        if self.drafts.body_draft.is_some() {
             self.ctl.error = "Apply or cancel the content draft first.".into();
             return false;
         }
-        if self.documentation_draft.is_some() {
+        if self.drafts.documentation_draft.is_some() {
             self.ctl.error = "Apply or cancel the documentation draft first.".into();
             return false;
         }
-        if self.di_draft.is_some() {
+        if self.drafts.di_draft.is_some() {
             self.ctl.error = "Apply or cancel the diagram properties draft first.".into();
             return false;
         }
-        if self.xml_id_draft.is_some() {
+        if self.drafts.xml_id_draft.is_some() {
             self.ctl.error = "Apply or cancel the XML ID draft first.".into();
             return false;
         }
-        if self.data_draft.is_some() {
+        if self.drafts.data_draft.is_some() {
             self.ctl.error = "Apply or cancel the data draft first.".into();
             return false;
         }
-        if self.graph_data_draft.is_some() {
+        if self.drafts.graph_data_draft.is_some() {
             self.ctl.error =
                 "Apply or cancel the choreography data association draft first.".into();
             return false;
         }
-        if self.binding_draft.is_some() {
+        if self.drafts.binding_draft.is_some() {
             self.ctl.error = "Apply or cancel the activity reference draft first.".into();
             return false;
         }
-        if self.catalog_draft.is_some() {
+        if self.drafts.catalog_draft.is_some() {
             self.ctl.error = "Apply or cancel the supporting catalog draft first.".into();
             return false;
         }
-        if self.expression_draft.is_some() {
+        if self.drafts.expression_draft.is_some() {
             self.ctl.error = "Apply or cancel the expression metadata draft first.".into();
             return false;
         }
@@ -1578,60 +1390,14 @@ impl ProcessCraft {
         self.ctl.session.set_selection(keys);
     }
     fn ordinary_property_locked(&self) -> bool {
-        self.catalog_draft.is_some()
-            || self.data_draft.is_some()
-            || self.graph_data_draft.is_some()
-            || self.xml_id_draft.is_some()
-            || self.di_draft.is_some()
-            || self.documentation_draft.is_some()
-            || self.body_draft.is_some()
-            || self.metadata_draft.is_some()
-            || self.style_draft.is_some()
-            || self.definitions_extra_draft.is_some()
-            || self.event_draft.is_some()
-            || self.event_catalog_draft.is_some()
-            || self.correlation_catalog_draft.is_some()
-            || self.activity_roles_draft.is_some()
-            || self.callable_catalog_draft.is_some()
-            || self.call_draft.is_some()
-            || self.process_activity_draft.is_some()
-            || self.flow_metadata_draft.is_some()
-            || self.correlation_keys_draft.is_some()
-            || self.loop_advanced_draft.is_some()
-            || self.choreography_flow_draft.is_some()
-            || self.multiplicity_draft.is_some()
-            || self.message_ref_draft.is_some()
-            || self.band_draft.is_some()
+        // Intentionally narrower than `any`: the expression and activity-reference drafts have
+        // inline editors that do not replace the ordinary property fields.
+        self.drafts.locks_ordinary_properties()
     }
     fn has_drafts(&self) -> bool {
         self.collaboration.has_draft()
             || self.attributes.has_draft()
-            || self.expression_draft.is_some()
-            || self.catalog_draft.is_some()
-            || self.binding_draft.is_some()
-            || self.data_draft.is_some()
-            || self.graph_data_draft.is_some()
-            || self.xml_id_draft.is_some()
-            || self.di_draft.is_some()
-            || self.documentation_draft.is_some()
-            || self.body_draft.is_some()
-            || self.metadata_draft.is_some()
-            || self.style_draft.is_some()
-            || self.definitions_extra_draft.is_some()
-            || self.correlation_catalog_draft.is_some()
-            || self.activity_roles_draft.is_some()
-            || self.callable_catalog_draft.is_some()
-            || self.call_draft.is_some()
-            || self.process_activity_draft.is_some()
-            || self.flow_metadata_draft.is_some()
-            || self.correlation_keys_draft.is_some()
-            || self.loop_advanced_draft.is_some()
-            || self.choreography_flow_draft.is_some()
-            || self.multiplicity_draft.is_some()
-            || self.message_ref_draft.is_some()
-            || self.band_draft.is_some()
-            || self.event_draft.is_some()
-            || self.event_catalog_draft.is_some()
+            || self.drafts.any()
             || self.review.has_draft()
             || self.draft_dirty
             || self.dictionary_draft_changed(&self.ctl.session.snapshot().project)
@@ -1689,32 +1455,7 @@ impl ProcessCraft {
     }
     fn discard_property_drafts(&mut self) {
         self.attributes.reset();
-        self.expression_draft = None;
-        self.catalog_draft = None;
-        self.binding_draft = None;
-        self.data_draft = None;
-        self.graph_data_draft = None;
-        self.xml_id_draft = None;
-        self.di_draft = None;
-        self.documentation_draft = None;
-        self.body_draft = None;
-        self.metadata_draft = None;
-        self.style_draft = None;
-        self.definitions_extra_draft = None;
-        self.correlation_catalog_draft = None;
-        self.activity_roles_draft = None;
-        self.callable_catalog_draft = None;
-        self.call_draft = None;
-        self.process_activity_draft = None;
-        self.flow_metadata_draft = None;
-        self.correlation_keys_draft = None;
-        self.loop_advanced_draft = None;
-        self.choreography_flow_draft = None;
-        self.multiplicity_draft = None;
-        self.message_ref_draft = None;
-        self.band_draft = None;
-        self.event_draft = None;
-        self.event_catalog_draft = None;
+        self.drafts.clear();
         self.definitions_dirty = false;
         self.docs_dirty = false;
         self.draft_dirty = false;
@@ -2893,6 +2634,7 @@ mod di;
 mod di_metadata;
 mod di_style;
 mod documentation;
+mod drafts;
 mod event;
 mod flow_metadata;
 mod graph_data;

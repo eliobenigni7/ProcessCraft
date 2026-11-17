@@ -289,7 +289,7 @@ impl ProcessCraft {
         document: &BpmnDocument,
         editable: bool,
     ) {
-        if self.definitions_extra_draft.is_none() {
+        if self.drafts.definitions_extra_draft.is_none() {
             if ui
                 .add_enabled(
                     editable && !self.draft_dirty,
@@ -298,11 +298,11 @@ impl ProcessCraft {
                 .clicked()
                 && self.commit_draft()
             {
-                self.definitions_extra_draft = Some(DefinitionsExtraDraft::new(document));
+                self.drafts.definitions_extra_draft = Some(DefinitionsExtraDraft::new(document));
             }
             return;
         }
-        let draft = self.definitions_extra_draft.as_mut().unwrap();
+        let draft = self.drafts.definitions_extra_draft.as_mut().unwrap();
         draft.ui(ui);
         if !draft.error.is_empty() {
             ui.label(&draft.error);
@@ -313,12 +313,12 @@ impl ProcessCraft {
             self.restore_selection();
         }
         if ui.button("Cancel definitions details").clicked() {
-            self.definitions_extra_draft = None;
+            self.drafts.definitions_extra_draft = None;
         }
     }
     pub(super) fn apply_definitions_extra_draft(&mut self) -> Result<(), String> {
         self.apply_typed_draft(
-            |app| &mut app.definitions_extra_draft,
+            |app| &mut app.drafts.definitions_extra_draft,
             |draft, document| {
                 draft
                     .changes(document.id)

@@ -168,7 +168,7 @@ impl ProcessCraft {
         let Some(document) = self.current_document(&snapshot) else {
             return;
         };
-        if self.correlation_catalog_draft.is_none() {
+        if self.drafts.correlation_catalog_draft.is_none() {
             if ui
                 .add_enabled(
                     editable && !self.draft_dirty,
@@ -177,21 +177,21 @@ impl ProcessCraft {
                 .clicked()
                 && self.commit_draft()
             {
-                self.correlation_catalog_draft = Some(CorrelationCatalogDraft::new(
+                self.drafts.correlation_catalog_draft = Some(CorrelationCatalogDraft::new(
                     &document.correlation_properties,
                 ));
             }
             return;
         }
-        let draft = self.correlation_catalog_draft.as_mut().unwrap();
+        let draft = self.drafts.correlation_catalog_draft.as_mut().unwrap();
         ui.strong("Correlation properties");
-        draft.ui(ui, document, &mut self.expression_draft);
+        draft.ui(ui, document, &mut self.drafts.expression_draft);
         if !draft.error.is_empty() {
             ui.label(&draft.error);
         }
         if ui
             .add_enabled(
-                self.expression_draft.is_none(),
+                self.drafts.expression_draft.is_none(),
                 egui::Button::new("Apply correlation properties"),
             )
             .clicked()
@@ -200,17 +200,17 @@ impl ProcessCraft {
         }
         if ui
             .add_enabled(
-                self.expression_draft.is_none(),
+                self.drafts.expression_draft.is_none(),
                 egui::Button::new("Cancel correlation editing"),
             )
             .clicked()
         {
-            self.correlation_catalog_draft = None;
+            self.drafts.correlation_catalog_draft = None;
         }
     }
     pub(super) fn apply_correlation_catalog_draft(&mut self) -> Result<(), String> {
         self.apply_typed_draft(
-            |app| &mut app.correlation_catalog_draft,
+            |app| &mut app.drafts.correlation_catalog_draft,
             |draft, document| {
                 let values = draft.build().inspect_err(|e| draft.error = e.clone())?;
                 Ok(vec![Mutation::SetCorrelationProperties {
@@ -242,13 +242,16 @@ mod tests {
         let draft = CorrelationCatalogDraft::new(std::slice::from_ref(&value));
         assert_eq!(draft.build().unwrap(), vec![value]);
         let mut app = ProcessCraft {
-            correlation_catalog_draft: Some(draft),
+            drafts: crate::app::drafts::Drafts {
+                correlation_catalog_draft: Some(draft),
+                ..Default::default()
+            },
             ..Default::default()
         };
         assert!(app.has_drafts());
         assert!(!app.commit_draft());
         app.select(Some("Other".parse().unwrap()));
         assert!(app.selected.is_none());
-        assert!(app.correlation_catalog_draft.is_some());
+        assert!(app.drafts.correlation_catalog_draft.is_some());
     }
 }

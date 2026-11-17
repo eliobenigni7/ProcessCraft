@@ -336,7 +336,7 @@ impl ProcessCraft {
         document: &BpmnDocument,
         editable: bool,
     ) {
-        if self.activity_roles_draft.is_none() {
+        if self.drafts.activity_roles_draft.is_none() {
             if ui
                 .add_enabled(
                     editable && !self.draft_dirty,
@@ -346,7 +346,7 @@ impl ProcessCraft {
                 && self.commit_draft()
             {
                 let value = node.activity.clone().unwrap_or_default();
-                self.activity_roles_draft = Some(ActivityRolesDraft {
+                self.drafts.activity_roles_draft = Some(ActivityRolesDraft {
                     target: node.id.selector(),
                     roles: RolesDraft::new(&value.resource_roles),
                     properties: value
@@ -360,7 +360,7 @@ impl ProcessCraft {
             }
             return;
         }
-        let draft = self.activity_roles_draft.as_mut().unwrap();
+        let draft = self.drafts.activity_roles_draft.as_mut().unwrap();
         if draft.target != node.id.selector() {
             return;
         }
@@ -445,13 +445,13 @@ impl ProcessCraft {
         }
         draft
             .roles
-            .ui(ui, document, &mut self.expression_draft, "Activity");
+            .ui(ui, document, &mut self.drafts.expression_draft, "Activity");
         if !draft.error.is_empty() {
             ui.label(&draft.error);
         }
         if ui
             .add_enabled(
-                self.expression_draft.is_none(),
+                self.drafts.expression_draft.is_none(),
                 egui::Button::new("Apply roles and properties"),
             )
             .clicked()
@@ -461,17 +461,17 @@ impl ProcessCraft {
         }
         if ui
             .add_enabled(
-                self.expression_draft.is_none(),
+                self.drafts.expression_draft.is_none(),
                 egui::Button::new("Cancel roles and properties"),
             )
             .clicked()
         {
-            self.activity_roles_draft = None;
+            self.drafts.activity_roles_draft = None;
         }
     }
     pub(super) fn apply_activity_roles_draft(&mut self) -> Result<(), String> {
         self.apply_typed_draft(
-            |app| &mut app.activity_roles_draft,
+            |app| &mut app.drafts.activity_roles_draft,
             |draft, document| match (
                 draft.roles.build(),
                 draft
@@ -572,7 +572,7 @@ mod tests {
             )),
             bindings: vec![],
         };
-        app.activity_roles_draft = Some(draft(invalid));
+        app.drafts.activity_roles_draft = Some(draft(invalid));
         assert!(app.ordinary_property_locked());
         assert!(!app.commit_draft());
         app.select(None);
@@ -585,11 +585,11 @@ mod tests {
             app.ctl.error
         );
         // An untouched draft closes without a history step.
-        app.activity_roles_draft = Some(draft(RolesDraft::default()));
+        app.drafts.activity_roles_draft = Some(draft(RolesDraft::default()));
         let undo = app.ctl.session.snapshot().undo_count;
         app.select(None);
         assert!(app.selected.is_none(), "{}", app.ctl.error);
-        assert!(app.activity_roles_draft.is_none());
+        assert!(app.drafts.activity_roles_draft.is_none());
         assert_eq!(app.ctl.session.snapshot().undo_count, undo);
     }
     #[test]

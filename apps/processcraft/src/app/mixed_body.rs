@@ -22,7 +22,7 @@ impl ProcessCraft {
         value: Option<MixedXml>,
         editable: bool,
     ) {
-        if self.body_draft.is_none() {
+        if self.drafts.body_draft.is_none() {
             if ui
                 .add_enabled(
                     editable && !self.draft_dirty,
@@ -31,7 +31,7 @@ impl ProcessCraft {
                 .clicked()
                 && self.commit_draft()
             {
-                self.body_draft = Some(BodyDraft {
+                self.drafts.body_draft = Some(BodyDraft {
                     owner,
                     value: value.as_ref().map(MixedDraft::new),
                     error: String::new(),
@@ -39,7 +39,7 @@ impl ProcessCraft {
             }
             return;
         }
-        let draft = self.body_draft.as_mut().unwrap();
+        let draft = self.drafts.body_draft.as_mut().unwrap();
         if draft.owner != owner {
             return;
         }
@@ -60,12 +60,12 @@ impl ProcessCraft {
             self.restore_selection();
         }
         if ui.button("Cancel content editing").clicked() {
-            self.body_draft = None;
+            self.drafts.body_draft = None;
         }
     }
     pub(super) fn apply_body_draft(&mut self) -> Result<(), String> {
         self.apply_typed_draft(
-            |app| &mut app.body_draft,
+            |app| &mut app.drafts.body_draft,
             |draft, document| {
                 let body = draft
                     .value

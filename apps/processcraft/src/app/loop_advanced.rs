@@ -961,7 +961,7 @@ impl ProcessCraft {
         document: &BpmnDocument,
         editable: bool,
     ) {
-        if self.loop_advanced_draft.is_none() {
+        if self.drafts.loop_advanced_draft.is_none() {
             if let Some(value @ LoopCharacteristics::MultiInstance { .. }) =
                 &node.loop_characteristics
                 && ui
@@ -972,21 +972,22 @@ impl ProcessCraft {
                     .clicked()
                 && self.commit_draft()
             {
-                self.loop_advanced_draft = Some(LoopAdvancedDraft::new(node.id.selector(), value));
+                self.drafts.loop_advanced_draft =
+                    Some(LoopAdvancedDraft::new(node.id.selector(), value));
             }
             return;
         }
-        let draft = self.loop_advanced_draft.as_mut().unwrap();
+        let draft = self.drafts.loop_advanced_draft.as_mut().unwrap();
         if draft.target != node.id.selector() {
             return;
         }
-        draft.ui(ui, document, &mut self.expression_draft);
+        draft.ui(ui, document, &mut self.drafts.expression_draft);
         if !draft.error.is_empty() {
             ui.label(&draft.error);
         }
         if ui
             .add_enabled(
-                self.expression_draft.is_none(),
+                self.drafts.expression_draft.is_none(),
                 egui::Button::new("Apply multi-instance details"),
             )
             .clicked()
@@ -996,17 +997,17 @@ impl ProcessCraft {
         }
         if ui
             .add_enabled(
-                self.expression_draft.is_none(),
+                self.drafts.expression_draft.is_none(),
                 egui::Button::new("Cancel multi-instance details"),
             )
             .clicked()
         {
-            self.loop_advanced_draft = None;
+            self.drafts.loop_advanced_draft = None;
         }
     }
     pub(super) fn apply_loop_advanced_draft(&mut self) -> Result<(), String> {
         self.apply_typed_draft(
-            |app| &mut app.loop_advanced_draft,
+            |app| &mut app.drafts.loop_advanced_draft,
             |draft, document| {
                 let value = draft.build().inspect_err(|e| draft.error = e.clone())?;
                 Ok(vec![Mutation::SetNodeLoop {

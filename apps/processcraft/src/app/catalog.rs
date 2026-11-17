@@ -506,19 +506,19 @@ impl ProcessCraft {
             return;
         };
         ui.separator();
-        if self.catalog_draft.is_none() {
+        if self.drafts.catalog_draft.is_none() {
             if ui
                 .add_enabled(editable, egui::Button::new("Edit supporting catalog…"))
                 .clicked()
                 && self.commit_draft()
             {
-                self.catalog_draft = Some(CatalogDraft::new(&document.catalog));
+                self.drafts.catalog_draft = Some(CatalogDraft::new(&document.catalog));
                 self.draft_dirty = true;
             }
             return;
         }
         ui.strong("Supporting catalog");
-        let draft = self.catalog_draft.as_mut().unwrap();
+        let draft = self.drafts.catalog_draft.as_mut().unwrap();
         draft.ui(ui);
         if !draft.error.is_empty() {
             ui.label(&draft.error);
@@ -527,12 +527,12 @@ impl ProcessCraft {
             let _ = self.apply_catalog_draft();
         }
         if ui.button("Cancel catalog editing").clicked() {
-            self.catalog_draft = None;
+            self.drafts.catalog_draft = None;
         }
     }
     pub(super) fn apply_catalog_draft(&mut self) -> Result<(), String> {
         self.apply_typed_draft(
-            |app| &mut app.catalog_draft,
+            |app| &mut app.drafts.catalog_draft,
             |draft, document| {
                 let catalog = draft.build().inspect_err(|e| draft.error = e.clone())?;
                 Ok(vec![Mutation::SetSupportingCatalog {
@@ -625,14 +625,14 @@ mod tests {
             },
             ..Default::default()
         });
-        app.catalog_draft = Some(draft);
+        app.drafts.catalog_draft = Some(draft);
         app.draft_dirty = true;
         // Simple-field commits (auto-commit) still leave the open draft alone.
         assert!(!app.commit_draft());
         // Selecting another element applies the valid draft, as simple fields are.
         app.add(NodeKind::Task);
         assert!(app.selected.is_some(), "{}", app.ctl.error);
-        assert!(app.catalog_draft.is_none());
+        assert!(app.drafts.catalog_draft.is_none());
         assert_eq!(
             app.ctl.session.snapshot().project.documents[0]
                 .catalog

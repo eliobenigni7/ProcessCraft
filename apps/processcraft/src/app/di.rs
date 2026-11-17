@@ -346,7 +346,7 @@ impl ProcessCraft {
         else {
             return;
         };
-        if self.di_draft.is_none() {
+        if self.drafts.di_draft.is_none() {
             ui.collapsing("Diagram representation", |ui| {
                 for (index, shape) in diagram
                     .shapes
@@ -358,11 +358,11 @@ impl ProcessCraft {
                         if ui
                             .add_enabled(
                                 editable
-                                    && self.expression_draft.is_none()
-                                    && self.catalog_draft.is_none()
-                                    && self.binding_draft.is_none()
-                                    && self.data_draft.is_none()
-                                    && self.xml_id_draft.is_none(),
+                                    && self.drafts.expression_draft.is_none()
+                                    && self.drafts.catalog_draft.is_none()
+                                    && self.drafts.binding_draft.is_none()
+                                    && self.drafts.data_draft.is_none()
+                                    && self.drafts.xml_id_draft.is_none(),
                                 egui::Button::new(format!(
                                     "Edit {}",
                                     representation_label(document, &shape.element, "shape", index)
@@ -384,7 +384,7 @@ impl ProcessCraft {
                             let marker_allowed =
                                 processcraft_core::queries::find_node(document, &selected)
                                     .is_some_and(|node| node.kind == NodeKind::ExclusiveGateway);
-                            self.di_draft = Some(DiDraft::Shape {
+                            self.drafts.di_draft = Some(DiDraft::Shape {
                                 diagram: diagram.id.selector(),
                                 shape: shape.id.selector(),
                                 horizontal: shape.is_horizontal,
@@ -431,11 +431,11 @@ impl ProcessCraft {
                     if ui
                         .add_enabled(
                             editable
-                                && self.expression_draft.is_none()
-                                && self.catalog_draft.is_none()
-                                && self.binding_draft.is_none()
-                                && self.data_draft.is_none()
-                                && self.xml_id_draft.is_none(),
+                                && self.drafts.expression_draft.is_none()
+                                && self.drafts.catalog_draft.is_none()
+                                && self.drafts.binding_draft.is_none()
+                                && self.drafts.data_draft.is_none()
+                                && self.drafts.xml_id_draft.is_none(),
                             egui::Button::new(format!(
                                 "Edit {}",
                                 representation_label(document, &edge.element, "edge", index)
@@ -448,7 +448,7 @@ impl ProcessCraft {
                         .clicked()
                         && self.commit_draft()
                     {
-                        self.di_draft = Some(DiDraft::Edge {
+                        self.drafts.di_draft = Some(DiDraft::Edge {
                             diagram: diagram.id.selector(),
                             edge: edge.id.selector(),
                             source: edge.source_element.clone(),
@@ -470,7 +470,7 @@ impl ProcessCraft {
             });
             return;
         }
-        let draft = self.di_draft.as_mut().unwrap();
+        let draft = self.drafts.di_draft.as_mut().unwrap();
         ui.strong("Diagram representation");
         let mut apply = false;
         match draft {
@@ -673,12 +673,12 @@ impl ProcessCraft {
             let _ = self.apply_di_draft();
         }
         if ui.button("Cancel diagram editing").clicked() {
-            self.di_draft = None;
+            self.drafts.di_draft = None;
         }
     }
     pub(super) fn apply_di_draft(&mut self) -> Result<(), String> {
         self.apply_typed_draft(
-            |app| &mut app.di_draft,
+            |app| &mut app.drafts.di_draft,
             |draft, document| draft.mutations(document.id),
         )
     }
@@ -696,7 +696,7 @@ mod tests {
         let document = &snapshot.project.documents[0];
         let diagram = &document.diagrams[0];
         let shape = &diagram.shapes[0];
-        app.di_draft = Some(DiDraft::Shape {
+        app.drafts.di_draft = Some(DiDraft::Shape {
             diagram: diagram.id.selector(),
             shape: shape.id.selector(),
             horizontal: None,
@@ -727,7 +727,7 @@ mod tests {
         assert!(selected.is_some());
         app.select(None);
         assert!(app.selected.is_none(), "{}", app.ctl.error);
-        assert!(app.di_draft.is_none());
+        assert!(app.drafts.di_draft.is_none());
         assert_eq!(
             app.ctl.session.snapshot().project.documents[0].diagrams[0].shapes[0].is_marker_visible,
             Some(false)

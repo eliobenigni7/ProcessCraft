@@ -393,7 +393,7 @@ impl ProcessCraft {
         let Some(document) = self.current_document(&snap) else {
             return;
         };
-        if self.callable_catalog_draft.is_none() {
+        if self.drafts.callable_catalog_draft.is_none() {
             if ui
                 .add_enabled(
                     editable && !self.draft_dirty,
@@ -402,20 +402,20 @@ impl ProcessCraft {
                 .clicked()
                 && self.commit_draft()
             {
-                self.callable_catalog_draft =
+                self.drafts.callable_catalog_draft =
                     Some(CallableCatalogDraft::new(&document.global_tasks));
             }
             return;
         }
-        let draft = self.callable_catalog_draft.as_mut().unwrap();
+        let draft = self.drafts.callable_catalog_draft.as_mut().unwrap();
         let mut remove = None;
         let mut up = None;
         for (i, task) in draft.tasks.iter_mut().enumerate() {
             ui.push_id(i, |ui| {
                 ui.separator();
                 ui.strong(format!("Global task {}", i + 1));
-                task.ui(ui, document, &mut self.expression_draft, i);
-                ui.add_enabled_ui(self.expression_draft.is_none(), |ui| {
+                task.ui(ui, document, &mut self.drafts.expression_draft, i);
+                ui.add_enabled_ui(self.drafts.expression_draft.is_none(), |ui| {
                     if ui
                         .add_enabled(i > 0, egui::Button::new("Move task up"))
                         .clicked()
@@ -435,7 +435,7 @@ impl ProcessCraft {
         }
         if ui
             .add_enabled(
-                self.expression_draft.is_none() && draft.tasks.len() < 256,
+                self.drafts.expression_draft.is_none() && draft.tasks.len() < 256,
                 egui::Button::new("Add global task"),
             )
             .clicked()
@@ -455,7 +455,7 @@ impl ProcessCraft {
         }
         if ui
             .add_enabled(
-                self.expression_draft.is_none(),
+                self.drafts.expression_draft.is_none(),
                 egui::Button::new("Apply global tasks"),
             )
             .clicked()
@@ -464,17 +464,17 @@ impl ProcessCraft {
         }
         if ui
             .add_enabled(
-                self.expression_draft.is_none(),
+                self.drafts.expression_draft.is_none(),
                 egui::Button::new("Cancel global tasks"),
             )
             .clicked()
         {
-            self.callable_catalog_draft = None;
+            self.drafts.callable_catalog_draft = None;
         }
     }
     pub(super) fn apply_callable_catalog_draft(&mut self) -> Result<(), String> {
         self.apply_typed_draft(
-            |app| &mut app.callable_catalog_draft,
+            |app| &mut app.drafts.callable_catalog_draft,
             |draft, document| {
                 let global_tasks = draft.build().inspect_err(|e| draft.error = e.clone())?;
                 Ok(vec![Mutation::SetGlobalTasks {

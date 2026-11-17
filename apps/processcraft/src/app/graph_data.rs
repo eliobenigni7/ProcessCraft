@@ -216,7 +216,7 @@ impl ProcessCraft {
         generation: u64,
     ) {
         ui.collapsing("Event data associations", |ui| {
-            if self.graph_data_draft.is_none() {
+            if self.drafts.graph_data_draft.is_none() {
                 for (index, association) in scope.data_associations.iter().enumerate() {
                     ui.push_id(index, |ui| {
                         ui.horizontal_wrapped(|ui| {
@@ -250,7 +250,7 @@ impl ProcessCraft {
                                             "The model changed; reopen this scope.".into();
                                         return;
                                     }
-                                    self.graph_data_draft = Some(GraphDataDraft {
+                                    self.drafts.graph_data_draft = Some(GraphDataDraft {
                                         root: scope.root.id.selector(),
                                         scope: scope.owner.clone(),
                                         generation,
@@ -377,7 +377,7 @@ impl ProcessCraft {
                         .as_ref()
                         .filter(|id| owners.iter().any(|owner| &owner.0 == *id))
                         .cloned();
-                    self.graph_data_draft = Some(GraphDataDraft {
+                    self.drafts.graph_data_draft = Some(GraphDataDraft {
                         root: scope.root.id.selector(),
                         scope: scope.owner.clone(),
                         generation,
@@ -393,7 +393,7 @@ impl ProcessCraft {
                 }
                 return;
             }
-            let draft = self.graph_data_draft.as_mut().expect("open draft");
+            let draft = self.drafts.graph_data_draft.as_mut().expect("open draft");
             if draft.root != scope.root.id.selector() || draft.scope != scope.owner {
                 ui.label("An association draft is open in another scope.");
                 return;
@@ -481,7 +481,7 @@ impl ProcessCraft {
                 "Transformation",
                 &mut draft.transformation,
                 true,
-                &mut self.expression_draft,
+                &mut self.drafts.expression_draft,
                 super::inspector::ExpressionDefault::ImplicitFormal,
             );
             let mut remove = None;
@@ -493,7 +493,7 @@ impl ProcessCraft {
                         &format!("From {index}"),
                         &mut assignment.from,
                         true,
-                        &mut self.expression_draft,
+                        &mut self.drafts.expression_draft,
                         super::inspector::ExpressionDefault::Base,
                     );
                     super::inspector::expression_ui(
@@ -501,12 +501,12 @@ impl ProcessCraft {
                         &format!("To {index}"),
                         &mut assignment.to,
                         true,
-                        &mut self.expression_draft,
+                        &mut self.drafts.expression_draft,
                         super::inspector::ExpressionDefault::Base,
                     );
                     if ui
                         .add_enabled(
-                            self.expression_draft.is_none(),
+                            self.drafts.expression_draft.is_none(),
                             egui::Button::new("Remove assignment"),
                         )
                         .clicked()
@@ -520,7 +520,7 @@ impl ProcessCraft {
             }
             if ui
                 .add_enabled(
-                    self.expression_draft.is_none() && draft.assignments.len() < 256,
+                    self.drafts.expression_draft.is_none() && draft.assignments.len() < 256,
                     egui::Button::new("Add assignment"),
                 )
                 .clicked()
@@ -540,7 +540,7 @@ impl ProcessCraft {
             ui.horizontal(|ui| {
                 if ui
                     .add_enabled(
-                        self.expression_draft.is_none(),
+                        self.drafts.expression_draft.is_none(),
                         egui::Button::new("Apply association"),
                     )
                     .clicked()
@@ -549,7 +549,7 @@ impl ProcessCraft {
                 }
                 if ui
                     .add_enabled(
-                        self.expression_draft.is_none(),
+                        self.drafts.expression_draft.is_none(),
                         egui::Button::new("Cancel association"),
                     )
                     .clicked()
@@ -558,7 +558,7 @@ impl ProcessCraft {
                 }
             });
             if close {
-                self.graph_data_draft = None;
+                self.drafts.graph_data_draft = None;
             } else if apply && self.apply_graph_data_draft().is_ok() {
                 self.restore_selection();
             }
@@ -566,14 +566,14 @@ impl ProcessCraft {
     }
     /// A new association where nothing was chosen yet.
     pub(super) fn graph_data_draft_untouched(&self) -> bool {
-        self.graph_data_draft.as_ref().is_some_and(|d| {
+        self.drafts.graph_data_draft.as_ref().is_some_and(|d| {
             d.original.is_none() && d.kind.is_none() && d.sources.is_empty() && d.target.is_none()
         })
     }
     pub(super) fn apply_graph_data_draft(&mut self) -> Result<(), String> {
         let generation = self.ctl.session.snapshot().generation;
         self.apply_typed_draft(
-            |app| &mut app.graph_data_draft,
+            |app| &mut app.drafts.graph_data_draft,
             |draft, document| {
                 if generation != draft.generation {
                     draft.error = "The model changed; cancel and reopen this draft.".into();
@@ -694,13 +694,16 @@ mod tests {
         };
         // A new association where nothing was chosen yet just closes.
         let mut app = ProcessCraft {
-            graph_data_draft: Some(draft(None)),
+            drafts: crate::app::drafts::Drafts {
+                graph_data_draft: Some(draft(None)),
+                ..Default::default()
+            },
             ..Default::default()
         };
         assert!(app.prepare_navigation(), "{}", app.ctl.error);
-        assert!(app.graph_data_draft.is_none());
+        assert!(app.drafts.graph_data_draft.is_none());
         // A started but invalid one is refused with its reason and stays open.
-        app.graph_data_draft = Some(draft(Some(DataAssociationKind::Input)));
+        app.drafts.graph_data_draft = Some(draft(Some(DataAssociationKind::Input)));
         assert!(app.has_drafts());
         assert!(!app.prepare_navigation());
         assert!(
@@ -713,8 +716,8 @@ mod tests {
         let generation = app.ctl.session.snapshot().generation;
         app.history(Request::Undo);
         assert_eq!(app.ctl.session.snapshot().generation, generation);
-        assert!(app.graph_data_draft.is_some());
-        app.graph_data_draft = None;
+        assert!(app.drafts.graph_data_draft.is_some());
+        app.drafts.graph_data_draft = None;
         assert!(app.prepare_navigation());
     }
     use processcraft_core::bpmn_collaboration::{
