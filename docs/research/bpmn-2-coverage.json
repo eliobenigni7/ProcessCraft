@@ -27351,7 +27351,7 @@
         ]
       },
       "verified_notes": {
-        "render": "BPMN 2.0.2 §11.5.4 specifies no standalone notation for a Global Choreography Task; the renderer emits a diagnostic and omits it (crates/processcraft-render/src/bpmn.rs)."
+        "render": "BPMN 2.0.2 §11.5.4 specifies no standalone notation for a Global Choreography Task; the renderer emits a diagnostic and omits it (crates/processcraft-render/src/bpmn/scene.rs)."
       }
     },
     {

@@ -22,7 +22,7 @@ Recorded 2026-11-13 on Windows 11 Pro (x64), Rust 1.98.1, `--locked --offline`.
   also counts attribute usages for `Reject`, retargets them for `Replace` and
   turns them into `DictionaryTarget::Literal` for `Unlink`;
   `queries::dictionary_usages` includes those elements.
-- The six project-level pruning sites in `commands.rs` (navigation reconciliation,
+- The six project-level pruning sites in `commands/` (navigation reconciliation,
   choreography flow-element/artifact/data-association deletes, element delete,
   document delete) now call one `prune_removed_element_refs` helper that prunes
   navigation links, dictionary links and attribute values together;
@@ -152,7 +152,7 @@ use"), as asserted in the core tests.
 
 ### What exists
 
-- `PC_ATTRIBUTES_NS = "urn:processcraft:attributes:1"` in `interchange.rs`; the
+- `PC_ATTRIBUTES_NS = "urn:processcraft:attributes:1"` in `interchange/mod.rs`; the
   reader, writer and commit planner live in the submodule
   `crates/processcraft-io/src/interchange/attributes.rs`.
 - Export: `export_bpmn` passes the document's values to `export_document`, which
