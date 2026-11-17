@@ -56,7 +56,7 @@ reviews check most often:
 - **Crate boundaries.** `processcraft-core` has no file system, UI or network code.
   `processcraft-io` and `processcraft-render` depend on the core and never on each other.
 - **Adding a mutation** touches the `Mutation` enum, its application in `Session` and the
-  `COMMAND_DESCRIPTORS` table in `crates/processcraft-core/src/commands.rs`. Tests check that the
+  `COMMAND_DESCRIPTORS` table in `crates/processcraft-core/src/commands/mod.rs`. Tests check that the
   descriptors and the JSON Schema agree.
 - **Nothing is lost silently.** BPMN content outside the supported profile is preserved byte for
   byte or refused with a reason. Never drop or reinterpret it.
